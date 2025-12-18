@@ -84,8 +84,8 @@ import {
     loadFicheHistory();
 
     (async () => {
-      const adminEmail = import.meta.env.VITE_ADMIN_EMAIL || 'admin@local';
-      const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD || (import.meta.env.VITE_APP_PASSWORD || 'admin');
+      const adminEmail = import.meta.env.VITE_ADMIN_EMAIL;
+      const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD;
 
       let loadedUsers = [];
       try {
