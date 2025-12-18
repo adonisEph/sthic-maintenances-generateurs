@@ -84,8 +84,14 @@ import {
     loadFicheHistory();
 
     (async () => {
-      const adminEmail = import.meta.env.VITE_ADMIN_EMAIL || 'admin@local';
-      const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD || (import.meta.env.VITE_ADMIN_PASSWORD || 'admin');
+      const rawAdminEmail = import.meta.env.VITE_ADMIN_EMAIL;
+      const rawAdminPassword = import.meta.env.VITE_ADMIN_PASSWORD;
+      const hasEnvAdminEmail = typeof rawAdminEmail === 'string' && rawAdminEmail.trim() !== '';
+      const hasEnvAdminPassword = typeof rawAdminPassword === 'string' && rawAdminPassword !== '';
+      const adminEmail = (hasEnvAdminEmail ? rawAdminEmail.trim() : 'admin@local').toLowerCase();
+      const adminPassword = hasEnvAdminPassword
+        ? rawAdminPassword
+        : (import.meta.env.VITE_APP_PASSWORD || 'admin');
 
       let loadedUsers = [];
       try {
@@ -97,7 +103,13 @@ import {
         loadedUsers = [];
       }
 
-      if (!Array.isArray(loadedUsers) || loadedUsers.length === 0) {
+      if (!Array.isArray(loadedUsers)) {
+        loadedUsers = [];
+      }
+
+      let didChangeUsers = false;
+
+      if (loadedUsers.length === 0) {
         loadedUsers = [
           {
             id: Date.now(),
@@ -107,6 +119,59 @@ import {
             technicianName: ''
           }
         ];
+        didChangeUsers = true;
+      } else if (hasEnvAdminEmail || hasEnvAdminPassword) {
+        const findByEmail = (email) => loadedUsers.find((u) => String(u.email || '').trim().toLowerCase() === email);
+        const adminUsers = loadedUsers.filter((u) => u && u.role === 'admin');
+        const defaultAdmin = findByEmail('admin@local');
+        const envAdmin = findByEmail(adminEmail);
+
+        if (envAdmin) {
+          const next = loadedUsers.map((u) => {
+            if (u !== envAdmin) return u;
+            const updated = {
+              ...u,
+              email: adminEmail,
+              role: 'admin'
+            };
+            if (hasEnvAdminPassword) {
+              updated.password = adminPassword;
+            }
+            return updated;
+          });
+          loadedUsers = next;
+          didChangeUsers = true;
+        } else if (hasEnvAdminEmail && defaultAdmin && adminUsers.length === 1) {
+          const next = loadedUsers.map((u) => {
+            if (u !== defaultAdmin) return u;
+            const updated = {
+              ...u,
+              email: adminEmail,
+              role: 'admin'
+            };
+            if (hasEnvAdminPassword) {
+              updated.password = adminPassword;
+            }
+            return updated;
+          });
+          loadedUsers = next;
+          didChangeUsers = true;
+        } else if (hasEnvAdminEmail) {
+          loadedUsers = [
+            ...loadedUsers,
+            {
+              id: Date.now(),
+              email: adminEmail,
+              password: adminPassword,
+              role: 'admin',
+              technicianName: ''
+            }
+          ];
+          didChangeUsers = true;
+        }
+      }
+
+      if (didChangeUsers) {
         try {
           await storage.set('gma-users', JSON.stringify(loadedUsers));
         } catch (e) {
