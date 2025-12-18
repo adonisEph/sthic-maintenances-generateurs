@@ -154,7 +154,7 @@ import {
         setTicketNumber(parseInt(result.value));
       }
     } catch (error) {
-      console.log('Numéro de ticket par défaut: T01122');
+      console.log('Numéro de ticket par défaut: T01133');
     }
   };
 
