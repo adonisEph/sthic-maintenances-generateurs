@@ -85,7 +85,7 @@ import {
 
     (async () => {
       const adminEmail = import.meta.env.VITE_ADMIN_EMAIL || 'admin@local';
-      const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD || (import.meta.env.VITE_APP_PASSWORD || 'admin');
+      const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD || (import.meta.env.VITE_ADMIN_PASSWORD || 'admin');
 
       let loadedUsers = [];
       try {
