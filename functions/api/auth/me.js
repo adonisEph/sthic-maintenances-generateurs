@@ -7,11 +7,15 @@ function json(data, init = {}) {
 }
 
 export async function onRequestGet({ env, data }) {
-  await ensureAdminUser(env);
+  try {
+    await ensureAdminUser(env);
 
-  if (!data.user) {
-    return json({ user: null }, { status: 200 });
+    if (!data.user) {
+      return json({ user: null }, { status: 200 });
+    }
+
+    return json({ user: data.user }, { status: 200 });
+  } catch (e) {
+    return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
   }
-
-  return json({ user: data.user }, { status: 200 });
 }

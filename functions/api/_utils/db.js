@@ -20,7 +20,17 @@ export async function ensureAdminUser(env) {
   const adminEmail = normalizeEmail(env.ADMIN_EMAIL || 'admin@local');
   const adminPassword = String(env.ADMIN_PASSWORD || 'admin');
 
-  const countRow = await env.DB.prepare('SELECT COUNT(1) as c FROM users').first();
+  if (!env.DB) {
+    throw new Error('Binding DB manquant: DB');
+  }
+
+  let countRow;
+  try {
+    countRow = await env.DB.prepare('SELECT COUNT(1) as c FROM users').first();
+  } catch (e) {
+    throw new Error('Table users introuvable. Migration non appliquée sur la base bindée.');
+  }
+
   const count = Number(countRow?.c || 0);
   if (count > 0) return;
 
