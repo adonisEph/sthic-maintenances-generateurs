@@ -1172,7 +1172,7 @@ import {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mb-4">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-3 mb-4">
             {canWriteSites && (
               <button
                 onClick={() => setShowAddForm(!showAddForm)}
@@ -1554,7 +1554,7 @@ import {
                     </div>
 
                     {(() => {
-                      const plannedEvents = sites
+                      const plannedEvents = filteredSites
                         .filter((s) => s && !s.retired)
                         .flatMap((site) => {
                           return [
