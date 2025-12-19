@@ -103,7 +103,6 @@ import {
   };
 
   useEffect(() => {
-    loadData();
     loadTicketNumber();
     loadFicheHistory();
 
@@ -112,18 +111,13 @@ import {
         const data = await apiFetchJson('/api/auth/me', { method: 'GET' });
         if (data?.user?.email) {
           setAuthUser(data.user);
+          await loadData();
         }
       } catch (e) {
         // ignore
       }
     })();
   }, []);
-
-  useEffect(() => {
-    if (sites.length > 0) {
-      saveData();
-    }
-  }, [sites]);
 
   useEffect(() => {
     if (!showUsersModal) return;
@@ -140,12 +134,10 @@ import {
 
   const loadData = async () => {
     try {
-      const result = await storage.get('generator-sites');
-      if (result && result.value) {
-        setSites(JSON.parse(result.value));
-      }
+      const data = await apiFetchJson('/api/sites', { method: 'GET' });
+      setSites(Array.isArray(data?.sites) ? data.sites : []);
     } catch (error) {
-      console.log('Aucune donnée existante');
+      setSites([]);
     }
   };
 
@@ -176,14 +168,6 @@ import {
       await storage.set('fiche-history', JSON.stringify(history));
     } catch (error) {
       console.error('Erreur sauvegarde historique:', error);
-    }
-  };
-
-  const saveData = async () => {
-    try {
-      await storage.set('generator-sites', JSON.stringify(sites));
-    } catch (error) {
-      console.error('Erreur de sauvegarde:', error);
     }
   };
 
@@ -257,7 +241,7 @@ import {
     return next;
   };
 
-  const handleAddSite = () => {
+  const handleAddSite = async () => {
     if (!formData.nameSite || !formData.idSite || !formData.technician || !formData.generateur || !formData.capacite || !formData.kitVidange || !formData.nh1DV || !formData.dateDV || !formData.nh2A || !formData.dateA) {
       alert('Veuillez remplir tous les champs obligatoires');
       return;
@@ -272,7 +256,6 @@ import {
     const epvDates = calculateEPVDates(regime, formData.dateA, nh1, nhEstimated);
 
     const newSite = {
-      id: Date.now(),
       nameSite: formData.nameSite,
       idSite: formData.idSite,
       technician: formData.technician,
@@ -292,101 +275,127 @@ import {
       ...epvDates
     };
 
-    setSites([...sites, newSite]);
-    setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
-    setShowAddForm(false);
+    try {
+      await apiFetchJson('/api/sites', {
+        method: 'POST',
+        body: JSON.stringify(newSite)
+      });
+      await loadData();
+      setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
+      setShowAddForm(false);
+    } catch (e) {
+      alert(e?.message || 'Erreur serveur.');
+    }
   };
 
-  const handleUpdateSite = () => {
+  const handleUpdateSite = async () => {
     if (!formData.nh2A || !formData.dateA) {
       alert('Veuillez remplir NH2 A et Date A');
       return;
     }
 
-    const updatedSites = sites.map(site => {
-      if (site.id === selectedSite.id) {
-        const nh2 = parseInt(formData.nh2A);
-        const regime = calculateRegime(site.nh1DV, nh2, site.dateDV, formData.dateA);
-        const nhEstimated = calculateEstimatedNH(nh2, formData.dateA, regime);
-        const diffNHs = calculateDiffNHs(site.nh1DV, nh2);
-        const diffEstimated = calculateDiffNHs(site.nh1DV, nhEstimated);
-        const epvDates = calculateEPVDates(regime, formData.dateA, site.nh1DV, nhEstimated);
+    try {
+      const site = selectedSite;
+      const nh2 = parseInt(formData.nh2A);
+      const regime = calculateRegime(site.nh1DV, nh2, site.dateDV, formData.dateA);
+      const nhEstimated = calculateEstimatedNH(nh2, formData.dateA, regime);
+      const diffNHs = calculateDiffNHs(site.nh1DV, nh2);
+      const diffEstimated = calculateDiffNHs(site.nh1DV, nhEstimated);
 
-        return {
-          ...site,
-          regime,
+      const data = await apiFetchJson(`/api/sites/${site.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
           nh2A: nh2,
           dateA: formData.dateA,
+          regime,
           nhEstimated,
           diffNHs,
           diffEstimated,
-          retired: formData.retired,
-          ...epvDates
-        };
-      }
-      return site;
-    });
+          retired: formData.retired
+        })
+      });
 
-    setSites(updatedSites);
-    setShowUpdateForm(false);
-    setSelectedSite(null);
-    setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
+      if (data?.site?.id) {
+        setSites(sites.map((s) => (String(s.id) === String(data.site.id) ? data.site : s)));
+      }
+
+      setShowUpdateForm(false);
+      setSelectedSite(null);
+      setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
+    } catch (e) {
+      alert(e?.message || 'Erreur serveur.');
+    }
   };
 
-  const handleEditSite = () => {
+  const handleEditSite = async () => {
     if (!formData.nameSite || !formData.idSite || !formData.technician || !formData.generateur || !formData.capacite || !formData.kitVidange || !formData.nh1DV || !formData.dateDV || !formData.nh2A || !formData.dateA) {
       alert('Veuillez remplir tous les champs obligatoires');
       return;
     }
 
-    const updatedSites = sites.map(site => {
-      if (site.id === selectedSite.id) {
-        const nh1 = parseInt(formData.nh1DV);
-        const nh2 = parseInt(formData.nh2A);
-        const regime = calculateRegime(nh1, nh2, formData.dateDV, formData.dateA);
-        const nhEstimated = calculateEstimatedNH(nh2, formData.dateA, regime);
-        const diffNHs = calculateDiffNHs(nh1, nh2);
-        const diffEstimated = calculateDiffNHs(nh1, nhEstimated);
-        const epvDates = calculateEPVDates(regime, formData.dateA, nh1, nhEstimated);
+    try {
+      const site = selectedSite;
+      const nh1 = parseInt(formData.nh1DV);
+      const nh2 = parseInt(formData.nh2A);
+      const regime = calculateRegime(nh1, nh2, formData.dateDV, formData.dateA);
+      const nhEstimated = calculateEstimatedNH(nh2, formData.dateA, regime);
+      const diffNHs = calculateDiffNHs(nh1, nh2);
+      const diffEstimated = calculateDiffNHs(nh1, nhEstimated);
 
-        return {
-          ...site,
+      const data = await apiFetchJson(`/api/sites/${site.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
           nameSite: formData.nameSite,
           idSite: formData.idSite,
           technician: formData.technician,
           generateur: formData.generateur,
           capacite: formData.capacite,
           kitVidange: formData.kitVidange,
-          regime,
           nh1DV: nh1,
           dateDV: formData.dateDV,
           nh2A: nh2,
           dateA: formData.dateA,
+          regime,
           nhEstimated,
           diffNHs,
           diffEstimated,
-          retired: formData.retired,
-          ...epvDates
-        };
-      }
-      return site;
-    });
+          retired: formData.retired
+        })
+      });
 
-    setSites(updatedSites);
-    setShowEditForm(false);
-    setSelectedSite(null);
-    setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
+      if (data?.site?.id) {
+        setSites(sites.map((s) => (String(s.id) === String(data.site.id) ? data.site : s)));
+      }
+
+      setShowEditForm(false);
+      setSelectedSite(null);
+      setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
+    } catch (e) {
+      alert(e?.message || 'Erreur serveur.');
+    }
   };
 
-  const handleDeleteSite = () => {
-    const updatedSites = sites.filter(site => site.id !== siteToDelete.id);
-    setSites(updatedSites);
-    setShowDeleteConfirm(false);
-    setSiteToDelete(null);
+  const handleDeleteSite = async () => {
+    try {
+      await apiFetchJson(`/api/sites/${siteToDelete.id}`, { method: 'DELETE' });
+      const updatedSites = sites.filter(site => String(site.id) !== String(siteToDelete.id));
+      setSites(updatedSites);
+      setShowDeleteConfirm(false);
+      setSiteToDelete(null);
+    } catch (e) {
+      alert(e?.message || 'Erreur serveur.');
+    }
   };
 
   const handleResetData = async () => {
     try {
+      if (authUser?.role === 'admin') {
+        try {
+          await apiFetchJson('/api/sites/bulk-replace', { method: 'POST', body: JSON.stringify({ sites: [] }) });
+        } catch (e) {
+          // ignore
+        }
+      }
       localStorage.clear();
       setSites([]);
       setFicheHistory([]);
@@ -590,7 +599,7 @@ import {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const data = new Uint8Array(event.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
@@ -666,7 +675,11 @@ import {
         }).filter(site => site !== null);
 
         console.log('Sites importés:', importedSites);
-        setSites(importedSites);
+        await apiFetchJson('/api/sites/bulk-replace', {
+          method: 'POST',
+          body: JSON.stringify({ sites: importedSites })
+        });
+        await loadData();
         alert(`✅ ${importedSites.length} sites importés avec succès !`);
       } catch (error) {
         console.error('Erreur lors de l\'import:', error);
@@ -780,6 +793,7 @@ import {
         if (data?.user?.email) {
           setAuthUser(data.user);
           setLoginError('');
+          await loadData();
         } else {
           setLoginError('Email ou mot de passe incorrect.');
         }
@@ -792,6 +806,7 @@ import {
   const handleLogout = () => {
     removePresenceEntry();
     setAuthUser(null);
+    setSites([]);
     setLoginEmail('');
     setLoginPassword('');
     setLoginError('');
