@@ -24,6 +24,12 @@ import {
   const [showBannerUpload, setShowBannerUpload] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showInterventions, setShowInterventions] = useState(false);
+  const [interventions, setInterventions] = useState([]);
+  const [interventionsMonth, setInterventionsMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [interventionsStatus, setInterventionsStatus] = useState('all');
+  const [interventionsBusy, setInterventionsBusy] = useState(false);
+  const [interventionsError, setInterventionsError] = useState('');
   const [siteToDelete, setSiteToDelete] = useState(null);
   const [selectedSite, setSelectedSite] = useState(null);
   const [filterTechnician, setFilterTechnician] = useState('all');
@@ -104,7 +110,6 @@ import {
 
   useEffect(() => {
     loadTicketNumber();
-    loadFicheHistory();
 
     (async () => {
       try {
@@ -112,6 +117,7 @@ import {
         if (data?.user?.email) {
           setAuthUser(data.user);
           await loadData();
+          await loadFicheHistory();
         }
       } catch (e) {
         // ignore
@@ -141,6 +147,85 @@ import {
     }
   };
 
+  const monthRange = (yyyyMm) => {
+    const base = String(yyyyMm || '').trim();
+    if (!/^\d{4}-\d{2}$/.test(base)) {
+      const today = new Date().toISOString().slice(0, 7);
+      return monthRange(today);
+    }
+    const from = `${base}-01`;
+    const d = new Date(from);
+    const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    const to = `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
+    return { from, to };
+  };
+
+  const loadInterventions = async (yyyyMm = interventionsMonth, status = interventionsStatus) => {
+    setInterventionsError('');
+    setInterventionsBusy(true);
+    try {
+      const { from, to } = monthRange(yyyyMm);
+      const qs = new URLSearchParams({ from, to });
+      if (status && status !== 'all') qs.set('status', status);
+      const data = await apiFetchJson(`/api/interventions?${qs.toString()}`, { method: 'GET' });
+      setInterventions(Array.isArray(data?.interventions) ? data.interventions : []);
+    } catch (e) {
+      setInterventions([]);
+      setInterventionsError(e?.message || 'Erreur serveur.');
+    } finally {
+      setInterventionsBusy(false);
+    }
+  };
+
+  const getInterventionKey = (siteId, plannedDate, epvType) => {
+    return `${String(siteId || '')}|${String(plannedDate || '')}|${String(epvType || '')}`;
+  };
+
+  const handlePlanIntervention = async ({ siteId, plannedDate, epvType, technicianName }) => {
+    try {
+      const techUsers = Array.isArray(users) ? users.filter((u) => u && u.role === 'technician') : [];
+      const matched = techUsers.find((u) => String(u.technicianName || '').trim() === String(technicianName || '').trim());
+      await apiFetchJson('/api/interventions', {
+        method: 'POST',
+        body: JSON.stringify({
+          siteId,
+          plannedDate,
+          epvType,
+          technicianName,
+          technicianUserId: matched?.id || null
+        })
+      });
+      await loadInterventions();
+    } catch (e) {
+      alert(e?.message || 'Erreur serveur.');
+    }
+  };
+
+  const handleSendJ1 = async () => {
+    try {
+      const data = await apiFetchJson('/api/interventions/send-j1', { method: 'POST' });
+      alert(`✅ Envoi J-1: ${data?.updated || 0} intervention(s) marquée(s) envoyée(s) pour ${data?.plannedDate || ''}`);
+      await loadInterventions();
+    } catch (e) {
+      alert(e?.message || 'Erreur serveur.');
+    }
+  };
+
+  const handleCompleteIntervention = async (interventionId) => {
+    try {
+      await apiFetchJson(`/api/interventions/${interventionId}/complete`, {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+      await loadData();
+      await loadInterventions();
+      await loadFicheHistory();
+      alert('✅ Intervention marquée comme effectuée.');
+    } catch (e) {
+      alert(e?.message || 'Erreur serveur.');
+    }
+  };
+
   const loadTicketNumber = async () => {
     try {
       const result = await storage.get('ticket-number');
@@ -154,12 +239,10 @@ import {
 
   const loadFicheHistory = async () => {
     try {
-      const result = await storage.get('fiche-history');
-      if (result && result.value) {
-        setFicheHistory(JSON.parse(result.value));
-      }
+      const data = await apiFetchJson('/api/fiche-history', { method: 'GET' });
+      setFicheHistory(Array.isArray(data?.fiches) ? data.fiches : []);
     } catch (error) {
-      console.log('Aucun historique de fiches');
+      setFicheHistory([]);
     }
   };
 
@@ -223,6 +306,7 @@ import {
     if (showUpdateForm) return 'Mise à jour site';
     if (dashboardDetails.open) return 'Détails dashboard';
     if (showResetConfirm) return 'Confirmation réinitialisation';
+    if (showInterventions) return 'Interventions';
     return 'Dashboard / liste sites';
   };
 
@@ -794,6 +878,7 @@ import {
           setAuthUser(data.user);
           setLoginError('');
           await loadData();
+          await loadFicheHistory();
         } else {
           setLoginError('Email ou mot de passe incorrect.');
         }
@@ -807,6 +892,8 @@ import {
     removePresenceEntry();
     setAuthUser(null);
     setSites([]);
+    setFicheHistory([]);
+    setInterventions([]);
     setLoginEmail('');
     setLoginPassword('');
     setLoginError('');
@@ -838,7 +925,8 @@ import {
     showEditForm,
     showUpdateForm,
     dashboardDetails.open,
-    showResetConfirm
+    showResetConfirm,
+    showInterventions
   ]);
 
   useEffect(() => {
@@ -892,6 +980,7 @@ import {
   const canGenerateFiche = isAdmin || isTechnician;
   const canMarkCompleted = isAdmin || isTechnician;
   const canManageUsers = isAdmin;
+  const canUseInterventions = isAdmin || isTechnician;
 
   useEffect(() => {
     if (isTechnician && authUser?.technicianName) {
@@ -1130,6 +1219,27 @@ import {
               <span className="sm:hidden">Cal.</span>
             </button>
 
+            {canUseInterventions && (
+              <button
+                onClick={async () => {
+                  setShowInterventions(true);
+                  if (authUser?.role === 'admin') {
+                    try {
+                      await refreshUsers();
+                    } catch (e) {
+                      // ignore
+                    }
+                  }
+                  await loadInterventions();
+                }}
+                className="bg-emerald-700 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-emerald-800 flex items-center justify-center gap-2 text-sm sm:text-base"
+              >
+                <CheckCircle size={18} />
+                <span className="hidden sm:inline">Interventions</span>
+                <span className="sm:hidden">Int.</span>
+              </button>
+            )}
+
             <button
               onClick={() => setShowHistory(true)}
               className="bg-amber-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-amber-700 flex items-center justify-center gap-2 text-sm sm:text-base"
@@ -1340,6 +1450,230 @@ import {
               <div className="p-4 border-t bg-white flex justify-end">
                 <button
                   onClick={() => setDashboardDetails({ open: false, title: '', kind: '', items: [] })}
+                  className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
+                >
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showInterventions && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+              <div className="flex justify-between items-center p-4 border-b bg-emerald-700 text-white">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <CheckCircle size={24} />
+                  Interventions
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowInterventions(false);
+                    setInterventionsError('');
+                  }}
+                  className="hover:bg-emerald-800 p-2 rounded"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="flex flex-col">
+                      <span className="text-xs text-gray-600 mb-1">Mois</span>
+                      <input
+                        type="month"
+                        value={interventionsMonth}
+                        onChange={(e) => setInterventionsMonth(e.target.value)}
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs text-gray-600 mb-1">Statut</span>
+                      <select
+                        value={interventionsStatus}
+                        onChange={(e) => setInterventionsStatus(e.target.value)}
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      >
+                        <option value="all">Tous</option>
+                        <option value="planned">Planifiées</option>
+                        <option value="sent">Envoyées</option>
+                        <option value="done">Effectuées</option>
+                      </select>
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <button
+                        onClick={() => loadInterventions(interventionsMonth, interventionsStatus)}
+                        className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold text-sm"
+                        disabled={interventionsBusy}
+                      >
+                        Rafraîchir
+                      </button>
+                      {isAdmin && (
+                        <button
+                          onClick={handleSendJ1}
+                          className="bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm"
+                          disabled={interventionsBusy}
+                        >
+                          Envoyer J-1
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {interventionsError && (
+                    <div className="mt-3 bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">
+                      {interventionsError}
+                    </div>
+                  )}
+                </div>
+
+                {isAdmin && (
+                  <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
+                      <div>
+                        <div className="font-semibold text-gray-800">Planification (à partir des EPV du mois)</div>
+                        <div className="text-xs text-gray-600">Clique "Planifier" pour créer l'intervention en base.</div>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await refreshUsers();
+                          } catch (e) {
+                            // ignore
+                          }
+                          await loadInterventions(interventionsMonth, 'all');
+                        }}
+                        className="bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm"
+                        disabled={interventionsBusy}
+                      >
+                        Recharger users + interventions
+                      </button>
+                    </div>
+
+                    {(() => {
+                      const plannedEvents = sites
+                        .filter((s) => s && !s.retired)
+                        .flatMap((site) => {
+                          return [
+                            { type: 'EPV1', date: site.epv1 },
+                            { type: 'EPV2', date: site.epv2 },
+                            { type: 'EPV3', date: site.epv3 }
+                          ]
+                            .filter((ev) => ev.date && String(ev.date).slice(0, 7) === interventionsMonth)
+                            .map((ev) => ({
+                              key: getInterventionKey(site.id, ev.date, ev.type),
+                              siteId: site.id,
+                              siteName: site.nameSite,
+                              technicianName: site.technician,
+                              plannedDate: ev.date,
+                              epvType: ev.type
+                            }));
+                        })
+                        .sort((a, b) => String(a.plannedDate).localeCompare(String(b.plannedDate)));
+
+                      const already = new Set(
+                        interventions.map((i) => getInterventionKey(i.siteId, i.plannedDate, i.epvType))
+                      );
+
+                      if (plannedEvents.length === 0) {
+                        return <div className="text-sm text-gray-600">Aucun EPV trouvé sur ce mois.</div>;
+                      }
+
+                      return (
+                        <div className="space-y-2">
+                          {plannedEvents.map((ev) => (
+                            <div key={ev.key} className="border border-gray-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="font-semibold text-gray-800 truncate">{ev.siteName}</div>
+                                <div className="text-xs text-gray-600">{ev.epvType} • {formatDate(ev.plannedDate)} • {ev.technicianName}</div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {already.has(ev.key) ? (
+                                  <span className="text-xs bg-green-100 text-green-800 border border-green-200 px-2 py-1 rounded font-semibold">Déjà planifiée</span>
+                                ) : (
+                                  <button
+                                    onClick={() => handlePlanIntervention(ev)}
+                                    className="bg-emerald-700 text-white px-3 py-2 rounded-lg hover:bg-emerald-800 font-semibold text-sm"
+                                  >
+                                    Planifier
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {(() => {
+                  const siteById = new Map(sites.map((s) => [String(s.id), s]));
+                  const today = new Date().toISOString().slice(0, 10);
+                  const tomorrowD = new Date(today);
+                  tomorrowD.setDate(tomorrowD.getDate() + 1);
+                  const tomorrow = tomorrowD.toISOString().slice(0, 10);
+
+                  const list = interventions
+                    .slice()
+                    .sort((a, b) => String(a.plannedDate || '').localeCompare(String(b.plannedDate || '')));
+
+                  const groups = [
+                    { title: "Aujourd'hui", items: list.filter((i) => i.plannedDate === today && i.status !== 'done') },
+                    { title: 'Demain', items: list.filter((i) => i.plannedDate === tomorrow && i.status !== 'done') },
+                    { title: 'Toutes', items: list }
+                  ];
+
+                  return (
+                    <div className="space-y-6">
+                      {groups.map((g) => (
+                        <div key={g.title}>
+                          <div className="font-semibold text-gray-800 mb-2">{g.title}</div>
+                          {g.items.length === 0 ? (
+                            <div className="text-sm text-gray-600">Aucune intervention.</div>
+                          ) : (
+                            <div className="space-y-2">
+                              {g.items.map((it) => {
+                                const site = siteById.get(String(it.siteId)) || null;
+                                const statusColor = it.status === 'done' ? 'bg-green-100 text-green-800 border-green-200' : it.status === 'sent' ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-amber-100 text-amber-800 border-amber-200';
+                                return (
+                                  <div key={it.id} className="border border-gray-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <div className="font-semibold text-gray-800 truncate">{site?.nameSite || it.siteId}</div>
+                                      <div className="text-xs text-gray-600">{it.epvType} • {formatDate(it.plannedDate)} • {it.technicianName}</div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{it.status}</span>
+                                      {(isAdmin || isTechnician) && it.status !== 'done' && (
+                                        <button
+                                          onClick={() => handleCompleteIntervention(it.id)}
+                                          className="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 font-semibold text-sm"
+                                        >
+                                          Marquer effectuée
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="p-4 border-t bg-white flex justify-end">
+                <button
+                  onClick={() => {
+                    setShowInterventions(false);
+                    setInterventionsError('');
+                  }}
                   className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
                 >
                   Fermer
