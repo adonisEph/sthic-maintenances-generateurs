@@ -37,6 +37,7 @@ import {
   const [showUsersModal, setShowUsersModal] = useState(false);
   const [showPresenceModal, setShowPresenceModal] = useState(false);
   const [presenceSessions, setPresenceSessions] = useState([]);
+  const [userFormId, setUserFormId] = useState(null);
   const [userForm, setUserForm] = useState({ email: '', role: 'viewer', technicianName: '', password: '' });
   const [userFormError, setUserFormError] = useState('');
   const [loginEmail, setLoginEmail] = useState('');
@@ -78,116 +79,39 @@ import {
     retired: false
   });
 
+  const apiFetchJson = async (path, init = {}) => {
+    const res = await fetch(path, {
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init.headers || {})
+      },
+      ...init
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data?.error || 'Erreur serveur.';
+      throw new Error(msg);
+    }
+    return data;
+  };
+
+  const refreshUsers = async () => {
+    const data = await apiFetchJson('/api/users', { method: 'GET' });
+    setUsers(Array.isArray(data?.users) ? data.users : []);
+  };
+
   useEffect(() => {
     loadData();
     loadTicketNumber();
     loadFicheHistory();
 
     (async () => {
-      const rawAdminEmail = import.meta.env.VITE_ADMIN_EMAIL;
-      const rawAdminPassword = import.meta.env.VITE_ADMIN_PASSWORD;
-      const hasEnvAdminEmail = typeof rawAdminEmail === 'string' && rawAdminEmail.trim() !== '';
-      const hasEnvAdminPassword = typeof rawAdminPassword === 'string' && rawAdminPassword !== '';
-      const adminEmail = (hasEnvAdminEmail ? rawAdminEmail.trim() : 'admin@local').toLowerCase();
-      const adminPassword = hasEnvAdminPassword
-        ? rawAdminPassword
-        : (import.meta.env.VITE_APP_PASSWORD || 'admin');
-
-      let loadedUsers = [];
       try {
-        const result = await storage.get('gma-users');
-        if (result && result.value) {
-          loadedUsers = JSON.parse(result.value) || [];
-        }
-      } catch (e) {
-        loadedUsers = [];
-      }
-
-      if (!Array.isArray(loadedUsers)) {
-        loadedUsers = [];
-      }
-
-      let didChangeUsers = false;
-
-      if (loadedUsers.length === 0) {
-        loadedUsers = [
-          {
-            id: Date.now(),
-            email: adminEmail,
-            password: adminPassword,
-            role: 'admin',
-            technicianName: ''
-          }
-        ];
-        didChangeUsers = true;
-      } else if (hasEnvAdminEmail || hasEnvAdminPassword) {
-        const findByEmail = (email) => loadedUsers.find((u) => String(u.email || '').trim().toLowerCase() === email);
-        const adminUsers = loadedUsers.filter((u) => u && u.role === 'admin');
-        const defaultAdmin = findByEmail('admin@local');
-        const envAdmin = findByEmail(adminEmail);
-
-        if (envAdmin) {
-          const next = loadedUsers.map((u) => {
-            if (u !== envAdmin) return u;
-            const updated = {
-              ...u,
-              email: adminEmail,
-              role: 'admin'
-            };
-            if (hasEnvAdminPassword) {
-              updated.password = adminPassword;
-            }
-            return updated;
-          });
-          loadedUsers = next;
-          didChangeUsers = true;
-        } else if (hasEnvAdminEmail && defaultAdmin && adminUsers.length === 1) {
-          const next = loadedUsers.map((u) => {
-            if (u !== defaultAdmin) return u;
-            const updated = {
-              ...u,
-              email: adminEmail,
-              role: 'admin'
-            };
-            if (hasEnvAdminPassword) {
-              updated.password = adminPassword;
-            }
-            return updated;
-          });
-          loadedUsers = next;
-          didChangeUsers = true;
-        } else if (hasEnvAdminEmail) {
-          loadedUsers = [
-            ...loadedUsers,
-            {
-              id: Date.now(),
-              email: adminEmail,
-              password: adminPassword,
-              role: 'admin',
-              technicianName: ''
-            }
-          ];
-          didChangeUsers = true;
-        }
-      }
-
-      if (didChangeUsers) {
-        try {
-          await storage.set('gma-users', JSON.stringify(loadedUsers));
-        } catch (e) {
-          // ignore
-        }
-      }
-
-      setUsers(loadedUsers);
-
-      try {
-        const raw = localStorage.getItem('gma-auth');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && parsed.email) {
-            setAuthUser(parsed);
-          }
+        const data = await apiFetchJson('/api/auth/me', { method: 'GET' });
+        if (data?.user?.email) {
+          setAuthUser(data.user);
         }
       } catch (e) {
         // ignore
@@ -200,6 +124,19 @@ import {
       saveData();
     }
   }, [sites]);
+
+  useEffect(() => {
+    if (!showUsersModal) return;
+    if (authUser?.role !== 'admin') return;
+
+    (async () => {
+      try {
+        await refreshUsers();
+      } catch (e) {
+        setUserFormError(e?.message || 'Erreur serveur.');
+      }
+    })();
+  }, [showUsersModal, authUser?.role]);
 
   const loadData = async () => {
     try {
@@ -239,14 +176,6 @@ import {
       await storage.set('fiche-history', JSON.stringify(history));
     } catch (error) {
       console.error('Erreur sauvegarde historique:', error);
-    }
-  };
-
-  const saveUsers = async (nextUsers) => {
-    try {
-      await storage.set('gma-users', JSON.stringify(nextUsers));
-    } catch (e) {
-      // ignore
     }
   };
 
@@ -841,20 +770,23 @@ import {
       return;
     }
 
-    const found = users.find((u) => String(u.email || '').toLowerCase() === email);
-    if (!found || found.password !== loginPassword) {
-      setLoginError('Email ou mot de passe incorrect.');
-      return;
-    }
+    (async () => {
+      try {
+        const data = await apiFetchJson('/api/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({ email, password: loginPassword })
+        });
 
-    setLoginError('');
-    const session = { email: found.email, role: found.role, technicianName: found.technicianName || '' };
-    setAuthUser(session);
-    try {
-      localStorage.setItem('gma-auth', JSON.stringify(session));
-    } catch (err) {
-      // ignore
-    }
+        if (data?.user?.email) {
+          setAuthUser(data.user);
+          setLoginError('');
+        } else {
+          setLoginError('Email ou mot de passe incorrect.');
+        }
+      } catch (err) {
+        setLoginError(err?.message || 'Erreur serveur.');
+      }
+    })();
   };
 
   const handleLogout = () => {
@@ -863,11 +795,14 @@ import {
     setLoginEmail('');
     setLoginPassword('');
     setLoginError('');
-    try {
-      localStorage.removeItem('gma-auth');
-    } catch (err) {
-      // ignore
-    }
+
+    (async () => {
+      try {
+        await apiFetchJson('/api/auth/logout', { method: 'POST' });
+      } catch (e) {
+        // ignore
+      }
+    })();
   };
 
   useEffect(() => {
@@ -1482,6 +1417,7 @@ import {
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => {
+                                setUserFormId(u.id);
                                 setUserForm({ email: u.email, role: u.role, technicianName: u.technicianName || '', password: '' });
                                 setUserFormError('');
                               }}
@@ -1492,9 +1428,14 @@ import {
                             <button
                               disabled={u.role === 'admin'}
                               onClick={() => {
-                                const next = users.filter((x) => x.id !== u.id);
-                                setUsers(next);
-                                saveUsers(next);
+                                (async () => {
+                                  try {
+                                    await apiFetchJson(`/api/users/${u.id}`, { method: 'DELETE' });
+                                    await refreshUsers();
+                                  } catch (e) {
+                                    setUserFormError(e?.message || 'Erreur serveur.');
+                                  }
+                                })();
                               }}
                               className="bg-red-600 text-white px-3 py-2 rounded-lg hover:bg-red-700 text-sm font-semibold disabled:bg-gray-400"
                             >
@@ -1575,48 +1516,49 @@ import {
                             return;
                           }
 
-                          const existing = users.find((u) => String(u.email || '').toLowerCase() === email);
-                          if (existing && existing.role === 'admin' && userForm.role !== 'admin') {
-                            setUserFormError('Impossible de rétrograder le compte admin.');
-                            return;
-                          }
+                          (async () => {
+                            try {
+                              if (userFormId) {
+                                await apiFetchJson(`/api/users/${userFormId}`, {
+                                  method: 'PATCH',
+                                  body: JSON.stringify({
+                                    email,
+                                    role: userForm.role,
+                                    technicianName: userForm.technicianName || ''
+                                  })
+                                });
 
-                          let next;
-                          if (existing) {
-                            next = users.map((u) => {
-                              if (u.id !== existing.id) return u;
-                              return {
-                                ...u,
-                                email,
-                                role: userForm.role,
-                                technicianName: userForm.technicianName || '',
-                                password: userForm.password
-                              };
-                            });
-                          } else {
-                            next = [
-                              ...users,
-                              {
-                                id: Date.now(),
-                                email,
-                                password: userForm.password,
-                                role: userForm.role,
-                                technicianName: userForm.technicianName || ''
+                                await apiFetchJson(`/api/users/${userFormId}/reset-password`, {
+                                  method: 'POST',
+                                  body: JSON.stringify({ password: userForm.password })
+                                });
+                              } else {
+                                await apiFetchJson('/api/users', {
+                                  method: 'POST',
+                                  body: JSON.stringify({
+                                    email,
+                                    role: userForm.role,
+                                    technicianName: userForm.technicianName || '',
+                                    password: userForm.password
+                                  })
+                                });
                               }
-                            ];
-                          }
 
-                          setUsers(next);
-                          saveUsers(next);
-                          setUserForm({ email: '', role: 'viewer', technicianName: '', password: '' });
-                          setUserFormError('');
+                              await refreshUsers();
+                              setUserFormId(null);
+                              setUserForm({ email: '', role: 'viewer', technicianName: '', password: '' });
+                              setUserFormError('');
+                            } catch (e) {
+                              setUserFormError(e?.message || 'Erreur serveur.');
+                            }
+                          })();
                         }}
                         className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold"
                       >
                         Enregistrer
                       </button>
                       <button
-                        onClick={() => { setUserForm({ email: '', role: 'viewer', technicianName: '', password: '' }); setUserFormError(''); }}
+                        onClick={() => { setUserFormId(null); setUserForm({ email: '', role: 'viewer', technicianName: '', password: '' }); setUserFormError(''); }}
                         className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
                       >
                         Réinitialiser

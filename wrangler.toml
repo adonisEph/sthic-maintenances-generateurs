@@ -1,0 +1,10 @@
+name = "sthic-maintenances-generateurs"
+compatibility_date = "2025-12-01"
+
+# D1 binding is configured in Cloudflare Pages project settings.
+# Bind name expected by Functions: DB
+
+# Secrets to configure in Pages (not VITE_):
+# - ADMIN_EMAIL
+# - ADMIN_PASSWORD
+# - SESSION_SECRET
