@@ -2,7 +2,7 @@ import { fromBase64Url, hmacSign, pbkdf2Hash, toBase64Url, utf8 } from './crypto
 
 const SESSION_COOKIE = 'gma_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 12; // 12h
-const PBKDF2_ITERS = 150000;
+const PBKDF2_ITERS = 100000;
 
 function timingSafeEqual(a, b) {
   if (a.length !== b.length) return false;
