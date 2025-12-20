@@ -28,8 +28,11 @@ import {
   const [interventions, setInterventions] = useState([]);
   const [interventionsMonth, setInterventionsMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [interventionsStatus, setInterventionsStatus] = useState('all');
+  const [interventionsTechnicianUserId, setInterventionsTechnicianUserId] = useState('all');
   const [interventionsBusy, setInterventionsBusy] = useState(false);
   const [interventionsError, setInterventionsError] = useState('');
+  const [technicianInterventionsTab, setTechnicianInterventionsTab] = useState('tomorrow');
+  const [showTechnicianInterventionsFilters, setShowTechnicianInterventionsFilters] = useState(false);
   const [planningAssignments, setPlanningAssignments] = useState({});
   const [completeModalOpen, setCompleteModalOpen] = useState(false);
   const [completeModalIntervention, setCompleteModalIntervention] = useState(null);
@@ -115,8 +118,6 @@ import {
   };
 
   useEffect(() => {
-    loadTicketNumber();
-
     (async () => {
       try {
         const data = await apiFetchJson('/api/auth/me', { method: 'GET' });
@@ -124,6 +125,17 @@ import {
           setAuthUser(data.user);
           await loadData();
           await loadFicheHistory();
+          if (data?.user?.role === 'admin') {
+            await loadTicketNumber();
+          }
+          if (data?.user?.role === 'technician') {
+            setInterventionsStatus('all');
+            setInterventionsTechnicianUserId('all');
+            setTechnicianInterventionsTab('tomorrow');
+            setShowTechnicianInterventionsFilters(false);
+            setShowInterventions(true);
+            await loadInterventions(interventionsMonth, 'all', 'all');
+          }
         }
       } catch (e) {
         // ignore
@@ -166,13 +178,18 @@ import {
     return { from, to };
   };
 
-  const loadInterventions = async (yyyyMm = interventionsMonth, status = interventionsStatus) => {
+  const loadInterventions = async (
+    yyyyMm = interventionsMonth,
+    status = interventionsStatus,
+    technicianUserId = interventionsTechnicianUserId
+  ) => {
     setInterventionsError('');
     setInterventionsBusy(true);
     try {
       const { from, to } = monthRange(yyyyMm);
       const qs = new URLSearchParams({ from, to });
       if (status && status !== 'all') qs.set('status', status);
+      if (isAdmin && technicianUserId && technicianUserId !== 'all') qs.set('technicianUserId', String(technicianUserId));
       const data = await apiFetchJson(`/api/interventions?${qs.toString()}`, { method: 'GET' });
       setInterventions(Array.isArray(data?.interventions) ? data.interventions : []);
     } catch (e) {
@@ -248,9 +265,9 @@ import {
 
   const loadTicketNumber = async () => {
     try {
-      const result = await storage.get('ticket-number');
-      if (result && result.value) {
-        setTicketNumber(parseInt(result.value));
+      const data = await apiFetchJson('/api/meta/ticket-number', { method: 'GET' });
+      if (Number.isFinite(Number(data?.next))) {
+        setTicketNumber(Number(data.next));
       }
     } catch (error) {
       console.log('Numéro de ticket par défaut: T01133');
@@ -276,42 +293,13 @@ import {
 
   const saveTicketNumber = async (num) => {
     try {
-      await storage.set('ticket-number', num.toString());
+      // ticket number is server-side (D1). no-op.
     } catch (error) {
       console.error('Erreur sauvegarde numéro:', error);
     }
   };
 
-  const PRESENCE_KEY = 'gma-presence';
   const PRESENCE_TTL_MS = 20000;
-
-  const readPresence = () => {
-    try {
-      const raw = localStorage.getItem(PRESENCE_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (e) {
-      return [];
-    }
-  };
-
-  const writePresence = (list) => {
-    try {
-      localStorage.setItem(PRESENCE_KEY, JSON.stringify(list));
-    } catch (e) {
-      // ignore
-    }
-  };
-
-  const cleanPresence = (list, nowMs = Date.now()) => {
-    return (Array.isArray(list) ? list : []).filter((s) => s && s.lastSeen && nowMs - s.lastSeen < PRESENCE_TTL_MS);
-  };
-
-  const removePresenceEntry = () => {
-    const now = Date.now();
-    const next = cleanPresence(readPresence(), now).filter((s) => s.tabId !== tabId);
-    writePresence(next);
-  };
 
   const getCurrentActivityLabel = () => {
     if (showUsersModal) return 'Gestion des utilisateurs';
@@ -330,19 +318,11 @@ import {
     return 'Dashboard / liste sites';
   };
 
-  const upsertPresenceEntry = (patch) => {
-    const now = Date.now();
-    const existing = cleanPresence(readPresence(), now);
-    const next = [
-      ...existing.filter((s) => s.tabId !== tabId),
-      {
-        tabId,
-        ...patch,
-        lastSeen: now
-      }
-    ];
-    writePresence(next);
-    return next;
+  const pingPresence = async (activity) => {
+    await apiFetchJson('/api/presence/ping', {
+      method: 'POST',
+      body: JSON.stringify({ tabId, activity: String(activity || '') })
+    });
   };
 
   const handleAddSite = async () => {
@@ -592,51 +572,69 @@ import {
   };
 
   const handlePrintFiche = () => {
-    const currentTicketNumber = ticketNumber;
-    window.print();
+    (async () => {
+      let usedTicketNumber = ticketNumber;
 
-    setTicketNumber((prev) => {
-      const nextNumber = prev + 1;
-      saveTicketNumber(nextNumber);
-      return nextNumber;
-    });
-
-    const newFiche = {
-      id: Date.now(),
-      ticketNumber: `T${String(currentTicketNumber).padStart(5, '0')}`,
-      siteId: siteForFiche.id,
-      siteName: siteForFiche.nameSite,
-      technician: siteForFiche.technician,
-      dateGenerated: new Date().toISOString(),
-      status: 'En attente',
-      nh1DV: siteForFiche.nh1DV,
-      plannedDate: ficheContext?.plannedDate || null,
-      epvType: ficheContext?.epvType || null,
-      createdBy: authUser?.email || null
-    };
-
-    setFicheHistory((prev) => {
-      const updatedHistory = [newFiche, ...prev];
-      saveFicheHistory(updatedHistory);
-      return updatedHistory;
-    });
-
-    if (isBatchFiche) {
-      const nextIndex = batchFicheIndex + 1;
-      if (nextIndex < batchFicheSites.length) {
-        setBatchFicheIndex(nextIndex);
-        setSiteForFiche(batchFicheSites[nextIndex].site);
-        setFicheContext({ plannedDate: batchFicheSites[nextIndex].date || null, epvType: batchFicheSites[nextIndex].type || null });
-      } else {
-        setIsBatchFiche(false);
-        setBatchFicheSites([]);
-        setBatchFicheIndex(0);
-        setShowFicheModal(false);
-        setSiteForFiche(null);
-        setBannerImage('');
-        setFicheContext(null);
+      if (isAdmin) {
+        try {
+          const data = await apiFetchJson('/api/meta/ticket-number/next', { method: 'POST', body: JSON.stringify({}) });
+          if (Number.isFinite(Number(data?.ticketNumber))) {
+            usedTicketNumber = Number(data.ticketNumber);
+            setTicketNumber(usedTicketNumber);
+          }
+        } catch (e) {
+          // fallback: keep local state
+        }
       }
-    }
+
+      await new Promise((r) => setTimeout(r, 50));
+      window.print();
+
+      const newFiche = {
+        id: Date.now(),
+        ticketNumber: `T${String(usedTicketNumber).padStart(5, '0')}`,
+        siteId: siteForFiche.id,
+        siteName: siteForFiche.nameSite,
+        technician: siteForFiche.technician,
+        dateGenerated: new Date().toISOString(),
+        status: 'En attente',
+        nh1DV: siteForFiche.nh1DV,
+        plannedDate: ficheContext?.plannedDate || null,
+        epvType: ficheContext?.epvType || null,
+        createdBy: authUser?.email || null
+      };
+
+      setFicheHistory((prev) => {
+        const updatedHistory = [newFiche, ...prev];
+        saveFicheHistory(updatedHistory);
+        return updatedHistory;
+      });
+
+      if (isAdmin) {
+        try {
+          await loadTicketNumber();
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      if (isBatchFiche) {
+        const nextIndex = batchFicheIndex + 1;
+        if (nextIndex < batchFicheSites.length) {
+          setBatchFicheIndex(nextIndex);
+          setSiteForFiche(batchFicheSites[nextIndex].site);
+          setFicheContext({ plannedDate: batchFicheSites[nextIndex].date || null, epvType: batchFicheSites[nextIndex].type || null });
+        } else {
+          setIsBatchFiche(false);
+          setBatchFicheSites([]);
+          setBatchFicheIndex(0);
+          setShowFicheModal(false);
+          setSiteForFiche(null);
+          setBannerImage('');
+          setFicheContext(null);
+        }
+      }
+    })();
   };
 
   const handleMarkAsCompleted = (ficheId) => {
@@ -901,6 +899,17 @@ import {
           setLoginError('');
           await loadData();
           await loadFicheHistory();
+          if (data?.user?.role === 'admin') {
+            await loadTicketNumber();
+          }
+          if (data?.user?.role === 'technician') {
+            setInterventionsStatus('all');
+            setInterventionsTechnicianUserId('all');
+            setTechnicianInterventionsTab('tomorrow');
+            setShowTechnicianInterventionsFilters(false);
+            setShowInterventions(true);
+            await loadInterventions(interventionsMonth, 'all', 'all');
+          }
         } else {
           setLoginError('Email ou mot de passe incorrect.');
         }
@@ -931,7 +940,13 @@ import {
 
   useEffect(() => {
     if (!authUser?.email) return;
-    upsertPresenceEntry({ email: authUser.email, role: authUser.role, technicianName: authUser.technicianName || '', activity: getCurrentActivityLabel() });
+    (async () => {
+      try {
+        await pingPresence(getCurrentActivityLabel());
+      } catch {
+        // ignore
+      }
+    })();
   }, [
     authUser?.email,
     authUser?.role,
@@ -954,41 +969,38 @@ import {
   useEffect(() => {
     if (!authUser?.email) return;
     const tick = () => {
-      upsertPresenceEntry({ email: authUser.email, role: authUser.role, technicianName: authUser.technicianName || '', activity: getCurrentActivityLabel() });
+      (async () => {
+        try {
+          await pingPresence(getCurrentActivityLabel());
+        } catch {
+          // ignore
+        }
+      })();
     };
     tick();
     const interval = setInterval(tick, 5000);
-    const onBeforeUnload = () => {
-      removePresenceEntry();
-    };
-    window.addEventListener('beforeunload', onBeforeUnload);
     return () => {
       clearInterval(interval);
-      window.removeEventListener('beforeunload', onBeforeUnload);
-      removePresenceEntry();
     };
   }, [authUser?.email, authUser?.role, authUser?.technicianName, tabId]);
 
   useEffect(() => {
     if (!showPresenceModal) return;
 
-    const refresh = () => {
-      const now = Date.now();
-      const list = cleanPresence(readPresence(), now)
-        .sort((a, b) => String(a.email || '').localeCompare(String(b.email || '')));
-      setPresenceSessions(list);
-      writePresence(list);
+    const refresh = async () => {
+      try {
+        const data = await apiFetchJson('/api/presence', { method: 'GET' });
+        const list = Array.isArray(data?.sessions) ? data.sessions : [];
+        setPresenceSessions(list);
+      } catch (e) {
+        setPresenceSessions([]);
+      }
     };
 
     refresh();
     const interval = setInterval(refresh, 2000);
-    const onStorage = (e) => {
-      if (e.key === PRESENCE_KEY) refresh();
-    };
-    window.addEventListener('storage', onStorage);
     return () => {
       clearInterval(interval);
-      window.removeEventListener('storage', onStorage);
     };
   }, [showPresenceModal]);
 
@@ -1247,6 +1259,12 @@ import {
             {canUseInterventions && (
               <button
                 onClick={async () => {
+                  setInterventionsStatus('all');
+                  setInterventionsTechnicianUserId('all');
+                  if (isTechnician) {
+                    setTechnicianInterventionsTab('tomorrow');
+                    setShowTechnicianInterventionsFilters(false);
+                  }
                   setShowInterventions(true);
                   if (authUser?.role === 'admin') {
                     try {
@@ -1260,8 +1278,8 @@ import {
                 className="bg-emerald-700 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-emerald-800 flex items-center justify-center gap-2 text-sm sm:text-base"
               >
                 <CheckCircle size={18} />
-                <span className="hidden sm:inline">Interventions</span>
-                <span className="sm:hidden">Int.</span>
+                <span className="hidden sm:inline">{isTechnician ? 'Mes interventions' : 'Interventions'}</span>
+                <span className="sm:hidden">{isTechnician ? 'Mes' : 'Int.'}</span>
               </button>
             )}
 
@@ -1487,12 +1505,18 @@ import {
         )}
 
         {showInterventions && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+          <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${isTechnician ? 'p-0' : 'p-4'}`}>
+            <div
+              className={`bg-white shadow-xl overflow-hidden flex flex-col w-full ${
+                isTechnician
+                  ? 'h-[100svh] max-w-none max-h-none rounded-none'
+                  : 'rounded-lg max-w-5xl max-h-[90vh]'
+              }`}
+            >
               <div className="flex justify-between items-center p-4 border-b bg-emerald-700 text-white">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <CheckCircle size={24} />
-                  Interventions
+                  {isTechnician ? 'Mes interventions' : 'Interventions'}
                 </h2>
                 <button
                   onClick={() => {
@@ -1513,13 +1537,68 @@ import {
 
               <div className="p-4 sm:p-6 overflow-y-auto flex-1">
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {isTechnician && (
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      {(() => {
+                        const today = new Date().toISOString().slice(0, 10);
+                        const tomorrowD = new Date(today);
+                        tomorrowD.setDate(tomorrowD.getDate() + 1);
+                        const tomorrow = tomorrowD.toISOString().slice(0, 10);
+
+                        const todayCount = interventions.filter((i) => i.plannedDate === today && i.status !== 'done').length;
+                        const tomorrowRaw = interventions.filter((i) => i.plannedDate === tomorrow && i.status !== 'done');
+                        const tomorrowCount = tomorrowRaw.length;
+                        const tomorrowSentCount = tomorrowRaw.filter((i) => i.status === 'sent').length;
+                        const allCount = interventions.length;
+
+                        return (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setTechnicianInterventionsTab('today')}
+                          className={`${technicianInterventionsTab === 'today' ? 'bg-emerald-700 text-white' : 'bg-white text-gray-800 border border-gray-300'} px-3 py-2 rounded-lg font-semibold text-sm`}
+                        >
+                          Aujourd'hui ({todayCount})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTechnicianInterventionsTab('tomorrow')}
+                          className={`${technicianInterventionsTab === 'tomorrow' ? 'bg-emerald-700 text-white' : 'bg-white text-gray-800 border border-gray-300'} px-3 py-2 rounded-lg font-semibold text-sm`}
+                        >
+                          Demain ({tomorrowCount}{tomorrowSentCount ? `/${tomorrowSentCount} envoyée(s)` : ''})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTechnicianInterventionsTab('all')}
+                          className={`${technicianInterventionsTab === 'all' ? 'bg-emerald-700 text-white' : 'bg-white text-gray-800 border border-gray-300'} px-3 py-2 rounded-lg font-semibold text-sm`}
+                        >
+                          Toutes ({allCount})
+                        </button>
+                      </div>
+                        );
+                      })()}
+                      <button
+                        type="button"
+                        onClick={() => setShowTechnicianInterventionsFilters((v) => !v)}
+                        className="bg-white text-gray-800 border border-gray-300 px-3 py-2 rounded-lg hover:bg-gray-50 font-semibold text-sm"
+                      >
+                        Filtres
+                      </button>
+                    </div>
+                  )}
+
+                  {(!isTechnician || showTechnicianInterventionsFilters) && (
+                    <div className={`grid grid-cols-1 ${isAdmin ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-3`}>
                     <div className="flex flex-col">
                       <span className="text-xs text-gray-600 mb-1">Mois</span>
                       <input
                         type="month"
                         value={interventionsMonth}
-                        onChange={(e) => setInterventionsMonth(e.target.value)}
+                        onChange={(e) => {
+                          setInterventionsMonth(e.target.value);
+                          const nextMonth = String(e.target.value || '').trim();
+                          loadInterventions(nextMonth, interventionsStatus, interventionsTechnicianUserId);
+                        }}
                         className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
                       />
                     </div>
@@ -1527,7 +1606,11 @@ import {
                       <span className="text-xs text-gray-600 mb-1">Statut</span>
                       <select
                         value={interventionsStatus}
-                        onChange={(e) => setInterventionsStatus(e.target.value)}
+                        onChange={(e) => {
+                          const nextStatus = e.target.value;
+                          setInterventionsStatus(nextStatus);
+                          loadInterventions(interventionsMonth, nextStatus, interventionsTechnicianUserId);
+                        }}
                         className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
                       >
                         <option value="all">Tous</option>
@@ -1536,9 +1619,36 @@ import {
                         <option value="done">Effectuées</option>
                       </select>
                     </div>
+
+                    {isAdmin && (
+                      <div className="flex flex-col">
+                        <span className="text-xs text-gray-600 mb-1">Technicien</span>
+                        <select
+                          value={interventionsTechnicianUserId}
+                          onChange={(e) => {
+                            const nextTechId = e.target.value;
+                            setInterventionsTechnicianUserId(nextTechId);
+                            loadInterventions(interventionsMonth, interventionsStatus, nextTechId);
+                          }}
+                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        >
+                          <option value="all">Tous</option>
+                          {(Array.isArray(users) ? users : [])
+                            .filter((u) => u && u.role === 'technician')
+                            .slice()
+                            .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')))
+                            .map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.technicianName || u.email}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
+
                     <div className="flex items-end gap-2">
                       <button
-                        onClick={() => loadInterventions(interventionsMonth, interventionsStatus)}
+                        onClick={() => loadInterventions(interventionsMonth, interventionsStatus, interventionsTechnicianUserId)}
                         className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold text-sm"
                         disabled={interventionsBusy}
                       >
@@ -1554,7 +1664,8 @@ import {
                         </button>
                       )}
                     </div>
-                  </div>
+                    </div>
+                  )}
 
                   {interventionsError && (
                     <div className="mt-3 bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">
@@ -1688,25 +1799,106 @@ import {
 
                 {(() => {
                   const siteById = new Map(sites.map((s) => [String(s.id), s]));
+                  const list = interventions
+                    .slice()
+                    .sort((a, b) => String(a.plannedDate || '').localeCompare(String(b.plannedDate || '')));
+
+                  if (isAdmin) {
+                    const filtered = interventionsTechnicianUserId && interventionsTechnicianUserId !== 'all'
+                      ? list.filter((i) => String(i.technicianUserId || '') === String(interventionsTechnicianUserId))
+                      : list;
+
+                    const groupMap = new Map();
+                    filtered.forEach((it) => {
+                      const key = String(it.technicianName || 'Sans technicien');
+                      if (!groupMap.has(key)) groupMap.set(key, []);
+                      groupMap.get(key).push(it);
+                    });
+
+                    const groups = Array.from(groupMap.entries())
+                      .map(([title, items]) => ({ title, items }))
+                      .sort((a, b) => String(a.title).localeCompare(String(b.title)));
+
+                    return (
+                      <div className="space-y-6">
+                        {groups.length === 0 ? (
+                          <div className="text-sm text-gray-600">Aucune intervention.</div>
+                        ) : (
+                          groups.map((g) => (
+                            <div key={g.title}>
+                              <div className="font-semibold text-gray-800 mb-2">{g.title} ({g.items.length})</div>
+                              {g.items.length === 0 ? (
+                                <div className="text-sm text-gray-600">Aucune intervention.</div>
+                              ) : (
+                                <div className="space-y-2">
+                                  {g.items.map((it) => {
+                                    const site = siteById.get(String(it.siteId)) || null;
+                                    const statusColor = it.status === 'done' ? 'bg-green-100 text-green-800 border-green-200' : it.status === 'sent' ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-amber-100 text-amber-800 border-amber-200';
+                                    return (
+                                      <div key={it.id} className="border border-gray-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                        <div className="min-w-0">
+                                          <div className="font-semibold text-gray-800 truncate">{site?.nameSite || it.siteId}</div>
+                                          <div className="text-xs text-gray-600">{it.epvType} • {formatDate(it.plannedDate)} • {it.technicianName}</div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{it.status}</span>
+                                          {it.status !== 'done' && (
+                                            <button
+                                              onClick={() => handleCompleteIntervention(it.id)}
+                                              className="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 font-semibold text-sm"
+                                            >
+                                              Marquer effectuée
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    );
+                  }
+
                   const today = new Date().toISOString().slice(0, 10);
                   const tomorrowD = new Date(today);
                   tomorrowD.setDate(tomorrowD.getDate() + 1);
                   const tomorrow = tomorrowD.toISOString().slice(0, 10);
 
-                  const list = interventions
+                  const statusRank = (st) => {
+                    if (st === 'sent') return 0;
+                    if (st === 'planned') return 1;
+                    return 2;
+                  };
+
+                  const todayItems = list
+                    .filter((i) => i.plannedDate === today && i.status !== 'done')
                     .slice()
-                    .sort((a, b) => String(a.plannedDate || '').localeCompare(String(b.plannedDate || '')));
+                    .sort((a, b) => statusRank(a.status) - statusRank(b.status));
+
+                  const tomorrowRaw = list.filter((i) => i.plannedDate === tomorrow && i.status !== 'done');
+                  const tomorrowSentCount = tomorrowRaw.filter((i) => i.status === 'sent').length;
+                  const tomorrowItems = tomorrowRaw
+                    .slice()
+                    .sort((a, b) => statusRank(a.status) - statusRank(b.status));
 
                   const groups = [
-                    { title: "Aujourd'hui", items: list.filter((i) => i.plannedDate === today && i.status !== 'done') },
-                    { title: 'Demain', items: list.filter((i) => i.plannedDate === tomorrow && i.status !== 'done') },
-                    { title: 'Toutes', items: list }
+                    { key: 'today', title: "Aujourd'hui", items: todayItems },
+                    { key: 'tomorrow', title: `Demain (${tomorrowItems.length} dont ${tomorrowSentCount} envoyée(s))`, items: tomorrowItems },
+                    { key: 'all', title: 'Toutes', items: list }
                   ];
+
+                  const visibleGroups = isTechnician
+                    ? groups.filter((g) => g.key === technicianInterventionsTab)
+                    : groups;
 
                   return (
                     <div className="space-y-6">
-                      {groups.map((g) => (
-                        <div key={g.title}>
+                      {visibleGroups.map((g) => (
+                        <div key={g.key}>
                           <div className="font-semibold text-gray-800 mb-2">{g.title}</div>
                           {g.items.length === 0 ? (
                             <div className="text-sm text-gray-600">Aucune intervention.</div>
@@ -1723,7 +1915,7 @@ import {
                                     </div>
                                     <div className="flex items-center gap-2">
                                       <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{it.status}</span>
-                                      {(isAdmin || isTechnician) && it.status !== 'done' && (
+                                      {it.status !== 'done' && (
                                         <button
                                           onClick={() => {
                                             if (isTechnician) {
@@ -3214,7 +3406,7 @@ import {
             </div>
           </div>
 
-          {!isTechnician && (
+          {isAdmin && (
             <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
               <div className="flex items-center gap-3">
                 <Calendar className="text-blue-600 flex-shrink-0" size={28} />

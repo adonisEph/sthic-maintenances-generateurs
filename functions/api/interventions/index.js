@@ -27,6 +27,7 @@ export async function onRequestGet({ request, env, data }) {
     const from = url.searchParams.get('from');
     const to = url.searchParams.get('to');
     const status = url.searchParams.get('status');
+    const technicianUserId = url.searchParams.get('technicianUserId');
 
     let where = '1=1';
     const binds = [];
@@ -47,6 +48,9 @@ export async function onRequestGet({ request, env, data }) {
     if (data.user.role !== 'admin') {
       where += ' AND technician_user_id = ?';
       binds.push(data.user.id);
+    } else if (technicianUserId) {
+      where += ' AND technician_user_id = ?';
+      binds.push(String(technicianUserId));
     }
 
     const stmt = env.DB.prepare(`SELECT * FROM interventions WHERE ${where} ORDER BY planned_date ASC`);
