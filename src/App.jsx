@@ -2090,17 +2090,18 @@ import {
 
               <div className="p-4 sm:p-6 overflow-y-auto flex-1">
                 <div className="text-xs text-gray-600 mb-3">
-                  Sessions actives (multi-onglets sur le même navigateur). Actualisation automatique.
+                  Sessions actives (tous rôles, multi-appareils). Actualisation automatique.
                 </div>
                 {presenceSessions.length === 0 ? (
                   <div className="text-gray-600">Aucun utilisateur actif détecté.</div>
                 ) : (
                   <div className="space-y-2">
                     {presenceSessions.map((s) => {
-                      const secondsAgo = s.lastSeen ? Math.max(0, Math.round((Date.now() - s.lastSeen) / 1000)) : null;
+                      const lastSeenMs = Number(s.lastSeenMs);
+                      const secondsAgo = Number.isFinite(lastSeenMs) ? Math.max(0, Math.round((Date.now() - lastSeenMs) / 1000)) : null;
                       const isActive = secondsAgo !== null && secondsAgo <= 8;
                       return (
-                        <div key={s.tabId} className="border border-gray-200 rounded-lg p-3 flex items-start justify-between gap-3">
+                        <div key={s.id || `${s.userId || ''}|${s.tabId || ''}|${s.email || ''}`} className="border border-gray-200 rounded-lg p-3 flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="font-semibold text-gray-800 truncate">{s.email || 'Utilisateur'}</div>
                             <div className="text-xs text-gray-600">Rôle: {s.role || '-'}</div>
