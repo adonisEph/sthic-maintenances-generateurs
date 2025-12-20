@@ -31,6 +31,11 @@ import {
   const [interventionsBusy, setInterventionsBusy] = useState(false);
   const [interventionsError, setInterventionsError] = useState('');
   const [planningAssignments, setPlanningAssignments] = useState({});
+  const [completeModalOpen, setCompleteModalOpen] = useState(false);
+  const [completeModalIntervention, setCompleteModalIntervention] = useState(null);
+  const [completeModalSite, setCompleteModalSite] = useState(null);
+  const [completeForm, setCompleteForm] = useState({ nhNow: '', doneDate: '' });
+  const [completeFormError, setCompleteFormError] = useState('');
   const [siteToDelete, setSiteToDelete] = useState(null);
   const [selectedSite, setSelectedSite] = useState(null);
   const [filterTechnician, setFilterTechnician] = useState('all');
@@ -226,11 +231,11 @@ import {
     }
   };
 
-  const handleCompleteIntervention = async (interventionId) => {
+  const handleCompleteIntervention = async (interventionId, payload = {}) => {
     try {
       await apiFetchJson(`/api/interventions/${interventionId}/complete`, {
         method: 'POST',
-        body: JSON.stringify({})
+        body: JSON.stringify(payload || {})
       });
       await loadData();
       await loadInterventions();
@@ -840,7 +845,7 @@ import {
     };
   };
 
-  const urgentSites = sites
+  const urgentSitesAll = sites
     .map(getUpdatedSite)
     .filter(site => {
       if (site.retired) return false;
@@ -848,6 +853,8 @@ import {
       return days !== null && days <= 3;
     })
     .sort((a, b) => getDaysUntil(a.epv1) - getDaysUntil(b.epv1));
+
+  const urgentSites = urgentSitesAll.filter(site => filterTechnician === 'all' || site.technician === filterTechnician);
 
   const technicians = ['all', ...new Set(sites.map(s => s.technician))];
   const filteredSites = sites
@@ -992,7 +999,7 @@ import {
   const canWriteSites = isAdmin;
   const canImportExport = isAdmin;
   const canReset = isAdmin;
-  const canGenerateFiche = isAdmin || isTechnician;
+  const canGenerateFiche = isAdmin;
   const canMarkCompleted = isAdmin || isTechnician;
   const canManageUsers = isAdmin;
   const canUseInterventions = isAdmin || isTechnician;
@@ -1000,6 +1007,7 @@ import {
   useEffect(() => {
     if (isTechnician && authUser?.technicianName) {
       setFilterTechnician(authUser.technicianName);
+      setShowCalendar(false);
     }
   }, [isTechnician, authUser?.technicianName]);
 
@@ -1225,14 +1233,16 @@ import {
               </button>
             )}
 
-            <button
-              onClick={() => setShowCalendar(true)}
-              className="bg-cyan-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-cyan-700 flex items-center justify-center gap-2 text-sm sm:text-base"
-            >
-              <Calendar size={18} />
-              <span className="hidden sm:inline">Calendrier</span>
-              <span className="sm:hidden">Cal.</span>
-            </button>
+            {!isTechnician && (
+              <button
+                onClick={() => setShowCalendar(true)}
+                className="bg-cyan-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-cyan-700 flex items-center justify-center gap-2 text-sm sm:text-base"
+              >
+                <Calendar size={18} />
+                <span className="hidden sm:inline">Calendrier</span>
+                <span className="sm:hidden">Cal.</span>
+              </button>
+            )}
 
             {canUseInterventions && (
               <button
@@ -1298,19 +1308,21 @@ import {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
-            <Filter size={18} className="text-gray-600" />
-            <select
-              value={filterTechnician}
-              onChange={(e) => setFilterTechnician(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1 sm:flex-initial"
-            >
-              <option value="all">Tous les techniciens</option>
-              {technicians.filter(t => t !== 'all').map(tech => (
-                <option key={tech} value={tech}>{tech}</option>
-              ))}
-            </select>
-          </div>
+          {!isTechnician && (
+            <div className="flex items-center gap-2">
+              <Filter size={18} className="text-gray-600" />
+              <select
+                value={filterTechnician}
+                onChange={(e) => setFilterTechnician(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1 sm:flex-initial"
+              >
+                <option value="all">Tous les techniciens</option>
+                {technicians.filter(t => t !== 'all').map(tech => (
+                  <option key={tech} value={tech}>{tech}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 md:mb-6">
@@ -1487,6 +1499,11 @@ import {
                     setShowInterventions(false);
                     setInterventionsError('');
                     setPlanningAssignments({});
+                    setCompleteModalOpen(false);
+                    setCompleteModalIntervention(null);
+                    setCompleteModalSite(null);
+                    setCompleteForm({ nhNow: '', doneDate: '' });
+                    setCompleteFormError('');
                   }}
                   className="hover:bg-emerald-800 p-2 rounded"
                 >
@@ -1708,7 +1725,18 @@ import {
                                       <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{it.status}</span>
                                       {(isAdmin || isTechnician) && it.status !== 'done' && (
                                         <button
-                                          onClick={() => handleCompleteIntervention(it.id)}
+                                          onClick={() => {
+                                            if (isTechnician) {
+                                              setCompleteModalIntervention(it);
+                                              setCompleteModalSite(site);
+                                              const today = new Date().toISOString().slice(0, 10);
+                                              setCompleteForm({ nhNow: String(site?.nhEstimated ?? ''), doneDate: today });
+                                              setCompleteFormError('');
+                                              setCompleteModalOpen(true);
+                                              return;
+                                            }
+                                            handleCompleteIntervention(it.id);
+                                          }}
                                           className="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 font-semibold text-sm"
                                         >
                                           Marquer effectuée
@@ -1725,6 +1753,113 @@ import {
                     </div>
                   );
                 })()}
+
+                {completeModalOpen && (
+                  <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full overflow-hidden">
+                      <div className="flex justify-between items-center p-4 border-b bg-green-700 text-white">
+                        <div className="font-bold">Valider l'intervention</div>
+                        <button
+                          onClick={() => {
+                            setCompleteModalOpen(false);
+                            setCompleteModalIntervention(null);
+                            setCompleteModalSite(null);
+                            setCompleteForm({ nhNow: '', doneDate: '' });
+                            setCompleteFormError('');
+                          }}
+                          className="hover:bg-green-800 p-2 rounded"
+                        >
+                          <X size={18} />
+                        </button>
+                      </div>
+                      <div className="p-4 space-y-3">
+                        <div className="text-sm text-gray-700">
+                          <div className="font-semibold text-gray-900">{completeModalSite?.nameSite || completeModalIntervention?.siteId || ''}</div>
+                          <div className="text-xs text-gray-600">{completeModalIntervention?.epvType} • {formatDate(completeModalIntervention?.plannedDate)}</div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="flex flex-col">
+                            <label className="text-xs text-gray-600 mb-1">Date de vidange</label>
+                            <input
+                              type="date"
+                              value={completeForm.doneDate}
+                              onChange={(e) => {
+                                setCompleteForm((prev) => ({ ...(prev || {}), doneDate: e.target.value }));
+                                setCompleteFormError('');
+                              }}
+                              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                            />
+                          </div>
+                          <div className="flex flex-col">
+                            <label className="text-xs text-gray-600 mb-1">Compteur (NH) relevé</label>
+                            <input
+                              type="number"
+                              value={completeForm.nhNow}
+                              onChange={(e) => {
+                                setCompleteForm((prev) => ({ ...(prev || {}), nhNow: e.target.value }));
+                                setCompleteFormError('');
+                              }}
+                              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                            />
+                          </div>
+                        </div>
+
+                        {completeFormError && (
+                          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">
+                            {completeFormError}
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-4 border-t bg-white flex justify-end gap-2">
+                        <button
+                          onClick={() => {
+                            setCompleteModalOpen(false);
+                            setCompleteModalIntervention(null);
+                            setCompleteModalSite(null);
+                            setCompleteForm({ nhNow: '', doneDate: '' });
+                            setCompleteFormError('');
+                          }}
+                          className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
+                        >
+                          Annuler
+                        </button>
+                        <button
+                          onClick={async () => {
+                            const interventionId = completeModalIntervention?.id;
+                            if (!interventionId) {
+                              setCompleteFormError('Intervention introuvable.');
+                              return;
+                            }
+                            const doneDate = String(completeForm?.doneDate || '').trim();
+                            const nhNow = Number(String(completeForm?.nhNow || '').trim());
+                            if (!/^\d{4}-\d{2}-\d{2}$/.test(doneDate)) {
+                              setCompleteFormError('Date invalide.');
+                              return;
+                            }
+                            if (!Number.isFinite(nhNow)) {
+                              setCompleteFormError('Veuillez saisir un compteur (NH) valide.');
+                              return;
+                            }
+                            try {
+                              await handleCompleteIntervention(interventionId, { nhNow, doneDate });
+                              setCompleteModalOpen(false);
+                              setCompleteModalIntervention(null);
+                              setCompleteModalSite(null);
+                              setCompleteForm({ nhNow: '', doneDate: '' });
+                              setCompleteFormError('');
+                            } catch (e) {
+                              // handled in handler
+                            }
+                          }}
+                          className="bg-green-700 text-white px-4 py-2 rounded-lg hover:bg-green-800 font-semibold"
+                        >
+                          Confirmer
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="p-4 border-t bg-white flex justify-end">
@@ -1733,6 +1868,11 @@ import {
                     setShowInterventions(false);
                     setInterventionsError('');
                     setPlanningAssignments({});
+                    setCompleteModalOpen(false);
+                    setCompleteModalIntervention(null);
+                    setCompleteModalSite(null);
+                    setCompleteForm({ nhNow: '', doneDate: '' });
+                    setCompleteFormError('');
                   }}
                   className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
                 >
@@ -2478,7 +2618,7 @@ import {
         )}
 
         {/* Modal Calendrier */}
-        {showCalendar && (
+        {showCalendar && !isTechnician && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
               <div className="flex justify-between items-center p-4 border-b bg-cyan-600 text-white">
@@ -3047,7 +3187,7 @@ import {
               <CheckCircle className="text-green-600 flex-shrink-0" size={28} />
               <div>
                 <p className="text-xs sm:text-sm text-gray-600">Total Sites</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-800">{sites.length}</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-800">{isTechnician ? filteredSites.length : sites.length}</p>
               </div>
             </div>
           </div>
@@ -3068,23 +3208,25 @@ import {
               <div>
                 <p className="text-xs sm:text-sm text-gray-600">Sites Retirés</p>
                 <p className="text-xl sm:text-2xl font-bold text-gray-800">
-                  {sites.filter(s => s.retired).length}
+                  {isTechnician ? filteredSites.filter(s => s.retired).length : sites.filter(s => s.retired).length}
                 </p>
               </div>
             </div>
           </div>
-          
-          <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
-            <div className="flex items-center gap-3">
-              <Calendar className="text-blue-600 flex-shrink-0" size={28} />
-              <div>
-                <p className="text-xs sm:text-sm text-gray-600">Prochain Ticket</p>
-                <p className="text-base sm:text-lg font-bold text-gray-800">
-                  T{String(ticketNumber).padStart(5, '0')}
-                </p>
+
+          {!isTechnician && (
+            <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+              <div className="flex items-center gap-3">
+                <Calendar className="text-blue-600 flex-shrink-0" size={28} />
+                <div>
+                  <p className="text-xs sm:text-sm text-gray-600">Prochain Ticket</p>
+                  <p className="text-base sm:text-lg font-bold text-gray-800">
+                    T{String(ticketNumber).padStart(5, '0')}
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
       </div>
