@@ -29,7 +29,13 @@ export async function onRequestGet({ env, data }) {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
-    const res = await env.DB.prepare('SELECT * FROM sites ORDER BY id_site ASC').all();
+    let stmt = env.DB.prepare('SELECT * FROM sites ORDER BY id_site ASC');
+    if (data?.user?.role === 'technician') {
+      const techName = String(data?.user?.technicianName || '').trim();
+      stmt = env.DB.prepare('SELECT * FROM sites WHERE technician = ? ORDER BY id_site ASC').bind(techName);
+    }
+
+    const res = await stmt.all();
     const rows = Array.isArray(res?.results) ? res.results : [];
     return json({ sites: rows.map(mapSiteRow) }, { status: 200 });
   } catch (e) {

@@ -25,6 +25,9 @@ import {
   const [showCalendar, setShowCalendar] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showInterventions, setShowInterventions] = useState(false);
+  const [showScoring, setShowScoring] = useState(false);
+  const [scoringMonth, setScoringMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [scoringDetails, setScoringDetails] = useState({ open: false, title: '', kind: '', items: [] });
   const [interventions, setInterventions] = useState([]);
   const [interventionsMonth, setInterventionsMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [interventionsStatus, setInterventionsStatus] = useState('all');
@@ -306,6 +309,7 @@ import {
     if (showPresenceModal) return 'Consultation présence';
     if (showCalendar) return 'Calendrier';
     if (showHistory) return 'Historique';
+    if (showScoring) return 'Scoring';
     if (showFicheModal) return 'Fiche d\'intervention';
     if (showBannerUpload) return 'Upload bannière';
     if (showDayDetailsModal) return 'Détails du jour';
@@ -827,6 +831,262 @@ import {
     XLSX.writeFile(wb, `Planning_Vidanges_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
+  const exportXlsx = ({ fileBaseName, sheets }) => {
+    const base = String(fileBaseName || 'export').trim() || 'export';
+    const safeBase = base.replace(/[\\/:*?"<>|]+/g, '_');
+    const wb = XLSX.utils.book_new();
+    (Array.isArray(sheets) ? sheets : []).forEach((sh, idx) => {
+      const nameRaw = String(sh?.name || `Feuille${idx + 1}`);
+      const name = nameRaw.trim().slice(0, 31) || `Feuille${idx + 1}`;
+      const rows = Array.isArray(sh?.rows) ? sh.rows : [];
+      const ws = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(wb, ws, name);
+    });
+    XLSX.writeFile(wb, `${safeBase}.xlsx`);
+  };
+
+  const computeDashboardData = (yyyymm) => {
+    const plannedEvents = filteredSites
+      .filter((s) => s && !s.retired)
+      .flatMap((site) => {
+        return [
+          { type: 'EPV1', date: site.epv1 },
+          { type: 'EPV2', date: site.epv2 },
+          { type: 'EPV3', date: site.epv3 }
+        ]
+          .filter((ev) => ev.date && String(ev.date).slice(0, 7) === yyyymm)
+          .map((ev) => ({
+            key: `${site.id}|${ev.type}|${ev.date}`,
+            siteId: site.id,
+            siteName: site.nameSite,
+            technician: site.technician,
+            epvType: ev.type,
+            plannedDate: ev.date
+          }));
+      });
+
+    const completedFichesInMonth = ficheHistory.filter((f) => f.status === 'Effectuée' && f.dateCompleted && isInMonth(f.dateCompleted, yyyymm));
+    const contractOk = completedFichesInMonth.filter((f) => f.isWithinContract === true);
+    const contractOver = completedFichesInMonth.filter((f) => f.isWithinContract === false);
+
+    const completedKeys = new Set(
+      ficheHistory
+        .filter((f) => f.status === 'Effectuée' && f.plannedDate && String(f.plannedDate).slice(0, 7) === yyyymm)
+        .map((f) => `${f.siteId}|${f.epvType || ''}|${f.plannedDate}`)
+    );
+    const remainingEvents = plannedEvents.filter((ev) => !completedKeys.has(ev.key));
+
+    return { plannedEvents, remainingEvents, contractOk, contractOver };
+  };
+
+  const handleExportDashboardSummaryExcel = () => {
+    const { plannedEvents, remainingEvents, contractOk, contractOver } = computeDashboardData(dashboardMonth);
+    exportXlsx({
+      fileBaseName: `Dashboard_${dashboardMonth}_resume_${new Date().toISOString().slice(0, 10)}`,
+      sheets: [
+        {
+          name: 'Résumé',
+          rows: [
+            { Section: 'Dans délai contractuel', Count: contractOk.length, Mois: dashboardMonth },
+            { Section: 'Hors délai contractuel', Count: contractOver.length, Mois: dashboardMonth },
+            { Section: 'Planifiées du mois', Count: plannedEvents.length, Mois: dashboardMonth },
+            { Section: 'Restantes du mois', Count: remainingEvents.length, Mois: dashboardMonth }
+          ]
+        }
+      ]
+    });
+  };
+
+  const handleExportDashboardDetailsExcel = () => {
+    const kind = String(dashboardDetails?.kind || '');
+    const items = Array.isArray(dashboardDetails?.items) ? dashboardDetails.items : [];
+    if (items.length === 0) return;
+
+    const rows = (kind === 'contract_ok' || kind === 'contract_over')
+      ? items.map((f) => ({
+        Site: f.siteName,
+        Ticket: f.ticketNumber,
+        Technicien: f.technician,
+        DateRéalisation: f.dateCompleted,
+        DatePlanifiée: f.plannedDate,
+        EPV: f.epvType,
+        IntervalleHeures: f.intervalHours,
+        Seuil: f.contractSeuil || 250,
+        StatutContractuel: f.isWithinContract === true ? 'Dans délai' : f.isWithinContract === false ? 'Hors délai' : 'N/A'
+      }))
+      : items.map((ev) => ({
+        Site: ev.siteName,
+        Technicien: ev.technician,
+        EPV: ev.epvType,
+        DatePlanifiée: ev.plannedDate
+      }));
+
+    exportXlsx({
+      fileBaseName: `Dashboard_${dashboardMonth}_${kind}_${new Date().toISOString().slice(0, 10)}`,
+      sheets: [{ name: 'Détails', rows }]
+    });
+  };
+
+  const handleExportScoringDetailsExcel = () => {
+    const kind = String(scoringDetails?.kind || '');
+    const items = Array.isArray(scoringDetails?.items) ? scoringDetails.items : [];
+    if (!scoringDetails?.open || items.length === 0) return;
+
+    const siteById = new Map(
+      (Array.isArray(sites) ? sites : [])
+        .filter((s) => s && s.id)
+        .map((s) => [String(s.id), s])
+    );
+
+    const rows = kind === 'remaining'
+      ? items.map((it) => {
+        const site = siteById.get(String(it.siteId)) || null;
+        return {
+          Site: site?.nameSite || it.siteId,
+          IdSite: site?.idSite || '',
+          EPV: it.epvType,
+          DatePlanifiée: it.plannedDate,
+          Technicien: it.technicianName,
+          Statut: it.status
+        };
+      })
+      : items.map((f) => ({
+        Site: f.siteName,
+        Ticket: f.ticketNumber,
+        Technicien: f.technician,
+        DateRéalisation: f.dateCompleted,
+        DatePlanifiée: f.plannedDate,
+        EPV: f.epvType,
+        IntervalleHeures: f.intervalHours,
+        Seuil: f.contractSeuil || 250,
+        StatutContractuel: f.isWithinContract === true ? 'Dans délai' : f.isWithinContract === false ? 'Hors délai' : 'N/A'
+      }));
+
+    exportXlsx({
+      fileBaseName: `Scoring_${scoringMonth}_${kind}_${new Date().toISOString().slice(0, 10)}`,
+      sheets: [{ name: 'Détails', rows }]
+    });
+  };
+
+  const handleExportSelectedDayExcel = () => {
+    const items = Array.isArray(selectedDayEvents) ? selectedDayEvents : [];
+    if (items.length === 0) return;
+    const rows = items.map((evt) => ({
+      Date: evt.date,
+      EPV: evt.type,
+      Site: evt?.site?.nameSite || '',
+      IdSite: evt?.site?.idSite || '',
+      Technicien: evt?.site?.technician || ''
+    }));
+    exportXlsx({
+      fileBaseName: `Calendrier_${selectedDate || 'jour'}_${new Date().toISOString().slice(0, 10)}`,
+      sheets: [{ name: 'Jour', rows }]
+    });
+  };
+
+  const handleExportCalendarMonthExcel = () => {
+    const year = currentMonth?.getFullYear?.();
+    const month = currentMonth?.getMonth?.();
+    if (!Number.isFinite(year) || !Number.isFinite(month)) return;
+    const yyyymm = `${year}-${String(month + 1).padStart(2, '0')}`;
+
+    const events = [];
+    (Array.isArray(filteredSites) ? filteredSites : []).forEach((site) => {
+      if (!site || site.retired) return;
+      const pushIf = (type, date) => {
+        if (!date) return;
+        if (String(date).slice(0, 7) !== yyyymm) return;
+        events.push({
+          Date: date,
+          EPV: type,
+          Site: site.nameSite,
+          IdSite: site.idSite,
+          Technicien: site.technician
+        });
+      };
+      pushIf('EPV1', site.epv1);
+      pushIf('EPV2', site.epv2);
+      pushIf('EPV3', site.epv3);
+    });
+
+    const rows = events
+      .slice()
+      .sort((a, b) => {
+        const d = String(a.Date || '').localeCompare(String(b.Date || ''));
+        if (d !== 0) return d;
+        const t = String(a.Technicien || '').localeCompare(String(b.Technicien || ''));
+        if (t !== 0) return t;
+        return String(a.Site || '').localeCompare(String(b.Site || ''));
+      });
+
+    exportXlsx({
+      fileBaseName: `Calendrier_${yyyymm}_${new Date().toISOString().slice(0, 10)}`,
+      sheets: [{ name: 'Mois', rows }]
+    });
+  };
+
+  const handleExportInterventionsExcel = () => {
+    const siteById = new Map((Array.isArray(sites) ? sites : []).map((s) => [String(s.id), s]));
+    const list = (Array.isArray(interventions) ? interventions : [])
+      .slice()
+      .sort((a, b) => String(a.plannedDate || '').localeCompare(String(b.plannedDate || '')));
+
+    if (isAdmin) {
+      const filtered = interventionsTechnicianUserId && interventionsTechnicianUserId !== 'all'
+        ? list.filter((i) => String(i.technicianUserId || '') === String(interventionsTechnicianUserId))
+        : list;
+      const rows = filtered.map((it) => {
+        const site = siteById.get(String(it.siteId)) || null;
+        return {
+          DatePlanifiée: it.plannedDate,
+          EPV: it.epvType,
+          Statut: it.status,
+          Technicien: it.technicianName,
+          Site: site?.nameSite || it.siteId,
+          IdSite: site?.idSite || '',
+          InterventionId: it.id
+        };
+      });
+      exportXlsx({
+        fileBaseName: `Interventions_${interventionsMonth}_${interventionsStatus}_${interventionsTechnicianUserId}_${new Date().toISOString().slice(0, 10)}`,
+        sheets: [{ name: 'Interventions', rows }]
+      });
+      return;
+    }
+
+    if (isViewer) {
+      const today = new Date().toISOString().slice(0, 10);
+      const tomorrowD = new Date(today);
+      tomorrowD.setDate(tomorrowD.getDate() + 1);
+      const tomorrow = tomorrowD.toISOString().slice(0, 10);
+
+      const todayItems = list.filter((i) => i.plannedDate === today && i.status !== 'done');
+      const tomorrowItems = list.filter((i) => i.plannedDate === tomorrow && i.status !== 'done');
+
+      const toRows = (items) => items.map((it) => {
+        const site = siteById.get(String(it.siteId)) || null;
+        return {
+          DatePlanifiée: it.plannedDate,
+          EPV: it.epvType,
+          Statut: it.status,
+          Technicien: it.technicianName,
+          Site: site?.nameSite || it.siteId,
+          IdSite: site?.idSite || '',
+          InterventionId: it.id
+        };
+      });
+
+      exportXlsx({
+        fileBaseName: `Interventions_${interventionsMonth}_${interventionsStatus}_viewer_${new Date().toISOString().slice(0, 10)}`,
+        sheets: [
+          { name: "Aujourd'hui", rows: toRows(todayItems) },
+          { name: 'Demain', rows: toRows(tomorrowItems) },
+          { name: 'Toutes', rows: toRows(list) }
+        ]
+      });
+    }
+  };
+
   const getUpdatedSite = (site) => {
     const nhEstimated = calculateEstimatedNH(site.nh2A, site.dateA, site.regime);
     const diffEstimated = calculateDiffNHs(site.nh1DV, nhEstimated);
@@ -920,7 +1180,14 @@ import {
   };
 
   const handleLogout = () => {
-    removePresenceEntry();
+    setShowUsersModal(false);
+    setShowPresenceModal(false);
+    setShowCalendar(false);
+    setShowHistory(false);
+    setShowFicheModal(false);
+    setShowInterventions(false);
+    setShowScoring(false);
+    setScoringDetails({ open: false, title: '', kind: '', items: [] });
     setAuthUser(null);
     setSites([]);
     setFicheHistory([]);
@@ -1010,11 +1277,12 @@ import {
   const isTechnician = currentRole === 'technician';
   const canWriteSites = isAdmin;
   const canImportExport = isAdmin;
+  const canExportExcel = isAdmin || isViewer;
   const canReset = isAdmin;
   const canGenerateFiche = isAdmin;
   const canMarkCompleted = isAdmin || isTechnician;
   const canManageUsers = isAdmin;
-  const canUseInterventions = isAdmin || isTechnician;
+  const canUseInterventions = isAdmin || isTechnician || isViewer;
 
   useEffect(() => {
     if (isTechnician && authUser?.technicianName) {
@@ -1196,7 +1464,16 @@ import {
               <div>
                 <p className="text-xs text-gray-500">Aujourd'hui</p>
                 <p className="text-sm sm:text-lg font-semibold text-gray-800">{formatDate(new Date().toISOString())}</p>
-                <p className="text-xs text-gray-500 mt-1">{authUser.email} ({authUser.role})</p>
+                <p className="text-xs text-gray-500 mt-1 flex flex-wrap items-center gap-2">
+                  <span>
+                    {authUser.email} ({authUser.role})
+                  </span>
+                  {isViewer && (
+                    <span className="bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full font-semibold">
+                      Lecture seule
+                    </span>
+                  )}
+                </p>
               </div>
               <button
                 onClick={handleLogout}
@@ -1283,6 +1560,23 @@ import {
               </button>
             )}
 
+            {!isTechnician && (
+              <button
+                onClick={async () => {
+                  const nextMonth = scoringMonth || new Date().toISOString().slice(0, 7);
+                  setScoringMonth(nextMonth);
+                  setScoringDetails({ open: false, title: '', kind: '', items: [] });
+                  setShowScoring(true);
+                  await loadInterventions(nextMonth, 'all', 'all');
+                }}
+                className="bg-slate-800 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-slate-900 flex items-center justify-center gap-2 text-sm sm:text-base"
+              >
+                <TrendingUp size={18} />
+                <span className="hidden sm:inline">Scoring</span>
+                <span className="sm:hidden">Score</span>
+              </button>
+            )}
+
             <button
               onClick={() => setShowHistory(true)}
               className="bg-amber-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-amber-700 flex items-center justify-center gap-2 text-sm sm:text-base"
@@ -1357,6 +1651,16 @@ import {
                 onChange={(e) => setDashboardMonth(e.target.value)}
                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
               />
+              {canExportExcel && (
+                <button
+                  type="button"
+                  onClick={handleExportDashboardSummaryExcel}
+                  className="bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-sm font-semibold"
+                >
+                  <Download size={16} />
+                  Exporter Excel
+                </button>
+              )}
             </div>
           </div>
 
@@ -1493,8 +1797,258 @@ import {
                 )}
               </div>
               <div className="p-4 border-t bg-white flex justify-end">
+                {canExportExcel && dashboardDetails.items.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleExportDashboardDetailsExcel}
+                    className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold flex items-center gap-2 mr-2"
+                  >
+                    <Download size={18} />
+                    Exporter Excel
+                  </button>
+                )}
                 <button
                   onClick={() => setDashboardDetails({ open: false, title: '', kind: '', items: [] })}
+                  className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
+                >
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showScoring && !isTechnician && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+              <div className="flex justify-between items-center p-4 border-b bg-slate-800 text-white">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <TrendingUp size={22} />
+                  Scoring
+                  {isViewer && (
+                    <span className="ml-2 bg-white/15 text-white border border-white/20 px-2 py-0.5 rounded-full text-xs font-semibold">
+                      Lecture seule
+                    </span>
+                  )}
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowScoring(false);
+                    setScoringDetails({ open: false, title: '', kind: '', items: [] });
+                  }}
+                  className="hover:bg-slate-900 p-2 rounded"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                  <div className="text-sm text-slate-700">
+                    Synthèse mensuelle (basée sur l'historique des fiches + interventions planifiées)
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-600">Mois</label>
+                    <input
+                      type="month"
+                      value={scoringMonth}
+                      onChange={async (e) => {
+                        const next = String(e.target.value || '').trim();
+                        setScoringMonth(next);
+                        setScoringDetails({ open: false, title: '', kind: '', items: [] });
+                        await loadInterventions(next, 'all', 'all');
+                      }}
+                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
+
+                {(() => {
+                  const isInMonth = (ymd, yyyymm) => {
+                    if (!ymd || !yyyymm) return false;
+                    return String(ymd).slice(0, 7) === String(yyyymm);
+                  };
+
+                  const siteById = new Map(
+                    (Array.isArray(sites) ? sites : [])
+                      .filter((s) => s && s.id)
+                      .map((s) => [String(s.id), s])
+                  );
+
+                  const doneInMonth = ficheHistory.filter(
+                    (f) => f && f.status === 'Effectuée' && f.dateCompleted && isInMonth(f.dateCompleted, scoringMonth)
+                  );
+                  const doneWithin = doneInMonth.filter((f) => f.isWithinContract === true);
+                  const doneOver = doneInMonth.filter((f) => f.isWithinContract === false);
+
+                  const remainingInMonth = interventions
+                    .filter(
+                      (i) =>
+                        i &&
+                        i.plannedDate &&
+                        isInMonth(i.plannedDate, scoringMonth) &&
+                        (i.status === 'planned' || i.status === 'sent')
+                    )
+                    .slice()
+                    .sort((a, b) => {
+                      const statusRank = (s) => (s === 'sent' ? 0 : s === 'planned' ? 1 : 2);
+                      const sr = statusRank(a.status) - statusRank(b.status);
+                      if (sr !== 0) return sr;
+                      const d = String(a.plannedDate || '').localeCompare(String(b.plannedDate || ''));
+                      if (d !== 0) return d;
+                      const sa = siteById.get(String(a.siteId))?.nameSite || '';
+                      const sb = siteById.get(String(b.siteId))?.nameSite || '';
+                      return String(sa).localeCompare(String(sb));
+                    });
+
+                  const cards = [
+                    {
+                      key: 'done',
+                      title: 'Effectuées',
+                      value: doneInMonth.length,
+                      className: 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100',
+                      onClick: () => setScoringDetails({ open: true, title: 'Vidanges effectuées', kind: 'done', items: doneInMonth })
+                    },
+                    {
+                      key: 'remaining',
+                      title: 'Restantes',
+                      value: remainingInMonth.length,
+                      className: 'bg-amber-50 border-amber-200 hover:bg-amber-100',
+                      onClick: () => setScoringDetails({ open: true, title: 'Interventions restantes (planifiées/envoyées)', kind: 'remaining', items: remainingInMonth })
+                    },
+                    {
+                      key: 'within',
+                      title: 'Dans délai',
+                      value: doneWithin.length,
+                      className: 'bg-blue-50 border-blue-200 hover:bg-blue-100',
+                      onClick: () => setScoringDetails({ open: true, title: 'Vidanges dans le délai contractuel', kind: 'within', items: doneWithin })
+                    },
+                    {
+                      key: 'over',
+                      title: 'Hors délai',
+                      value: doneOver.length,
+                      className: 'bg-red-50 border-red-200 hover:bg-red-100',
+                      onClick: () => setScoringDetails({ open: true, title: 'Vidanges hors délai contractuel', kind: 'over', items: doneOver })
+                    }
+                  ];
+
+                  return (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+                        {cards.map((c) => (
+                          <button
+                            key={c.key}
+                            type="button"
+                            onClick={c.onClick}
+                            className={`${c.className} border rounded-xl p-4 text-left`}
+                          >
+                            <div className="text-xs font-semibold text-gray-700">{c.title}</div>
+                            <div className="text-2xl font-bold text-gray-900 mt-1">{c.value}</div>
+                            <div className="text-xs text-gray-600 mt-1">Clique pour détails</div>
+                          </button>
+                        ))}
+                      </div>
+
+                      {scoringDetails.open && (
+                        <div className="border border-gray-200 rounded-lg overflow-hidden">
+                          <div className="flex items-center justify-between gap-3 p-3 bg-gray-50 border-b border-gray-200">
+                            <div className="font-semibold text-gray-800">{scoringDetails.title}</div>
+                            <div className="flex items-center gap-2">
+                              {canExportExcel && scoringDetails.items.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={handleExportScoringDetailsExcel}
+                                  className="bg-slate-700 text-white px-3 py-1.5 rounded-lg hover:bg-slate-800 text-sm font-semibold flex items-center gap-2"
+                                >
+                                  <Download size={16} />
+                                  Exporter Excel
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setScoringDetails({ open: false, title: '', kind: '', items: [] })}
+                                className="bg-gray-200 text-gray-800 px-3 py-1.5 rounded-lg hover:bg-gray-300 text-sm font-semibold"
+                              >
+                                Fermer
+                              </button>
+                            </div>
+                          </div>
+                          <div className="p-3 sm:p-4">
+                            {scoringDetails.items.length === 0 ? (
+                              <div className="text-gray-600">Aucun élément.</div>
+                            ) : scoringDetails.kind === 'remaining' ? (
+                              <div className="space-y-2">
+                                {scoringDetails.items.map((it) => (
+                                  <div key={it.id} className="border border-gray-200 rounded-lg p-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0">
+                                        {(() => {
+                                          const site = siteById.get(String(it.siteId)) || null;
+                                          const title = site?.nameSite || it.siteId;
+                                          const sub = site?.idSite ? `ID: ${site.idSite}` : null;
+                                          return (
+                                            <>
+                                              <div className="font-semibold text-gray-800 truncate">{title}</div>
+                                              {sub && <div className="text-xs text-gray-600">{sub}</div>}
+                                            </>
+                                          );
+                                        })()}
+                                        <div className="text-xs text-gray-600">{it.epvType} • {formatDate(it.plannedDate)} • {it.technicianName}</div>
+                                      </div>
+                                      <div className="text-right">
+                                        <div
+                                          className={`text-xs px-2 py-1 rounded inline-block ${
+                                            it.status === 'sent'
+                                              ? 'bg-blue-100 text-blue-800'
+                                              : it.status === 'planned'
+                                                ? 'bg-amber-100 text-amber-800'
+                                                : 'bg-gray-100 text-gray-700'
+                                          }`}
+                                        >
+                                          {it.status === 'sent' ? 'Envoyée' : it.status === 'planned' ? 'Planifiée' : String(it.status || '-')}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="text-xs text-gray-600 mt-1">Statut: <span className="font-semibold">{it.status}</span></div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                {scoringDetails.items.map((f) => (
+                                  <div key={f.id} className="border border-gray-200 rounded-lg p-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0">
+                                        <div className="font-semibold text-gray-800 truncate">{f.siteName}</div>
+                                        <div className="text-xs text-gray-600">Ticket: {f.ticketNumber} • Technicien: {f.technician}</div>
+                                        {f.dateCompleted && (
+                                          <div className="text-xs text-gray-600">Réalisée: {formatDate(f.dateCompleted)}</div>
+                                        )}
+                                      </div>
+                                      <div className="text-right">
+                                        <div className={`text-xs px-2 py-1 rounded inline-block ${f.isWithinContract === true ? 'bg-green-100 text-green-800' : f.isWithinContract === false ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-700'}`}>
+                                          {f.isWithinContract === true ? 'Dans délai' : f.isWithinContract === false ? 'Hors délai' : 'N/A'}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+
+              <div className="p-4 border-t bg-white flex justify-end">
+                <button
+                  onClick={() => {
+                    setShowScoring(false);
+                    setScoringDetails({ open: false, title: '', kind: '', items: [] });
+                  }}
                   className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
                 >
                   Fermer
@@ -1517,6 +2071,11 @@ import {
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <CheckCircle size={24} />
                   {isTechnician ? 'Mes interventions' : 'Interventions'}
+                  {isViewer && (
+                    <span className="ml-2 bg-white/15 text-white border border-white/20 px-2 py-0.5 rounded-full text-xs font-semibold">
+                      Lecture seule
+                    </span>
+                  )}
                 </h2>
                 <button
                   onClick={() => {
@@ -1536,6 +2095,11 @@ import {
               </div>
 
               <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+                {isViewer && (
+                  <div className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg px-3 py-2 text-sm mb-4">
+                    Mode lecture seule : vous pouvez consulter les interventions, sans planifier ni valider.
+                  </div>
+                )}
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
                   {isTechnician && (
                     <div className="flex items-center justify-between gap-2 mb-3">
@@ -1654,6 +2218,17 @@ import {
                       >
                         Rafraîchir
                       </button>
+                      {canExportExcel && (
+                        <button
+                          type="button"
+                          onClick={handleExportInterventionsExcel}
+                          className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm flex items-center gap-2"
+                          disabled={interventionsBusy || interventions.length === 0}
+                        >
+                          <Download size={18} />
+                          Exporter Excel
+                        </button>
+                      )}
                       {isAdmin && (
                         <button
                           onClick={handleSendJ1}
@@ -2405,6 +2980,17 @@ import {
                 >
                   Fermer
                 </button>
+                {canExportExcel && (
+                  <button
+                    type="button"
+                    disabled={selectedDayEvents.length === 0}
+                    onClick={handleExportSelectedDayExcel}
+                    className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold disabled:bg-gray-400 flex items-center gap-2"
+                  >
+                    <Download size={18} />
+                    Exporter Excel
+                  </button>
+                )}
                 {canGenerateFiche && (
                   <button
                     disabled={selectedDayEvents.length === 0}
@@ -2835,12 +3421,24 @@ import {
                   <h3 className="text-2xl font-bold text-gray-800">
                     {currentMonth.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
                   </h3>
-                  <button
-                    onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
-                    className="bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700"
-                  >
-                    Mois suivant →
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
+                      className="bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700"
+                    >
+                      Mois suivant →
+                    </button>
+                    {canExportExcel && (
+                      <button
+                        type="button"
+                        onClick={handleExportCalendarMonthExcel}
+                        className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold flex items-center gap-2"
+                      >
+                        <Download size={18} />
+                        Exporter Excel
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-7 gap-2 mb-2">

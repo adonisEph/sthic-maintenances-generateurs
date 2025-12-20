@@ -45,10 +45,10 @@ export async function onRequestGet({ request, env, data }) {
       binds.push(status);
     }
 
-    if (data.user.role !== 'admin') {
+    if (data.user.role === 'technician') {
       where += ' AND technician_user_id = ?';
       binds.push(data.user.id);
-    } else if (technicianUserId) {
+    } else if (data.user.role === 'admin' && technicianUserId) {
       where += ' AND technician_user_id = ?';
       binds.push(String(technicianUserId));
     }
