@@ -30,6 +30,7 @@ import {
   const [interventionsStatus, setInterventionsStatus] = useState('all');
   const [interventionsBusy, setInterventionsBusy] = useState(false);
   const [interventionsError, setInterventionsError] = useState('');
+  const [planningAssignments, setPlanningAssignments] = useState({});
   const [siteToDelete, setSiteToDelete] = useState(null);
   const [selectedSite, setSelectedSite] = useState(null);
   const [filterTechnician, setFilterTechnician] = useState('all');
@@ -181,18 +182,32 @@ import {
     return `${String(siteId || '')}|${String(plannedDate || '')}|${String(epvType || '')}`;
   };
 
-  const handlePlanIntervention = async ({ siteId, plannedDate, epvType, technicianName }) => {
+  const handlePlanIntervention = async ({ siteId, plannedDate, epvType, technicianName, technicianUserId }) => {
     try {
       const techUsers = Array.isArray(users) ? users.filter((u) => u && u.role === 'technician') : [];
-      const matched = techUsers.find((u) => String(u.technicianName || '').trim() === String(technicianName || '').trim());
+      const matched = technicianUserId
+        ? techUsers.find((u) => String(u.id) === String(technicianUserId))
+        : techUsers.find((u) => String(u.technicianName || '').trim() === String(technicianName || '').trim());
+
+      if (!matched?.id) {
+        setInterventionsError('Veuillez sélectionner un technicien avant de planifier.' );
+        return;
+      }
+
+      const finalTechnicianName = String(matched.technicianName || '').trim();
+      if (!finalTechnicianName) {
+        setInterventionsError("Le technicien sélectionné n'a pas de nom de technicien configuré.");
+        return;
+      }
+
       await apiFetchJson('/api/interventions', {
         method: 'POST',
         body: JSON.stringify({
           siteId,
           plannedDate,
           epvType,
-          technicianName,
-          technicianUserId: matched?.id || null
+          technicianName: finalTechnicianName,
+          technicianUserId: matched.id
         })
       });
       await loadInterventions();
@@ -1471,6 +1486,7 @@ import {
                   onClick={() => {
                     setShowInterventions(false);
                     setInterventionsError('');
+                    setPlanningAssignments({});
                   }}
                   className="hover:bg-emerald-800 p-2 rounded"
                 >
@@ -1554,6 +1570,18 @@ import {
                     </div>
 
                     {(() => {
+                      const techUsers = (Array.isArray(users) ? users : [])
+                        .filter((u) => u && u.role === 'technician')
+                        .slice()
+                        .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')));
+
+                      const findTechUserIdByName = (name) => {
+                        const needle = String(name || '').trim();
+                        if (!needle) return '';
+                        const found = techUsers.find((u) => String(u.technicianName || '').trim() === needle);
+                        return found?.id ? String(found.id) : '';
+                      };
+
                       const plannedEvents = filteredSites
                         .filter((s) => s && !s.retired)
                         .flatMap((site) => {
@@ -1594,12 +1622,43 @@ import {
                                 {already.has(ev.key) ? (
                                   <span className="text-xs bg-green-100 text-green-800 border border-green-200 px-2 py-1 rounded font-semibold">Déjà planifiée</span>
                                 ) : (
-                                  <button
-                                    onClick={() => handlePlanIntervention(ev)}
-                                    className="bg-emerald-700 text-white px-3 py-2 rounded-lg hover:bg-emerald-800 font-semibold text-sm"
-                                  >
-                                    Planifier
-                                  </button>
+                                  (() => {
+                                    const selectedTechId =
+                                      planningAssignments?.[ev.key] ||
+                                      findTechUserIdByName(ev.technicianName) ||
+                                      '';
+
+                                    return (
+                                      <>
+                                        <select
+                                          value={selectedTechId}
+                                          onChange={(e) => {
+                                            const v = String(e.target.value || '');
+                                            setPlanningAssignments((prev) => ({
+                                              ...(prev || {}),
+                                              [ev.key]: v
+                                            }));
+                                          }}
+                                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                                        >
+                                          <option value="">-- Technicien --</option>
+                                          {techUsers.map((u) => (
+                                            <option key={u.id} value={u.id}>
+                                              {u.technicianName || u.email}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <button
+                                          onClick={() => handlePlanIntervention({ ...ev, technicianUserId: selectedTechId })}
+                                          className="bg-emerald-700 text-white px-3 py-2 rounded-lg hover:bg-emerald-800 font-semibold text-sm disabled:bg-gray-400 disabled:hover:bg-gray-400"
+                                          disabled={!selectedTechId}
+                                          title={!selectedTechId ? 'Sélectionner un technicien' : ''}
+                                        >
+                                          Planifier
+                                        </button>
+                                      </>
+                                    );
+                                  })()
                                 )}
                               </div>
                             </div>
@@ -1673,6 +1732,7 @@ import {
                   onClick={() => {
                     setShowInterventions(false);
                     setInterventionsError('');
+                    setPlanningAssignments({});
                   }}
                   className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
                 >
