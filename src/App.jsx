@@ -46,7 +46,7 @@ import {
   const [siteToDelete, setSiteToDelete] = useState(null);
   const [selectedSite, setSelectedSite] = useState(null);
   const [filterTechnician, setFilterTechnician] = useState('all');
-  const [ticketNumber, setTicketNumber] = useState(1122);
+  const [ticketNumber, setTicketNumber] = useState(1150);
   const [bannerImage, setBannerImage] = useState('');
   const [siteForFiche, setSiteForFiche] = useState(null);
   const [ficheContext, setFicheContext] = useState(null);
@@ -535,7 +535,7 @@ import {
       setSites([]);
       setFicheHistory([]);
       setInterventions([]);
-      setTicketNumber(1122);
+      setTicketNumber(1150);
       setFilterTechnician('all');
       setSelectedSite(null);
       setSiteToDelete(null);
@@ -564,7 +564,7 @@ import {
       console.error('Erreur lors de la suppression:', error);
       setSites([]);
       setFicheHistory([]);
-      setTicketNumber(1122);
+      setTicketNumber(1150);
       setShowResetConfirm(false);
       alert('✅ Données réinitialisées avec succès !');
     }
@@ -1107,28 +1107,49 @@ import {
 
     const rows = [];
     let lastGroup = null;
+    let groupCount = 0;
+    const pushTotalIfNeeded = () => {
+      if (lastGroup === null) return;
+      rows.push({
+        Groupe: 'TOTAL',
+        Date: calendarMonthExportGroupBy === 'date' ? lastGroup : '',
+        Technicien: calendarMonthExportGroupBy === 'technician' ? lastGroup : '',
+        EPV: '',
+        Site: '',
+        IdSite: '',
+        'Nb EPV du groupe': groupCount
+      });
+    };
+
     baseRows.forEach((r) => {
       const gk = groupKeyFor(r);
       if (gk !== lastGroup) {
+        pushTotalIfNeeded();
         lastGroup = gk;
+        groupCount = 0;
         rows.push({
           Groupe: calendarMonthExportGroupBy === 'technician' ? `Technicien: ${gk}` : `Date: ${gk}`,
           Date: '',
           Technicien: '',
           EPV: '',
           Site: '',
-          IdSite: ''
+          IdSite: '',
+          'Nb EPV du groupe': ''
         });
       }
+      groupCount += 1;
       rows.push({
         Groupe: '',
         Date: r.Date,
         Technicien: r.Technicien,
         EPV: r.EPV,
         Site: r.Site,
-        IdSite: r.IdSite
+        IdSite: r.IdSite,
+        'Nb EPV du groupe': ''
       });
     });
+
+    pushTotalIfNeeded();
 
     exportXlsx({
       fileBaseName: `Calendrier_${yyyymm}_${new Date().toISOString().slice(0, 10)}`,
