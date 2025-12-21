@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AlertCircle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useStorage } from './hooks/useStorage';
@@ -47,6 +47,12 @@ import {
   const [selectedSite, setSelectedSite] = useState(null);
   const [filterTechnician, setFilterTechnician] = useState('all');
   const [ticketNumber, setTicketNumber] = useState(1150);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [importStep, setImportStep] = useState('');
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
+  const [exportStep, setExportStep] = useState('');
   const [bannerImage, setBannerImage] = useState('');
   const [siteForFiche, setSiteForFiche] = useState(null);
   const [ficheContext, setFicheContext] = useState(null);
@@ -114,6 +120,34 @@ import {
       throw new Error(msg);
     }
     return data;
+  };
+
+  const exportBusyRef = useRef(false);
+  useEffect(() => {
+    exportBusyRef.current = Boolean(exportBusy);
+  }, [exportBusy]);
+
+  const runExport = async ({ label, fn }) => {
+    if (exportBusyRef.current) return false;
+    setExportBusy(true);
+    setExportProgress(10);
+    setExportStep(String(label || 'Export…'));
+    await new Promise((r) => setTimeout(r, 20));
+    try {
+      setExportProgress(35);
+      await fn();
+      setExportProgress(100);
+      return true;
+    } catch (e) {
+      alert(e?.message || "Erreur lors de l'export.");
+      return false;
+    } finally {
+      setTimeout(() => {
+        setExportBusy(false);
+        setExportProgress(0);
+        setExportStep('');
+      }, 600);
+    }
   };
 
   const refreshUsers = async () => {
@@ -762,29 +796,51 @@ import {
     }
 
     const reader = new FileReader();
+    setImportBusy(true);
+    setImportProgress(0);
+    setImportStep('Lecture du fichier…');
+
+    reader.onprogress = (evt) => {
+      try {
+        if (!evt || !evt.total) return;
+        const pct = Math.max(0, Math.min(20, Math.round((evt.loaded / evt.total) * 20)));
+        setImportProgress(pct);
+      } catch {
+        // ignore
+      }
+    };
+
     reader.onload = async (event) => {
       try {
+        setImportStep('Analyse du fichier Excel…');
+        setImportProgress((p) => Math.max(p, 25));
         const data = new Uint8Array(event.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         const jsonData = XLSX.utils.sheet_to_json(firstSheet);
 
+        setImportStep('Préparation des sites…');
+        setImportProgress((p) => Math.max(p, 40));
+
         console.log('Données importées:', jsonData);
         console.log('Première ligne:', jsonData[0]);
 
-        const importedSites = jsonData.map((row, index) => {
+        const importedSites = [];
+        const total = Array.isArray(jsonData) ? jsonData.length : 0;
+        for (let index = 0; index < total; index += 1) {
+          const row = jsonData[index] || {};
           if (!row['Name Site'] && !row['NameSite']) {
-            return null;
+            continue;
           }
 
           const nh1 = parseInt(row['NH1 DV'] || row['NH1DV'] || 0);
           const nh2 = parseInt(row['NH2 A'] || row['NH2A'] || 0);
-          
+
           const dateDV = row['Date DV'] || row['DateDV'];
           const dateA = row['Date A'] || row['DateA'];
-          
+
           let dateDVStr, dateAStr;
-          
+
           if (typeof dateDV === 'number') {
             const dvDate = XLSX.SSF.parse_date_code(dateDV);
             dateDVStr = `${dvDate.y}-${String(dvDate.m).padStart(2, '0')}-${String(dvDate.d).padStart(2, '0')}`;
@@ -793,7 +849,7 @@ import {
           } else {
             dateDVStr = new Date().toISOString().split('T')[0];
           }
-          
+
           if (typeof dateA === 'number') {
             const aDate = XLSX.SSF.parse_date_code(dateA);
             dateAStr = `${aDate.y}-${String(aDate.m).padStart(2, '0')}-${String(aDate.d).padStart(2, '0')}`;
@@ -815,7 +871,7 @@ import {
             retired = true;
           }
 
-          return {
+          importedSites.push({
             id: Date.now() + index,
             nameSite: row['Name Site'] || row['NameSite'] || `Site ${index + 1}`,
             idSite: row['ID Site'] || row['IDSite'] || row['Id Site'] || `ID${index + 1}`,
@@ -834,67 +890,96 @@ import {
             seuil: 250,
             retired,
             ...epvDates
-          };
-        }).filter(site => site !== null);
+          });
 
+          if (index % 50 === 0) {
+            const pct = 40 + Math.round(((index + 1) / Math.max(1, total)) * 40);
+            setImportProgress((p) => Math.max(p, Math.min(80, pct)));
+            setImportStep(`Préparation des sites… (${index + 1}/${total})`);
+          }
+        }
+
+        setImportProgress((p) => Math.max(p, 80));
+
+        setImportStep('Envoi vers le serveur…');
+        setImportProgress((p) => Math.max(p, 85));
         console.log('Sites importés:', importedSites);
         await apiFetchJson('/api/sites/bulk-replace', {
           method: 'POST',
           body: JSON.stringify({ sites: importedSites })
         });
+        setImportStep('Actualisation…');
+        setImportProgress((p) => Math.max(p, 95));
         await loadData();
+        setImportProgress(100);
         alert(`✅ ${importedSites.length} sites importés avec succès !`);
       } catch (error) {
         console.error('Erreur lors de l\'import:', error);
         alert('❌ Erreur lors de l\'import du fichier Excel. Vérifiez la console pour plus de détails.');
+      } finally {
+        setImportBusy(false);
+        setTimeout(() => {
+          setImportStep('');
+          setImportProgress(0);
+        }, 500);
       }
     };
     reader.readAsArrayBuffer(file);
     e.target.value = '';
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     const ok = window.confirm('Exporter la liste des sites en Excel ?');
     if (!ok) return;
-    const exportData = sites.map(site => {
-      const updatedSite = getUpdatedSite(site);
-      return {
-        'Techniciens': updatedSite.technician,
-        'ID Site': updatedSite.idSite,
-        'Name Site': updatedSite.nameSite,
-        'Generateur': updatedSite.generateur,
-        'Capacité': updatedSite.capacite,
-        'Kit Vidange': updatedSite.kitVidange,
-        'Régime': updatedSite.regime,
-        'NH1 DV': updatedSite.nh1DV,
-        'Date DV': formatDate(updatedSite.dateDV),
-        'NH2 A': updatedSite.nh2A,
-        'Date A': formatDate(updatedSite.dateA),
-        'NH Estimé': updatedSite.nhEstimated,
-        'Diff NHs': updatedSite.diffNHs,
-        'Diff Estimée': updatedSite.diffEstimated,
-        'Seuil': updatedSite.seuil,
-        'Date EPV 1': formatDate(updatedSite.epv1),
-        'Jours EPV 1': getDaysUntil(updatedSite.epv1),
-        'Date EPV 2': formatDate(updatedSite.epv2),
-        'Jours EPV 2': getDaysUntil(updatedSite.epv2),
-        'Date EPV 3': formatDate(updatedSite.epv3),
-        'Jours EPV 3': getDaysUntil(updatedSite.epv3),
-        'Retiré': updatedSite.retired ? 'VRAI' : 'FAUX'
-      };
+
+    const done = await runExport({
+      label: 'Export Excel (sites)…',
+      fn: async () => {
+        const exportData = sites.map(site => {
+          const updatedSite = getUpdatedSite(site);
+          return {
+            'Techniciens': updatedSite.technician,
+            'ID Site': updatedSite.idSite,
+            'Name Site': updatedSite.nameSite,
+            'Generateur': updatedSite.generateur,
+            'Capacité': updatedSite.capacite,
+            'Kit Vidange': updatedSite.kitVidange,
+            'Régime': updatedSite.regime,
+            'NH1 DV': updatedSite.nh1DV,
+            'Date DV': formatDate(updatedSite.dateDV),
+            'NH2 A': updatedSite.nh2A,
+            'Date A': formatDate(updatedSite.dateA),
+            'NH Estimé': updatedSite.nhEstimated,
+            'Diff NHs': updatedSite.diffNHs,
+            'Diff Estimée': updatedSite.diffEstimated,
+            'Seuil': updatedSite.seuil,
+            'Date EPV 1': formatDate(updatedSite.epv1),
+            'Jours EPV 1': getDaysUntil(updatedSite.epv1),
+            'Date EPV 2': formatDate(updatedSite.epv2),
+            'Jours EPV 2': getDaysUntil(updatedSite.epv2),
+            'Date EPV 3': formatDate(updatedSite.epv3),
+            'Jours EPV 3': getDaysUntil(updatedSite.epv3),
+            'Retiré': updatedSite.retired ? 'VRAI' : 'FAUX'
+          };
+        });
+
+        exportXlsx({
+          fileBaseName: `Planning_Vidanges_${new Date().toISOString().split('T')[0]}`,
+          sheets: [{ name: 'Vidanges', rows: exportData }]
+        });
+      }
     });
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Vidanges');
-    XLSX.writeFile(wb, `Planning_Vidanges_${new Date().toISOString().split('T')[0]}.xlsx`);
-    alert('✅ Export Excel généré.');
+    if (done) alert('✅ Export Excel généré.');
   };
 
   const exportXlsx = ({ fileBaseName, sheets }) => {
     const base = String(fileBaseName || 'export').trim() || 'export';
     const safeBase = base.replace(/[\\/:*?"<>|]+/g, '_');
     const wb = XLSX.utils.book_new();
+    if (exportBusyRef.current) {
+      setExportProgress((p) => Math.max(p, 55));
+    }
     (Array.isArray(sheets) ? sheets : []).forEach((sh, idx) => {
       const nameRaw = String(sh?.name || `Feuille${idx + 1}`);
       const name = nameRaw.trim().slice(0, 31) || `Feuille${idx + 1}`;
@@ -902,7 +987,13 @@ import {
       const ws = XLSX.utils.json_to_sheet(rows);
       XLSX.utils.book_append_sheet(wb, ws, name);
     });
+    if (exportBusyRef.current) {
+      setExportProgress((p) => Math.max(p, 80));
+    }
     XLSX.writeFile(wb, `${safeBase}.xlsx`);
+    if (exportBusyRef.current) {
+      setExportProgress((p) => Math.max(p, 95));
+    }
   };
 
   const computeDashboardData = (yyyymm) => {
@@ -939,28 +1030,33 @@ import {
     return { plannedEvents, remainingEvents, contractOk, contractOver };
   };
 
-  const handleExportDashboardSummaryExcel = () => {
+  const handleExportDashboardSummaryExcel = async () => {
     const ok = window.confirm(`Exporter le résumé Dashboard (${dashboardMonth}) en Excel ?`);
     if (!ok) return;
-    const { plannedEvents, remainingEvents, contractOk, contractOver } = computeDashboardData(dashboardMonth);
-    exportXlsx({
-      fileBaseName: `Dashboard_${dashboardMonth}_resume_${new Date().toISOString().slice(0, 10)}`,
-      sheets: [
-        {
-          name: 'Résumé',
-          rows: [
-            { Section: 'Dans délai contractuel', Count: contractOk.length, Mois: dashboardMonth },
-            { Section: 'Hors délai contractuel', Count: contractOver.length, Mois: dashboardMonth },
-            { Section: 'Planifiées du mois', Count: plannedEvents.length, Mois: dashboardMonth },
-            { Section: 'Restantes du mois', Count: remainingEvents.length, Mois: dashboardMonth }
+    const done = await runExport({
+      label: 'Export Excel (dashboard résumé)…',
+      fn: async () => {
+        const { plannedEvents, remainingEvents, contractOk, contractOver } = computeDashboardData(dashboardMonth);
+        exportXlsx({
+          fileBaseName: `Dashboard_${dashboardMonth}_resume_${new Date().toISOString().slice(0, 10)}`,
+          sheets: [
+            {
+              name: 'Résumé',
+              rows: [
+                { Section: 'Dans délai contractuel', Count: contractOk.length, Mois: dashboardMonth },
+                { Section: 'Hors délai contractuel', Count: contractOver.length, Mois: dashboardMonth },
+                { Section: 'Planifiées du mois', Count: plannedEvents.length, Mois: dashboardMonth },
+                { Section: 'Restantes du mois', Count: remainingEvents.length, Mois: dashboardMonth }
+              ]
+            }
           ]
-        }
-      ]
+        });
+      }
     });
-    alert('✅ Export Excel généré.');
+    if (done) alert('✅ Export Excel généré.');
   };
 
-  const handleExportDashboardDetailsExcel = () => {
+  const handleExportDashboardDetailsExcel = async () => {
     const ok = window.confirm('Exporter ces détails Dashboard en Excel ?');
     if (!ok) return;
     const kind = String(dashboardDetails?.kind || '');
@@ -986,14 +1082,19 @@ import {
         DatePlanifiée: ev.plannedDate
       }));
 
-    exportXlsx({
-      fileBaseName: `Dashboard_${dashboardMonth}_${kind}_${new Date().toISOString().slice(0, 10)}`,
-      sheets: [{ name: 'Détails', rows }]
+    const done = await runExport({
+      label: 'Export Excel (dashboard détails)…',
+      fn: async () => {
+        exportXlsx({
+          fileBaseName: `Dashboard_${dashboardMonth}_${kind}_${new Date().toISOString().slice(0, 10)}`,
+          sheets: [{ name: 'Détails', rows }]
+        });
+      }
     });
-    alert('✅ Export Excel généré.');
+    if (done) alert('✅ Export Excel généré.');
   };
 
-  const handleExportScoringDetailsExcel = () => {
+  const handleExportScoringDetailsExcel = async () => {
     const ok = window.confirm(`Exporter ces détails Scoring (${scoringMonth}) en Excel ?`);
     if (!ok) return;
     const kind = String(scoringDetails?.kind || '');
@@ -1030,14 +1131,19 @@ import {
         StatutContractuel: f.isWithinContract === true ? 'Dans délai' : f.isWithinContract === false ? 'Hors délai' : 'N/A'
       }));
 
-    exportXlsx({
-      fileBaseName: `Scoring_${scoringMonth}_${kind}_${new Date().toISOString().slice(0, 10)}`,
-      sheets: [{ name: 'Détails', rows }]
+    const done = await runExport({
+      label: 'Export Excel (scoring)…',
+      fn: async () => {
+        exportXlsx({
+          fileBaseName: `Scoring_${scoringMonth}_${kind}_${new Date().toISOString().slice(0, 10)}`,
+          sheets: [{ name: 'Détails', rows }]
+        });
+      }
     });
-    alert('✅ Export Excel généré.');
+    if (done) alert('✅ Export Excel généré.');
   };
 
-  const handleExportSelectedDayExcel = () => {
+  const handleExportSelectedDayExcel = async () => {
     const ok = window.confirm('Exporter les détails de ce jour en Excel ?');
     if (!ok) return;
     const items = Array.isArray(selectedDayEvents) ? selectedDayEvents : [];
@@ -1049,14 +1155,19 @@ import {
       IdSite: evt?.site?.idSite || '',
       Technicien: evt?.site?.technician || ''
     }));
-    exportXlsx({
-      fileBaseName: `Calendrier_${selectedDate || 'jour'}_${new Date().toISOString().slice(0, 10)}`,
-      sheets: [{ name: 'Jour', rows }]
+    const done = await runExport({
+      label: 'Export Excel (calendrier jour)…',
+      fn: async () => {
+        exportXlsx({
+          fileBaseName: `Calendrier_${selectedDate || 'jour'}_${new Date().toISOString().slice(0, 10)}`,
+          sheets: [{ name: 'Jour', rows }]
+        });
+      }
     });
-    alert('✅ Export Excel généré.');
+    if (done) alert('✅ Export Excel généré.');
   };
 
-  const handleExportCalendarMonthExcel = () => {
+  const handleExportCalendarMonthExcel = async () => {
     const label = calendarMonthExportGroupBy === 'technician' ? 'technicien' : 'date';
     const ok = window.confirm(`Exporter toutes les EPV du mois affiché en Excel (groupé par ${label}) ?`);
     if (!ok) return;
@@ -1152,14 +1263,19 @@ import {
 
     pushTotalIfNeeded();
 
-    exportXlsx({
-      fileBaseName: `Calendrier_${yyyymm}_${new Date().toISOString().slice(0, 10)}`,
-      sheets: [{ name: 'Mois', rows }]
+    const done = await runExport({
+      label: 'Export Excel (calendrier mois)…',
+      fn: async () => {
+        exportXlsx({
+          fileBaseName: `Calendrier_${yyyymm}_${new Date().toISOString().slice(0, 10)}`,
+          sheets: [{ name: 'Mois', rows }]
+        });
+      }
     });
-    alert('✅ Export Excel généré.');
+    if (done) alert('✅ Export Excel généré.');
   };
 
-  const handleExportInterventionsExcel = () => {
+  const handleExportInterventionsExcel = async () => {
     const ok = window.confirm('Exporter la liste des interventions affichées en Excel ?');
     if (!ok) return;
     const siteById = new Map((Array.isArray(sites) ? sites : []).map((s) => [String(s.id), s]));
@@ -1183,11 +1299,16 @@ import {
           InterventionId: it.id
         };
       });
-      exportXlsx({
-        fileBaseName: `Interventions_${interventionsMonth}_${interventionsStatus}_${interventionsTechnicianUserId}_${new Date().toISOString().slice(0, 10)}`,
-        sheets: [{ name: 'Interventions', rows }]
+      const done = await runExport({
+        label: 'Export Excel (interventions)…',
+        fn: async () => {
+          exportXlsx({
+            fileBaseName: `Interventions_${interventionsMonth}_${interventionsStatus}_${interventionsTechnicianUserId}_${new Date().toISOString().slice(0, 10)}`,
+            sheets: [{ name: 'Interventions', rows }]
+          });
+        }
       });
-      alert('✅ Export Excel généré.');
+      if (done) alert('✅ Export Excel généré.');
       return;
     }
 
@@ -1213,15 +1334,20 @@ import {
         };
       });
 
-      exportXlsx({
-        fileBaseName: `Interventions_${interventionsMonth}_${interventionsStatus}_viewer_${new Date().toISOString().slice(0, 10)}`,
-        sheets: [
-          { name: "Aujourd'hui", rows: toRows(todayItems) },
-          { name: 'Demain', rows: toRows(tomorrowItems) },
-          { name: 'Toutes', rows: toRows(list) }
-        ]
+      const done = await runExport({
+        label: 'Export Excel (interventions)…',
+        fn: async () => {
+          exportXlsx({
+            fileBaseName: `Interventions_${interventionsMonth}_${interventionsStatus}_viewer_${new Date().toISOString().slice(0, 10)}`,
+            sheets: [
+              { name: "Aujourd'hui", rows: toRows(todayItems) },
+              { name: 'Demain', rows: toRows(tomorrowItems) },
+              { name: 'Toutes', rows: toRows(list) }
+            ]
+          });
+        }
       });
-      alert('✅ Export Excel généré.');
+      if (done) alert('✅ Export Excel généré.');
     }
   };
 
@@ -1468,6 +1594,85 @@ import {
     }
   }, [showInterventions, isTechnician, authUser?.id, interventions, technicianSeenSentAt]);
 
+  useEffect(() => {
+    if (!authUser?.id) return;
+    if (authUser?.role === 'admin') return;
+
+    let isActive = true;
+    let isRefreshing = false;
+    let isChecking = false;
+    let lastVersion = null;
+
+    const refreshAll = async () => {
+      if (!isActive) return;
+      if (isRefreshing) return;
+      isRefreshing = true;
+      try {
+        await loadData();
+      } catch {
+        // ignore
+      }
+      try {
+        await loadFicheHistory();
+      } catch {
+        // ignore
+      }
+      try {
+        await loadInterventions(interventionsMonth, interventionsStatus, interventionsTechnicianUserId);
+      } catch {
+        // ignore
+      }
+      isRefreshing = false;
+    };
+
+    const checkVersion = async () => {
+      if (!isActive) return;
+      if (isChecking) return;
+      isChecking = true;
+      try {
+        const data = await apiFetchJson('/api/meta/version', { method: 'GET' });
+        const v = String(data?.version || '');
+        if (!v) return;
+        if (lastVersion === null) {
+          lastVersion = v;
+          await refreshAll();
+          return;
+        }
+        if (v !== lastVersion) {
+          lastVersion = v;
+          await refreshAll();
+        }
+      } catch {
+        // ignore
+      } finally {
+        isChecking = false;
+      }
+    };
+
+    checkVersion();
+    const intervalId = setInterval(checkVersion, 5000);
+    const onFocus = () => checkVersion();
+    const onVisibility = () => {
+      if (!document.hidden) checkVersion();
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      isActive = false;
+      clearInterval(intervalId);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [
+    authUser?.id,
+    authUser?.role,
+    interventionsMonth,
+    interventionsStatus,
+    interventionsTechnicianUserId
+  ]);
+
   const monthToRange = (yyyymm) => {
     const [y, m] = String(yyyymm || '').split('-').map((v) => Number(v));
     if (!y || !m) return null;
@@ -1593,6 +1798,20 @@ import {
 
   return (
     <div className="min-h-screen bg-gray-50 p-2 sm:p-4 md:p-6">
+      {exportBusy && (
+        <div className="fixed inset-0 z-[60] bg-black/30 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-5">
+            <div className="font-bold text-gray-800 mb-1">Export en cours…</div>
+            <div className="text-sm text-gray-600 mb-3">{exportStep || 'Préparation…'} ({exportProgress}%)</div>
+            <div className="w-full h-2 bg-gray-200 rounded">
+              <div
+                className="h-2 bg-slate-800 rounded"
+                style={{ width: `${Math.max(0, Math.min(100, Number(exportProgress) || 0))}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
       <style>{`
         @media print {
           @page { size: A4; margin: 0; }
@@ -1674,23 +1893,42 @@ import {
             )}
             
             {canImportExport && (
-              <label className="bg-green-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-green-700 flex items-center justify-center gap-2 cursor-pointer text-sm sm:text-base">
-                <Upload size={18} />
-                <span className="hidden sm:inline">Importer Excel</span>
-                <span className="sm:hidden">Import</span>
-                <input
-                  type="file"
-                  accept=".xlsx,.xls"
-                  onChange={handleImportExcel}
-                  className="hidden"
-                />
-              </label>
+              <div className="flex flex-col gap-2">
+                <label
+                  className={`bg-green-600 text-white px-3 sm:px-4 py-2 rounded-lg flex items-center justify-center gap-2 text-sm sm:text-base ${
+                    importBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-green-700 cursor-pointer'
+                  }`}
+                >
+                  <Upload size={18} />
+                  <span className="hidden sm:inline">{importBusy ? 'Import en cours…' : 'Importer Excel'}</span>
+                  <span className="sm:hidden">{importBusy ? '…' : 'Import'}</span>
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={handleImportExcel}
+                    className="hidden"
+                    disabled={importBusy}
+                  />
+                </label>
+
+                {importBusy && (
+                  <div className="w-full max-w-xs">
+                    <div className="text-[11px] text-gray-600 mb-1">{importStep || 'Import…'} ({importProgress}%)</div>
+                    <div className="w-full h-2 bg-gray-200 rounded">
+                      <div
+                        className="h-2 bg-green-600 rounded"
+                        style={{ width: `${Math.max(0, Math.min(100, Number(importProgress) || 0))}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
 
             {canImportExport && (
               <button
                 onClick={handleExportExcel}
-                disabled={sites.length === 0}
+                disabled={sites.length === 0 || exportBusy || importBusy}
                 className="bg-purple-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-purple-700 flex items-center justify-center gap-2 disabled:bg-gray-400 text-sm sm:text-base"
               >
                 <Download size={18} />
@@ -1840,6 +2078,7 @@ import {
                   type="button"
                   onClick={handleExportDashboardSummaryExcel}
                   className="bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-sm font-semibold"
+                  disabled={exportBusy}
                 >
                   <Download size={16} />
                   Exporter Excel
@@ -1986,6 +2225,7 @@ import {
                     type="button"
                     onClick={handleExportDashboardDetailsExcel}
                     className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold flex items-center gap-2 mr-2"
+                    disabled={exportBusy}
                   >
                     <Download size={18} />
                     Exporter Excel
@@ -2143,6 +2383,7 @@ import {
                                   type="button"
                                   onClick={handleExportScoringDetailsExcel}
                                   className="bg-slate-700 text-white px-3 py-1.5 rounded-lg hover:bg-slate-800 text-sm font-semibold flex items-center gap-2"
+                                  disabled={exportBusy}
                                 >
                                   <Download size={16} />
                                   Exporter Excel
@@ -2412,7 +2653,7 @@ import {
                           type="button"
                           onClick={handleExportInterventionsExcel}
                           className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm flex items-center gap-2"
-                          disabled={interventionsBusy || interventions.length === 0}
+                          disabled={exportBusy || interventionsBusy || interventions.length === 0}
                         >
                           <Download size={18} />
                           Exporter Excel
@@ -3177,9 +3418,9 @@ import {
                 {canExportExcel && (
                   <button
                     type="button"
-                    disabled={selectedDayEvents.length === 0}
                     onClick={handleExportSelectedDayExcel}
                     className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold disabled:bg-gray-400 flex items-center gap-2"
+                    disabled={exportBusy || selectedDayEvents.length === 0}
                   >
                     <Download size={18} />
                     Exporter Excel
@@ -3638,6 +3879,7 @@ import {
                         type="button"
                         onClick={handleExportCalendarMonthExcel}
                         className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold flex items-center gap-2"
+                        disabled={exportBusy}
                       >
                         <Download size={18} />
                         Exporter Excel

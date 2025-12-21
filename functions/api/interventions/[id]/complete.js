@@ -1,7 +1,7 @@
 import { ensureAdminUser } from '../../_utils/db.js';
 import { json, requireAuth, readJson, isoNow, ymdToday } from '../../_utils/http.js';
 import { calculateEPVDates } from '../../_utils/calc.js';
-import { nextTicketNumber, formatTicket } from '../../_utils/meta.js';
+import { nextTicketNumber, formatTicket, touchLastUpdatedAt } from '../../_utils/meta.js';
 
 export async function onRequestPost({ request, env, data, params }) {
   try {
@@ -102,6 +102,8 @@ export async function onRequestPost({ request, env, data, params }) {
         now
       )
       .run();
+
+    await touchLastUpdatedAt(env);
 
     return json({ ok: true, epv: epvDates }, { status: 200 });
   } catch (e) {

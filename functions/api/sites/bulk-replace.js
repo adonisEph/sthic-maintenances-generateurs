@@ -1,5 +1,6 @@
 import { ensureAdminUser } from '../_utils/db.js';
 import { json, requireAdmin, readJson, isoNow, newId } from '../_utils/http.js';
+import { touchLastUpdatedAt } from '../_utils/meta.js';
 
 export async function onRequestPost({ request, env, data }) {
   try {
@@ -40,6 +41,8 @@ export async function onRequestPost({ request, env, data }) {
         )
         .run();
     }
+
+    await touchLastUpdatedAt(env);
 
     return json({ ok: true, count: sites.length }, { status: 200 });
   } catch (e) {

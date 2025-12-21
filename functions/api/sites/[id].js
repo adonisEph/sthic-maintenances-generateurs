@@ -1,5 +1,6 @@
 import { ensureAdminUser } from '../_utils/db.js';
 import { json, requireAdmin, readJson, isoNow } from '../_utils/http.js';
+import { touchLastUpdatedAt } from '../_utils/meta.js';
 
 function mapSiteRow(row) {
   if (!row) return null;
@@ -82,6 +83,8 @@ export async function onRequestPatch({ request, env, data, params }) {
       )
       .run();
 
+    await touchLastUpdatedAt(env);
+
     const updated = await env.DB.prepare('SELECT * FROM sites WHERE id = ?').bind(id).first();
     return json({ site: mapSiteRow(updated) }, { status: 200 });
   } catch (e) {
@@ -102,6 +105,8 @@ export async function onRequestDelete({ env, data, params }) {
 
     await env.DB.prepare('DELETE FROM sites WHERE id = ?').bind(id).run();
     await env.DB.prepare('DELETE FROM interventions WHERE site_id = ?').bind(id).run();
+
+    await touchLastUpdatedAt(env);
 
     return json({ ok: true }, { status: 200 });
   } catch (e) {

@@ -1,5 +1,6 @@
 import { hashPassword } from '../../_utils/auth.js';
 import { ensureAdminUser, isoNow, mapUserPublic, normalizeEmailInput } from '../_utils/db.js';
+import { touchLastUpdatedAt } from '../_utils/meta.js';
 
 function json(data, init = {}) {
   const headers = new Headers(init.headers || {});
@@ -46,6 +47,8 @@ export async function onRequestPatch({ request, env, data, params }) {
     .bind(nextEmail, nextRole, nextTechnicianName, now, id)
     .run();
 
+  await touchLastUpdatedAt(env);
+
   const updated = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first();
   return json({ user: mapUserPublic(updated) }, { status: 200 });
 }
@@ -68,6 +71,7 @@ export async function onRequestDelete({ env, data, params }) {
   }
 
   await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id).run();
+  await touchLastUpdatedAt(env);
   return json({ ok: true }, { status: 200 });
 }
 
@@ -93,6 +97,8 @@ export async function onRequestPost({ request, env, data, params }) {
   await env.DB.prepare('UPDATE users SET password_hash = ?, password_salt = ?, password_iters = ?, updated_at = ? WHERE id = ?')
     .bind(hash, salt, iters, now, id)
     .run();
+
+  await touchLastUpdatedAt(env);
 
   const updated = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first();
   return json({ user: mapUserPublic(updated) }, { status: 200 });

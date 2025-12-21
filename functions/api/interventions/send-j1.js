@@ -1,5 +1,6 @@
 import { ensureAdminUser } from '../_utils/db.js';
 import { json, requireAdmin, ymdToday, isoNow } from '../_utils/http.js';
+import { touchLastUpdatedAt } from '../_utils/meta.js';
 
 function ymdAddDays(ymd, days) {
   const d = new Date(ymd);
@@ -21,6 +22,10 @@ export async function onRequestPost({ env, data }) {
     )
       .bind(now, now, tomorrow)
       .run();
+
+    if ((res?.meta?.changes || 0) > 0) {
+      await touchLastUpdatedAt(env);
+    }
 
     return json({ ok: true, plannedDate: tomorrow, updated: res?.meta?.changes || 0 }, { status: 200 });
   } catch (e) {

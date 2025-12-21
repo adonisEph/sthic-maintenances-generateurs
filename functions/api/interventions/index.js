@@ -1,5 +1,6 @@
 import { ensureAdminUser } from '../_utils/db.js';
 import { json, requireAdmin, requireAuth, readJson, isoNow, newId, ymdToday } from '../_utils/http.js';
+import { touchLastUpdatedAt } from '../_utils/meta.js';
 
 function mapRow(row) {
   if (!row) return null;
@@ -86,6 +87,8 @@ export async function onRequestPost({ request, env, data }) {
     )
       .bind(id, siteId, plannedDate, epvType, technicianUserId, technicianName, 'planned', data.user.id, now, now)
       .run();
+
+    await touchLastUpdatedAt(env);
 
     const created = await env.DB.prepare('SELECT * FROM interventions WHERE id = ?').bind(id).first();
     return json({ intervention: mapRow(created) }, { status: 201 });

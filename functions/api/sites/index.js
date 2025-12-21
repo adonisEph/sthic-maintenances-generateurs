@@ -1,5 +1,6 @@
 import { ensureAdminUser } from '../_utils/db.js';
 import { json, requireAdmin, requireAuth, readJson, isoNow, newId } from '../_utils/http.js';
+import { touchLastUpdatedAt } from '../_utils/meta.js';
 
 function mapSiteRow(row) {
   if (!row) return null;
@@ -77,6 +78,8 @@ export async function onRequestPost({ request, env, data }) {
         now
       )
       .run();
+
+    await touchLastUpdatedAt(env);
 
     const created = await env.DB.prepare('SELECT * FROM sites WHERE id = ?').bind(id).first();
     return json({ site: mapSiteRow(created) }, { status: 201 });

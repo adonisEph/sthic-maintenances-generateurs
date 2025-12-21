@@ -1,5 +1,6 @@
 import { hashPassword } from '../../_utils/auth.js';
 import { ensureAdminUser, isoNow, mapUserPublic, newId, normalizeEmailInput } from '../_utils/db.js';
+import { touchLastUpdatedAt } from '../_utils/meta.js';
 
 function json(data, init = {}) {
   const headers = new Headers(init.headers || {});
@@ -52,6 +53,8 @@ export async function onRequestPost({ request, env, data }) {
   )
     .bind(id, email, role, technicianName, hash, salt, iters, now, now)
     .run();
+
+  await touchLastUpdatedAt(env);
 
   const created = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first();
   return json({ user: mapUserPublic(created) }, { status: 201 });

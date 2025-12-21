@@ -1,5 +1,6 @@
 import { ensureAdminUser } from '../_utils/db.js';
 import { json, requireAdmin } from '../_utils/http.js';
+import { touchLastUpdatedAt } from '../_utils/meta.js';
 
 export async function onRequestPost({ env, data }) {
   try {
@@ -26,6 +27,8 @@ export async function onRequestPost({ env, data }) {
     await env.DB.prepare(
       "INSERT OR REPLACE INTO meta (meta_key, meta_value) VALUES ('ticket_number', '1149')"
     ).run();
+
+    await touchLastUpdatedAt(env);
 
     return json(
       {
