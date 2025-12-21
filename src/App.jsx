@@ -78,6 +78,7 @@ import {
   const [historySort, setHistorySort] = useState('newest');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [calendarMonthExportGroupBy, setCalendarMonthExportGroupBy] = useState('date');
+  const [showDayDetailsModal, setShowDayDetailsModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedDayEvents, setSelectedDayEvents] = useState([]);
   const [isBatchFiche, setIsBatchFiche] = useState(false);
