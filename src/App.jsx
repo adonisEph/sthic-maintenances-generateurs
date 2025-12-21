@@ -77,9 +77,8 @@ import {
   const [historyStatus, setHistoryStatus] = useState('all');
   const [historySort, setHistorySort] = useState('newest');
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [calendarMonthExportGroupBy, setCalendarMonthExportGroupBy] = useState('date');
   const [selectedDate, setSelectedDate] = useState(null);
-  const [selectedSites, setSelectedSites] = useState([]);
-  const [showDayDetailsModal, setShowDayDetailsModal] = useState(false);
   const [selectedDayEvents, setSelectedDayEvents] = useState([]);
   const [isBatchFiche, setIsBatchFiche] = useState(false);
   const [batchFicheSites, setBatchFicheSites] = useState([]);
@@ -1057,7 +1056,8 @@ import {
   };
 
   const handleExportCalendarMonthExcel = () => {
-    const ok = window.confirm('Exporter toutes les EPV du mois affiché en Excel ?');
+    const label = calendarMonthExportGroupBy === 'technician' ? 'technicien' : 'date';
+    const ok = window.confirm(`Exporter toutes les EPV du mois affiché en Excel (groupé par ${label}) ?`);
     if (!ok) return;
     const year = currentMonth?.getFullYear?.();
     const month = currentMonth?.getMonth?.();
@@ -1083,15 +1083,52 @@ import {
       pushIf('EPV3', site.epv3);
     });
 
-    const rows = events
+    const baseRows = events
       .slice()
       .sort((a, b) => {
+        if (calendarMonthExportGroupBy === 'technician') {
+          const t = String(a.Technicien || '').localeCompare(String(b.Technicien || ''));
+          if (t !== 0) return t;
+          const d = String(a.Date || '').localeCompare(String(b.Date || ''));
+          if (d !== 0) return d;
+          return String(a.Site || '').localeCompare(String(b.Site || ''));
+        }
         const d = String(a.Date || '').localeCompare(String(b.Date || ''));
         if (d !== 0) return d;
         const t = String(a.Technicien || '').localeCompare(String(b.Technicien || ''));
         if (t !== 0) return t;
         return String(a.Site || '').localeCompare(String(b.Site || ''));
       });
+
+    const groupKeyFor = (row) => {
+      if (calendarMonthExportGroupBy === 'technician') return String(row?.Technicien || '');
+      return String(row?.Date || '');
+    };
+
+    const rows = [];
+    let lastGroup = null;
+    baseRows.forEach((r) => {
+      const gk = groupKeyFor(r);
+      if (gk !== lastGroup) {
+        lastGroup = gk;
+        rows.push({
+          Groupe: calendarMonthExportGroupBy === 'technician' ? `Technicien: ${gk}` : `Date: ${gk}`,
+          Date: '',
+          Technicien: '',
+          EPV: '',
+          Site: '',
+          IdSite: ''
+        });
+      }
+      rows.push({
+        Groupe: '',
+        Date: r.Date,
+        Technicien: r.Technicien,
+        EPV: r.EPV,
+        Site: r.Site,
+        IdSite: r.IdSite
+      });
+    });
 
     exportXlsx({
       fileBaseName: `Calendrier_${yyyymm}_${new Date().toISOString().slice(0, 10)}`,
@@ -3557,6 +3594,17 @@ import {
                     {currentMonth.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
                   </h3>
                   <div className="flex items-center gap-2">
+                    {canExportExcel && (
+                      <select
+                        value={calendarMonthExportGroupBy}
+                        onChange={(e) => setCalendarMonthExportGroupBy(e.target.value)}
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        title="Regrouper l'export"
+                      >
+                        <option value="date">Grouper par date</option>
+                        <option value="technician">Grouper par technicien</option>
+                      </select>
+                    )}
                     <button
                       onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
                       className="bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700"
