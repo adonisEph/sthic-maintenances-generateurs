@@ -36,6 +36,7 @@ import {
   const [interventionsError, setInterventionsError] = useState('');
   const [technicianInterventionsTab, setTechnicianInterventionsTab] = useState('tomorrow');
   const [showTechnicianInterventionsFilters, setShowTechnicianInterventionsFilters] = useState(false);
+  const [technicianSeenSentAt, setTechnicianSeenSentAt] = useState('');
   const [planningAssignments, setPlanningAssignments] = useState({});
   const [completeModalOpen, setCompleteModalOpen] = useState(false);
   const [completeModalIntervention, setCompleteModalIntervention] = useState(null);
@@ -209,6 +210,7 @@ import {
 
   const handlePlanIntervention = async ({ siteId, plannedDate, epvType, technicianName, technicianUserId }) => {
     try {
+      const site = (Array.isArray(sites) ? sites : []).find((s) => String(s?.id) === String(siteId)) || null;
       const techUsers = Array.isArray(users) ? users.filter((u) => u && u.role === 'technician') : [];
       const matched = technicianUserId
         ? techUsers.find((u) => String(u.id) === String(technicianUserId))
@@ -225,6 +227,11 @@ import {
         return;
       }
 
+      const ok = window.confirm(
+        `Confirmer la planification ?\n\nSite: ${site?.nameSite || siteId}${site?.idSite ? ` (ID: ${site.idSite})` : ''}\nDate: ${String(plannedDate || '')}\nType: ${String(epvType || '')}\nTechnicien: ${finalTechnicianName}`
+      );
+      if (!ok) return;
+
       await apiFetchJson('/api/interventions', {
         method: 'POST',
         body: JSON.stringify({
@@ -236,6 +243,7 @@ import {
         })
       });
       await loadInterventions();
+      alert('✅ Intervention planifiée.');
     } catch (e) {
       alert(e?.message || 'Erreur serveur.');
     }
@@ -243,6 +251,12 @@ import {
 
   const handleSendJ1 = async () => {
     try {
+      const today = new Date().toISOString().slice(0, 10);
+      const tomorrowD = new Date(today);
+      tomorrowD.setDate(tomorrowD.getDate() + 1);
+      const tomorrow = tomorrowD.toISOString().slice(0, 10);
+      const ok = window.confirm(`Confirmer l'action "Envoyer J-1" ?\n\nCela marquera comme "envoyées" toutes les interventions planifiées pour ${tomorrow}.`);
+      if (!ok) return;
       const data = await apiFetchJson('/api/interventions/send-j1', { method: 'POST' });
       alert(`✅ Envoi J-1: ${data?.updated || 0} intervention(s) marquée(s) envoyée(s) pour ${data?.plannedDate || ''}`);
       await loadInterventions();
@@ -253,6 +267,24 @@ import {
 
   const handleCompleteIntervention = async (interventionId, payload = {}) => {
     try {
+      const it = (Array.isArray(interventions) ? interventions : []).find((x) => String(x?.id) === String(interventionId)) || null;
+      const site = (Array.isArray(sites) ? sites : []).find((s) => String(s?.id) === String(it?.siteId)) || null;
+      const msgLines = [
+        `Confirmer "Marquer effectuée" ?`,
+        '',
+        `Site: ${site?.nameSite || it?.siteId || ''}${site?.idSite ? ` (ID: ${site.idSite})` : ''}`,
+        `Date planifiée: ${formatDate(it?.plannedDate)}`,
+        `Type: ${String(it?.epvType || '')}`
+      ];
+      if (payload && (payload.doneDate || payload.nhNow)) {
+        msgLines.push('');
+      }
+      if (payload?.doneDate) msgLines.push(`Date de vidange: ${String(payload.doneDate)}`);
+      if (payload?.nhNow) msgLines.push(`Compteur actuel (NH): ${String(payload.nhNow)}`);
+
+      const ok = window.confirm(msgLines.join('\n'));
+      if (!ok) return;
+
       await apiFetchJson(`/api/interventions/${interventionId}/complete`, {
         method: 'POST',
         body: JSON.stringify(payload || {})
@@ -364,6 +396,8 @@ import {
     };
 
     try {
+      const ok = window.confirm(`Confirmer l'ajout du site "${newSite.nameSite}" (ID: ${newSite.idSite}) ?`);
+      if (!ok) return;
       await apiFetchJson('/api/sites', {
         method: 'POST',
         body: JSON.stringify(newSite)
@@ -371,6 +405,7 @@ import {
       await loadData();
       setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
       setShowAddForm(false);
+      alert('✅ Site ajouté avec succès.');
     } catch (e) {
       alert(e?.message || 'Erreur serveur.');
     }
@@ -384,6 +419,10 @@ import {
 
     try {
       const site = selectedSite;
+      const ok = window.confirm(
+        `Confirmer la mise à jour du site "${site?.nameSite || ''}" (ID: ${site?.idSite || ''}) ?`
+      );
+      if (!ok) return;
       const nh2 = parseInt(formData.nh2A);
       const regime = calculateRegime(site.nh1DV, nh2, site.dateDV, formData.dateA);
       const nhEstimated = calculateEstimatedNH(nh2, formData.dateA, regime);
@@ -410,6 +449,7 @@ import {
       setShowUpdateForm(false);
       setSelectedSite(null);
       setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
+      alert('✅ Site mis à jour.');
     } catch (e) {
       alert(e?.message || 'Erreur serveur.');
     }
@@ -423,6 +463,10 @@ import {
 
     try {
       const site = selectedSite;
+      const ok = window.confirm(
+        `Confirmer la modification du site "${site?.nameSite || ''}" (ID: ${site?.idSite || ''}) ?`
+      );
+      if (!ok) return;
       const nh1 = parseInt(formData.nh1DV);
       const nh2 = parseInt(formData.nh2A);
       const regime = calculateRegime(nh1, nh2, formData.dateDV, formData.dateA);
@@ -458,6 +502,7 @@ import {
       setShowEditForm(false);
       setSelectedSite(null);
       setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
+      alert('✅ Site modifié.');
     } catch (e) {
       alert(e?.message || 'Erreur serveur.');
     }
@@ -470,6 +515,7 @@ import {
       setSites(updatedSites);
       setShowDeleteConfirm(false);
       setSiteToDelete(null);
+      alert('✅ Site supprimé.');
     } catch (e) {
       alert(e?.message || 'Erreur serveur.');
     }
@@ -477,9 +523,11 @@ import {
 
   const handleResetData = async () => {
     try {
+      const ok = window.confirm('Confirmer la réinitialisation complète ? Cette action est irréversible.');
+      if (!ok) return;
       if (authUser?.role === 'admin') {
         try {
-          await apiFetchJson('/api/sites/bulk-replace', { method: 'POST', body: JSON.stringify({ sites: [] }) });
+          await apiFetchJson('/api/admin/reset', { method: 'POST', body: JSON.stringify({}) });
         } catch (e) {
           // ignore
         }
@@ -487,6 +535,7 @@ import {
       localStorage.clear();
       setSites([]);
       setFicheHistory([]);
+      setInterventions([]);
       setTicketNumber(1122);
       setFilterTechnician('all');
       setSelectedSite(null);
@@ -704,6 +753,14 @@ import {
     const file = e.target.files[0];
     if (!file) return;
 
+    const ok = window.confirm(
+      `Confirmer l'import Excel ?\n\nCe fichier va remplacer la liste des sites en base.\nFichier: ${file?.name || ''}`
+    );
+    if (!ok) {
+      e.target.value = '';
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
@@ -797,6 +854,8 @@ import {
   };
 
   const handleExportExcel = () => {
+    const ok = window.confirm('Exporter la liste des sites en Excel ?');
+    if (!ok) return;
     const exportData = sites.map(site => {
       const updatedSite = getUpdatedSite(site);
       return {
@@ -829,6 +888,7 @@ import {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Vidanges');
     XLSX.writeFile(wb, `Planning_Vidanges_${new Date().toISOString().split('T')[0]}.xlsx`);
+    alert('✅ Export Excel généré.');
   };
 
   const exportXlsx = ({ fileBaseName, sheets }) => {
@@ -880,6 +940,8 @@ import {
   };
 
   const handleExportDashboardSummaryExcel = () => {
+    const ok = window.confirm(`Exporter le résumé Dashboard (${dashboardMonth}) en Excel ?`);
+    if (!ok) return;
     const { plannedEvents, remainingEvents, contractOk, contractOver } = computeDashboardData(dashboardMonth);
     exportXlsx({
       fileBaseName: `Dashboard_${dashboardMonth}_resume_${new Date().toISOString().slice(0, 10)}`,
@@ -895,9 +957,12 @@ import {
         }
       ]
     });
+    alert('✅ Export Excel généré.');
   };
 
   const handleExportDashboardDetailsExcel = () => {
+    const ok = window.confirm('Exporter ces détails Dashboard en Excel ?');
+    if (!ok) return;
     const kind = String(dashboardDetails?.kind || '');
     const items = Array.isArray(dashboardDetails?.items) ? dashboardDetails.items : [];
     if (items.length === 0) return;
@@ -925,9 +990,12 @@ import {
       fileBaseName: `Dashboard_${dashboardMonth}_${kind}_${new Date().toISOString().slice(0, 10)}`,
       sheets: [{ name: 'Détails', rows }]
     });
+    alert('✅ Export Excel généré.');
   };
 
   const handleExportScoringDetailsExcel = () => {
+    const ok = window.confirm(`Exporter ces détails Scoring (${scoringMonth}) en Excel ?`);
+    if (!ok) return;
     const kind = String(scoringDetails?.kind || '');
     const items = Array.isArray(scoringDetails?.items) ? scoringDetails.items : [];
     if (!scoringDetails?.open || items.length === 0) return;
@@ -966,9 +1034,12 @@ import {
       fileBaseName: `Scoring_${scoringMonth}_${kind}_${new Date().toISOString().slice(0, 10)}`,
       sheets: [{ name: 'Détails', rows }]
     });
+    alert('✅ Export Excel généré.');
   };
 
   const handleExportSelectedDayExcel = () => {
+    const ok = window.confirm('Exporter les détails de ce jour en Excel ?');
+    if (!ok) return;
     const items = Array.isArray(selectedDayEvents) ? selectedDayEvents : [];
     if (items.length === 0) return;
     const rows = items.map((evt) => ({
@@ -982,9 +1053,12 @@ import {
       fileBaseName: `Calendrier_${selectedDate || 'jour'}_${new Date().toISOString().slice(0, 10)}`,
       sheets: [{ name: 'Jour', rows }]
     });
+    alert('✅ Export Excel généré.');
   };
 
   const handleExportCalendarMonthExcel = () => {
+    const ok = window.confirm('Exporter toutes les EPV du mois affiché en Excel ?');
+    if (!ok) return;
     const year = currentMonth?.getFullYear?.();
     const month = currentMonth?.getMonth?.();
     if (!Number.isFinite(year) || !Number.isFinite(month)) return;
@@ -1023,9 +1097,12 @@ import {
       fileBaseName: `Calendrier_${yyyymm}_${new Date().toISOString().slice(0, 10)}`,
       sheets: [{ name: 'Mois', rows }]
     });
+    alert('✅ Export Excel généré.');
   };
 
   const handleExportInterventionsExcel = () => {
+    const ok = window.confirm('Exporter la liste des interventions affichées en Excel ?');
+    if (!ok) return;
     const siteById = new Map((Array.isArray(sites) ? sites : []).map((s) => [String(s.id), s]));
     const list = (Array.isArray(interventions) ? interventions : [])
       .slice()
@@ -1051,6 +1128,7 @@ import {
         fileBaseName: `Interventions_${interventionsMonth}_${interventionsStatus}_${interventionsTechnicianUserId}_${new Date().toISOString().slice(0, 10)}`,
         sheets: [{ name: 'Interventions', rows }]
       });
+      alert('✅ Export Excel généré.');
       return;
     }
 
@@ -1084,6 +1162,7 @@ import {
           { name: 'Toutes', rows: toRows(list) }
         ]
       });
+      alert('✅ Export Excel généré.');
     }
   };
 
@@ -1284,12 +1363,51 @@ import {
   const canManageUsers = isAdmin;
   const canUseInterventions = isAdmin || isTechnician || isViewer;
 
+  const technicianUnseenSentCount = isTechnician
+    ? (Array.isArray(interventions) ? interventions : []).filter(
+        (i) =>
+          i &&
+          i.status === 'sent' &&
+          i.sentAt &&
+          String(i.sentAt) > String(technicianSeenSentAt || '')
+      ).length
+    : 0;
+
   useEffect(() => {
     if (isTechnician && authUser?.technicianName) {
       setFilterTechnician(authUser.technicianName);
       setShowCalendar(false);
     }
   }, [isTechnician, authUser?.technicianName]);
+
+  useEffect(() => {
+    if (!authUser?.id || authUser?.role !== 'technician') return;
+    try {
+      const k = `tech_seen_sent_at:${String(authUser.id)}`;
+      const v = localStorage.getItem(k);
+      setTechnicianSeenSentAt(String(v || ''));
+    } catch {
+      setTechnicianSeenSentAt('');
+    }
+  }, [authUser?.id, authUser?.role]);
+
+  useEffect(() => {
+    if (!showInterventions || !isTechnician || !authUser?.id) return;
+    const maxSentAt = (Array.isArray(interventions) ? interventions : [])
+      .filter((i) => i && i.status === 'sent' && i.sentAt)
+      .map((i) => String(i.sentAt))
+      .sort()
+      .slice(-1)[0];
+    if (!maxSentAt) return;
+    if (String(maxSentAt) <= String(technicianSeenSentAt || '')) return;
+    setTechnicianSeenSentAt(String(maxSentAt));
+    try {
+      const k = `tech_seen_sent_at:${String(authUser.id)}`;
+      localStorage.setItem(k, String(maxSentAt));
+    } catch {
+      // ignore
+    }
+  }, [showInterventions, isTechnician, authUser?.id, interventions, technicianSeenSentAt]);
 
   const monthToRange = (yyyymm) => {
     const [y, m] = String(yyyymm || '').split('-').map((v) => Number(v));
@@ -1555,7 +1673,14 @@ import {
                 className="bg-emerald-700 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-emerald-800 flex items-center justify-center gap-2 text-sm sm:text-base"
               >
                 <CheckCircle size={18} />
-                <span className="hidden sm:inline">{isTechnician ? 'Mes interventions' : 'Interventions'}</span>
+                <span className="hidden sm:inline flex items-center gap-2">
+                  {isTechnician ? 'Mes interventions' : 'Interventions'}
+                  {isTechnician && technicianUnseenSentCount > 0 && (
+                    <span className="bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                      {technicianUnseenSentCount}
+                    </span>
+                  )}
+                </span>
                 <span className="sm:hidden">{isTechnician ? 'Mes' : 'Int.'}</span>
               </button>
             )}
@@ -2071,6 +2196,11 @@ import {
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <CheckCircle size={24} />
                   {isTechnician ? 'Mes interventions' : 'Interventions'}
+                  {isTechnician && technicianUnseenSentCount > 0 && (
+                    <span className="bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                      {technicianUnseenSentCount}
+                    </span>
+                  )}
                   {isViewer && (
                     <span className="ml-2 bg-white/15 text-white border border-white/20 px-2 py-0.5 rounded-full text-xs font-semibold">
                       Lecture seule
@@ -2413,6 +2543,7 @@ import {
                                       <div key={it.id} className="border border-gray-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                         <div className="min-w-0">
                                           <div className="font-semibold text-gray-800 truncate">{site?.nameSite || it.siteId}</div>
+                                          {site?.idSite && <div className="text-xs text-gray-600">ID: {site.idSite}</div>}
                                           <div className="text-xs text-gray-600">{it.epvType} • {formatDate(it.plannedDate)} • {it.technicianName}</div>
                                         </div>
                                         <div className="flex items-center gap-2">
@@ -2486,6 +2617,7 @@ import {
                                   <div key={it.id} className="border border-gray-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                     <div className="min-w-0">
                                       <div className="font-semibold text-gray-800 truncate">{site?.nameSite || it.siteId}</div>
+                                      {site?.idSite && <div className="text-xs text-gray-600">ID: {site.idSite}</div>}
                                       <div className="text-xs text-gray-600">{it.epvType} • {formatDate(it.plannedDate)} • {it.technicianName}</div>
                                     </div>
                                     <div className="flex items-center gap-2">
@@ -2542,6 +2674,9 @@ import {
                       <div className="p-4 space-y-3">
                         <div className="text-sm text-gray-700">
                           <div className="font-semibold text-gray-900">{completeModalSite?.nameSite || completeModalIntervention?.siteId || ''}</div>
+                          {completeModalSite?.idSite && (
+                            <div className="text-xs text-gray-600">ID: {completeModalSite.idSite}</div>
+                          )}
                           <div className="text-xs text-gray-600">{completeModalIntervention?.epvType} • {formatDate(completeModalIntervention?.plannedDate)}</div>
                         </div>
 
