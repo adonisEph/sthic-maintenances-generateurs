@@ -2590,12 +2590,12 @@ import {
         )}
 
         {showInterventions && (
-          <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${isTechnician ? 'p-0' : 'p-4'}`}>
+          <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${isTechnician ? 'p-0' : 'p-0 sm:p-4'}`}>
             <div
               className={`bg-white shadow-xl overflow-hidden flex flex-col w-full ${
                 isTechnician
                   ? 'h-[100svh] max-w-none max-h-none rounded-none'
-                  : 'rounded-lg max-w-5xl max-h-[90vh]'
+                  : 'h-[100svh] max-w-none max-h-[100svh] rounded-none sm:h-auto sm:max-w-5xl sm:max-h-[90vh] sm:rounded-lg'
               }`}
             >
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-emerald-700 text-white">
@@ -2765,10 +2765,10 @@ import {
                       </div>
                     )}
 
-                    <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 w-full">
                       <button
                         onClick={() => loadInterventions(interventionsMonth, interventionsStatus, interventionsTechnicianUserId)}
-                        className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold text-sm w-full sm:w-auto"
+                        className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold text-sm w-full"
                         disabled={interventionsBusy}
                       >
                         Rafraîchir
@@ -2777,7 +2777,7 @@ import {
                         <button
                           type="button"
                           onClick={handleExportInterventionsExcel}
-                          className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm flex items-center justify-center gap-2 w-full sm:w-auto"
+                          className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm flex items-center justify-center gap-2 w-full"
                           disabled={exportBusy || interventionsBusy || interventions.length === 0}
                         >
                           <Download size={18} />
@@ -2787,7 +2787,7 @@ import {
                       {isAdmin && (
                         <button
                           onClick={handleSendJ1}
-                          className="bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm w-full sm:w-auto"
+                          className="bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm w-full"
                           disabled={interventionsBusy}
                         >
                           Envoyer J-1
@@ -4011,8 +4011,8 @@ import {
 
         {/* Modal Calendrier */}
         {showCalendar && !isTechnician && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
+            <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-6xl sm:max-h-[90vh]">
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-cyan-600 text-white">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <Calendar size={24} />
@@ -4023,24 +4023,24 @@ import {
                 </button>
               </div>
               
-              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+              <div className="p-3 sm:p-6 overflow-y-auto flex-1">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 lg:gap-4 items-center mb-4 sm:mb-6">
                   <button
                     onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
-                    className="bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700"
+                    className="bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 w-full lg:w-auto"
                   >
                     ← Mois précédent
                   </button>
-                  <h3 className="text-2xl font-bold text-gray-800">
+                  <h3 className="text-xl sm:text-2xl font-bold text-gray-800 text-center lg:text-left">
                     {currentMonth.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
                   </h3>
-                  <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 justify-start lg:justify-end">
                     {isAdmin && (
                       <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                         <select
                           value={calendarSendTechUserId}
                           onChange={(e) => setCalendarSendTechUserId(e.target.value)}
-                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white w-full sm:w-64"
                         >
                           <option value="">-- Technicien --</option>
                           {(Array.isArray(users) ? users : [])
@@ -4056,7 +4056,7 @@ import {
                         <button
                           type="button"
                           onClick={handleSendCalendarMonthPlanning}
-                          className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold text-sm"
+                          className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold text-sm w-full sm:w-auto"
                           disabled={!calendarSendTechUserId}
                         >
                           Envoyer planning du mois
@@ -4067,7 +4067,7 @@ import {
                       <select
                         value={calendarMonthExportGroupBy}
                         onChange={(e) => setCalendarMonthExportGroupBy(e.target.value)}
-                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full sm:w-auto"
                         title="Regrouper l'export"
                       >
                         <option value="date">Grouper par date</option>
@@ -4076,7 +4076,7 @@ import {
                     )}
                     <button
                       onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
-                      className="bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700"
+                      className="bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 w-full sm:w-auto"
                     >
                       Mois suivant →
                     </button>
@@ -4084,7 +4084,7 @@ import {
                       <button
                         type="button"
                         onClick={handleExportCalendarMonthExcel}
-                        className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold flex items-center gap-2"
+                        className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold flex items-center justify-center gap-2 w-full sm:w-auto"
                         disabled={exportBusy}
                       >
                         <Download size={18} />
