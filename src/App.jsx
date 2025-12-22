@@ -84,6 +84,7 @@ import {
   const [historySort, setHistorySort] = useState('newest');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [calendarMonthExportGroupBy, setCalendarMonthExportGroupBy] = useState('date');
+  const [calendarSendTechUserId, setCalendarSendTechUserId] = useState('');
   const [showDayDetailsModal, setShowDayDetailsModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedDayEvents, setSelectedDayEvents] = useState([]);
@@ -120,6 +121,70 @@ import {
       throw new Error(msg);
     }
     return data;
+  };
+
+  const handleSendCalendarMonthPlanning = async () => {
+    try {
+      if (!isAdmin) return;
+      const techId = String(calendarSendTechUserId || '').trim();
+      if (!techId) {
+        alert('Veuillez sélectionner un technicien.');
+        return;
+      }
+
+      const tech = (Array.isArray(users) ? users : []).find((u) => u && String(u.id) === techId) || null;
+      const technicianName = String(tech?.technicianName || '').trim();
+      if (!technicianName) {
+        alert("Le technicien sélectionné n'a pas de nom de technicien configuré.");
+        return;
+      }
+
+      const month = yyyyMmFromDate(currentMonth);
+      const sitesInScope = (Array.isArray(sites) ? sites : [])
+        .map(getUpdatedSite)
+        .filter((s) => s && !s.retired && String(s.technician || '').trim() === technicianName);
+
+      const interventionsToSend = [];
+      for (const s of sitesInScope) {
+        const add = (epvType, plannedDate) => {
+          if (!plannedDate || plannedDate === 'N/A') return;
+          if (String(plannedDate).slice(0, 7) !== month) return;
+          interventionsToSend.push({
+            siteId: s.id,
+            plannedDate,
+            epvType,
+            technicianUserId: techId,
+            technicianName
+          });
+        };
+        add('EPV1', s.epv1);
+        add('EPV2', s.epv2);
+        add('EPV3', s.epv3);
+      }
+
+      if (interventionsToSend.length === 0) {
+        alert('Aucune vidange à envoyer pour ce technicien sur ce mois.');
+        return;
+      }
+
+      const ok = window.confirm(
+        `Confirmer l'envoi du planning mensuel ?\n\nMois: ${month}\nTechnicien: ${technicianName}\nVidanges: ${interventionsToSend.length}`
+      );
+      if (!ok) return;
+
+      const data = await apiFetchJson('/api/interventions/send-month', {
+        method: 'POST',
+        body: JSON.stringify({ interventions: interventionsToSend })
+      });
+
+      alert(
+        `✅ Planning envoyé.\n\nCréées: ${Number(data?.created || 0)}\nMises à jour: ${Number(data?.updated || 0)}\nEn statut envoyée: ${Number(data?.sent || 0)}`
+      );
+
+      await loadInterventions(month, 'all', 'all');
+    } catch (e) {
+      alert(e?.message || 'Erreur lors de l\'envoi du planning mensuel.');
+    }
   };
 
   const exportBusyRef = useRef(false);
@@ -201,6 +266,11 @@ import {
     } catch (error) {
       setSites([]);
     }
+  };
+
+  const yyyyMmFromDate = (d) => {
+    const dt = d instanceof Date ? d : new Date(d);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
   };
 
   const monthRange = (yyyyMm) => {
@@ -285,17 +355,30 @@ import {
 
   const handleSendJ1 = async () => {
     try {
-      const today = new Date().toISOString().slice(0, 10);
-      const tomorrowD = new Date(today);
+      const pad2 = (n) => String(n).padStart(2, '0');
+      const ymdLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+      const tomorrowD = new Date();
       tomorrowD.setDate(tomorrowD.getDate() + 1);
-      const tomorrow = tomorrowD.toISOString().slice(0, 10);
+      const tomorrow = ymdLocal(tomorrowD);
       const ok = window.confirm(`Confirmer l'action "Envoyer J-1" ?\n\nCela marquera comme "envoyées" toutes les interventions planifiées pour ${tomorrow}.`);
       if (!ok) return;
-      const data = await apiFetchJson('/api/interventions/send-j1', { method: 'POST' });
-      alert(`✅ Envoi J-1: ${data?.updated || 0} intervention(s) marquée(s) envoyée(s) pour ${data?.plannedDate || ''}`);
+      const data = await apiFetchJson('/api/interventions/send-j1', {
+        method: 'POST',
+        body: JSON.stringify({ plannedDate: tomorrow })
+      });
+      const updated = Number(data?.updated || 0);
+      if (updated > 0) {
+        alert(`✅ Envoi J-1: ${updated} intervention(s) marquée(s) envoyée(s) pour ${data?.plannedDate || tomorrow}`);
+      } else {
+        alert(
+          `ℹ️ Envoi J-1: 0 intervention mise à jour pour ${data?.plannedDate || tomorrow}.\n\n` +
+          `Cette action ne concerne que les interventions dont la date planifiée est exactement "${tomorrow}" et dont le statut est "planned".\n` +
+          `Si tu avais déjà des interventions en "sent" ou "done", ou si la date ne correspond pas, il n'y aura aucun changement.`
+        );
+      }
       await loadInterventions();
     } catch (e) {
-      alert(e?.message || 'Erreur serveur.');
+      alert('❌ Erreur lors de l\'envoi J-1. Vérifiez la console.');
     }
   };
 
@@ -643,6 +726,16 @@ import {
     const uniqueEvents = Array.from(
       new Map((events || []).map((e) => [e.site.id, e])).values()
     );
+
+    uniqueEvents.sort((a, b) => {
+      const ta = String(a?.site?.technician || '');
+      const tb = String(b?.site?.technician || '');
+      const tCmp = ta.localeCompare(tb);
+      if (tCmp !== 0) return tCmp;
+      const na = String(a?.site?.nameSite || '');
+      const nb = String(b?.site?.nameSite || '');
+      return na.localeCompare(nb);
+    });
 
     if (uniqueEvents.length === 0) {
       alert('Aucune vidange planifiée ce jour.');
@@ -1383,19 +1476,50 @@ import {
     .map(getUpdatedSite)
     .filter(site => filterTechnician === 'all' || site.technician === filterTechnician);
 
+  const interventionsByKey = new Map(
+    (Array.isArray(interventions) ? interventions : []).filter(Boolean).map((i) => [getInterventionKey(i.siteId, i.plannedDate, i.epvType), i])
+  );
+
   const getEventsForDay = (dateStr) => {
     if (!dateStr) return [];
     const events = [];
 
     filteredSites.forEach((site) => {
       if (site.retired) return;
-      if (site.epv1 === dateStr) events.push({ site, type: 'EPV1', date: site.epv1 });
-      if (site.epv2 === dateStr) events.push({ site, type: 'EPV2', date: site.epv2 });
-      if (site.epv3 === dateStr) events.push({ site, type: 'EPV3', date: site.epv3 });
+      if (site.epv1 === dateStr) {
+        const intervention = interventionsByKey.get(getInterventionKey(site.id, site.epv1, 'EPV1')) || null;
+        events.push({ site, type: 'EPV1', date: site.epv1, intervention });
+      }
+      if (site.epv2 === dateStr) {
+        const intervention = interventionsByKey.get(getInterventionKey(site.id, site.epv2, 'EPV2')) || null;
+        events.push({ site, type: 'EPV2', date: site.epv2, intervention });
+      }
+      if (site.epv3 === dateStr) {
+        const intervention = interventionsByKey.get(getInterventionKey(site.id, site.epv3, 'EPV3')) || null;
+        events.push({ site, type: 'EPV3', date: site.epv3, intervention });
+      }
     });
 
     return events;
   };
+
+  useEffect(() => {
+    if (!showCalendar) return;
+    if (!isAdmin) return;
+    (async () => {
+      try {
+        await refreshUsers();
+      } catch (e) {
+        // ignore
+      }
+      try {
+        const m = yyyyMmFromDate(currentMonth);
+        await loadInterventions(m, 'all', 'all');
+      } catch (e) {
+        // ignore
+      }
+    })();
+  }, [showCalendar, isAdmin, currentMonth]);
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -1575,24 +1699,6 @@ import {
       setTechnicianSeenSentAt('');
     }
   }, [authUser?.id, authUser?.role]);
-
-  useEffect(() => {
-    if (!showInterventions || !isTechnician || !authUser?.id) return;
-    const maxSentAt = (Array.isArray(interventions) ? interventions : [])
-      .filter((i) => i && i.status === 'sent' && i.sentAt)
-      .map((i) => String(i.sentAt))
-      .sort()
-      .slice(-1)[0];
-    if (!maxSentAt) return;
-    if (String(maxSentAt) <= String(technicianSeenSentAt || '')) return;
-    setTechnicianSeenSentAt(String(maxSentAt));
-    try {
-      const k = `tech_seen_sent_at:${String(authUser.id)}`;
-      localStorage.setItem(k, String(maxSentAt));
-    } catch {
-      // ignore
-    }
-  }, [showInterventions, isTechnician, authUser?.id, interventions, technicianSeenSentAt]);
 
   useEffect(() => {
     if (!authUser?.id) return;
@@ -1967,16 +2073,16 @@ import {
                   }
                   await loadInterventions();
                 }}
-                className="bg-emerald-700 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-emerald-800 flex items-center justify-center gap-2 text-sm sm:text-base"
+                className="relative bg-emerald-700 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-emerald-800 flex items-center justify-center gap-2 text-sm sm:text-base"
               >
                 <CheckCircle size={18} />
+                {isTechnician && technicianUnseenSentCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                    {technicianUnseenSentCount}
+                  </span>
+                )}
                 <span className="hidden sm:inline flex items-center gap-2">
                   {isTechnician ? 'Mes interventions' : 'Interventions'}
-                  {isTechnician && technicianUnseenSentCount > 0 && (
-                    <span className="bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                      {technicianUnseenSentCount}
-                    </span>
-                  )}
                 </span>
                 <span className="sm:hidden">{isTechnician ? 'Mes' : 'Int.'}</span>
               </button>
@@ -2167,7 +2273,7 @@ import {
         {dashboardDetails.open && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-              <div className="flex justify-between items-center p-4 border-b bg-gray-100">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gray-100">
                 <h3 className="text-lg font-bold text-gray-800">{dashboardDetails.title}</h3>
                 <button
                   onClick={() => setDashboardDetails({ open: false, title: '', kind: '', items: [] })}
@@ -2219,12 +2325,12 @@ import {
                   </div>
                 )}
               </div>
-              <div className="p-4 border-t bg-white flex justify-end">
+              <div className="p-4 border-t bg-white flex flex-col sm:flex-row gap-3 sm:justify-end">
                 {canExportExcel && dashboardDetails.items.length > 0 && (
                   <button
                     type="button"
                     onClick={handleExportDashboardDetailsExcel}
-                    className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold flex items-center gap-2 mr-2"
+                    className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold flex items-center justify-center gap-2 w-full sm:w-auto"
                     disabled={exportBusy}
                   >
                     <Download size={18} />
@@ -2233,7 +2339,7 @@ import {
                 )}
                 <button
                   onClick={() => setDashboardDetails({ open: false, title: '', kind: '', items: [] })}
-                  className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
+                  className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold w-full sm:w-auto"
                 >
                   Fermer
                 </button>
@@ -2245,7 +2351,7 @@ import {
         {showScoring && !isTechnician && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-              <div className="flex justify-between items-center p-4 border-b bg-slate-800 text-white">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-slate-800 text-white">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <TrendingUp size={22} />
                   Scoring
@@ -2271,7 +2377,7 @@ import {
                   <div className="text-sm text-slate-700">
                     Synthèse mensuelle (basée sur l'historique des fiches + interventions planifiées)
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <label className="text-xs text-gray-600">Mois</label>
                     <input
                       type="month"
@@ -2492,7 +2598,7 @@ import {
                   : 'rounded-lg max-w-5xl max-h-[90vh]'
               }`}
             >
-              <div className="flex justify-between items-center p-4 border-b bg-emerald-700 text-white">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-emerald-700 text-white">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <CheckCircle size={24} />
                   {isTechnician ? 'Mes interventions' : 'Interventions'}
@@ -2509,6 +2615,22 @@ import {
                 </h2>
                 <button
                   onClick={() => {
+                    if (isTechnician && authUser?.id) {
+                      const maxSentAt = (Array.isArray(interventions) ? interventions : [])
+                        .filter((i) => i && i.status === 'sent' && i.sentAt)
+                        .map((i) => String(i.sentAt))
+                        .sort()
+                        .slice(-1)[0];
+                      if (maxSentAt && String(maxSentAt) > String(technicianSeenSentAt || '')) {
+                        setTechnicianSeenSentAt(String(maxSentAt));
+                        try {
+                          const k = `tech_seen_sent_at:${String(authUser.id)}`;
+                          localStorage.setItem(k, String(maxSentAt));
+                        } catch {
+                          // ignore
+                        }
+                      }
+                    }
                     setShowInterventions(false);
                     setInterventionsError('');
                     setPlanningAssignments({});
@@ -2532,21 +2654,24 @@ import {
                 )}
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
                   {isTechnician && (
-                    <div className="flex items-center justify-between gap-2 mb-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
                       {(() => {
-                        const today = new Date().toISOString().slice(0, 10);
-                        const tomorrowD = new Date(today);
+                        const pad2 = (n) => String(n).padStart(2, '0');
+                        const ymdLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+                        const today = ymdLocal(new Date());
+                        const tomorrowD = new Date();
                         tomorrowD.setDate(tomorrowD.getDate() + 1);
-                        const tomorrow = tomorrowD.toISOString().slice(0, 10);
+                        const tomorrow = ymdLocal(tomorrowD);
+                        const month = String(interventionsMonth || '').trim();
 
                         const todayCount = interventions.filter((i) => i.plannedDate === today && i.status !== 'done').length;
                         const tomorrowRaw = interventions.filter((i) => i.plannedDate === tomorrow && i.status !== 'done');
                         const tomorrowCount = tomorrowRaw.length;
                         const tomorrowSentCount = tomorrowRaw.filter((i) => i.status === 'sent').length;
-                        const allCount = interventions.length;
+                        const monthCount = month ? interventions.filter((i) => String(i?.plannedDate || '').slice(0, 7) === month && i.status !== 'done').length : interventions.filter((i) => i.status !== 'done').length;
 
                         return (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
                           onClick={() => setTechnicianInterventionsTab('today')}
@@ -2563,10 +2688,10 @@ import {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setTechnicianInterventionsTab('all')}
-                          className={`${technicianInterventionsTab === 'all' ? 'bg-emerald-700 text-white' : 'bg-white text-gray-800 border border-gray-300'} px-3 py-2 rounded-lg font-semibold text-sm`}
+                          onClick={() => setTechnicianInterventionsTab('month')}
+                          className={`${technicianInterventionsTab === 'month' ? 'bg-emerald-700 text-white' : 'bg-white text-gray-800 border border-gray-300'} px-3 py-2 rounded-lg font-semibold text-sm`}
                         >
-                          Toutes ({allCount})
+                          Mois ({monthCount})
                         </button>
                       </div>
                         );
@@ -2574,7 +2699,7 @@ import {
                       <button
                         type="button"
                         onClick={() => setShowTechnicianInterventionsFilters((v) => !v)}
-                        className="bg-white text-gray-800 border border-gray-300 px-3 py-2 rounded-lg hover:bg-gray-50 font-semibold text-sm"
+                        className="bg-white text-gray-800 border border-gray-300 px-3 py-2 rounded-lg hover:bg-gray-50 font-semibold text-sm w-full sm:w-auto"
                       >
                         Filtres
                       </button>
@@ -2640,10 +2765,10 @@ import {
                       </div>
                     )}
 
-                    <div className="flex items-end gap-2">
+                    <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-2">
                       <button
                         onClick={() => loadInterventions(interventionsMonth, interventionsStatus, interventionsTechnicianUserId)}
-                        className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold text-sm"
+                        className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold text-sm w-full sm:w-auto"
                         disabled={interventionsBusy}
                       >
                         Rafraîchir
@@ -2652,7 +2777,7 @@ import {
                         <button
                           type="button"
                           onClick={handleExportInterventionsExcel}
-                          className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm flex items-center gap-2"
+                          className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm flex items-center justify-center gap-2 w-full sm:w-auto"
                           disabled={exportBusy || interventionsBusy || interventions.length === 0}
                         >
                           <Download size={18} />
@@ -2662,7 +2787,7 @@ import {
                       {isAdmin && (
                         <button
                           onClick={handleSendJ1}
-                          className="bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm"
+                          className="bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm w-full sm:w-auto"
                           disabled={interventionsBusy}
                         >
                           Envoyer J-1
@@ -2869,10 +2994,13 @@ import {
                     );
                   }
 
-                  const today = new Date().toISOString().slice(0, 10);
-                  const tomorrowD = new Date(today);
+                  const pad2 = (n) => String(n).padStart(2, '0');
+                  const ymdLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+                  const today = ymdLocal(new Date());
+                  const tomorrowD = new Date();
                   tomorrowD.setDate(tomorrowD.getDate() + 1);
-                  const tomorrow = tomorrowD.toISOString().slice(0, 10);
+                  const tomorrow = ymdLocal(tomorrowD);
+                  const month = String(interventionsMonth || '').trim();
 
                   const statusRank = (st) => {
                     if (st === 'sent') return 0;
@@ -2891,61 +3019,108 @@ import {
                     .slice()
                     .sort((a, b) => statusRank(a.status) - statusRank(b.status));
 
+                  const renderItem = (it) => {
+                    const site = siteById.get(String(it.siteId)) || null;
+                    const statusColor = it.status === 'done' ? 'bg-green-100 text-green-800 border-green-200' : it.status === 'sent' ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-amber-100 text-amber-800 border-amber-200';
+                    return (
+                      <div key={it.id} className="border border-gray-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="font-semibold text-gray-800 truncate">{site?.nameSite || it.siteId}</div>
+                          {site?.idSite && <div className="text-xs text-gray-600">ID: {site.idSite}</div>}
+                          <div className="text-xs text-gray-600">{it.epvType} • {formatDate(it.plannedDate)} • {it.technicianName}</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{it.status}</span>
+                          {it.status !== 'done' && (
+                            <button
+                              onClick={() => {
+                                if (isTechnician) {
+                                  setCompleteModalIntervention(it);
+                                  setCompleteModalSite(site);
+                                  setCompleteForm({ nhNow: String(site?.nhEstimated ?? ''), doneDate: today });
+                                  setCompleteFormError('');
+                                  setCompleteModalOpen(true);
+                                  return;
+                                }
+                                handleCompleteIntervention(it.id);
+                              }}
+                              className="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 font-semibold text-sm"
+                            >
+                              Marquer effectuée
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  };
+
+                  if (isTechnician) {
+                    if (technicianInterventionsTab === 'month') {
+                      const monthItems = list
+                        .filter((i) => i && i.status !== 'done')
+                        .filter((i) => {
+                          if (!month) return true;
+                          return String(i.plannedDate || '').slice(0, 7) === month;
+                        });
+
+                      const byDate = new Map();
+                      monthItems.forEach((it) => {
+                        const k = String(it.plannedDate || '');
+                        if (!byDate.has(k)) byDate.set(k, []);
+                        byDate.get(k).push(it);
+                      });
+
+                      const dates = Array.from(byDate.keys()).sort((a, b) => String(a).localeCompare(String(b)));
+                      return (
+                        <div className="space-y-6">
+                          {dates.length === 0 ? (
+                            <div className="text-sm text-gray-600">Aucune intervention.</div>
+                          ) : (
+                            dates.map((d) => (
+                              <div key={d}>
+                                <div className="font-semibold text-gray-800 mb-2">{formatDate(d)} ({byDate.get(d).length})</div>
+                                <div className="space-y-2">
+                                  {byDate.get(d).map((it) => renderItem(it))}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      );
+                    }
+
+                    const selectedKey = technicianInterventionsTab === 'today' ? 'today' : 'tomorrow';
+                    const selected = selectedKey === 'today' ? todayItems : tomorrowItems;
+                    const title = selectedKey === 'today' ? "Aujourd'hui" : `Demain (${tomorrowItems.length} dont ${tomorrowSentCount} envoyée(s))`;
+                    return (
+                      <div className="space-y-6">
+                        <div>
+                          <div className="font-semibold text-gray-800 mb-2">{title}</div>
+                          {selected.length === 0 ? (
+                            <div className="text-sm text-gray-600">Aucune intervention.</div>
+                          ) : (
+                            <div className="space-y-2">{selected.map((it) => renderItem(it))}</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+
                   const groups = [
                     { key: 'today', title: "Aujourd'hui", items: todayItems },
                     { key: 'tomorrow', title: `Demain (${tomorrowItems.length} dont ${tomorrowSentCount} envoyée(s))`, items: tomorrowItems },
                     { key: 'all', title: 'Toutes', items: list }
                   ];
 
-                  const visibleGroups = isTechnician
-                    ? groups.filter((g) => g.key === technicianInterventionsTab)
-                    : groups;
-
                   return (
                     <div className="space-y-6">
-                      {visibleGroups.map((g) => (
+                      {groups.map((g) => (
                         <div key={g.key}>
                           <div className="font-semibold text-gray-800 mb-2">{g.title}</div>
                           {g.items.length === 0 ? (
                             <div className="text-sm text-gray-600">Aucune intervention.</div>
                           ) : (
-                            <div className="space-y-2">
-                              {g.items.map((it) => {
-                                const site = siteById.get(String(it.siteId)) || null;
-                                const statusColor = it.status === 'done' ? 'bg-green-100 text-green-800 border-green-200' : it.status === 'sent' ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-amber-100 text-amber-800 border-amber-200';
-                                return (
-                                  <div key={it.id} className="border border-gray-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                    <div className="min-w-0">
-                                      <div className="font-semibold text-gray-800 truncate">{site?.nameSite || it.siteId}</div>
-                                      {site?.idSite && <div className="text-xs text-gray-600">ID: {site.idSite}</div>}
-                                      <div className="text-xs text-gray-600">{it.epvType} • {formatDate(it.plannedDate)} • {it.technicianName}</div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{it.status}</span>
-                                      {it.status !== 'done' && (
-                                        <button
-                                          onClick={() => {
-                                            if (isTechnician) {
-                                              setCompleteModalIntervention(it);
-                                              setCompleteModalSite(site);
-                                              const today = new Date().toISOString().slice(0, 10);
-                                              setCompleteForm({ nhNow: String(site?.nhEstimated ?? ''), doneDate: today });
-                                              setCompleteFormError('');
-                                              setCompleteModalOpen(true);
-                                              return;
-                                            }
-                                            handleCompleteIntervention(it.id);
-                                          }}
-                                          className="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 font-semibold text-sm"
-                                        >
-                                          Marquer effectuée
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
+                            <div className="space-y-2">{g.items.map((it) => renderItem(it))}</div>
                           )}
                         </div>
                       ))}
@@ -3088,7 +3263,7 @@ import {
         {showPresenceModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-              <div className="flex justify-between items-center p-4 border-b bg-indigo-700 text-white">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-indigo-700 text-white">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <Activity size={22} />
                   Présence & activité
@@ -3145,7 +3320,7 @@ import {
         {showUsersModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-              <div className="flex justify-between items-center p-4 border-b bg-slate-700 text-white">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-slate-700 text-white">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <Users size={22} />
                   Gestion des utilisateurs
@@ -3161,12 +3336,12 @@ import {
                     <div className="font-bold text-gray-800 mb-3">Utilisateurs</div>
                     <div className="space-y-2">
                       {users.map((u) => (
-                        <div key={u.id} className="border border-gray-200 rounded-lg p-3 flex items-start justify-between gap-3">
+                        <div key={u.id} className="border border-gray-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="font-semibold text-gray-800 truncate">{u.email}</div>
                             <div className="text-xs text-gray-600">Rôle: {u.role}{u.technicianName ? ` | Technicien: ${u.technicianName}` : ''}</div>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <button
                               onClick={() => {
                                 setUserFormId(u.id);
@@ -3362,7 +3537,7 @@ import {
         {showDayDetailsModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-              <div className="flex justify-between items-center p-4 border-b bg-gray-100">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gray-100">
                 <div>
                   <h2 className="text-lg sm:text-xl font-bold text-gray-800">Détails du jour</h2>
                   <div className="text-sm text-gray-600">{selectedDate ? formatDate(selectedDate) : ''}</div>
@@ -3386,6 +3561,8 @@ import {
                     {selectedDayEvents.map((evt) => {
                       const daysUntil = getDaysUntil(evt.date);
                       const color = daysUntil !== null && daysUntil <= 3 ? 'bg-red-500' : daysUntil !== null && daysUntil <= 7 ? 'bg-orange-500' : 'bg-green-500';
+                      const st = String(evt?.intervention?.status || '');
+                      const stColor = st === 'done' ? 'bg-green-100 text-green-800 border-green-200' : st === 'sent' ? 'bg-blue-100 text-blue-800 border-blue-200' : st === 'planned' ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-gray-100 text-gray-700 border-gray-200';
                       return (
                         <div key={`${evt.site.id}-${evt.type}`} className="border border-gray-200 rounded-lg p-3">
                           <div className="flex items-start justify-between gap-3">
@@ -3395,6 +3572,7 @@ import {
                             </div>
                             <div className="flex flex-col items-end gap-1">
                               <div className={`${color} text-white text-xs px-2 py-1 rounded`}>{evt.type}</div>
+                              <div className={`text-xs px-2 py-1 rounded border font-semibold ${stColor}`}>{st || 'non planifiée'}</div>
                               <div className="text-sm text-gray-700">{formatDate(evt.date)}</div>
                             </div>
                           </div>
@@ -3546,12 +3724,12 @@ import {
         {showFicheModal && siteForFiche && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full my-8">
-              <div className="flex justify-between items-center p-4 border-b bg-gray-100">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gray-100">
                 <h2 className="text-xl font-bold text-gray-800">📄 Fiche d'Intervention - Aperçu</h2>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 w-full sm:w-auto">
                   <button
                     onClick={handlePrintFiche}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold"
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold w-full sm:w-auto"
                   >
                     Imprimer
                   </button>
@@ -3682,7 +3860,7 @@ import {
         {showHistory && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
-              <div className="flex justify-between items-center p-4 border-b bg-amber-600 text-white">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-amber-600 text-white">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <Activity size={24} />
                   Historique des Fiches d'Intervention
@@ -3835,7 +4013,7 @@ import {
         {showCalendar && !isTechnician && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-              <div className="flex justify-between items-center p-4 border-b bg-cyan-600 text-white">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-cyan-600 text-white">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <Calendar size={24} />
                   Calendrier des Vidanges
@@ -3846,7 +4024,7 @@ import {
               </div>
               
               <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-                <div className="flex justify-between items-center mb-6">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
                   <button
                     onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
                     className="bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700"
@@ -3856,7 +4034,35 @@ import {
                   <h3 className="text-2xl font-bold text-gray-800">
                     {currentMonth.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
                   </h3>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
+                    {isAdmin && (
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <select
+                          value={calendarSendTechUserId}
+                          onChange={(e) => setCalendarSendTechUserId(e.target.value)}
+                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                        >
+                          <option value="">-- Technicien --</option>
+                          {(Array.isArray(users) ? users : [])
+                            .filter((u) => u && u.role === 'technician')
+                            .slice()
+                            .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')))
+                            .map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.technicianName || u.email}
+                              </option>
+                            ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={handleSendCalendarMonthPlanning}
+                          className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold text-sm"
+                          disabled={!calendarSendTechUserId}
+                        >
+                          Envoyer planning du mois
+                        </button>
+                      </div>
+                    )}
                     {canExportExcel && (
                       <select
                         value={calendarMonthExportGroupBy}
@@ -3911,9 +4117,7 @@ import {
 
                     for (let day = 1; day <= lastDay.getDate(); day++) {
                       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                      const sitesForDay = filteredSites.filter(site => 
-                        site.epv1 === dateStr || site.epv2 === dateStr || site.epv3 === dateStr
-                      );
+                      const eventsForDay = getEventsForDay(dateStr);
 
                       const isToday = new Date().toISOString().split('T')[0] === dateStr;
                       const isSelected = selectedDate === dateStr;
@@ -3931,19 +4135,22 @@ import {
                           className={`h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full hover:bg-gray-50 ${isToday ? 'border-blue-500 bg-blue-50' : 'border-gray-200'} ${isSelected ? 'ring-2 ring-cyan-500' : ''}`}
                         >
                           <div className="text-sm font-semibold text-gray-700">{day}</div>
-                          {sitesForDay.length > 0 && (
+                          {eventsForDay.length > 0 && (
                             <div className="text-xs space-y-1 mt-1">
-                              {sitesForDay.slice(0, 2).map(site => {
+                              {eventsForDay.slice(0, 2).map((ev) => {
                                 const daysUntil = getDaysUntil(dateStr);
                                 const color = daysUntil <= 3 ? 'bg-red-500' : daysUntil <= 7 ? 'bg-orange-500' : 'bg-green-500';
+                                const st = String(ev?.intervention?.status || '');
+                                const dot = st === 'done' ? 'bg-green-200' : st === 'sent' ? 'bg-blue-200' : st === 'planned' ? 'bg-amber-200' : 'bg-gray-200';
                                 return (
-                                  <div key={site.id} className={`${color} text-white px-1 rounded truncate`}>
-                                    {site.nameSite}
+                                  <div key={`${ev.site.id}-${ev.type}`} className={`${color} text-white px-1 rounded truncate flex items-center gap-1`}>
+                                    <span className={`inline-block w-2 h-2 rounded-full ${dot}`} />
+                                    <span className="truncate">{ev.site.nameSite}</span>
                                   </div>
                                 );
                               })}
-                              {sitesForDay.length > 2 && (
-                                <div className="text-gray-600 text-center">+{sitesForDay.length - 2}</div>
+                              {eventsForDay.length > 2 && (
+                                <div className="text-gray-600 text-center">+{eventsForDay.length - 2}</div>
                               )}
                             </div>
                           )}
