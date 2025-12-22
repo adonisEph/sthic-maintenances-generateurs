@@ -105,6 +105,19 @@ import {
     retired: false
   });
 
+  const currentRole = authUser?.role || 'viewer';
+  const isAdmin = currentRole === 'admin';
+  const isViewer = currentRole === 'viewer';
+  const isTechnician = currentRole === 'technician';
+  const canWriteSites = isAdmin;
+  const canImportExport = isAdmin;
+  const canExportExcel = isAdmin || isViewer;
+  const canReset = isAdmin;
+  const canGenerateFiche = isAdmin;
+  const canMarkCompleted = isAdmin || isTechnician;
+  const canManageUsers = isAdmin;
+  const canUseInterventions = isAdmin || isTechnician || isViewer;
+
   const apiFetchJson = async (path, init = {}) => {
     const res = await fetch(path, {
       credentials: 'include',
@@ -1505,7 +1518,7 @@ import {
 
   useEffect(() => {
     if (!showCalendar) return;
-    if (!isAdmin) return;
+    if (authUser?.role !== 'admin') return;
     (async () => {
       try {
         await refreshUsers();
@@ -1519,7 +1532,7 @@ import {
         // ignore
       }
     })();
-  }, [showCalendar, isAdmin, currentMonth]);
+  }, [showCalendar, authUser?.role, currentMonth]);
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -1658,19 +1671,6 @@ import {
       clearInterval(interval);
     };
   }, [showPresenceModal]);
-
-  const currentRole = authUser?.role || 'viewer';
-  const isAdmin = currentRole === 'admin';
-  const isViewer = currentRole === 'viewer';
-  const isTechnician = currentRole === 'technician';
-  const canWriteSites = isAdmin;
-  const canImportExport = isAdmin;
-  const canExportExcel = isAdmin || isViewer;
-  const canReset = isAdmin;
-  const canGenerateFiche = isAdmin;
-  const canMarkCompleted = isAdmin || isTechnician;
-  const canManageUsers = isAdmin;
-  const canUseInterventions = isAdmin || isTechnician || isViewer;
 
   const technicianUnseenSentCount = isTechnician
     ? (Array.isArray(interventions) ? interventions : []).filter(
