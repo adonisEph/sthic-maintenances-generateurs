@@ -1998,7 +1998,7 @@ import {
                 <span className="hidden sm:inline">Gestion des Vidanges de Générateurs</span>
                 <span className="sm:hidden">Vidanges Générateurs</span>
               </h1>
-              <p className="text-xs sm:text-sm text-gray-600 mt-1">Version 2.0 - Suivi H24/7j avec Fiches</p>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1">Version 2.0.1 - Suivi H24/7j avec Fiches</p>
             </div>
             <div className="text-left sm:text-right flex flex-col gap-2">
               <div>
