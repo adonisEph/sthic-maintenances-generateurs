@@ -18,6 +18,9 @@ function mapRow(row) {
     intervalHours: row.interval_hours,
     contractSeuil: row.contract_seuil,
     isWithinContract: row.is_within_contract === null ? null : Boolean(row.is_within_contract),
+    nh1DV: row.nh1_dv === undefined ? undefined : row.nh1_dv,
+    dateDV: row.date_dv === undefined ? undefined : row.date_dv,
+    nhNow: row.nh_now === undefined ? undefined : row.nh_now,
     interventionId: row.intervention_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at

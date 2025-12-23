@@ -79,29 +79,58 @@ export async function onRequestPost({ request, env, data, params }) {
     const ficheId = `fiche-${id}`;
     const status = 'Effectuée';
 
-    await env.DB.prepare(
-      'INSERT INTO fiche_history (id, ticket_number, site_id, site_name, technician, date_generated, status, planned_date, epv_type, created_by, date_completed, interval_hours, contract_seuil, is_within_contract, intervention_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    )
-      .bind(
-        ficheId,
-        ticketNumber,
-        site.id,
-        site.name_site,
-        intervention.technician_name,
-        now,
-        status,
-        intervention.planned_date,
-        intervention.epv_type,
-        data.user.email,
-        doneDate,
-        intervalHours,
-        contractSeuil,
-        isWithinContract === null ? null : (isWithinContract ? 1 : 0),
-        id,
-        now,
-        now
+    try {
+      await env.DB.prepare(
+        'INSERT INTO fiche_history (id, ticket_number, site_id, site_name, technician, date_generated, status, planned_date, epv_type, created_by, date_completed, interval_hours, contract_seuil, is_within_contract, intervention_id, nh1_dv, date_dv, nh_now, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       )
-      .run();
+        .bind(
+          ficheId,
+          ticketNumber,
+          site.id,
+          site.name_site,
+          intervention.technician_name,
+          now,
+          status,
+          intervention.planned_date,
+          intervention.epv_type,
+          data.user.email,
+          doneDate,
+          intervalHours,
+          contractSeuil,
+          isWithinContract === null ? null : (isWithinContract ? 1 : 0),
+          id,
+          site.nh1_dv,
+          site.date_dv,
+          nhNow,
+          now,
+          now
+        )
+        .run();
+    } catch {
+      await env.DB.prepare(
+        'INSERT INTO fiche_history (id, ticket_number, site_id, site_name, technician, date_generated, status, planned_date, epv_type, created_by, date_completed, interval_hours, contract_seuil, is_within_contract, intervention_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      )
+        .bind(
+          ficheId,
+          ticketNumber,
+          site.id,
+          site.name_site,
+          intervention.technician_name,
+          now,
+          status,
+          intervention.planned_date,
+          intervention.epv_type,
+          data.user.email,
+          doneDate,
+          intervalHours,
+          contractSeuil,
+          isWithinContract === null ? null : (isWithinContract ? 1 : 0),
+          id,
+          now,
+          now
+        )
+        .run();
+    }
 
     await touchLastUpdatedAt(env);
 

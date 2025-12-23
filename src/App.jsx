@@ -3916,19 +3916,45 @@ import {
                             <span className="ml-2 font-semibold break-words">{fiche.technician}</span>
                           </div>
                           <div className="min-w-0 flex flex-wrap items-baseline">
-                            <span className="text-gray-600">NH1 DV:</span>
-                            <span className="ml-2 font-semibold break-words">{fiche.nh1DV}H</span>
+                            <span className="text-gray-600">Heures vidangées:</span>
+                            <span className="ml-2 font-semibold break-words">
+                              {Number.isFinite(Number(fiche.intervalHours)) ? `${Number(fiche.intervalHours)}H` : '-'}
+                            </span>
+                            {fiche.isWithinContract === true && (
+                              <span className="ml-2 text-xs bg-green-100 text-green-800 border border-green-200 px-2 py-0.5 rounded-full font-semibold">
+                                Dans délai
+                              </span>
+                            )}
+                            {fiche.isWithinContract === false && (
+                              <span className="ml-2 text-xs bg-red-100 text-red-800 border border-red-200 px-2 py-0.5 rounded-full font-semibold">
+                                Hors délai
+                              </span>
+                            )}
                           </div>
                           <div className="min-w-0 flex flex-wrap items-baseline">
-                            <span className="text-gray-600">Date génération:</span>
+                            <span className="text-gray-600">NH1 DV:</span>
+                            <span className="ml-2 font-semibold break-words">
+                              {Number.isFinite(Number(fiche.nh1DV)) ? `${Number(fiche.nh1DV)}H` : '-'}
+                            </span>
+                          </div>
+                          <div className="min-w-0 flex flex-wrap items-baseline">
+                            <span className="text-gray-600">Date DV:</span>
+                            <span className="ml-2 break-words">{fiche.dateDV ? formatDate(fiche.dateDV) : '-'}</span>
+                          </div>
+                          <div className="min-w-0 flex flex-wrap items-baseline">
+                            <span className="text-gray-600">NH relevé:</span>
+                            <span className="ml-2 font-semibold break-words">
+                              {Number.isFinite(Number(fiche.nhNow)) ? `${Number(fiche.nhNow)}H` : '-'}
+                            </span>
+                          </div>
+                          <div className="min-w-0 flex flex-wrap items-baseline">
+                            <span className="text-gray-600">Date génération fiche:</span>
                             <span className="ml-2 break-words">{formatDate(fiche.dateGenerated)}</span>
                           </div>
-                          {fiche.dateCompleted && (
-                            <div className="min-w-0 flex flex-wrap items-baseline">
-                              <span className="text-gray-600">Date réalisation:</span>
-                              <span className="ml-2 break-words">{formatDate(fiche.dateCompleted)}</span>
-                            </div>
-                          )}
+                          <div className="min-w-0 flex flex-wrap items-baseline">
+                            <span className="text-gray-600">Date réalisation:</span>
+                            <span className="ml-2 break-words">{fiche.dateCompleted ? formatDate(fiche.dateCompleted) : '-'}</span>
+                          </div>
                         </div>
                         
                         {fiche.status === 'En attente' && canMarkCompleted && (
