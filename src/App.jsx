@@ -2647,25 +2647,25 @@ import {
                         const monthCount = month ? interventions.filter((i) => String(i?.plannedDate || '').slice(0, 7) === month && i.status !== 'done').length : interventions.filter((i) => i.status !== 'done').length;
 
                         return (
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="grid grid-cols-3 gap-2 w-full">
                         <button
                           type="button"
                           onClick={() => setTechnicianInterventionsTab('today')}
-                          className={`${technicianInterventionsTab === 'today' ? 'bg-emerald-700 text-white' : 'bg-white text-gray-800 border border-gray-300'} px-3 py-2 rounded-lg font-semibold text-sm`}
+                          className={`${technicianInterventionsTab === 'today' ? 'bg-emerald-700 text-white' : 'bg-white text-gray-800 border border-gray-300'} px-3 py-2 rounded-lg font-semibold text-xs sm:text-sm w-full whitespace-nowrap`}
                         >
                           Aujourd'hui ({todayCount})
                         </button>
                         <button
                           type="button"
                           onClick={() => setTechnicianInterventionsTab('tomorrow')}
-                          className={`${technicianInterventionsTab === 'tomorrow' ? 'bg-emerald-700 text-white' : 'bg-white text-gray-800 border border-gray-300'} px-3 py-2 rounded-lg font-semibold text-sm`}
+                          className={`${technicianInterventionsTab === 'tomorrow' ? 'bg-emerald-700 text-white' : 'bg-white text-gray-800 border border-gray-300'} px-3 py-2 rounded-lg font-semibold text-xs sm:text-sm w-full whitespace-nowrap`}
                         >
                           Demain ({tomorrowCount}{tomorrowSentCount ? `/${tomorrowSentCount} envoyée(s)` : ''})
                         </button>
                         <button
                           type="button"
                           onClick={() => setTechnicianInterventionsTab('month')}
-                          className={`${technicianInterventionsTab === 'month' ? 'bg-emerald-700 text-white' : 'bg-white text-gray-800 border border-gray-300'} px-3 py-2 rounded-lg font-semibold text-sm`}
+                          className={`${technicianInterventionsTab === 'month' ? 'bg-emerald-700 text-white' : 'bg-white text-gray-800 border border-gray-300'} px-3 py-2 rounded-lg font-semibold text-xs sm:text-sm w-full whitespace-nowrap`}
                         >
                           Mois ({monthCount})
                         </button>
@@ -2683,7 +2683,7 @@ import {
                   )}
 
                   {(!isTechnician || showTechnicianInterventionsFilters) && (
-                    <div className={`grid grid-cols-1 ${isAdmin ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-3`}>
+                    <div className={`grid grid-cols-1 ${isAdmin ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-3 items-end`}>
                     <div className="flex flex-col">
                       <span className="text-xs text-gray-600 mb-1">Mois</span>
                       <input
@@ -2742,7 +2742,8 @@ import {
                     )}
 
                     {canExportExcel && (
-                      <div className="w-full">
+                      <div className="flex flex-col w-full">
+                        <span className="text-xs text-gray-600 mb-1 invisible">Actions</span>
                         <button
                           type="button"
                           onClick={handleExportInterventionsExcel}
@@ -2969,7 +2970,7 @@ import {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{it.status}</span>
-                          {it.status !== 'done' && (
+                          {it.status !== 'done' && (isAdmin || (isTechnician && technicianInterventionsTab !== 'month')) && (
                             <button
                               onClick={() => {
                                 if (isTechnician) {
@@ -3796,8 +3797,8 @@ import {
 
         {/* Modal Historique */}
         {showHistory && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
+            <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:h-auto sm:max-w-4xl sm:max-h-[90vh] sm:rounded-lg">
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-amber-600 text-white">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <Activity size={24} />
@@ -3808,7 +3809,7 @@ import {
                 </button>
               </div>
               
-              <div className="p-6 overflow-y-auto" style={{maxHeight: 'calc(90vh - 80px)'}}>
+              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-start">
                     <div className="flex flex-col w-full min-w-0">
@@ -3899,33 +3900,33 @@ import {
                   <div className="space-y-3">
                     {filteredFicheHistory.map(fiche => (
                       <div key={fiche.id} className={`border-2 rounded-lg p-4 ${fiche.status === 'Effectuée' ? 'bg-green-50 border-green-300' : 'bg-yellow-50 border-yellow-300'}`}>
-                        <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <h3 className="font-bold text-lg text-gray-800">{fiche.ticketNumber}</h3>
-                            <p className="text-sm text-gray-600">{fiche.siteName}</p>
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-3">
+                          <div className="min-w-0">
+                            <h3 className="font-bold text-lg text-gray-800 truncate">{fiche.ticketNumber}</h3>
+                            <p className="text-sm text-gray-600 truncate">{fiche.siteName}</p>
                           </div>
-                          <span className={`px-3 py-1 rounded-full text-sm font-semibold ${fiche.status === 'Effectuée' ? 'bg-green-500 text-white' : 'bg-yellow-500 text-white'}`}>
+                          <span className={`px-3 py-1 rounded-full text-sm font-semibold self-start ${fiche.status === 'Effectuée' ? 'bg-green-500 text-white' : 'bg-yellow-500 text-white'}`}>
                             {fiche.status}
                           </span>
                         </div>
                         
-                        <div className="grid grid-cols-2 gap-3 text-sm mb-3">
-                          <div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-3">
+                          <div className="min-w-0 flex flex-wrap items-baseline">
                             <span className="text-gray-600">Technicien:</span>
-                            <span className="ml-2 font-semibold">{fiche.technician}</span>
+                            <span className="ml-2 font-semibold break-words">{fiche.technician}</span>
                           </div>
-                          <div>
+                          <div className="min-w-0 flex flex-wrap items-baseline">
                             <span className="text-gray-600">NH1 DV:</span>
-                            <span className="ml-2 font-semibold">{fiche.nh1DV}H</span>
+                            <span className="ml-2 font-semibold break-words">{fiche.nh1DV}H</span>
                           </div>
-                          <div>
+                          <div className="min-w-0 flex flex-wrap items-baseline">
                             <span className="text-gray-600">Date génération:</span>
-                            <span className="ml-2">{formatDate(fiche.dateGenerated)}</span>
+                            <span className="ml-2 break-words">{formatDate(fiche.dateGenerated)}</span>
                           </div>
                           {fiche.dateCompleted && (
-                            <div>
+                            <div className="min-w-0 flex flex-wrap items-baseline">
                               <span className="text-gray-600">Date réalisation:</span>
-                              <span className="ml-2">{formatDate(fiche.dateCompleted)}</span>
+                              <span className="ml-2 break-words">{formatDate(fiche.dateCompleted)}</span>
                             </div>
                           )}
                         </div>
