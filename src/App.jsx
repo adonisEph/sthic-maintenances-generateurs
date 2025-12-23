@@ -1678,7 +1678,6 @@ import {
 
   useEffect(() => {
     if (!authUser?.id) return;
-    if (authUser?.role === 'admin') return;
 
     let isActive = true;
     let isRefreshing = false;
