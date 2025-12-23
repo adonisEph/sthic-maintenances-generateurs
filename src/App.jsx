@@ -83,7 +83,6 @@ import {
   const [historyStatus, setHistoryStatus] = useState('all');
   const [historySort, setHistorySort] = useState('newest');
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [calendarMonthExportGroupBy, setCalendarMonthExportGroupBy] = useState('date');
   const [calendarSendTechUserId, setCalendarSendTechUserId] = useState('');
   const [showDayDetailsModal, setShowDayDetailsModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
@@ -1103,7 +1102,9 @@ import {
   };
 
   const computeDashboardData = (yyyymm) => {
-    const plannedEvents = filteredSites
+    const techFilter = String(filterTechnician || 'all');
+
+    const plannedByEpv = filteredSites
       .filter((s) => s && !s.retired)
       .flatMap((site) => {
         return [
@@ -1122,18 +1123,37 @@ import {
           }));
       });
 
-    const completedFichesInMonth = ficheHistory.filter((f) => f.status === 'Effectuée' && f.dateCompleted && isInMonth(f.dateCompleted, yyyymm));
+    const doneByPlannedDate = ficheHistory
+      .filter((f) => f && f.status === 'Effectuée' && f.plannedDate && String(f.plannedDate).slice(0, 7) === yyyymm)
+      .filter((f) => techFilter === 'all' || String(f.technician || '') === techFilter);
+
+    const plannedByFiches = doneByPlannedDate
+      .map((f) => ({
+        key: `${f.siteId}|${f.epvType || ''}|${f.plannedDate}`,
+        siteId: f.siteId,
+        siteName: f.siteName,
+        technician: f.technician,
+        epvType: f.epvType,
+        plannedDate: f.plannedDate
+      }))
+      .filter((ev) => ev && ev.siteId && ev.plannedDate);
+
+    const plannedMap = new Map();
+    [...plannedByEpv, ...plannedByFiches].forEach((ev) => {
+      plannedMap.set(String(ev.key), ev);
+    });
+    const plannedEvents = Array.from(plannedMap.values());
+
+    const completedFichesInMonth = ficheHistory
+      .filter((f) => f && f.status === 'Effectuée' && f.dateCompleted && isInMonth(f.dateCompleted, yyyymm))
+      .filter((f) => techFilter === 'all' || String(f.technician || '') === techFilter);
     const contractOk = completedFichesInMonth.filter((f) => f.isWithinContract === true);
     const contractOver = completedFichesInMonth.filter((f) => f.isWithinContract === false);
 
-    const completedKeys = new Set(
-      ficheHistory
-        .filter((f) => f.status === 'Effectuée' && f.plannedDate && String(f.plannedDate).slice(0, 7) === yyyymm)
-        .map((f) => `${f.siteId}|${f.epvType || ''}|${f.plannedDate}`)
-    );
-    const remainingEvents = plannedEvents.filter((ev) => !completedKeys.has(ev.key));
+    const completedKeys = new Set(doneByPlannedDate.map((f) => `${f.siteId}|${f.epvType || ''}|${f.plannedDate}`));
+    const remainingEvents = plannedEvents.filter((ev) => !completedKeys.has(String(ev.key)));
 
-    return { plannedEvents, remainingEvents, contractOk, contractOver };
+    return { plannedEvents, remainingEvents, doneByPlannedDate, contractOk, contractOver };
   };
 
   const handleExportDashboardSummaryExcel = async () => {
@@ -1142,7 +1162,7 @@ import {
     const done = await runExport({
       label: 'Export Excel (dashboard résumé)…',
       fn: async () => {
-        const { plannedEvents, remainingEvents, contractOk, contractOver } = computeDashboardData(dashboardMonth);
+        const { plannedEvents, remainingEvents, doneByPlannedDate, contractOk, contractOver } = computeDashboardData(dashboardMonth);
         exportXlsx({
           fileBaseName: `Dashboard_${dashboardMonth}_resume_${new Date().toISOString().slice(0, 10)}`,
           sheets: [
@@ -1152,7 +1172,8 @@ import {
                 { Section: 'Dans délai contractuel', Count: contractOk.length, Mois: dashboardMonth },
                 { Section: 'Hors délai contractuel', Count: contractOver.length, Mois: dashboardMonth },
                 { Section: 'Planifiées du mois', Count: plannedEvents.length, Mois: dashboardMonth },
-                { Section: 'Restantes du mois', Count: remainingEvents.length, Mois: dashboardMonth }
+                { Section: 'Restantes du mois', Count: remainingEvents.length, Mois: dashboardMonth },
+                { Section: 'Effectuées du mois', Count: doneByPlannedDate.length, Mois: dashboardMonth }
               ]
             }
           ]
@@ -1169,7 +1190,7 @@ import {
     const items = Array.isArray(dashboardDetails?.items) ? dashboardDetails.items : [];
     if (items.length === 0) return;
 
-    const rows = (kind === 'contract_ok' || kind === 'contract_over')
+    const rows = (kind === 'contract_ok' || kind === 'contract_over' || kind === 'done')
       ? items.map((f) => ({
         Site: f.siteName,
         Ticket: f.ticketNumber,
@@ -1274,8 +1295,7 @@ import {
   };
 
   const handleExportCalendarMonthExcel = async () => {
-    const label = calendarMonthExportGroupBy === 'technician' ? 'technicien' : 'date';
-    const ok = window.confirm(`Exporter toutes les EPV du mois affiché en Excel (groupé par ${label}) ?`);
+    const ok = window.confirm(`Exporter toutes les EPV du mois affiché en Excel ?`);
     if (!ok) return;
     const year = currentMonth?.getFullYear?.();
     const month = currentMonth?.getMonth?.();
@@ -1283,7 +1303,7 @@ import {
     const yyyymm = `${year}-${String(month + 1).padStart(2, '0')}`;
 
     const events = [];
-    (Array.isArray(filteredSites) ? filteredSites : []).forEach((site) => {
+    (Array.isArray(calendarFilteredSites) ? calendarFilteredSites : []).forEach((site) => {
       if (!site || site.retired) return;
       const pushIf = (type, date) => {
         if (!date) return;
@@ -1301,73 +1321,15 @@ import {
       pushIf('EPV3', site.epv3);
     });
 
-    const baseRows = events
+    const rows = events
       .slice()
       .sort((a, b) => {
-        if (calendarMonthExportGroupBy === 'technician') {
-          const t = String(a.Technicien || '').localeCompare(String(b.Technicien || ''));
-          if (t !== 0) return t;
-          const d = String(a.Date || '').localeCompare(String(b.Date || ''));
-          if (d !== 0) return d;
-          return String(a.Site || '').localeCompare(String(b.Site || ''));
-        }
         const d = String(a.Date || '').localeCompare(String(b.Date || ''));
         if (d !== 0) return d;
         const t = String(a.Technicien || '').localeCompare(String(b.Technicien || ''));
         if (t !== 0) return t;
         return String(a.Site || '').localeCompare(String(b.Site || ''));
       });
-
-    const groupKeyFor = (row) => {
-      if (calendarMonthExportGroupBy === 'technician') return String(row?.Technicien || '');
-      return String(row?.Date || '');
-    };
-
-    const rows = [];
-    let lastGroup = null;
-    let groupCount = 0;
-    const pushTotalIfNeeded = () => {
-      if (lastGroup === null) return;
-      rows.push({
-        Groupe: 'TOTAL',
-        Date: calendarMonthExportGroupBy === 'date' ? lastGroup : '',
-        Technicien: calendarMonthExportGroupBy === 'technician' ? lastGroup : '',
-        EPV: '',
-        Site: '',
-        IdSite: '',
-        'Nb EPV du groupe': groupCount
-      });
-    };
-
-    baseRows.forEach((r) => {
-      const gk = groupKeyFor(r);
-      if (gk !== lastGroup) {
-        pushTotalIfNeeded();
-        lastGroup = gk;
-        groupCount = 0;
-        rows.push({
-          Groupe: calendarMonthExportGroupBy === 'technician' ? `Technicien: ${gk}` : `Date: ${gk}`,
-          Date: '',
-          Technicien: '',
-          EPV: '',
-          Site: '',
-          IdSite: '',
-          'Nb EPV du groupe': ''
-        });
-      }
-      groupCount += 1;
-      rows.push({
-        Groupe: '',
-        Date: r.Date,
-        Technicien: r.Technicien,
-        EPV: r.EPV,
-        Site: r.Site,
-        IdSite: r.IdSite,
-        'Nb EPV du groupe': ''
-      });
-    });
-
-    pushTotalIfNeeded();
 
     const done = await runExport({
       label: 'Export Excel (calendrier mois)…',
@@ -1489,6 +1451,20 @@ import {
     .map(getUpdatedSite)
     .filter(site => filterTechnician === 'all' || site.technician === filterTechnician);
 
+  const calendarTechnicianName = (() => {
+    const techId = String(calendarSendTechUserId || '').trim();
+    if (!techId) return '';
+    const tech = (Array.isArray(users) ? users : []).find((u) => u && String(u.id) === techId) || null;
+    return String(tech?.technicianName || '').trim();
+  })();
+
+  const calendarFilteredSites = sites
+    .map(getUpdatedSite)
+    .filter((site) => {
+      if (!calendarTechnicianName) return true;
+      return String(site.technician || '').trim() === calendarTechnicianName;
+    });
+
   const interventionsByKey = new Map(
     (Array.isArray(interventions) ? interventions : []).filter(Boolean).map((i) => [getInterventionKey(i.siteId, i.plannedDate, i.epvType), i])
   );
@@ -1497,7 +1473,7 @@ import {
     if (!dateStr) return [];
     const events = [];
 
-    filteredSites.forEach((site) => {
+    calendarFilteredSites.forEach((site) => {
       if (site.retired) return;
       if (site.epv1 === dateStr) {
         const intervention = interventionsByKey.get(getInterventionKey(site.id, site.epv1, 'EPV1')) || null;
@@ -2171,7 +2147,7 @@ import {
               <h2 className="text-lg sm:text-xl font-bold text-gray-800">Dashboard</h2>
               <p className="text-xs text-gray-600">Résumé mensuel (seuil contractuel: 250H)</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
               <label className="text-xs text-gray-600">Mois</label>
               <input
                 type="month"
@@ -2179,11 +2155,30 @@ import {
                 onChange={(e) => setDashboardMonth(e.target.value)}
                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
               />
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await loadData();
+                  } catch {
+                    // ignore
+                  }
+                  try {
+                    await loadFicheHistory();
+                  } catch {
+                    // ignore
+                  }
+                }}
+                className="bg-gray-200 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-300 flex items-center gap-2 text-sm font-semibold w-full sm:w-auto"
+                disabled={exportBusy}
+              >
+                Rafraîchir
+              </button>
               {canExportExcel && (
                 <button
                   type="button"
                   onClick={handleExportDashboardSummaryExcel}
-                  className="bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-sm font-semibold"
+                  className="bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center justify-center gap-2 text-sm font-semibold w-full sm:w-auto"
                   disabled={exportBusy}
                 >
                   <Download size={16} />
@@ -2194,38 +2189,10 @@ import {
           </div>
 
           {(() => {
-            const plannedEvents = filteredSites
-              .filter((s) => !s.retired)
-              .flatMap((site) => {
-                return [
-                  { type: 'EPV1', date: site.epv1 },
-                  { type: 'EPV2', date: site.epv2 },
-                  { type: 'EPV3', date: site.epv3 }
-                ]
-                  .filter((ev) => ev.date && String(ev.date).slice(0, 7) === dashboardMonth)
-                  .map((ev) => ({
-                    key: `${site.id}|${ev.type}|${ev.date}`,
-                    siteId: site.id,
-                    siteName: site.nameSite,
-                    technician: site.technician,
-                    epvType: ev.type,
-                    plannedDate: ev.date
-                  }));
-              });
-
-            const completedFichesInMonth = ficheHistory.filter((f) => f.status === 'Effectuée' && f.dateCompleted && isInMonth(f.dateCompleted, dashboardMonth));
-            const contractOk = completedFichesInMonth.filter((f) => f.isWithinContract === true);
-            const contractOver = completedFichesInMonth.filter((f) => f.isWithinContract === false);
-
-            const completedKeys = new Set(
-              ficheHistory
-                .filter((f) => f.status === 'Effectuée' && f.plannedDate && String(f.plannedDate).slice(0, 7) === dashboardMonth)
-                .map((f) => `${f.siteId}|${f.epvType || ''}|${f.plannedDate}`)
-            );
-            const remainingEvents = plannedEvents.filter((ev) => !completedKeys.has(ev.key));
+            const { plannedEvents, remainingEvents, doneByPlannedDate, contractOk, contractOver } = computeDashboardData(dashboardMonth);
 
             return (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
                 <button
                   type="button"
                   onClick={() => setDashboardDetails({ open: true, title: 'Vidanges effectuées dans le délai contractuel', kind: 'contract_ok', items: contractOk })}
@@ -2265,6 +2232,16 @@ import {
                   <div className="text-2xl font-bold text-amber-700 mt-1">{remainingEvents.length}</div>
                   <div className="text-xs text-amber-700 mt-2">Clique pour voir les sites</div>
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDashboardDetails({ open: true, title: 'Vidanges effectuées du mois', kind: 'done', items: doneByPlannedDate })}
+                  className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-left hover:bg-emerald-100"
+                >
+                  <div className="text-xs text-emerald-800 font-semibold">Effectuées du mois</div>
+                  <div className="text-2xl font-bold text-emerald-700 mt-1">{doneByPlannedDate.length}</div>
+                  <div className="text-xs text-emerald-700 mt-2">Clique pour voir les sites</div>
+                </button>
               </div>
             );
           })()}
@@ -2285,7 +2262,7 @@ import {
               <div className="p-4 sm:p-6 overflow-y-auto flex-1">
                 {dashboardDetails.items.length === 0 ? (
                   <div className="text-gray-600">Aucun élément pour ce mois.</div>
-                ) : dashboardDetails.kind === 'contract_ok' || dashboardDetails.kind === 'contract_over' ? (
+                ) : dashboardDetails.kind === 'contract_ok' || dashboardDetails.kind === 'contract_over' || dashboardDetails.kind === 'done' ? (
                   <div className="space-y-3">
                     {dashboardDetails.items.map((f) => (
                       <div key={f.id} className="border border-gray-200 rounded-lg p-3">
@@ -2765,15 +2742,8 @@ import {
                       </div>
                     )}
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 w-full">
-                      <button
-                        onClick={() => loadInterventions(interventionsMonth, interventionsStatus, interventionsTechnicianUserId)}
-                        className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold text-sm w-full"
-                        disabled={interventionsBusy}
-                      >
-                        Rafraîchir
-                      </button>
-                      {canExportExcel && (
+                    {canExportExcel && (
+                      <div className="w-full">
                         <button
                           type="button"
                           onClick={handleExportInterventionsExcel}
@@ -2783,17 +2753,8 @@ import {
                           <Download size={18} />
                           Exporter Excel
                         </button>
-                      )}
-                      {isAdmin && (
-                        <button
-                          onClick={handleSendJ1}
-                          className="bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm w-full"
-                          disabled={interventionsBusy}
-                        >
-                          Envoyer J-1
-                        </button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                     </div>
                   )}
 
@@ -2811,20 +2772,6 @@ import {
                         <div className="font-semibold text-gray-800">Planification (à partir des EPV du mois)</div>
                         <div className="text-xs text-gray-600">Clique "Planifier" pour créer l'intervention en base.</div>
                       </div>
-                      <button
-                        onClick={async () => {
-                          try {
-                            await refreshUsers();
-                          } catch (e) {
-                            // ignore
-                          }
-                          await loadInterventions(interventionsMonth, 'all');
-                        }}
-                        className="bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm"
-                        disabled={interventionsBusy}
-                      >
-                        Recharger users + interventions
-                      </button>
                     </div>
 
                     {(() => {
@@ -2973,14 +2920,6 @@ import {
                                         </div>
                                         <div className="flex items-center gap-2">
                                           <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{it.status}</span>
-                                          {it.status !== 'done' && (
-                                            <button
-                                              onClick={() => handleCompleteIntervention(it.id)}
-                                              className="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 font-semibold text-sm"
-                                            >
-                                              Marquer effectuée
-                                            </button>
-                                          )}
                                         </div>
                                       </div>
                                     );
@@ -3336,19 +3275,19 @@ import {
                     <div className="font-bold text-gray-800 mb-3">Utilisateurs</div>
                     <div className="space-y-2">
                       {users.map((u) => (
-                        <div key={u.id} className="border border-gray-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                        <div key={u.id} className="border border-gray-200 rounded-lg p-3 grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-start">
                           <div className="min-w-0">
                             <div className="font-semibold text-gray-800 truncate">{u.email}</div>
                             <div className="text-xs text-gray-600">Rôle: {u.role}{u.technicianName ? ` | Technicien: ${u.technicianName}` : ''}</div>
                           </div>
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
                             <button
                               onClick={() => {
                                 setUserFormId(u.id);
                                 setUserForm({ email: u.email, role: u.role, technicianName: u.technicianName || '', password: '' });
                                 setUserFormError('');
                               }}
-                              className="bg-gray-200 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-300 text-sm font-semibold"
+                              className="bg-gray-200 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-300 text-sm font-semibold w-full sm:w-auto"
                             >
                               Modifier
                             </button>
@@ -3364,7 +3303,7 @@ import {
                                   }
                                 })();
                               }}
-                              className="bg-red-600 text-white px-3 py-2 rounded-lg hover:bg-red-700 text-sm font-semibold disabled:bg-gray-400"
+                              className="bg-red-600 text-white px-3 py-2 rounded-lg hover:bg-red-700 text-sm font-semibold disabled:bg-gray-400 w-full sm:w-auto"
                             >
                               Suppr.
                             </button>
@@ -3480,13 +3419,13 @@ import {
                             }
                           })();
                         }}
-                        className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold"
+                        className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold w-full sm:w-auto"
                       >
                         Enregistrer
                       </button>
                       <button
                         onClick={() => { setUserFormId(null); setUserForm({ email: '', role: 'viewer', technicianName: '', password: '' }); setUserFormError(''); }}
-                        className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
+                        className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold w-full sm:w-auto"
                       >
                         Réinitialiser
                       </button>
@@ -4024,25 +3963,35 @@ import {
               </div>
               
               <div className="p-3 sm:p-6 overflow-y-auto flex-1">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 lg:gap-4 items-center mb-4 sm:mb-6">
-                  <button
-                    onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
-                    className="bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 w-full lg:w-auto"
-                  >
-                    ← Mois précédent
-                  </button>
-                  <h3 className="text-xl sm:text-2xl font-bold text-gray-800 text-center lg:text-left">
-                    {currentMonth.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
-                  </h3>
-                  <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 justify-start lg:justify-end">
-                    {isAdmin && (
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <div className="mb-4 sm:mb-6 space-y-3">
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <button
+                      onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
+                      className="bg-cyan-600 text-white px-3 py-2 rounded-lg hover:bg-cyan-700 w-full"
+                    >
+                      ← Précédent
+                    </button>
+                    <h3 className="text-base sm:text-xl font-bold text-gray-800 text-center">
+                      {currentMonth.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                    </h3>
+                    <button
+                      onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
+                      className="bg-cyan-600 text-white px-3 py-2 rounded-lg hover:bg-cyan-700 w-full"
+                    >
+                      Suivant →
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                    {isAdmin ? (
+                      <div className="flex flex-col gap-1">
+                        <div className="text-xs font-semibold text-gray-700">Technicien</div>
                         <select
                           value={calendarSendTechUserId}
                           onChange={(e) => setCalendarSendTechUserId(e.target.value)}
-                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white w-full sm:w-64"
+                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white w-full"
                         >
-                          <option value="">-- Technicien --</option>
+                          <option value="">Tous</option>
                           {(Array.isArray(users) ? users : [])
                             .filter((u) => u && u.role === 'technician')
                             .slice()
@@ -4053,38 +4002,29 @@ import {
                               </option>
                             ))}
                         </select>
-                        <button
-                          type="button"
-                          onClick={handleSendCalendarMonthPlanning}
-                          className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold text-sm w-full sm:w-auto"
-                          disabled={!calendarSendTechUserId}
-                        >
-                          Envoyer planning du mois
-                        </button>
                       </div>
+                    ) : (
+                      <div />
                     )}
-                    {canExportExcel && (
-                      <select
-                        value={calendarMonthExportGroupBy}
-                        onChange={(e) => setCalendarMonthExportGroupBy(e.target.value)}
-                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full sm:w-auto"
-                        title="Regrouper l'export"
+
+                    {isAdmin ? (
+                      <button
+                        type="button"
+                        onClick={handleSendCalendarMonthPlanning}
+                        className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold text-sm w-full"
+                        disabled={!calendarSendTechUserId}
                       >
-                        <option value="date">Grouper par date</option>
-                        <option value="technician">Grouper par technicien</option>
-                      </select>
+                        Envoyer planning du mois
+                      </button>
+                    ) : (
+                      <div />
                     )}
-                    <button
-                      onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
-                      className="bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 w-full sm:w-auto"
-                    >
-                      Mois suivant →
-                    </button>
+
                     {canExportExcel && (
                       <button
                         type="button"
                         onClick={handleExportCalendarMonthExcel}
-                        className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold flex items-center justify-center gap-2 w-full sm:w-auto"
+                        className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold flex items-center justify-center gap-2 w-full"
                         disabled={exportBusy}
                       >
                         <Download size={18} />
@@ -4595,14 +4535,6 @@ import {
                             className="bg-emerald-600 text-white py-2 rounded-lg hover:bg-emerald-700 text-sm font-semibold"
                           >
                             Modifier
-                          </button>
-                        )}
-                        {canGenerateFiche && (
-                          <button
-                            onClick={() => handleGenerateFiche(site)}
-                            className="bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 text-sm font-semibold"
-                          >
-                            📄 Fiche
                           </button>
                         )}
                         {canWriteSites && (
