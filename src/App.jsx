@@ -53,6 +53,7 @@ import {
   const [exportBusy, setExportBusy] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportStep, setExportStep] = useState('');
+  const [pwaUpdate, setPwaUpdate] = useState({ available: false, registration: null, requested: false });
   const [bannerImage, setBannerImage] = useState('');
   const [siteForFiche, setSiteForFiche] = useState(null);
   const [ficheContext, setFicheContext] = useState(null);
@@ -203,6 +204,28 @@ import {
   useEffect(() => {
     exportBusyRef.current = Boolean(exportBusy);
   }, [exportBusy]);
+
+  useEffect(() => {
+    const onUpdate = (e) => {
+      const reg = e?.detail?.registration || null;
+      if (!reg) return;
+      setPwaUpdate((prev) => ({ ...(prev || {}), available: true, registration: reg }));
+    };
+    window.addEventListener('pwa:update', onUpdate);
+    return () => window.removeEventListener('pwa:update', onUpdate);
+  }, []);
+
+  useEffect(() => {
+    if (!pwaUpdate?.requested) return;
+    if (!('serviceWorker' in navigator)) return;
+    const onControllerChange = () => {
+      window.location.reload();
+    };
+    navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+    return () => {
+      navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+    };
+  }, [pwaUpdate?.requested]);
 
   const runExport = async ({ label, fn }) => {
     if (exportBusyRef.current) return false;
@@ -1879,6 +1902,46 @@ import {
 
   return (
     <div className="min-h-screen bg-gray-50 p-2 sm:p-4 md:p-6">
+      {pwaUpdate?.available && (
+        <div className="fixed bottom-4 left-0 right-0 z-[70] px-4">
+          <div className="max-w-3xl mx-auto bg-white border border-emerald-200 shadow-lg rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="min-w-0">
+              <div className="font-bold text-gray-900">Nouvelle version disponible</div>
+              <div className="text-sm text-gray-600">Clique sur “Mettre à jour” pour appliquer la mise à jour.</div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  const reg = pwaUpdate?.registration;
+                  const waiting = reg?.waiting;
+                  if (!waiting) {
+                    window.location.reload();
+                    return;
+                  }
+                  try {
+                    waiting.postMessage({ type: 'SKIP_WAITING' });
+                  } catch {
+                    window.location.reload();
+                    return;
+                  }
+                  setPwaUpdate((prev) => ({ ...(prev || {}), requested: true }));
+                }}
+                className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold w-full sm:w-auto"
+              >
+                Mettre à jour
+              </button>
+              <button
+                type="button"
+                onClick={() => setPwaUpdate({ available: false, registration: null, requested: false })}
+                className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 font-semibold w-full sm:w-auto"
+              >
+                Plus tard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {exportBusy && (
         <div className="fixed inset-0 z-[60] bg-black/30 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-5">
