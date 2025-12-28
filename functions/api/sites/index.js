@@ -16,6 +16,7 @@ function mapSiteRow(row) {
     dateDV: row.date_dv,
     nh2A: row.nh2_a,
     dateA: row.date_a,
+    nhOffset: row.nh_offset == null ? 0 : Number(row.nh_offset),
     regime: row.regime,
     nhEstimated: row.nh_estimated,
     diffNHs: row.diff_nhs,

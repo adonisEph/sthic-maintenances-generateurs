@@ -12,7 +12,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
- const APP_VERSION = '2.0.2';
+ const APP_VERSION = '2.0.3';
  const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
  const STHIC_LOGO_SRC = '/Logo_sthic.png';
  const SPLASH_MIN_MS = 3000;
@@ -48,6 +48,11 @@ import {
   const [completeModalSite, setCompleteModalSite] = useState(null);
   const [completeForm, setCompleteForm] = useState({ nhNow: '', doneDate: '' });
   const [completeFormError, setCompleteFormError] = useState('');
+  const [nhModalOpen, setNhModalOpen] = useState(false);
+  const [nhModalIntervention, setNhModalIntervention] = useState(null);
+  const [nhModalSite, setNhModalSite] = useState(null);
+  const [nhForm, setNhForm] = useState({ nhValue: '', readingDate: '' });
+  const [nhFormError, setNhFormError] = useState('');
   const [siteToDelete, setSiteToDelete] = useState(null);
   const [selectedSite, setSelectedSite] = useState(null);
   const [filterTechnician, setFilterTechnician] = useState('all');
@@ -2079,7 +2084,7 @@ import {
                 <span className="hidden sm:inline">Gestion Maintenance & Vidanges</span>
                 <span className="sm:hidden">Maintenance & Vidanges</span>
               </h1>
-              <p className="text-xs sm:text-sm text-gray-600 mt-1">Version 2.0.2 - Suivi H24/7j avec Fiches</p>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1">Version 2.0.3 - Suivi H24/7j avec Fiches</p>
             </div>
             <div className="text-left sm:text-right flex flex-col gap-2">
               <div>
@@ -2759,6 +2764,11 @@ import {
                     setCompleteModalSite(null);
                     setCompleteForm({ nhNow: '', doneDate: '' });
                     setCompleteFormError('');
+                    setNhModalOpen(false);
+                    setNhModalIntervention(null);
+                    setNhModalSite(null);
+                    setNhForm({ nhValue: '', readingDate: '' });
+                    setNhFormError('');
                   }}
                   className="hover:bg-emerald-800 p-2 rounded"
                 >
@@ -3114,6 +3124,23 @@ import {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{it.status}</span>
+                          {isTechnician && site && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const offset = Number(site?.nhOffset || 0);
+                                const raw = Math.max(0, Number(site?.nh2A || 0) - offset);
+                                setNhModalIntervention(it);
+                                setNhModalSite(site);
+                                setNhForm({ nhValue: String(Math.trunc(raw)), readingDate: today });
+                                setNhFormError('');
+                                setNhModalOpen(true);
+                              }}
+                              className="bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm"
+                            >
+                              Mettre à jour NH
+                            </button>
+                          )}
                           {it.status !== 'done' && (isAdmin || (isTechnician && technicianInterventionsTab !== 'month')) && (
                             <button
                               onClick={() => {
@@ -3320,6 +3347,124 @@ import {
                     </div>
                   </div>
                 )}
+
+                {nhModalOpen && (
+                  <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full overflow-hidden">
+                      <div className="flex justify-between items-center p-4 border-b bg-slate-800 text-white">
+                        <div className="font-bold">Mettre à jour le NH</div>
+                        <button
+                          onClick={() => {
+                            setNhModalOpen(false);
+                            setNhModalIntervention(null);
+                            setNhModalSite(null);
+                            setNhForm({ nhValue: '', readingDate: '' });
+                            setNhFormError('');
+                          }}
+                          className="hover:bg-slate-900 p-2 rounded"
+                        >
+                          <X size={18} />
+                        </button>
+                      </div>
+                      <div className="p-4 space-y-3">
+                        <div className="text-sm text-gray-700">
+                          <div className="font-semibold text-gray-900">{nhModalSite?.nameSite || nhModalIntervention?.siteId || ''}</div>
+                          {nhModalSite?.idSite && <div className="text-xs text-gray-600">ID: {nhModalSite.idSite}</div>}
+                          <div className="text-xs text-gray-600">Saisir le compteur tel qu'affiché sur le générateur (DEEPSEA).</div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="flex flex-col">
+                            <label className="text-xs text-gray-600 mb-1">Date du relevé</label>
+                            <input
+                              type="date"
+                              value={nhForm.readingDate}
+                              onChange={(e) => {
+                                setNhForm((prev) => ({ ...(prev || {}), readingDate: e.target.value }));
+                                setNhFormError('');
+                              }}
+                              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                            />
+                          </div>
+                          <div className="flex flex-col">
+                            <label className="text-xs text-gray-600 mb-1">NH actuel</label>
+                            <input
+                              type="number"
+                              value={nhForm.nhValue}
+                              onChange={(e) => {
+                                setNhForm((prev) => ({ ...(prev || {}), nhValue: e.target.value }));
+                                setNhFormError('');
+                              }}
+                              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                            />
+                          </div>
+                        </div>
+
+                        {nhFormError && (
+                          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">
+                            {nhFormError}
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-4 border-t bg-white flex justify-end gap-2">
+                        <button
+                          onClick={() => {
+                            setNhModalOpen(false);
+                            setNhModalIntervention(null);
+                            setNhModalSite(null);
+                            setNhForm({ nhValue: '', readingDate: '' });
+                            setNhFormError('');
+                          }}
+                          className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
+                        >
+                          Annuler
+                        </button>
+                        <button
+                          onClick={async () => {
+                            const siteId = nhModalSite?.id;
+                            if (!siteId) {
+                              setNhFormError('Site introuvable.');
+                              return;
+                            }
+                            const readingDate = String(nhForm?.readingDate || '').trim();
+                            const nhValue = Number(String(nhForm?.nhValue || '').trim());
+                            if (!/^\d{4}-\d{2}-\d{2}$/.test(readingDate)) {
+                              setNhFormError('Date invalide.');
+                              return;
+                            }
+                            if (!Number.isFinite(nhValue) || nhValue < 0) {
+                              setNhFormError('Veuillez saisir un NH valide.');
+                              return;
+                            }
+                            try {
+                              const data = await apiFetchJson(`/api/sites/${siteId}/nh`, {
+                                method: 'POST',
+                                body: JSON.stringify({ readingDate, nhValue })
+                              });
+                              await loadData();
+                              await loadInterventions();
+                              if (data?.isReset) {
+                                alert('⚠️ Reset détecté (compteur revenu à 0 ou inférieur). Historique enregistré et calculs recalculés.');
+                              } else {
+                                alert('✅ NH mis à jour.');
+                              }
+                              setNhModalOpen(false);
+                              setNhModalIntervention(null);
+                              setNhModalSite(null);
+                              setNhForm({ nhValue: '', readingDate: '' });
+                              setNhFormError('');
+                            } catch (e) {
+                              setNhFormError(e?.message || 'Erreur serveur.');
+                            }
+                          }}
+                          className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold"
+                        >
+                          Confirmer
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="p-4 border-t bg-white flex justify-end">
@@ -3333,6 +3478,11 @@ import {
                     setCompleteModalSite(null);
                     setCompleteForm({ nhNow: '', doneDate: '' });
                     setCompleteFormError('');
+                    setNhModalOpen(false);
+                    setNhModalIntervention(null);
+                    setNhModalSite(null);
+                    setNhForm({ nhValue: '', readingDate: '' });
+                    setNhFormError('');
                   }}
                   className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
                 >
