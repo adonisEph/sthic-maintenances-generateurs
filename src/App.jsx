@@ -12,7 +12,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
- const APP_VERSION = '2.0.4';
+ const APP_VERSION = '2.0.3';
  const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
  const STHIC_LOGO_SRC = '/Logo_sthic.png';
  const SPLASH_MIN_MS = 3000;
@@ -2084,7 +2084,7 @@ import {
                 <span className="hidden sm:inline">Gestion Maintenance & Vidanges</span>
                 <span className="sm:hidden">Maintenance & Vidanges</span>
               </h1>
-              <p className="text-xs sm:text-sm text-gray-600 mt-1">Version 2.0.4 - Suivi H24/7j avec Fiches</p>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1">Version 2.0.3 - Suivi H24/7j avec Fiches</p>
             </div>
             <div className="text-left sm:text-right flex flex-col gap-2">
               <div>
@@ -3114,14 +3114,7 @@ import {
 
                   const renderItem = (it) => {
                     const site = siteById.get(String(it.siteId)) || null;
-                    const isOverdue = it.status !== 'done' && it.dueDate && new Date(it.dueDate) < new Date();
-                    const statusColor = it.status === 'done' 
-                      ? 'bg-green-100 text-green-800 border-green-200' 
-                      : isOverdue 
-                        ? 'bg-red-100 text-red-800 border-red-200' 
-                        : it.status === 'sent' 
-                          ? 'bg-blue-100 text-blue-800 border-blue-200' 
-                          : 'bg-amber-100 text-amber-800 border-amber-200';
+                    const statusColor = it.status === 'done' ? 'bg-green-100 text-green-800 border-green-200' : it.status === 'sent' ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-amber-100 text-amber-800 border-amber-200';
                     return (
                       <div key={it.id} className="border border-gray-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <div className="min-w-0">
@@ -3148,7 +3141,7 @@ import {
                               Mettre à jour NH
                             </button>
                           )}
-                          {it.status !== 'done' && (isAdmin || (isTechnician && (technicianInterventionsTab !== 'month' || isOverdue))) && (
+                          {it.status !== 'done' && (isAdmin || (isTechnician && technicianInterventionsTab !== 'month')) && (
                             <button
                               onClick={() => {
                                 if (isTechnician) {
@@ -3173,31 +3166,11 @@ import {
 
                   if (isTechnician) {
                     if (technicianInterventionsTab === 'month') {
-                      const today = new Date();
-                      today.setHours(0, 0, 0, 0);
-                      const oneMonthLater = new Date();
-                      oneMonthLater.setMonth(oneMonthLater.getMonth() + 1);
-                      
                       const monthItems = list
-                        .filter(i => {
-                          if (!i) return false;
-                          const dueDate = new Date(i.plannedDate || i.dueDate);
-                          const isOverdue = i.status !== 'done' && dueDate < today;
-                          const isInNextMonth = dueDate >= today && dueDate <= oneMonthLater;
-                          return isOverdue || isInNextMonth || i.status !== 'done';
-                        })
-                        .sort((a, b) => {
-                          const aDate = new Date(a.plannedDate || a.dueDate);
-                          const bDate = new Date(b.plannedDate || b.dueDate);
-                          const aIsOverdue = a.status !== 'done' && aDate < today;
-                          const bIsOverdue = b.status !== 'done' && bDate < today;
-                          
-                          // Les interventions en retard d'abord
-                          if (aIsOverdue && !bIsOverdue) return -1;
-                          if (!aIsOverdue && bIsOverdue) return 1;
-                          
-                          // Puis tri par date
-                          return aDate - bDate;
+                        .filter((i) => i && i.status !== 'done')
+                        .filter((i) => {
+                          if (!month) return true;
+                          return String(i.plannedDate || '').slice(0, 7) === month;
                         });
 
                       const byDate = new Map();
