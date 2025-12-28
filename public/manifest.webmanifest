@@ -1,6 +1,6 @@
 {
-  "name": "Gestion Maintenance Générateurs",
-  "short_name": "Vidanges",
+  "name": "Gestion Maintenance & Vidanges",
+  "short_name": "Maintenance",
   "description": "Application de gestion de maintenance des générateurs",
   "start_url": "/",
   "scope": "/",

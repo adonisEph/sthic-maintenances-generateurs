@@ -12,6 +12,10 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
+ const APP_VERSION = '2.0.2';
+ const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
+ const STHIC_LOGO_SRC = '/Logo_sthic.png';
+
  const GeneratorMaintenanceApp = () => {
   const storage = useStorage();
   const [sites, setSites] = useState([]);
@@ -53,12 +57,13 @@ import {
   const [exportBusy, setExportBusy] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportStep, setExportStep] = useState('');
-  const [pwaUpdate, setPwaUpdate] = useState({ available: false, registration: null, requested: false });
+  const [pwaUpdate, setPwaUpdate] = useState({ available: false, registration: null, requested: false, forced: false });
   const [bannerImage, setBannerImage] = useState('');
   const [siteForFiche, setSiteForFiche] = useState(null);
   const [ficheContext, setFicheContext] = useState(null);
   const [ficheHistory, setFicheHistory] = useState([]);
   const [authUser, setAuthUser] = useState(null);
+  const [authChecking, setAuthChecking] = useState(true);
   const [users, setUsers] = useState([]);
   const [showUsersModal, setShowUsersModal] = useState(false);
   const [showPresenceModal, setShowPresenceModal] = useState(false);
@@ -209,10 +214,21 @@ import {
     const onUpdate = (e) => {
       const reg = e?.detail?.registration || null;
       if (!reg) return;
-      setPwaUpdate((prev) => ({ ...(prev || {}), available: true, registration: reg }));
+      setPwaUpdate((prev) => ({ ...(prev || {}), available: true, registration: reg, forced: false }));
     };
     window.addEventListener('pwa:update', onUpdate);
     return () => window.removeEventListener('pwa:update', onUpdate);
+  }, []);
+
+  useEffect(() => {
+    try {
+      const seen = localStorage.getItem(APP_VERSION_STORAGE_KEY);
+      if (seen !== APP_VERSION) {
+        setPwaUpdate((prev) => ({ ...(prev || {}), available: true, forced: true }));
+      }
+    } catch (e) {
+      // ignore
+    }
   }, []);
 
   useEffect(() => {
@@ -257,6 +273,7 @@ import {
 
   useEffect(() => {
     (async () => {
+      const startedAt = Date.now();
       try {
         const data = await apiFetchJson('/api/auth/me', { method: 'GET' });
         if (data?.user?.email) {
@@ -277,6 +294,10 @@ import {
         }
       } catch (e) {
         // ignore
+      } finally {
+        const minMs = 800;
+        const remaining = minMs - (Date.now() - startedAt);
+        setTimeout(() => setAuthChecking(false), Math.max(0, remaining));
       }
     })();
   }, []);
@@ -1840,6 +1861,39 @@ import {
       return new Date(b.dateGenerated) - new Date(a.dateGenerated);
     });
 
+  if (authChecking) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-4 flex items-center justify-center">
+        <div className="bg-white w-full max-w-md rounded-xl shadow-lg p-6">
+          <div className="flex flex-col items-center text-center gap-3">
+            <div className="bg-emerald-700 text-white rounded-2xl p-4">
+              <Activity size={28} />
+            </div>
+            <div className="font-bold text-gray-900 text-lg">Gestion Maintenance & Vidanges</div>
+            <div className="text-sm text-gray-600">
+              Planifie, suis et historise les vidanges de tes générateurs.
+            </div>
+            <div className="text-sm text-gray-600">
+              Interventions, fiches et compteurs (NH) dans une seule application.
+            </div>
+            <img
+              src={STHIC_LOGO_SRC}
+              alt="STHIC"
+              className="h-10 mt-2"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+            <div className="mt-3 flex items-center gap-2 text-gray-500 text-sm">
+              <div className="w-2 h-2 bg-emerald-600 rounded-full animate-pulse" />
+              Chargement…
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!authUser) {
     return (
       <div className="min-h-screen bg-gray-50 p-4 flex items-center justify-center">
@@ -1850,7 +1904,17 @@ import {
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-800">Connexion</h1>
-              <p className="text-sm text-gray-600">Gestion des Vidanges de Générateurs</p>
+              <p className="text-sm text-gray-600">Gestion Maintenance & Vidanges</p>
+            </div>
+            <div className="ml-auto">
+              <img
+                src={STHIC_LOGO_SRC}
+                alt="STHIC"
+                className="h-9"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
             </div>
           </div>
 
@@ -1916,16 +1980,24 @@ import {
                   const reg = pwaUpdate?.registration;
                   const waiting = reg?.waiting;
                   if (!waiting) {
+                    try {
+                      localStorage.setItem(APP_VERSION_STORAGE_KEY, APP_VERSION);
+                    } catch (e) {
+                    }
                     window.location.reload();
                     return;
                   }
                   try {
+                    try {
+                      localStorage.setItem(APP_VERSION_STORAGE_KEY, APP_VERSION);
+                    } catch (e) {
+                    }
                     waiting.postMessage({ type: 'SKIP_WAITING' });
                   } catch {
                     window.location.reload();
                     return;
                   }
-                  setPwaUpdate((prev) => ({ ...(prev || {}), requested: true }));
+                  setPwaUpdate((prev) => ({ ...(prev || {}), requested: true, forced: false }));
                 }}
                 className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold w-full sm:w-auto"
               >
@@ -1933,7 +2005,16 @@ import {
               </button>
               <button
                 type="button"
-                onClick={() => setPwaUpdate({ available: false, registration: null, requested: false })}
+                onClick={() => {
+                  try {
+                    if (pwaUpdate?.forced) {
+                      localStorage.setItem(APP_VERSION_STORAGE_KEY, APP_VERSION);
+                    }
+                  } catch (e) {
+                    // ignore
+                  }
+                  setPwaUpdate({ available: false, registration: null, requested: false, forced: false });
+                }}
                 className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 font-semibold w-full sm:w-auto"
               >
                 Plus tard
@@ -1995,10 +2076,10 @@ import {
             <div>
               <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 flex items-center gap-2">
                 <Activity className="text-blue-600" size={24} />
-                <span className="hidden sm:inline">Gestion des Vidanges de Générateurs</span>
-                <span className="sm:hidden">Vidanges Générateurs</span>
+                <span className="hidden sm:inline">Gestion Maintenance & Vidanges</span>
+                <span className="sm:hidden">Maintenance & Vidanges</span>
               </h1>
-              <p className="text-xs sm:text-sm text-gray-600 mt-1">Version 2.0.1 - Suivi H24/7j avec Fiches</p>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1">Version 2.0.2 - Suivi H24/7j avec Fiches</p>
             </div>
             <div className="text-left sm:text-right flex flex-col gap-2">
               <div>
