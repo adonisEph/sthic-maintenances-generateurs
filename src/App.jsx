@@ -12,7 +12,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
- const APP_VERSION = '2.0.3';
+ const APP_VERSION = '2.0.4';
  const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
  const STHIC_LOGO_SRC = '/Logo_sthic.png';
  const SPLASH_MIN_MS = 3000;
@@ -2084,7 +2084,7 @@ import {
                 <span className="hidden sm:inline">Gestion Maintenance & Vidanges</span>
                 <span className="sm:hidden">Maintenance & Vidanges</span>
               </h1>
-              <p className="text-xs sm:text-sm text-gray-600 mt-1">Version 2.0.3 - Suivi H24/7j avec Fiches</p>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1">Version 2.0.4 - Suivi H24/7j avec Fiches</p>
             </div>
             <div className="text-left sm:text-right flex flex-col gap-2">
               <div>
@@ -3179,15 +3179,16 @@ import {
                       oneMonthLater.setMonth(oneMonthLater.getMonth() + 1);
                       
                       const monthItems = list
-                        .filter(i => i && (i.status !== 'done' || (i.dueDate && new Date(i.dueDate) < today)))
                         .filter(i => {
-                          const dueDate = new Date(i.dueDate);
+                          if (!i) return false;
+                          const dueDate = new Date(i.plannedDate || i.dueDate);
                           const isOverdue = i.status !== 'done' && dueDate < today;
-                          return isOverdue || (dueDate >= today && dueDate <= oneMonthLater);
+                          const isInNextMonth = dueDate >= today && dueDate <= oneMonthLater;
+                          return isOverdue || isInNextMonth || i.status !== 'done';
                         })
                         .sort((a, b) => {
-                          const aDate = new Date(a.dueDate);
-                          const bDate = new Date(b.dueDate);
+                          const aDate = new Date(a.plannedDate || a.dueDate);
+                          const bDate = new Date(b.plannedDate || b.dueDate);
                           const aIsOverdue = a.status !== 'done' && aDate < today;
                           const bIsOverdue = b.status !== 'done' && bDate < today;
                           
