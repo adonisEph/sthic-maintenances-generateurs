@@ -3114,7 +3114,14 @@ import {
 
                   const renderItem = (it) => {
                     const site = siteById.get(String(it.siteId)) || null;
-                    const statusColor = it.status === 'done' ? 'bg-green-100 text-green-800 border-green-200' : it.status === 'sent' ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-amber-100 text-amber-800 border-amber-200';
+                    const isOverdue = it.status !== 'done' && it.dueDate && new Date(it.dueDate) < new Date();
+                    const statusColor = it.status === 'done' 
+                      ? 'bg-green-100 text-green-800 border-green-200' 
+                      : isOverdue 
+                        ? 'bg-red-100 text-red-800 border-red-200' 
+                        : it.status === 'sent' 
+                          ? 'bg-blue-100 text-blue-800 border-blue-200' 
+                          : 'bg-amber-100 text-amber-800 border-amber-200';
                     return (
                       <div key={it.id} className="border border-gray-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <div className="min-w-0">
@@ -3141,7 +3148,7 @@ import {
                               Mettre à jour NH
                             </button>
                           )}
-                          {it.status !== 'done' && (isAdmin || (isTechnician && technicianInterventionsTab !== 'month')) && (
+                          {it.status !== 'done' && (isAdmin || (isTechnician && (technicianInterventionsTab !== 'month' || isOverdue))) && (
                             <button
                               onClick={() => {
                                 if (isTechnician) {
@@ -3166,11 +3173,30 @@ import {
 
                   if (isTechnician) {
                     if (technicianInterventionsTab === 'month') {
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+                      const oneMonthLater = new Date();
+                      oneMonthLater.setMonth(oneMonthLater.getMonth() + 1);
+                      
                       const monthItems = list
-                        .filter((i) => i && i.status !== 'done')
-                        .filter((i) => {
-                          if (!month) return true;
-                          return String(i.plannedDate || '').slice(0, 7) === month;
+                        .filter(i => i && (i.status !== 'done' || (i.dueDate && new Date(i.dueDate) < today)))
+                        .filter(i => {
+                          const dueDate = new Date(i.dueDate);
+                          const isOverdue = i.status !== 'done' && dueDate < today;
+                          return isOverdue || (dueDate >= today && dueDate <= oneMonthLater);
+                        })
+                        .sort((a, b) => {
+                          const aDate = new Date(a.dueDate);
+                          const bDate = new Date(b.dueDate);
+                          const aIsOverdue = a.status !== 'done' && aDate < today;
+                          const bIsOverdue = b.status !== 'done' && bDate < today;
+                          
+                          // Les interventions en retard d'abord
+                          if (aIsOverdue && !bIsOverdue) return -1;
+                          if (!aIsOverdue && bIsOverdue) return 1;
+                          
+                          // Puis tri par date
+                          return aDate - bDate;
                         });
 
                       const byDate = new Map();
@@ -4774,8 +4800,13 @@ import {
                         <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
                           <div className="text-xs text-gray-600">NH estimé</div>
                           <div className="flex items-center gap-2">
-                            <div className="text-lg font-bold text-blue-600">{site.nhEstimated}H</div>
-                            <TrendingUp size={16} className="text-blue-500" />
+                            <span className="font-medium">{site.name}</span>
+                            {daysUntil < 0 && !site.retired && (
+                              <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-800 text-xs font-medium rounded-full">
+                                En retard
+                              </span>
+                            )}
+                            {site.status === 'done' && <CheckCircle className="text-green-500" size={16} />}
                           </div>
                         </div>
                         <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
