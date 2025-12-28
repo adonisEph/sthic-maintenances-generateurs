@@ -15,6 +15,7 @@ import {
  const APP_VERSION = '2.0.2';
  const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
  const STHIC_LOGO_SRC = '/Logo_sthic.png';
+ const SPLASH_MIN_MS = 3000;
 
  const GeneratorMaintenanceApp = () => {
   const storage = useStorage();
@@ -295,8 +296,7 @@ import {
       } catch (e) {
         // ignore
       } finally {
-        const minMs = 800;
-        const remaining = minMs - (Date.now() - startedAt);
+        const remaining = SPLASH_MIN_MS - (Date.now() - startedAt);
         setTimeout(() => setAuthChecking(false), Math.max(0, remaining));
       }
     })();
@@ -1879,7 +1879,7 @@ import {
             <img
               src={STHIC_LOGO_SRC}
               alt="STHIC"
-              className="h-10 mt-2"
+              className="h-12 mt-3 w-auto max-w-[240px] object-contain"
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
               }}
@@ -1910,7 +1910,7 @@ import {
               <img
                 src={STHIC_LOGO_SRC}
                 alt="STHIC"
-                className="h-9"
+                className="h-8 w-auto max-w-[140px] object-contain"
                 onError={(e) => {
                   e.currentTarget.style.display = 'none';
                 }}
