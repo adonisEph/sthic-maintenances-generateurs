@@ -24,6 +24,11 @@ export async function onRequestPost({ env, data }) {
     const resFiche = await safeDelete('fiche_history');
     const resPresence = await safeDelete('presence_sessions');
 
+    const resPmMonths = await safeDelete('pm_months');
+    const resPmItems = await safeDelete('pm_items');
+    const resPmImports = await safeDelete('pm_imports');
+    const resPmNocRows = await safeDelete('pm_noc_rows');
+
     await env.DB.prepare(
       "INSERT OR REPLACE INTO meta (meta_key, meta_value) VALUES ('ticket_number', '1179')"
     ).run();
@@ -37,7 +42,11 @@ export async function onRequestPost({ env, data }) {
           sites: resSites?.meta?.changes || 0,
           interventions: resInterventions?.meta?.changes || 0,
           ficheHistory: resFiche?.meta?.changes || 0,
-          presenceSessions: resPresence?.meta?.changes || 0
+          presenceSessions: resPresence?.meta?.changes || 0,
+          pmMonths: resPmMonths?.meta?.changes || 0,
+          pmItems: resPmItems?.meta?.changes || 0,
+          pmImports: resPmImports?.meta?.changes || 0,
+          pmNocRows: resPmNocRows?.meta?.changes || 0
         }
       },
       { status: 200 }

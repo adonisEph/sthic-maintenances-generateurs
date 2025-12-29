@@ -31,6 +31,7 @@ import {
   const [showHistory, setShowHistory] = useState(false);
   const [showInterventions, setShowInterventions] = useState(false);
   const [showScoring, setShowScoring] = useState(false);
+  const [showPm, setShowPm] = useState(false);
   const [scoringMonth, setScoringMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [scoringDetails, setScoringDetails] = useState({ open: false, title: '', kind: '', items: [] });
   const [interventions, setInterventions] = useState([]);
@@ -94,6 +95,18 @@ import {
   const [historyDateTo, setHistoryDateTo] = useState('');
   const [historyStatus, setHistoryStatus] = useState('all');
   const [historySort, setHistorySort] = useState('newest');
+  const [pmMonth, setPmMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [pmMonthId, setPmMonthId] = useState('');
+  const [pmMonths, setPmMonths] = useState([]);
+  const [pmItems, setPmItems] = useState([]);
+  const [pmImports, setPmImports] = useState([]);
+  const [pmDashboard, setPmDashboard] = useState(null);
+  const [pmBusy, setPmBusy] = useState(false);
+  const [pmError, setPmError] = useState('');
+  const [pmFilterState, setPmFilterState] = useState('all');
+  const [pmFilterType, setPmFilterType] = useState('all');
+  const [pmFilterZone, setPmFilterZone] = useState('all');
+  const [pmSearch, setPmSearch] = useState('');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [calendarSendTechUserId, setCalendarSendTechUserId] = useState('');
   const [showDayDetailsModal, setShowDayDetailsModal] = useState(false);
@@ -128,6 +141,7 @@ import {
   const canMarkCompleted = isAdmin || isTechnician;
   const canManageUsers = isAdmin;
   const canUseInterventions = isAdmin || isTechnician || isViewer;
+  const canUsePm = isAdmin || isViewer;
 
   const apiFetchJson = async (path, init = {}) => {
     const res = await fetch(path, {
@@ -520,6 +534,7 @@ import {
     if (showCalendar) return 'Calendrier';
     if (showHistory) return 'Historique';
     if (showScoring) return 'Scoring';
+    if (showPm) return 'Maintenances (PM)';
     if (showFicheModal) return 'Fiche d\'intervention';
     if (showBannerUpload) return 'Upload bannière';
     if (showDayDetailsModal) return 'Détails du jour';
@@ -530,6 +545,295 @@ import {
     if (showResetConfirm) return 'Confirmation réinitialisation';
     if (showInterventions) return 'Interventions';
     return 'Dashboard / liste sites';
+  };
+
+  const pmNormKey = (k) =>
+    String(k || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+
+  const pmGet = (row, ...candidates) => {
+    if (!row || typeof row !== 'object') return undefined;
+    const map = new Map(Object.keys(row).map((k) => [pmNormKey(k), row[k]]));
+    for (const c of candidates) {
+      const v = map.get(pmNormKey(c));
+      if (v != null && String(v).trim() !== '') return v;
+    }
+    return undefined;
+  };
+
+  const pmNormalizeDate = (value) => {
+    if (!value && value !== 0) return '';
+    if (typeof value === 'number') {
+      try {
+        const d = XLSX.SSF.parse_date_code(value);
+        if (!d || !d.y || !d.m || !d.d) return '';
+        return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
+      } catch {
+        return '';
+      }
+    }
+
+    const raw = String(value).trim();
+    if (!raw) return '';
+    if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+
+    const m1 = raw.match(/^(\d{2})[\/-\.](\d{2})[\/-\.](\d{4})/);
+    if (m1) {
+      const dd = m1[1];
+      const mm = m1[2];
+      const yyyy = m1[3];
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
+    return raw.slice(0, 10);
+  };
+
+  const pmInferType = (row) => {
+    const s = String(row?.['Short description'] || row?.['Short Description'] || row?.short_description || row?.description || '').toLowerCase();
+    if (s.includes('dg') || s.includes('generator')) return 'DG Service';
+    if (s.includes('air') || s.includes('conditioning') || s.includes('clim')) return 'Air Conditioning Service';
+    if (s.includes('fullpm') || s.includes('full pm') || s.includes('full pmwo') || s.includes('pmwo')) return 'FullPMWO';
+    return '';
+  };
+
+  const loadPmMonths = async () => {
+    const data = await apiFetchJson('/api/pm/months', { method: 'GET' });
+    setPmMonths(Array.isArray(data?.months) ? data.months : []);
+    return Array.isArray(data?.months) ? data.months : [];
+  };
+
+  const ensurePmMonth = async (yyyymm) => {
+    const month = String(yyyymm || '').trim();
+    if (!month) return '';
+
+    if (isAdmin) {
+      const data = await apiFetchJson('/api/pm/months', {
+        method: 'POST',
+        body: JSON.stringify({ month })
+      });
+      return data?.month?.id ? String(data.month.id) : '';
+    }
+
+    const months = await loadPmMonths();
+    const found = (Array.isArray(months) ? months : []).find((m) => String(m?.month || '').trim() === month) || null;
+    return found?.id ? String(found.id) : '';
+  };
+
+  const loadPmItems = async (monthId) => {
+    const data = await apiFetchJson(`/api/pm/months/${monthId}/items`, { method: 'GET' });
+    setPmItems(Array.isArray(data?.items) ? data.items : []);
+  };
+
+  const loadPmImports = async (monthId) => {
+    const data = await apiFetchJson(`/api/pm/months/${monthId}/imports`, { method: 'GET' });
+    setPmImports(Array.isArray(data?.imports) ? data.imports : []);
+  };
+
+  const loadPmDashboard = async (monthId) => {
+    const data = await apiFetchJson(`/api/pm/months/${monthId}/dashboard`, { method: 'GET' });
+    setPmDashboard(data || null);
+  };
+
+  const refreshPmAll = async (yyyymm) => {
+    try {
+      setPmBusy(true);
+      setPmError('');
+      const m = String(yyyymm || '').trim();
+      const id = await ensurePmMonth(m);
+      setPmMonth(m);
+      setPmMonthId(id);
+      if (isAdmin) {
+        await loadPmMonths();
+      }
+      if (id) {
+        await loadPmItems(id);
+        await loadPmImports(id);
+        await loadPmDashboard(id);
+      } else {
+        setPmItems([]);
+        setPmImports([]);
+        setPmDashboard(null);
+      }
+    } catch (e) {
+      setPmError(e?.message || 'Erreur serveur.');
+    } finally {
+      setPmBusy(false);
+    }
+  };
+
+  const handlePmExportExcel = async () => {
+    if (!canUsePm) return;
+    const ok = window.confirm(`Exporter le suivi PM (${pmMonth}) en Excel ?`);
+    if (!ok) return;
+
+    const rows = (Array.isArray(pmItems) ? pmItems : []).map((it) => ({
+      'Zone': it.zone || '',
+      'Region': it.region || '',
+      'Site': it.siteCode || '',
+      'Site Name': it.siteName || '',
+      'Short description': it.shortDescription || '',
+      'Maintenance Type': it.maintenanceType || '',
+      'Number': it.number || '',
+      'Assigned to': it.assignedTo || '',
+      'Scheduled WO Date': it.scheduledWoDate || '',
+      'Date of closing': it.closedAt || '',
+      'State': it.state || ''
+    }));
+
+    const done = await runExport({
+      label: 'Export Excel (PM)…',
+      fn: async () => {
+        exportXlsx({
+          fileBaseName: `PM_${pmMonth}_${new Date().toISOString().split('T')[0]}`,
+          sheets: [{ name: `PM-${pmMonth}`, rows }]
+        });
+      }
+    });
+    if (done) alert('✅ Export Excel généré.');
+  };
+
+  const handlePmPlanningImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const ok = window.confirm(
+      `Confirmer l'import du planning mensuel PM ?\n\nCe fichier va remplacer le planning du mois ${pmMonth}.\nFichier: ${file?.name || ''}`
+    );
+    if (!ok) {
+      e.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    setPmBusy(true);
+    setPmError('');
+
+    reader.onload = async (event) => {
+      try {
+        const data = new Uint8Array(event.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(sheet);
+
+        const monthId = pmMonthId || (await ensurePmMonth(pmMonth));
+        setPmMonthId(monthId);
+
+        const items = [];
+        for (const row of Array.isArray(jsonData) ? jsonData : []) {
+          const number = String(pmGet(row, 'Number') || '').trim();
+          if (!number) continue;
+
+          const state = String(pmGet(row, 'State') || 'Assigned').trim() || 'Assigned';
+          const closedAt = pmNormalizeDate(pmGet(row, 'Date of closing', 'Closed'));
+          const scheduledWoDate = pmNormalizeDate(pmGet(row, 'Scheduled WO Date', 'Scheduled Wo Date', 'Scheduled date'));
+
+          const siteCode = String(pmGet(row, 'Site', 'Site Code') || '').trim();
+          const siteName = String(pmGet(row, 'Site Name', 'Name Site') || '').trim();
+          const region = String(pmGet(row, 'Region') || '').trim();
+          const zone = String(pmGet(row, 'ZONE/PMWO', 'Zone/PMWO', 'Zone') || '').trim();
+          const shortDescription = String(pmGet(row, 'Short description', 'Short Description') || '').trim();
+          const assignedTo = String(pmGet(row, 'Assigned to', 'Assigned To') || '').trim();
+
+          const maintenanceType = String(pmGet(row, 'Maintenance Type') || '').trim() || pmInferType(row);
+
+          items.push({
+            number,
+            siteCode,
+            siteName,
+            region,
+            zone,
+            shortDescription,
+            maintenanceType,
+            scheduledWoDate,
+            assignedTo,
+            state,
+            closedAt
+          });
+        }
+
+        await apiFetchJson(`/api/pm/months/${monthId}/planning-import`, {
+          method: 'POST',
+          body: JSON.stringify({ filename: file?.name || null, items })
+        });
+
+        await loadPmMonths();
+        await loadPmItems(monthId);
+        await loadPmImports(monthId);
+        await loadPmDashboard(monthId);
+        alert(`✅ Planning PM importé (${items.length} lignes).`);
+      } catch (err) {
+        setPmError(err?.message || 'Erreur lors de l\'import planning PM.');
+      } finally {
+        setPmBusy(false);
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
+  };
+
+  const handlePmNocImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const ok = window.confirm(
+      `Confirmer l'import de l'extraction NOC ?\n\nLe système va mettre à jour les states du mois ${pmMonth}.\nFichier: ${file?.name || ''}`
+    );
+    if (!ok) {
+      e.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    setPmBusy(true);
+    setPmError('');
+
+    reader.onload = async (event) => {
+      try {
+        const data = new Uint8Array(event.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(sheet);
+
+        const monthId = pmMonthId || (await ensurePmMonth(pmMonth));
+        setPmMonthId(monthId);
+
+        const rows = [];
+        for (const row of Array.isArray(jsonData) ? jsonData : []) {
+          const number = String(pmGet(row, 'Number') || '').trim();
+          if (!number) continue;
+          const state = String(pmGet(row, 'State') || '').trim();
+          const closedAt = pmNormalizeDate(pmGet(row, 'Closed', 'Date of closing'));
+          rows.push({ number, state, closedAt });
+        }
+
+        const res = await apiFetchJson(`/api/pm/months/${monthId}/noc-import`, {
+          method: 'POST',
+          body: JSON.stringify({ filename: file?.name || null, rows })
+        });
+
+        await loadPmItems(monthId);
+        await loadPmImports(monthId);
+        await loadPmDashboard(monthId);
+
+        if (Number(res?.missing || 0) > 0) {
+          alert(
+            `✅ Import NOC terminé.\n\nMis à jour: ${res?.updated || 0}\nIntrouvables dans le planning: ${res?.missing || 0}`
+          );
+        } else {
+          alert(`✅ Import NOC terminé. Mis à jour: ${res?.updated || 0}`);
+        }
+      } catch (err) {
+        setPmError(err?.message || 'Erreur lors de l\'import NOC.');
+      } finally {
+        setPmBusy(false);
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
   };
 
   const pingPresence = async (activity) => {
@@ -729,6 +1033,7 @@ import {
       setShowHistory(false);
       setShowFicheModal(false);
       setShowBannerUpload(false);
+      setShowPm(false);
       setBannerImage('');
       setSiteForFiche(null);
       setFicheContext(null);
@@ -1613,6 +1918,7 @@ import {
     setShowFicheModal(false);
     setShowInterventions(false);
     setShowScoring(false);
+    setShowPm(false);
     setScoringDetails({ open: false, title: '', kind: '', items: [] });
     setAuthUser(null);
     setSites([]);
@@ -1650,6 +1956,7 @@ import {
     showHistory,
     showFicheModal,
     showBannerUpload,
+    showPm,
     showDayDetailsModal,
     showAddForm,
     showEditForm,
@@ -2229,6 +2536,35 @@ import {
               </button>
             )}
 
+            {canUsePm && (
+              <button
+                onClick={async () => {
+                  setShowAddForm(false);
+                  setShowUpdateForm(false);
+                  setShowEditForm(false);
+                  setShowResetConfirm(false);
+                  setShowDeleteConfirm(false);
+                  setShowCalendar(false);
+                  setShowHistory(false);
+                  setShowFicheModal(false);
+                  setShowBannerUpload(false);
+                  setShowDayDetailsModal(false);
+                  setShowInterventions(false);
+                  setShowScoring(false);
+                  setScoringDetails({ open: false, title: '', kind: '', items: [] });
+
+                  setShowPm(true);
+                  const m = pmMonth || new Date().toISOString().slice(0, 7);
+                  await refreshPmAll(m);
+                }}
+                className="bg-teal-700 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-teal-800 flex items-center justify-center gap-2 text-sm sm:text-base"
+              >
+                <TrendingUp size={18} />
+                <span className="hidden sm:inline">Maintenances (PM)</span>
+                <span className="sm:hidden">PM</span>
+              </button>
+            )}
+
             <button
               onClick={() => setShowHistory(true)}
               className="bg-amber-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-amber-700 flex items-center justify-center gap-2 text-sm sm:text-base"
@@ -2465,6 +2801,129 @@ import {
                 <button
                   onClick={() => setDashboardDetails({ open: false, title: '', kind: '', items: [] })}
                   className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold w-full sm:w-auto"
+                >
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showPm && canUsePm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-teal-800 text-white">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <TrendingUp size={22} />
+                  Maintenances planifiées (PM)
+                  {isViewer && (
+                    <span className="ml-2 bg-white/15 text-white border border-white/20 px-2 py-0.5 rounded-full text-xs font-semibold">
+                      Lecture seule
+                    </span>
+                  )}
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowPm(false);
+                    setPmError('');
+                  }}
+                  className="hover:bg-teal-900 p-2 rounded"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+                <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-3 mb-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <label className="text-xs text-gray-600">Mois</label>
+                    <input
+                      type="month"
+                      value={pmMonth}
+                      onChange={async (e) => {
+                        const next = String(e.target.value || '').trim();
+                        setPmMonth(next);
+                        await refreshPmAll(next);
+                      }}
+                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      disabled={pmBusy}
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await refreshPmAll(pmMonth);
+                      }}
+                      className="bg-gray-200 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-300 text-sm font-semibold"
+                      disabled={pmBusy}
+                    >
+                      Rafraîchir
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePmExportExcel}
+                      className="bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-800 text-sm font-semibold flex items-center gap-2"
+                      disabled={pmBusy}
+                    >
+                      <Download size={16} />
+                      Exporter Excel
+                    </button>
+                  </div>
+
+                  {isAdmin && (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      <label
+                        className={`bg-emerald-700 text-white px-3 py-2 rounded-lg flex items-center justify-center gap-2 text-sm font-semibold ${
+                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-emerald-800 cursor-pointer'
+                        }`}
+                      >
+                        <Upload size={16} />
+                        Import planning
+                        <input
+                          type="file"
+                          accept=".xlsx,.xls"
+                          onChange={handlePmPlanningImport}
+                          className="hidden"
+                          disabled={pmBusy}
+                        />
+                      </label>
+
+                      <label
+                        className={`bg-purple-700 text-white px-3 py-2 rounded-lg flex items-center justify-center gap-2 text-sm font-semibold ${
+                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-purple-800 cursor-pointer'
+                        }`}
+                      >
+                        <Upload size={16} />
+                        Import NOC
+                        <input
+                          type="file"
+                          accept=".xlsx,.xls"
+                          onChange={handlePmNocImport}
+                          className="hidden"
+                          disabled={pmBusy}
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+
+                {pmError && (
+                  <div className="mb-4 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">
+                    {pmError}
+                  </div>
+                )}
+
+                <div className="text-sm text-gray-700 mb-4">
+                  Tickets du mois: <span className="font-semibold">{Array.isArray(pmItems) ? pmItems.length : 0}</span>
+                </div>
+              </div>
+
+              <div className="p-4 border-t bg-white flex justify-end">
+                <button
+                  onClick={() => {
+                    setShowPm(false);
+                    setPmError('');
+                  }}
+                  className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
                 >
                   Fermer
                 </button>
