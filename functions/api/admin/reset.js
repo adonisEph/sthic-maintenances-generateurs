@@ -25,7 +25,7 @@ export async function onRequestPost({ env, data }) {
     const resPresence = await safeDelete('presence_sessions');
 
     await env.DB.prepare(
-      "INSERT OR REPLACE INTO meta (meta_key, meta_value) VALUES ('ticket_number', '1149')"
+      "INSERT OR REPLACE INTO meta (meta_key, meta_value) VALUES ('ticket_number', '1179')"
     ).run();
 
     await touchLastUpdatedAt(env);
