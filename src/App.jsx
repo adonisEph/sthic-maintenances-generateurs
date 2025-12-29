@@ -12,7 +12,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
- const APP_VERSION = '2.0.3';
+ const APP_VERSION = '2.0.4';
  const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
  const STHIC_LOGO_SRC = '/Logo_sthic.png';
  const SPLASH_MIN_MS = 3000;
@@ -1915,7 +1915,7 @@ import {
               <img
                 src={STHIC_LOGO_SRC}
                 alt="STHIC"
-                className="h-10 w-auto max-w-[180px] object-contain"
+                className="h-14 w-auto max-w-[240px] object-contain"
                 onError={(e) => {
                   e.currentTarget.style.display = 'none';
                 }}
@@ -2084,7 +2084,7 @@ import {
                 <span className="hidden sm:inline">Gestion Maintenance & Vidanges</span>
                 <span className="sm:hidden">Maintenance & Vidanges</span>
               </h1>
-              <p className="text-xs sm:text-sm text-gray-600 mt-1">Version 2.0.3 - Suivi H24/7j avec Fiches</p>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1">Version 2.0.4 - Suivi H24/7j avec Fiches</p>
             </div>
             <div className="text-left sm:text-right flex flex-col gap-2">
               <div>
@@ -4791,7 +4791,7 @@ import {
                         <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
                           <div className="text-xs text-gray-600">NH estimé</div>
                           <div className="flex items-center gap-2">
-                            <span className="font-medium">{site.name}</span>
+                            <span className="text-lg font-bold text-blue-600">{Number.isFinite(Number(site.nhEstimated)) ? `${site.nhEstimated}H` : '-'}</span>
                             {daysUntil < 0 && !site.retired && (
                               <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-800 text-xs font-medium rounded-full">
                                 En retard
