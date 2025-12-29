@@ -12,15 +12,22 @@ export const calculateDiffNHs = (nh1, nh2) => {
 };
 
 export const calculateEstimatedNH = (nh2A, dateA, regime) => {
+  const base = Number(nh2A);
+  const r = Number(regime);
+
+  if (!Number.isFinite(base)) return 0;
+  if (!Number.isFinite(r) || r === 0) return base;
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const lastUpdate = new Date(dateA);
+  if (Number.isNaN(lastUpdate.getTime())) return base;
   lastUpdate.setHours(0, 0, 0, 0);
+
   const daysSinceUpdate = Math.floor((today - lastUpdate) / (1000 * 60 * 60 * 24));
-  
-  if (daysSinceUpdate <= 0) return nh2A;
-  
-  return nh2A + (regime * daysSinceUpdate);
+  if (!Number.isFinite(daysSinceUpdate) || daysSinceUpdate <= 0) return base;
+
+  return base + (r * daysSinceUpdate);
 };
 
 export const addDays = (date, days) => {

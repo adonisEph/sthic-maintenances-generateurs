@@ -1915,7 +1915,7 @@ import {
               <img
                 src={STHIC_LOGO_SRC}
                 alt="STHIC"
-                className="h-8 w-auto max-w-[140px] object-contain"
+                className="h-10 w-auto max-w-[180px] object-contain"
                 onError={(e) => {
                   e.currentTarget.style.display = 'none';
                 }}
@@ -3115,6 +3115,18 @@ import {
                   const renderItem = (it) => {
                     const site = siteById.get(String(it.siteId)) || null;
                     const statusColor = it.status === 'done' ? 'bg-green-100 text-green-800 border-green-200' : it.status === 'sent' ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-amber-100 text-amber-800 border-amber-200';
+                    const canCatchUpInMonth = Boolean(
+                      isTechnician &&
+                      technicianInterventionsTab === 'month' &&
+                      String(it?.plannedDate || '') &&
+                      String(it.plannedDate) <= String(today)
+                    );
+                    const isOverdueInMonth = Boolean(
+                      isTechnician &&
+                      technicianInterventionsTab === 'month' &&
+                      String(it?.plannedDate || '') &&
+                      String(it.plannedDate) < String(today)
+                    );
                     return (
                       <div key={it.id} className="border border-gray-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <div className="min-w-0">
@@ -3124,6 +3136,11 @@ import {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{it.status}</span>
+                          {isOverdueInMonth && (
+                            <span className="text-xs px-2 py-1 rounded border font-semibold bg-red-100 text-red-800 border-red-200">
+                              RETARD
+                            </span>
+                          )}
                           {isTechnician && site && (
                             <button
                               type="button"
@@ -3141,7 +3158,7 @@ import {
                               Mettre à jour NH
                             </button>
                           )}
-                          {it.status !== 'done' && (isAdmin || (isTechnician && technicianInterventionsTab !== 'month')) && (
+                          {it.status !== 'done' && (isAdmin || (isTechnician && (technicianInterventionsTab !== 'month' || canCatchUpInMonth))) && (
                             <button
                               onClick={() => {
                                 if (isTechnician) {
