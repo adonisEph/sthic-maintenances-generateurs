@@ -100,6 +100,7 @@ const GeneratorMaintenanceApp = () => {
   const [pmDashboard, setPmDashboard] = useState(null);
   const [pmBusy, setPmBusy] = useState(false);
   const [pmError, setPmError] = useState('');
+  const [pmNotice, setPmNotice] = useState('');
   const [pmFilterState, setPmFilterState] = useState('all');
   const [pmFilterType, setPmFilterType] = useState('all');
   const [pmFilterZone, setPmFilterZone] = useState('all');
@@ -637,6 +638,7 @@ const GeneratorMaintenanceApp = () => {
     try {
       setPmBusy(true);
       setPmError('');
+      setPmNotice('');
       const m = String(yyyymm || '').trim();
       const id = await ensurePmMonth(m);
       setPmMonth(m);
@@ -759,6 +761,7 @@ const GeneratorMaintenanceApp = () => {
         await loadPmItems(monthId);
         await loadPmImports(monthId);
         await loadPmDashboard(monthId);
+        setPmNotice(`✅ Planning PM importé (${items.length} lignes).`);
         alert(`✅ Planning PM importé (${items.length} lignes).`);
       } catch (err) {
         setPmError(err?.message || 'Erreur lors de l\'import planning PM.');
@@ -814,6 +817,12 @@ const GeneratorMaintenanceApp = () => {
         await loadPmItems(monthId);
         await loadPmImports(monthId);
         await loadPmDashboard(monthId);
+
+        const msg =
+          Number(res?.missing || 0) > 0
+            ? `✅ Import NOC terminé. Mis à jour: ${res?.updated || 0} • Introuvables dans le planning: ${res?.missing || 0}`
+            : `✅ Import NOC terminé. Mis à jour: ${res?.updated || 0}`;
+        setPmNotice(msg);
 
         if (Number(res?.missing || 0) > 0) {
           alert(
@@ -2823,6 +2832,7 @@ const GeneratorMaintenanceApp = () => {
                   onClick={() => {
                     setShowPm(false);
                     setPmError('');
+                    setPmNotice('');
                   }}
                   className="hover:bg-teal-900 p-2 rounded"
                 >
@@ -2909,6 +2919,12 @@ const GeneratorMaintenanceApp = () => {
                   </div>
                 )}
 
+                {pmNotice && !pmError && (
+                  <div className="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 rounded-lg text-sm">
+                    {pmNotice}
+                  </div>
+                )}
+
                 <div className="text-sm text-gray-700 mb-4">
                   Tickets du mois: <span className="font-semibold">{Array.isArray(pmItems) ? pmItems.length : 0}</span>
                 </div>
@@ -2919,6 +2935,7 @@ const GeneratorMaintenanceApp = () => {
                   onClick={() => {
                     setShowPm(false);
                     setPmError('');
+                    setPmNotice('');
                   }}
                   className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
                 >
