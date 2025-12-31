@@ -101,6 +101,11 @@ const GeneratorMaintenanceApp = () => {
   const [pmBusy, setPmBusy] = useState(false);
   const [pmError, setPmError] = useState('');
   const [pmNotice, setPmNotice] = useState('');
+  const [pmPlanningProgress, setPmPlanningProgress] = useState(0);
+  const [pmPlanningStep, setPmPlanningStep] = useState('');
+  const [pmNocProgress, setPmNocProgress] = useState(0);
+  const [pmNocStep, setPmNocStep] = useState('');
+  const [pmResetBusy, setPmResetBusy] = useState(false);
   const [pmFilterState, setPmFilterState] = useState('all');
   const [pmFilterType, setPmFilterType] = useState('all');
   const [pmFilterZone, setPmFilterZone] = useState('all');
@@ -153,7 +158,10 @@ const GeneratorMaintenanceApp = () => {
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const msg = data?.error || 'Erreur serveur.';
+      const msg =
+        res.status === 429
+          ? 'Trop de requêtes (429). Merci de patienter quelques secondes puis de réessayer.'
+          : (data?.error || 'Erreur serveur.');
       throw new Error(msg);
     }
     return data;
@@ -639,6 +647,10 @@ const GeneratorMaintenanceApp = () => {
       setPmBusy(true);
       setPmError('');
       setPmNotice('');
+      setPmPlanningProgress(0);
+      setPmPlanningStep('');
+      setPmNocProgress(0);
+      setPmNocStep('');
       const m = String(yyyymm || '').trim();
       const id = await ensurePmMonth(m);
       setPmMonth(m);
@@ -708,13 +720,21 @@ const GeneratorMaintenanceApp = () => {
     const reader = new FileReader();
     setPmBusy(true);
     setPmError('');
+    setPmNotice('');
+    setPmPlanningProgress(5);
+    setPmPlanningStep('Lecture du fichier…');
 
     reader.onload = async (event) => {
       try {
+        setPmPlanningProgress(20);
+        setPmPlanningStep('Analyse Excel…');
         const data = new Uint8Array(event.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const jsonData = XLSX.utils.sheet_to_json(sheet);
+
+        setPmPlanningProgress(40);
+        setPmPlanningStep('Préparation des données…');
 
         const monthId = pmMonthId || (await ensurePmMonth(pmMonth));
         setPmMonthId(monthId);
@@ -757,10 +777,15 @@ const GeneratorMaintenanceApp = () => {
           body: JSON.stringify({ filename: file?.name || null, items })
         });
 
+        setPmPlanningProgress(80);
+        setPmPlanningStep('Rafraîchissement…');
+
         await loadPmMonths();
         await loadPmItems(monthId);
         await loadPmImports(monthId);
         await loadPmDashboard(monthId);
+        setPmPlanningProgress(100);
+        setPmPlanningStep('Terminé');
         setPmNotice(`✅ Planning PM importé (${items.length} lignes).`);
         alert(`✅ Planning PM importé (${items.length} lignes).`);
       } catch (err) {
@@ -770,6 +795,8 @@ const GeneratorMaintenanceApp = () => {
       }
     };
 
+    setPmPlanningProgress(10);
+    setPmPlanningStep('Lecture du fichier…');
     reader.readAsArrayBuffer(file);
     e.target.value = '';
   };
@@ -814,9 +841,15 @@ const GeneratorMaintenanceApp = () => {
           body: JSON.stringify({ filename: file?.name || null, rows })
         });
 
+        setPmNocProgress(80);
+        setPmNocStep('Rafraîchissement…');
+
         await loadPmItems(monthId);
         await loadPmImports(monthId);
         await loadPmDashboard(monthId);
+
+        setPmNocProgress(100);
+        setPmNocStep('Terminé');
 
         const msg =
           Number(res?.missing || 0) > 0
@@ -838,8 +871,51 @@ const GeneratorMaintenanceApp = () => {
       }
     };
 
+    setPmNocProgress(10);
+    setPmNocStep('Lecture du fichier…');
     reader.readAsArrayBuffer(file);
     e.target.value = '';
+  };
+
+  const handlePmReset = async (mode) => {
+    if (!isAdmin) return;
+    if (!pmMonthId) {
+      setPmError('Veuillez sélectionner un mois PM.');
+      return;
+    }
+
+    const isAll = String(mode) === 'all';
+    const ok = window.confirm(
+      isAll
+        ? `Confirmer le reset COMPLET du mois ${pmMonth} ?\n\nCela supprime: planning + imports + lignes NOC.`
+        : `Confirmer la suppression des imports du mois ${pmMonth} ?\n\nCela supprime: historique imports + lignes NOC (le planning reste).`
+    );
+    if (!ok) return;
+
+    try {
+      setPmResetBusy(true);
+      setPmError('');
+      setPmNotice('');
+
+      const res = await apiFetchJson(`/api/pm/months/${pmMonthId}/reset`, {
+        method: 'POST',
+        body: JSON.stringify({ mode: isAll ? 'all' : 'imports' })
+      });
+
+      await loadPmItems(pmMonthId);
+      await loadPmImports(pmMonthId);
+      await loadPmDashboard(pmMonthId);
+
+      const d = res?.deleted || {};
+      const msg = isAll
+        ? `✅ Reset mois terminé. Items supprimés: ${d.items || 0} • Imports: ${d.imports || 0} • Lignes NOC: ${d.nocRows || 0}`
+        : `✅ Imports supprimés. Imports: ${d.imports || 0} • Lignes NOC: ${d.nocRows || 0}`;
+      setPmNotice(msg);
+    } catch (e) {
+      setPmError(e?.message || 'Erreur lors du reset PM.');
+    } finally {
+      setPmResetBusy(false);
+    }
   };
 
   const pingPresence = async (activity) => {
@@ -2909,6 +2985,24 @@ const GeneratorMaintenanceApp = () => {
                           disabled={pmBusy}
                         />
                       </label>
+
+                      <button
+                        type="button"
+                        onClick={() => handlePmReset('imports')}
+                        className="bg-amber-600 text-white px-3 py-2 rounded-lg hover:bg-amber-700 text-sm font-semibold"
+                        disabled={pmBusy || pmResetBusy}
+                      >
+                        Suppr. imports
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handlePmReset('all')}
+                        className="bg-red-700 text-white px-3 py-2 rounded-lg hover:bg-red-800 text-sm font-semibold"
+                        disabled={pmBusy || pmResetBusy}
+                      >
+                        Reset mois
+                      </button>
                     </div>
                   )}
                 </div>
@@ -2922,6 +3016,24 @@ const GeneratorMaintenanceApp = () => {
                 {pmNotice && !pmError && (
                   <div className="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 rounded-lg text-sm">
                     {pmNotice}
+                  </div>
+                )}
+
+                {pmPlanningProgress > 0 && (
+                  <div className="mb-4">
+                    <div className="text-xs text-gray-700 mb-1">Import planning: {pmPlanningStep || '…'}</div>
+                    <div className="w-full bg-gray-200 rounded h-2 overflow-hidden">
+                      <div className="bg-emerald-600 h-2" style={{ width: `${pmPlanningProgress}%` }} />
+                    </div>
+                  </div>
+                )}
+
+                {pmNocProgress > 0 && (
+                  <div className="mb-4">
+                    <div className="text-xs text-gray-700 mb-1">Import NOC: {pmNocStep || '…'}</div>
+                    <div className="w-full bg-gray-200 rounded h-2 overflow-hidden">
+                      <div className="bg-purple-700 h-2" style={{ width: `${pmNocProgress}%` }} />
+                    </div>
                   </div>
                 )}
 
