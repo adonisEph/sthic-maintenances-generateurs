@@ -34,7 +34,7 @@ export async function onRequestPost({ request, env, data, params }) {
 
       const id = newId();
       await env.DB.prepare(
-        'INSERT INTO pm_items (id, month_id, number, site_code, site_name, region, zone, short_description, maintenance_type, scheduled_wo_date, assigned_to, state, closed_at, last_noc_import_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO pm_items (id, month_id, number, site_code, site_name, region, zone, short_description, maintenance_type, scheduled_wo_date, assigned_to, state, closed_at, reprogrammation_date, reprogrammation_reason, reprogrammation_status, last_noc_import_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       )
         .bind(
           id,
@@ -50,6 +50,9 @@ export async function onRequestPost({ request, env, data, params }) {
           normStr(it?.assignedTo),
           String(it?.state || 'Assigned'),
           normStr(it?.closedAt),
+          normStr(it?.reprogrammationDate),
+          normStr(it?.reprogrammationReason),
+          normStr(it?.reprogrammationStatus),
           null,
           now,
           now

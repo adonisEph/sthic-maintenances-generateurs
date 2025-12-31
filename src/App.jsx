@@ -109,6 +109,8 @@ const GeneratorMaintenanceApp = () => {
   const [pmFilterState, setPmFilterState] = useState('all');
   const [pmFilterType, setPmFilterType] = useState('all');
   const [pmFilterZone, setPmFilterZone] = useState('all');
+  const [pmFilterDate, setPmFilterDate] = useState('');
+  const [pmFilterReprog, setPmFilterReprog] = useState('all');
   const [pmSearch, setPmSearch] = useState('');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [calendarSendTechUserId, setCalendarSendTechUserId] = useState('');
@@ -679,7 +681,86 @@ const GeneratorMaintenanceApp = () => {
     const ok = window.confirm(`Exporter le suivi PM (${pmMonth}) en Excel ?`);
     if (!ok) return;
 
-    const rows = (Array.isArray(pmItems) ? pmItems : []).map((it) => ({
+    const norm = (s) => String(s || '').trim().toLowerCase();
+    const bucketForState = (state) => {
+      const v = norm(state);
+      if (v === 'closed complete' || v === 'closed') return 'closed';
+      if (v === 'awaiting closure' || v === 'awaiting') return 'awaiting';
+      if (v === 'work in progress' || v === 'wip') return 'wip';
+      return 'assigned';
+    };
+
+    const dateEq = (isoOrYmd, ymd) => {
+      if (!ymd) return true;
+      const d = isoOrYmd ? String(isoOrYmd).slice(0, 10) : '';
+      return d === String(ymd).slice(0, 10);
+    };
+
+    const normStatus = (s) => {
+      const v = String(s || '').trim().toLowerCase();
+      if (!v) return '';
+      if (v === 'approved' || v === 'ok' || v === 'yes' || v === 'oui' || v === 'validee' || v === 'validée' || v === 'approuvee' || v === 'approuvée') {
+        return 'APPROVED';
+      }
+      if (v === 'rejected' || v === 'ko' || v === 'no' || v === 'non' || v === 'rejete' || v === 'rejeté' || v === 'rejetee' || v === 'rejetée' || v === 'refusee' || v === 'refusée') {
+        return 'REJECTED';
+      }
+      if (v === 'pending' || v === 'attente' || v === 'en attente' || v === 'waiting') return 'PENDING';
+      return '';
+    };
+
+    const effectiveReprogStatus = (it) => {
+      const explicit = normStatus(it?.reprogrammationStatus);
+      if (explicit) return explicit;
+      const hasDate = !!String(it?.reprogrammationDate || '').trim();
+      const hasReason = !!String(it?.reprogrammationReason || '').trim();
+      if (hasDate) return 'APPROVED';
+      if (hasReason) return 'PENDING';
+      return '';
+    };
+
+    const search = String(pmSearch || '').trim().toLowerCase();
+    const exportItems = (Array.isArray(pmItems) ? pmItems : []).filter((it) => {
+      if (pmFilterType && pmFilterType !== 'all') {
+        if (String(it?.maintenanceType || '').trim() !== String(pmFilterType)) return false;
+      }
+      if (pmFilterZone && pmFilterZone !== 'all') {
+        if (String(it?.zone || '').trim() !== String(pmFilterZone)) return false;
+      }
+      if (pmFilterDate) {
+        if (!dateEq(it?.scheduledWoDate, pmFilterDate)) return false;
+      }
+      if (pmFilterReprog && pmFilterReprog !== 'all') {
+        const st = effectiveReprogStatus(it);
+        if (pmFilterReprog === 'approved' && st !== 'APPROVED') return false;
+        if (pmFilterReprog === 'rejected' && st !== 'REJECTED') return false;
+        if (pmFilterReprog === 'pending' && st !== 'PENDING') return false;
+      }
+      if (search) {
+        const hay = [
+          it?.number,
+          it?.siteName,
+          it?.siteCode,
+          it?.region,
+          it?.zone,
+          it?.maintenanceType,
+          it?.assignedTo,
+          it?.shortDescription,
+          it?.reprogrammationReason,
+          it?.reprogrammationStatus
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        if (!hay.includes(search)) return false;
+      }
+      if (pmFilterState && pmFilterState !== 'all') {
+        if (bucketForState(it?.state) !== pmFilterState) return false;
+      }
+      return true;
+    });
+
+    const rows = exportItems.map((it) => ({
       'Zone': it.zone || '',
       'Region': it.region || '',
       'Site': it.siteCode || '',
@@ -690,6 +771,9 @@ const GeneratorMaintenanceApp = () => {
       'Assigned to': it.assignedTo || '',
       'Scheduled WO Date': it.scheduledWoDate || '',
       'Date of closing': it.closedAt || '',
+      'Statut reprogrammation': effectiveReprogStatus(it) || '',
+      'Reprogrammation': it.reprogrammationDate || '',
+      'Raisons': it.reprogrammationReason || '',
       'State': it.state || ''
     }));
 
@@ -739,6 +823,19 @@ const GeneratorMaintenanceApp = () => {
         const monthId = pmMonthId || (await ensurePmMonth(pmMonth));
         setPmMonthId(monthId);
 
+        const normStatus = (s) => {
+          const v = String(s || '').trim().toLowerCase();
+          if (!v) return '';
+          if (v === 'approved' || v === 'ok' || v === 'yes' || v === 'oui' || v === 'validee' || v === 'validée' || v === 'approuvee' || v === 'approuvée') {
+            return 'APPROVED';
+          }
+          if (v === 'rejected' || v === 'ko' || v === 'no' || v === 'non' || v === 'rejete' || v === 'rejeté' || v === 'rejetee' || v === 'rejetée' || v === 'refusee' || v === 'refusée') {
+            return 'REJECTED';
+          }
+          if (v === 'pending' || v === 'attente' || v === 'en attente' || v === 'waiting') return 'PENDING';
+          return '';
+        };
+
         const items = [];
         for (const row of Array.isArray(jsonData) ? jsonData : []) {
           const number = String(pmGet(row, 'Number') || '').trim();
@@ -751,9 +848,27 @@ const GeneratorMaintenanceApp = () => {
           const siteCode = String(pmGet(row, 'Site', 'Site Code') || '').trim();
           const siteName = String(pmGet(row, 'Site Name', 'Name Site') || '').trim();
           const region = String(pmGet(row, 'Region') || '').trim();
-          const zone = String(pmGet(row, 'ZONE/PMWO', 'Zone/PMWO', 'Zone') || '').trim();
+          const zone = String(pmGet(row, 'Zones', 'ZONES', 'ZONE', 'ZONE/PMWO', 'Zone/PMWO', 'Zone') || '').trim();
           const shortDescription = String(pmGet(row, 'Short description', 'Short Description') || '').trim();
           const assignedTo = String(pmGet(row, 'Assigned to', 'Assigned To') || '').trim();
+
+          const reprogrammationDate = pmNormalizeDate(pmGet(row, 'Reprogrammation', 'Reprogramming'));
+          const reprogrammationReason = String(pmGet(row, 'Raisons', 'Reasons', 'Reason') || '').trim();
+
+          const excelStatus = pmGet(
+            row,
+            'Reprogrammation Status',
+            'Reprogramming Status',
+            'Statut reprogrammation',
+            'Statut de reprogrammation',
+            'Decision client',
+            'Décision client',
+            'Statut report',
+            'Statut de report'
+          );
+          const explicitStatus = normStatus(excelStatus);
+          const fallbackStatus = reprogrammationDate ? 'APPROVED' : reprogrammationReason ? 'PENDING' : '';
+          const reprogrammationStatus = explicitStatus || fallbackStatus;
 
           const maintenanceType = String(pmGet(row, 'Maintenance Type') || '').trim() || pmInferType(row);
 
@@ -768,7 +883,10 @@ const GeneratorMaintenanceApp = () => {
             scheduledWoDate,
             assignedTo,
             state,
-            closedAt
+            closedAt,
+            reprogrammationDate,
+            reprogrammationReason,
+            reprogrammationStatus
           });
         }
 
@@ -3046,22 +3164,30 @@ const GeneratorMaintenanceApp = () => {
                 {(() => {
                   const items = Array.isArray(pmItems) ? pmItems : [];
                   const imports = Array.isArray(pmImports) ? pmImports : [];
-                  const totals = pmDashboard?.totals || {};
-                  const today = String(pmDashboard?.today || '').slice(0, 10);
 
                   const norm = (s) => String(s || '').trim().toLowerCase();
                   const bucketForState = (state) => {
                     const v = norm(state);
-                    if (v === 'closed complete' || v === 'closed') return 'done';
+                    if (v === 'closed complete' || v === 'closed') return 'closed';
                     if (v === 'awaiting closure' || v === 'awaiting') return 'awaiting';
                     if (v === 'work in progress' || v === 'wip') return 'wip';
                     if (v === 'assigned') return 'assigned';
-                    return 'other';
+                    return 'assigned';
                   };
 
-                  const isOverdueAssigned = (it) => {
-                    const sched = it?.scheduledWoDate ? String(it.scheduledWoDate).slice(0, 10) : '';
-                    return bucketForState(it?.state) === 'assigned' && !!today && !!sched && sched < today;
+                  const normalizeYmd = (ymd) => {
+                    if (!ymd) return '';
+                    return String(ymd).slice(0, 10);
+                  };
+
+                  const stateLabel = (state) => {
+                    const raw = String(state || '').trim();
+                    const v = norm(raw);
+                    if (v === 'closed complete' || v === 'closed') return 'Closed Complete';
+                    if (v === 'work in progress' || v === 'wip') return 'Work in progress';
+                    if (v === 'awaiting closure' || v === 'awaiting') return 'Awaiting Closure';
+                    if (v === 'assigned') return 'Assigned';
+                    return raw || 'Assigned';
                   };
 
                   const uniqueSorted = (vals) => {
@@ -3073,19 +3199,51 @@ const GeneratorMaintenanceApp = () => {
                   const zoneOptions = uniqueSorted(items.map((it) => it?.zone));
 
                   const search = String(pmSearch || '').trim().toLowerCase();
-                  const filtered = items.filter((it) => {
-                    if (pmFilterState && pmFilterState !== 'all') {
-                      if (pmFilterState === 'overdue') {
-                        if (!isOverdueAssigned(it)) return false;
-                      } else {
-                        if (bucketForState(it?.state) !== pmFilterState) return false;
-                      }
+                  const dateFilter = normalizeYmd(pmFilterDate);
+                  const reprogFilter = String(pmFilterReprog || 'all');
+
+                  const normReprogStatus = (s) => {
+                    const v = String(s || '').trim().toLowerCase();
+                    if (!v) return '';
+                    if (v === 'approved') return 'APPROVED';
+                    if (v === 'rejected') return 'REJECTED';
+                    if (v === 'pending') return 'PENDING';
+                    if (v === 'approved' || v === 'ok' || v === 'yes' || v === 'oui' || v === 'validee' || v === 'validée' || v === 'approuvee' || v === 'approuvée') {
+                      return 'APPROVED';
                     }
+                    if (v === 'rejected' || v === 'ko' || v === 'no' || v === 'non' || v === 'rejete' || v === 'rejeté' || v === 'rejetee' || v === 'rejetée' || v === 'refusee' || v === 'refusée') {
+                      return 'REJECTED';
+                    }
+                    if (v === 'pending' || v === 'attente' || v === 'en attente' || v === 'waiting') return 'PENDING';
+                    return '';
+                  };
+
+                  const effectiveReprogStatus = (it) => {
+                    const explicit = normReprogStatus(it?.reprogrammationStatus);
+                    if (explicit) return explicit;
+                    const hasDate = !!String(it?.reprogrammationDate || '').trim();
+                    const hasReason = !!String(it?.reprogrammationReason || '').trim();
+                    if (hasDate) return 'APPROVED';
+                    if (hasReason) return 'PENDING';
+                    return '';
+                  };
+
+                  const baseFiltered = items.filter((it) => {
                     if (pmFilterType && pmFilterType !== 'all') {
                       if (String(it?.maintenanceType || '').trim() !== String(pmFilterType)) return false;
                     }
                     if (pmFilterZone && pmFilterZone !== 'all') {
                       if (String(it?.zone || '').trim() !== String(pmFilterZone)) return false;
+                    }
+                    if (dateFilter) {
+                      const sched = normalizeYmd(it?.scheduledWoDate);
+                      if (sched !== dateFilter) return false;
+                    }
+                    if (reprogFilter && reprogFilter !== 'all') {
+                      const st = effectiveReprogStatus(it);
+                      if (reprogFilter === 'approved' && st !== 'APPROVED') return false;
+                      if (reprogFilter === 'rejected' && st !== 'REJECTED') return false;
+                      if (reprogFilter === 'pending' && st !== 'PENDING') return false;
                     }
                     if (search) {
                       const hay = [
@@ -3096,7 +3254,9 @@ const GeneratorMaintenanceApp = () => {
                         it?.zone,
                         it?.maintenanceType,
                         it?.assignedTo,
-                        it?.shortDescription
+                        it?.shortDescription,
+                        it?.reprogrammationReason,
+                        it?.reprogrammationStatus
                       ]
                         .filter(Boolean)
                         .join(' ')
@@ -3106,65 +3266,76 @@ const GeneratorMaintenanceApp = () => {
                     return true;
                   });
 
-                  const badgeForBucket = (bucket, overdue) => {
-                    if (overdue) {
-                      return { text: 'Overdue', cls: 'bg-red-50 text-red-800 border-red-200' };
+                  const tableFiltered = baseFiltered.filter((it) => {
+                    if (pmFilterState && pmFilterState !== 'all') {
+                      if (bucketForState(it?.state) !== pmFilterState) return false;
                     }
-                    if (bucket === 'done') return { text: 'Done', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200' };
-                    if (bucket === 'wip') return { text: 'WIP', cls: 'bg-blue-50 text-blue-800 border-blue-200' };
-                    if (bucket === 'awaiting') return { text: 'Awaiting', cls: 'bg-amber-50 text-amber-800 border-amber-200' };
-                    if (bucket === 'assigned') return { text: 'Assigned', cls: 'bg-slate-50 text-slate-800 border-slate-200' };
-                    return { text: 'Other', cls: 'bg-gray-50 text-gray-800 border-gray-200' };
+                    return true;
+                  });
+
+                  const badgeForBucket = (bucket) => {
+                    if (bucket === 'closed') return { cls: 'bg-emerald-50 text-emerald-800 border-emerald-200' };
+                    if (bucket === 'wip') return { cls: 'bg-blue-50 text-blue-800 border-blue-200' };
+                    if (bucket === 'awaiting') return { cls: 'bg-amber-50 text-amber-800 border-amber-200' };
+                    return { cls: 'bg-slate-50 text-slate-800 border-slate-200' };
                   };
+
+                  const counts = {
+                    total: baseFiltered.length,
+                    closed: 0,
+                    wip: 0,
+                    awaiting: 0,
+                    assigned: 0
+                  };
+                  for (const it of baseFiltered) {
+                    const b = bucketForState(it?.state);
+                    if (b === 'closed') counts.closed += 1;
+                    else if (b === 'wip') counts.wip += 1;
+                    else if (b === 'awaiting') counts.awaiting += 1;
+                    else counts.assigned += 1;
+                  }
 
                   const cards = [
                     {
                       key: 'total',
                       title: 'Total',
-                      value: Number(totals?.total || 0),
+                      value: Number(counts.total || 0),
                       className: 'bg-white border-gray-200 hover:bg-gray-50',
                       onClick: () => setPmFilterState('all')
                     },
                     {
-                      key: 'done',
-                      title: `Done (${Number(totals?.donePct || 0)}%)`,
-                      value: Number(totals?.done || 0),
+                      key: 'closed',
+                      title: 'Closed Complete',
+                      value: Number(counts.closed || 0),
                       className: 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100',
-                      onClick: () => setPmFilterState('done')
+                      onClick: () => setPmFilterState('closed')
                     },
                     {
                       key: 'wip',
-                      title: 'WIP',
-                      value: Number(totals?.wip || 0),
+                      title: 'Work in progress',
+                      value: Number(counts.wip || 0),
                       className: 'bg-blue-50 border-blue-200 hover:bg-blue-100',
                       onClick: () => setPmFilterState('wip')
                     },
                     {
                       key: 'awaiting',
-                      title: 'Awaiting',
-                      value: Number(totals?.awaiting || 0),
+                      title: 'Awaiting Closure',
+                      value: Number(counts.awaiting || 0),
                       className: 'bg-amber-50 border-amber-200 hover:bg-amber-100',
                       onClick: () => setPmFilterState('awaiting')
                     },
                     {
                       key: 'assigned',
                       title: 'Assigned',
-                      value: Number(totals?.assigned || 0),
+                      value: Number(counts.assigned || 0),
                       className: 'bg-slate-50 border-slate-200 hover:bg-slate-100',
                       onClick: () => setPmFilterState('assigned')
-                    },
-                    {
-                      key: 'overdue',
-                      title: 'Overdue',
-                      value: Number(totals?.overdueAssigned || 0),
-                      className: 'bg-red-50 border-red-200 hover:bg-red-100',
-                      onClick: () => setPmFilterState('overdue')
                     }
                   ];
 
                   return (
                     <>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
                         {cards.map((c) => (
                           <button
                             key={c.key}
@@ -3180,7 +3351,7 @@ const GeneratorMaintenanceApp = () => {
                       </div>
 
                       <div className="border border-gray-200 rounded-xl p-4 mb-5">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                           <div>
                             <label className="block text-xs font-semibold text-gray-700 mb-1">État</label>
                             <select
@@ -3190,12 +3361,10 @@ const GeneratorMaintenanceApp = () => {
                               disabled={pmBusy}
                             >
                               <option value="all">Tous</option>
-                              <option value="done">Done</option>
-                              <option value="wip">WIP</option>
-                              <option value="awaiting">Awaiting</option>
+                              <option value="closed">Closed Complete</option>
+                              <option value="wip">Work in progress</option>
+                              <option value="awaiting">Awaiting Closure</option>
                               <option value="assigned">Assigned</option>
-                              <option value="overdue">Overdue</option>
-                              <option value="other">Other</option>
                             </select>
                           </div>
 
@@ -3243,11 +3412,37 @@ const GeneratorMaintenanceApp = () => {
                               disabled={pmBusy}
                             />
                           </div>
+
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-700 mb-1">Date planifiée (jour)</label>
+                            <input
+                              type="date"
+                              value={pmFilterDate}
+                              onChange={(e) => setPmFilterDate(String(e.target.value || ''))}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                              disabled={pmBusy}
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-700 mb-1">Reprogrammation</label>
+                            <select
+                              value={pmFilterReprog}
+                              onChange={(e) => setPmFilterReprog(String(e.target.value || 'all'))}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                              disabled={pmBusy}
+                            >
+                              <option value="all">Toutes</option>
+                              <option value="pending">En attente</option>
+                              <option value="approved">Approuvée</option>
+                              <option value="rejected">Rejetée</option>
+                            </select>
+                          </div>
                         </div>
 
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-3">
                           <div className="text-xs text-gray-600">
-                            Affichés: <span className="font-semibold text-gray-900">{filtered.length}</span> / {items.length}
+                            Affichés: <span className="font-semibold text-gray-900">{tableFiltered.length}</span> / {items.length}
                           </div>
                           <button
                             type="button"
@@ -3256,6 +3451,8 @@ const GeneratorMaintenanceApp = () => {
                               setPmFilterType('all');
                               setPmFilterZone('all');
                               setPmSearch('');
+                              setPmFilterDate('');
+                              setPmFilterReprog('all');
                             }}
                             className="bg-gray-200 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-300 text-sm font-semibold"
                             disabled={pmBusy}
@@ -3282,29 +3479,35 @@ const GeneratorMaintenanceApp = () => {
                                 <th className="px-4 py-2">Type</th>
                                 <th className="px-4 py-2">Assigné à</th>
                                 <th className="px-4 py-2">Clôture</th>
+                                <th className="px-4 py-2">Statut</th>
+                                <th className="px-4 py-2">Reprogrammation</th>
+                                <th className="px-4 py-2">Raisons</th>
                               </tr>
                             </thead>
                             <tbody>
-                              {filtered.length === 0 ? (
+                              {tableFiltered.length === 0 ? (
                                 <tr>
-                                  <td className="px-4 py-4 text-gray-600" colSpan={8}>
+                                  <td className="px-4 py-4 text-gray-600" colSpan={11}>
                                     Aucun ticket pour ces filtres.
                                   </td>
                                 </tr>
                               ) : (
-                                filtered.map((it) => {
+                                tableFiltered.map((it) => {
                                   const bucket = bucketForState(it?.state);
-                                  const overdue = isOverdueAssigned(it);
-                                  const badge = badgeForBucket(bucket, overdue);
+                                  const badge = badgeForBucket(bucket);
                                   const sched = it?.scheduledWoDate ? String(it.scheduledWoDate).slice(0, 10) : '';
                                   const closed = it?.closedAt ? String(it.closedAt).slice(0, 10) : '';
+                                  const reprogStatus = effectiveReprogStatus(it);
+                                  const reprog = it?.reprogrammationDate ? String(it.reprogrammationDate).slice(0, 10) : '';
+                                  const reason = String(it?.reprogrammationReason || '').trim();
                                   const siteLabel = [it?.siteName, it?.siteCode].filter(Boolean).join(' • ');
+                                  const st = stateLabel(it?.state);
                                   return (
                                     <tr key={it?.id || it?.number} className="border-b border-gray-100 hover:bg-gray-50">
                                       <td className="px-4 py-2 font-semibold text-gray-900">{it?.number || '-'}</td>
                                       <td className="px-4 py-2">
                                         <span className={`inline-flex items-center border px-2 py-0.5 rounded-full text-xs font-semibold ${badge.cls}`}>
-                                          {badge.text}
+                                          {st}
                                         </span>
                                       </td>
                                       <td className="px-4 py-2 text-gray-800">{sched || '-'}</td>
@@ -3313,6 +3516,9 @@ const GeneratorMaintenanceApp = () => {
                                       <td className="px-4 py-2 text-gray-800">{it?.maintenanceType || '-'}</td>
                                       <td className="px-4 py-2 text-gray-800">{it?.assignedTo || '-'}</td>
                                       <td className="px-4 py-2 text-gray-800">{closed || '-'}</td>
+                                      <td className="px-4 py-2 text-gray-800">{reprogStatus || '-'}</td>
+                                      <td className="px-4 py-2 text-gray-800">{reprog || '-'}</td>
+                                      <td className="px-4 py-2 text-gray-800">{reason || '-'}</td>
                                     </tr>
                                   );
                                 })

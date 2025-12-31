@@ -22,6 +22,9 @@ function mapItemRow(r) {
     assignedTo: r.assigned_to,
     state: r.state,
     closedAt: r.closed_at,
+    reprogrammationDate: r.reprogrammation_date,
+    reprogrammationReason: r.reprogrammation_reason,
+    reprogrammationStatus: r.reprogrammation_status,
     lastNocImportAt: r.last_noc_import_at,
     createdAt: r.created_at,
     updatedAt: r.updated_at
