@@ -3042,6 +3042,340 @@ const GeneratorMaintenanceApp = () => {
                 <div className="text-sm text-gray-700 mb-4">
                   Tickets du mois: <span className="font-semibold">{Array.isArray(pmItems) ? pmItems.length : 0}</span>
                 </div>
+
+                {(() => {
+                  const items = Array.isArray(pmItems) ? pmItems : [];
+                  const imports = Array.isArray(pmImports) ? pmImports : [];
+                  const totals = pmDashboard?.totals || {};
+                  const today = String(pmDashboard?.today || '').slice(0, 10);
+
+                  const norm = (s) => String(s || '').trim().toLowerCase();
+                  const bucketForState = (state) => {
+                    const v = norm(state);
+                    if (v === 'closed complete' || v === 'closed') return 'done';
+                    if (v === 'awaiting closure' || v === 'awaiting') return 'awaiting';
+                    if (v === 'work in progress' || v === 'wip') return 'wip';
+                    if (v === 'assigned') return 'assigned';
+                    return 'other';
+                  };
+
+                  const isOverdueAssigned = (it) => {
+                    const sched = it?.scheduledWoDate ? String(it.scheduledWoDate).slice(0, 10) : '';
+                    return bucketForState(it?.state) === 'assigned' && !!today && !!sched && sched < today;
+                  };
+
+                  const uniqueSorted = (vals) => {
+                    const set = new Set(vals.map((v) => String(v || '').trim()).filter(Boolean));
+                    return Array.from(set).sort((a, b) => String(a).localeCompare(String(b)));
+                  };
+
+                  const typeOptions = uniqueSorted(items.map((it) => it?.maintenanceType));
+                  const zoneOptions = uniqueSorted(items.map((it) => it?.zone));
+
+                  const search = String(pmSearch || '').trim().toLowerCase();
+                  const filtered = items.filter((it) => {
+                    if (pmFilterState && pmFilterState !== 'all') {
+                      if (pmFilterState === 'overdue') {
+                        if (!isOverdueAssigned(it)) return false;
+                      } else {
+                        if (bucketForState(it?.state) !== pmFilterState) return false;
+                      }
+                    }
+                    if (pmFilterType && pmFilterType !== 'all') {
+                      if (String(it?.maintenanceType || '').trim() !== String(pmFilterType)) return false;
+                    }
+                    if (pmFilterZone && pmFilterZone !== 'all') {
+                      if (String(it?.zone || '').trim() !== String(pmFilterZone)) return false;
+                    }
+                    if (search) {
+                      const hay = [
+                        it?.number,
+                        it?.siteName,
+                        it?.siteCode,
+                        it?.region,
+                        it?.zone,
+                        it?.maintenanceType,
+                        it?.assignedTo,
+                        it?.shortDescription
+                      ]
+                        .filter(Boolean)
+                        .join(' ')
+                        .toLowerCase();
+                      if (!hay.includes(search)) return false;
+                    }
+                    return true;
+                  });
+
+                  const badgeForBucket = (bucket, overdue) => {
+                    if (overdue) {
+                      return { text: 'Overdue', cls: 'bg-red-50 text-red-800 border-red-200' };
+                    }
+                    if (bucket === 'done') return { text: 'Done', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200' };
+                    if (bucket === 'wip') return { text: 'WIP', cls: 'bg-blue-50 text-blue-800 border-blue-200' };
+                    if (bucket === 'awaiting') return { text: 'Awaiting', cls: 'bg-amber-50 text-amber-800 border-amber-200' };
+                    if (bucket === 'assigned') return { text: 'Assigned', cls: 'bg-slate-50 text-slate-800 border-slate-200' };
+                    return { text: 'Other', cls: 'bg-gray-50 text-gray-800 border-gray-200' };
+                  };
+
+                  const cards = [
+                    {
+                      key: 'total',
+                      title: 'Total',
+                      value: Number(totals?.total || 0),
+                      className: 'bg-white border-gray-200 hover:bg-gray-50',
+                      onClick: () => setPmFilterState('all')
+                    },
+                    {
+                      key: 'done',
+                      title: `Done (${Number(totals?.donePct || 0)}%)`,
+                      value: Number(totals?.done || 0),
+                      className: 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100',
+                      onClick: () => setPmFilterState('done')
+                    },
+                    {
+                      key: 'wip',
+                      title: 'WIP',
+                      value: Number(totals?.wip || 0),
+                      className: 'bg-blue-50 border-blue-200 hover:bg-blue-100',
+                      onClick: () => setPmFilterState('wip')
+                    },
+                    {
+                      key: 'awaiting',
+                      title: 'Awaiting',
+                      value: Number(totals?.awaiting || 0),
+                      className: 'bg-amber-50 border-amber-200 hover:bg-amber-100',
+                      onClick: () => setPmFilterState('awaiting')
+                    },
+                    {
+                      key: 'assigned',
+                      title: 'Assigned',
+                      value: Number(totals?.assigned || 0),
+                      className: 'bg-slate-50 border-slate-200 hover:bg-slate-100',
+                      onClick: () => setPmFilterState('assigned')
+                    },
+                    {
+                      key: 'overdue',
+                      title: 'Overdue',
+                      value: Number(totals?.overdueAssigned || 0),
+                      className: 'bg-red-50 border-red-200 hover:bg-red-100',
+                      onClick: () => setPmFilterState('overdue')
+                    }
+                  ];
+
+                  return (
+                    <>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+                        {cards.map((c) => (
+                          <button
+                            key={c.key}
+                            type="button"
+                            onClick={c.onClick}
+                            className={`${c.className} border rounded-xl p-3 text-left`}
+                            disabled={pmBusy}
+                          >
+                            <div className="text-[11px] font-semibold text-gray-700">{c.title}</div>
+                            <div className="text-2xl font-bold text-gray-900 mt-1">{c.value}</div>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="border border-gray-200 rounded-xl p-4 mb-5">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-700 mb-1">État</label>
+                            <select
+                              value={pmFilterState}
+                              onChange={(e) => setPmFilterState(String(e.target.value || 'all'))}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                              disabled={pmBusy}
+                            >
+                              <option value="all">Tous</option>
+                              <option value="done">Done</option>
+                              <option value="wip">WIP</option>
+                              <option value="awaiting">Awaiting</option>
+                              <option value="assigned">Assigned</option>
+                              <option value="overdue">Overdue</option>
+                              <option value="other">Other</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-700 mb-1">Type</label>
+                            <select
+                              value={pmFilterType}
+                              onChange={(e) => setPmFilterType(String(e.target.value || 'all'))}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                              disabled={pmBusy}
+                            >
+                              <option value="all">Tous</option>
+                              {typeOptions.map((t) => (
+                                <option key={t} value={t}>
+                                  {t}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-700 mb-1">Zone</label>
+                            <select
+                              value={pmFilterZone}
+                              onChange={(e) => setPmFilterZone(String(e.target.value || 'all'))}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                              disabled={pmBusy}
+                            >
+                              <option value="all">Toutes</option>
+                              {zoneOptions.map((z) => (
+                                <option key={z} value={z}>
+                                  {z}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-700 mb-1">Recherche</label>
+                            <input
+                              value={pmSearch}
+                              onChange={(e) => setPmSearch(e.target.value)}
+                              placeholder="Ticket, site, zone, technicien…"
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                              disabled={pmBusy}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-3">
+                          <div className="text-xs text-gray-600">
+                            Affichés: <span className="font-semibold text-gray-900">{filtered.length}</span> / {items.length}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPmFilterState('all');
+                              setPmFilterType('all');
+                              setPmFilterZone('all');
+                              setPmSearch('');
+                            }}
+                            className="bg-gray-200 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-300 text-sm font-semibold"
+                            disabled={pmBusy}
+                          >
+                            Réinitialiser filtres
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="border border-gray-200 rounded-xl overflow-hidden mb-6">
+                        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-3">
+                          <div className="font-semibold text-gray-800">Tickets</div>
+                          <div className="text-xs text-gray-600">Tri: date planifiée puis ticket</div>
+                        </div>
+                        <div className="overflow-auto">
+                          <table className="min-w-[980px] w-full text-sm">
+                            <thead className="bg-white sticky top-0">
+                              <tr className="text-left text-xs text-gray-600 border-b border-gray-200">
+                                <th className="px-4 py-2">Ticket</th>
+                                <th className="px-4 py-2">État</th>
+                                <th className="px-4 py-2">Date planifiée</th>
+                                <th className="px-4 py-2">Site</th>
+                                <th className="px-4 py-2">Zone</th>
+                                <th className="px-4 py-2">Type</th>
+                                <th className="px-4 py-2">Assigné à</th>
+                                <th className="px-4 py-2">Clôture</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filtered.length === 0 ? (
+                                <tr>
+                                  <td className="px-4 py-4 text-gray-600" colSpan={8}>
+                                    Aucun ticket pour ces filtres.
+                                  </td>
+                                </tr>
+                              ) : (
+                                filtered.map((it) => {
+                                  const bucket = bucketForState(it?.state);
+                                  const overdue = isOverdueAssigned(it);
+                                  const badge = badgeForBucket(bucket, overdue);
+                                  const sched = it?.scheduledWoDate ? String(it.scheduledWoDate).slice(0, 10) : '';
+                                  const closed = it?.closedAt ? String(it.closedAt).slice(0, 10) : '';
+                                  const siteLabel = [it?.siteName, it?.siteCode].filter(Boolean).join(' • ');
+                                  return (
+                                    <tr key={it?.id || it?.number} className="border-b border-gray-100 hover:bg-gray-50">
+                                      <td className="px-4 py-2 font-semibold text-gray-900">{it?.number || '-'}</td>
+                                      <td className="px-4 py-2">
+                                        <span className={`inline-flex items-center border px-2 py-0.5 rounded-full text-xs font-semibold ${badge.cls}`}>
+                                          {badge.text}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-2 text-gray-800">{sched || '-'}</td>
+                                      <td className="px-4 py-2 text-gray-800">{siteLabel || '-'}</td>
+                                      <td className="px-4 py-2 text-gray-800">{it?.zone || '-'}</td>
+                                      <td className="px-4 py-2 text-gray-800">{it?.maintenanceType || '-'}</td>
+                                      <td className="px-4 py-2 text-gray-800">{it?.assignedTo || '-'}</td>
+                                      <td className="px-4 py-2 text-gray-800">{closed || '-'}</td>
+                                    </tr>
+                                  );
+                                })
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      <div className="border border-gray-200 rounded-xl overflow-hidden">
+                        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-3">
+                          <div className="font-semibold text-gray-800">Historique des imports</div>
+                          <div className="text-xs text-gray-600">{imports.length} import(s)</div>
+                        </div>
+                        <div className="overflow-auto">
+                          <table className="min-w-[820px] w-full text-sm">
+                            <thead className="bg-white sticky top-0">
+                              <tr className="text-left text-xs text-gray-600 border-b border-gray-200">
+                                <th className="px-4 py-2">Date</th>
+                                <th className="px-4 py-2">Type</th>
+                                <th className="px-4 py-2">Fichier</th>
+                                <th className="px-4 py-2">Lignes</th>
+                                <th className="px-4 py-2">Par</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {imports.length === 0 ? (
+                                <tr>
+                                  <td className="px-4 py-4 text-gray-600" colSpan={5}>
+                                    Aucun import enregistré pour ce mois.
+                                  </td>
+                                </tr>
+                              ) : (
+                                imports.map((imp) => {
+                                  const kind = String(imp?.kind || '').toLowerCase();
+                                  const kindBadge =
+                                    kind === 'planning'
+                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                      : kind === 'noc'
+                                        ? 'bg-purple-50 text-purple-800 border-purple-200'
+                                        : 'bg-gray-50 text-gray-800 border-gray-200';
+                                  return (
+                                    <tr key={imp?.id} className="border-b border-gray-100 hover:bg-gray-50">
+                                      <td className="px-4 py-2 text-gray-800">{imp?.importedAt ? String(imp.importedAt).replace('T', ' ').slice(0, 19) : '-'}</td>
+                                      <td className="px-4 py-2">
+                                        <span className={`inline-flex items-center border px-2 py-0.5 rounded-full text-xs font-semibold ${kindBadge}`}>
+                                          {kind || '-'}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-2 text-gray-800">{imp?.filename || '-'}</td>
+                                      <td className="px-4 py-2 text-gray-800">{Number(imp?.rowCount || 0)}</td>
+                                      <td className="px-4 py-2 text-gray-800">{imp?.createdByEmail || '-'}</td>
+                                    </tr>
+                                  );
+                                })
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
 
               <div className="p-4 border-t bg-white flex justify-end">
