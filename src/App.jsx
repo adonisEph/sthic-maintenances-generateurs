@@ -4,20 +4,17 @@ import * as XLSX from 'xlsx';
 import { useStorage } from './hooks/useStorage';
 import {
   calculateRegime,
-  calculateDiffNHs,
-  calculateEstimatedNH,
-  calculateEPVDates,
+  calculateDifferences,
   formatDate,
-  getDaysUntil,
   getUrgencyClass
 } from './utils/calculations';
 
- const APP_VERSION = '2.0.4';
- const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
- const STHIC_LOGO_SRC = '/Logo_sthic.png';
- const SPLASH_MIN_MS = 3000;
+const APP_VERSION = '2.0.5';
+const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
+const STHIC_LOGO_SRC = '/Logo_sthic.png';
+const SPLASH_MIN_MS = 3000;
 
- const GeneratorMaintenanceApp = () => {
+const GeneratorMaintenanceApp = () => {
   const storage = useStorage();
   const [sites, setSites] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
