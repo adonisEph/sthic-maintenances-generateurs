@@ -62,7 +62,7 @@ export async function onRequestPost({ request, env, data, params }) {
       });
     }
 
-    const CHUNK_SIZE = 50;
+    const CHUNK_SIZE = 10;
     const chunks = chunkArray(cleanedRows, CHUNK_SIZE);
 
     for (const chunk of chunks) {
