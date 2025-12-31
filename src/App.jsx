@@ -557,8 +557,13 @@ const GeneratorMaintenanceApp = () => {
 
   const pmNormKey = (k) =>
     String(k || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
       .trim()
       .toLowerCase()
+      .replace(/\s*\/\s*/g, '/')
+      .replace(/\s*\-\s*/g, '-')
+      .replace(/_+/g, ' ')
       .replace(/\s+/g, ' ');
 
   const pmGet = (row, ...candidates) => {
@@ -847,8 +852,23 @@ const GeneratorMaintenanceApp = () => {
 
           const siteCode = String(pmGet(row, 'Site', 'Site Code') || '').trim();
           const siteName = String(pmGet(row, 'Site Name', 'Name Site') || '').trim();
-          const region = String(pmGet(row, 'Region') || '').trim();
-          const zone = String(pmGet(row, 'Zones', 'ZONES', 'ZONE', 'ZONE/PMWO', 'Zone/PMWO', 'Zone') || '').trim();
+          const region = String(pmGet(row, 'Region', 'REGION', 'Région', 'REGION/PMWO', 'Region/PMWO', 'Region / PMWO') || '').trim();
+          const zone = String(
+            pmGet(
+              row,
+              'Zones',
+              'ZONES',
+              'ZONE',
+              'ZONE/PMWO',
+              'Zone/PMWO',
+              'ZONE / PMWO',
+              'Zone / PMWO',
+              'Zone PMWO',
+              'ZONE PMWO',
+              'Zone'
+            ) ||
+              ''
+          ).trim();
           const shortDescription = String(pmGet(row, 'Short description', 'Short Description') || '').trim();
           const assignedTo = String(pmGet(row, 'Assigned to', 'Assigned To') || '').trim();
 
@@ -877,7 +897,7 @@ const GeneratorMaintenanceApp = () => {
             siteCode,
             siteName,
             region,
-            zone,
+            zone: zone || region,
             shortDescription,
             maintenanceType,
             scheduledWoDate,
@@ -2938,12 +2958,22 @@ const GeneratorMaintenanceApp = () => {
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gray-100">
                 <h3 className="text-lg font-bold text-gray-800">{dashboardDetails.title}</h3>
-                <button
-                  onClick={() => setDashboardDetails({ open: false, title: '', kind: '', items: [] })}
-                  className="bg-gray-400 text-white px-3 py-2 rounded-lg hover:bg-gray-500"
-                >
-                  <X size={20} />
-                </button>
+                <div className="flex items-center gap-3">
+                  <img
+                    src={STHIC_LOGO_SRC}
+                    alt="STHIC"
+                    className="h-8 w-auto object-contain"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                  <button
+                    onClick={() => setDashboardDetails({ open: false, title: '', kind: '', items: [] })}
+                    className="bg-gray-400 text-white px-3 py-2 rounded-lg hover:bg-gray-500"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
               </div>
               <div className="p-4 sm:p-6 overflow-y-auto flex-1">
                 {dashboardDetails.items.length === 0 ? (
@@ -2988,25 +3018,49 @@ const GeneratorMaintenanceApp = () => {
                   </div>
                 )}
               </div>
-              <div className="p-4 border-t bg-white flex flex-col sm:flex-row gap-3 sm:justify-end">
-                {canExportExcel && dashboardDetails.items.length > 0 && (
+              {isAdmin ? (
+                <div className="p-4 border-t bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <button
-                    type="button"
-                    onClick={handleExportDashboardDetailsExcel}
-                    className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold flex items-center justify-center gap-2 w-full sm:w-auto"
-                    disabled={exportBusy}
+                    onClick={() => setDashboardDetails({ open: false, title: '', kind: '', items: [] })}
+                    className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold w-full sm:w-auto"
                   >
-                    <Download size={18} />
-                    Exporter Excel
+                    Fermer
                   </button>
-                )}
-                <button
-                  onClick={() => setDashboardDetails({ open: false, title: '', kind: '', items: [] })}
-                  className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold w-full sm:w-auto"
-                >
-                  Fermer
-                </button>
-              </div>
+                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                    {canExportExcel && dashboardDetails.items.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleExportDashboardDetailsExcel}
+                        className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold flex items-center justify-center gap-2 w-full sm:w-auto"
+                        disabled={exportBusy}
+                      >
+                        <Download size={18} />
+                        Exporter Excel
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 border-t bg-white flex flex-col sm:flex-row gap-3 sm:justify-end">
+                  {canExportExcel && dashboardDetails.items.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleExportDashboardDetailsExcel}
+                      className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold flex items-center justify-center gap-2 w-full sm:w-auto"
+                      disabled={exportBusy}
+                    >
+                      <Download size={18} />
+                      Exporter Excel
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setDashboardDetails({ open: false, title: '', kind: '', items: [] })}
+                    className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold w-full sm:w-auto"
+                  >
+                    Fermer
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -3024,16 +3078,26 @@ const GeneratorMaintenanceApp = () => {
                     </span>
                   )}
                 </h2>
-                <button
-                  onClick={() => {
-                    setShowPm(false);
-                    setPmError('');
-                    setPmNotice('');
-                  }}
-                  className="hover:bg-teal-900 p-2 rounded"
-                >
-                  <X size={20} />
-                </button>
+                <div className="flex items-center gap-3">
+                  <img
+                    src={STHIC_LOGO_SRC}
+                    alt="STHIC"
+                    className="h-8 w-auto object-contain"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                  <button
+                    onClick={() => {
+                      setShowPm(false);
+                      setPmError('');
+                      setPmNotice('');
+                    }}
+                    className="hover:bg-teal-900 p-2 rounded"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
               </div>
 
               <div className="p-4 sm:p-6 overflow-y-auto flex-1">
@@ -3073,56 +3137,60 @@ const GeneratorMaintenanceApp = () => {
                   </div>
 
                   {isAdmin && (
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                      <label
-                        className={`bg-emerald-700 text-white px-3 py-2 rounded-lg flex items-center justify-center gap-2 text-sm font-semibold ${
-                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-emerald-800 cursor-pointer'
-                        }`}
-                      >
-                        <Upload size={16} />
-                        Import planning
-                        <input
-                          type="file"
-                          accept=".xlsx,.xls"
-                          onChange={handlePmPlanningImport}
-                          className="hidden"
-                          disabled={pmBusy}
-                        />
-                      </label>
+                    <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
+                      <div className="grid grid-cols-2 sm:flex sm:flex-row gap-2">
+                        <label
+                          className={`bg-emerald-700 text-white px-3 py-2 rounded-lg flex items-center justify-center gap-2 text-sm font-semibold ${
+                            pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-emerald-800 cursor-pointer'
+                          }`}
+                        >
+                          <Upload size={16} />
+                          Import planning
+                          <input
+                            type="file"
+                            accept=".xlsx,.xls"
+                            onChange={handlePmPlanningImport}
+                            className="hidden"
+                            disabled={pmBusy}
+                          />
+                        </label>
 
-                      <label
-                        className={`bg-purple-700 text-white px-3 py-2 rounded-lg flex items-center justify-center gap-2 text-sm font-semibold ${
-                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-purple-800 cursor-pointer'
-                        }`}
-                      >
-                        <Upload size={16} />
-                        Import NOC
-                        <input
-                          type="file"
-                          accept=".xlsx,.xls"
-                          onChange={handlePmNocImport}
-                          className="hidden"
-                          disabled={pmBusy}
-                        />
-                      </label>
+                        <label
+                          className={`bg-purple-700 text-white px-3 py-2 rounded-lg flex items-center justify-center gap-2 text-sm font-semibold ${
+                            pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-purple-800 cursor-pointer'
+                          }`}
+                        >
+                          <Upload size={16} />
+                          Import NOC
+                          <input
+                            type="file"
+                            accept=".xlsx,.xls"
+                            onChange={handlePmNocImport}
+                            className="hidden"
+                            disabled={pmBusy}
+                          />
+                        </label>
+                      </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handlePmReset('imports')}
-                        className="bg-amber-600 text-white px-3 py-2 rounded-lg hover:bg-amber-700 text-sm font-semibold"
-                        disabled={pmBusy || pmResetBusy}
-                      >
-                        Suppr. imports
-                      </button>
+                      <div className="grid grid-cols-2 sm:flex sm:flex-row gap-2 sm:pl-2 sm:border-l sm:border-gray-200">
+                        <button
+                          type="button"
+                          onClick={() => handlePmReset('imports')}
+                          className="bg-amber-600 text-white px-3 py-2 rounded-lg hover:bg-amber-700 text-sm font-semibold"
+                          disabled={pmBusy || pmResetBusy}
+                        >
+                          Suppr. imports
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handlePmReset('all')}
-                        className="bg-red-700 text-white px-3 py-2 rounded-lg hover:bg-red-800 text-sm font-semibold"
-                        disabled={pmBusy || pmResetBusy}
-                      >
-                        Reset mois
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePmReset('all')}
+                          className="bg-red-700 text-white px-3 py-2 rounded-lg hover:bg-red-800 text-sm font-semibold"
+                          disabled={pmBusy || pmResetBusy}
+                        >
+                          Reset mois
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -3584,14 +3652,14 @@ const GeneratorMaintenanceApp = () => {
                 })()}
               </div>
 
-              <div className="p-4 border-t bg-white flex justify-end">
+              <div className={`p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:justify-end gap-2' : 'flex justify-end'}`}>
                 <button
                   onClick={() => {
                     setShowPm(false);
                     setPmError('');
                     setPmNotice('');
                   }}
-                  className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
+                  className={`bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold ${isAdmin ? 'w-full sm:w-auto' : ''}`}
                 >
                   Fermer
                 </button>
@@ -3613,15 +3681,25 @@ const GeneratorMaintenanceApp = () => {
                     </span>
                   )}
                 </h2>
-                <button
-                  onClick={() => {
-                    setShowScoring(false);
-                    setScoringDetails({ open: false, title: '', kind: '', items: [] });
-                  }}
-                  className="hover:bg-slate-900 p-2 rounded"
-                >
-                  <X size={20} />
-                </button>
+                <div className="flex items-center gap-3">
+                  <img
+                    src={STHIC_LOGO_SRC}
+                    alt="STHIC"
+                    className="h-8 w-auto object-contain"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                  <button
+                    onClick={() => {
+                      setShowScoring(false);
+                      setScoringDetails({ open: false, title: '', kind: '', items: [] });
+                    }}
+                    className="hover:bg-slate-900 p-2 rounded"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
               </div>
 
               <div className="p-4 sm:p-6 overflow-y-auto flex-1">
@@ -3826,13 +3904,13 @@ const GeneratorMaintenanceApp = () => {
                 })()}
               </div>
 
-              <div className="p-4 border-t bg-white flex justify-end">
+              <div className={`p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:justify-end gap-2' : 'flex justify-end'}`}>
                 <button
                   onClick={() => {
                     setShowScoring(false);
                     setScoringDetails({ open: false, title: '', kind: '', items: [] });
                   }}
-                  className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
+                  className={`bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold ${isAdmin ? 'w-full sm:w-auto' : ''}`}
                 >
                   Fermer
                 </button>
@@ -3865,42 +3943,52 @@ const GeneratorMaintenanceApp = () => {
                     </span>
                   )}
                 </h2>
-                <button
-                  onClick={() => {
-                    if (isTechnician && authUser?.id) {
-                      const maxSentAt = (Array.isArray(interventions) ? interventions : [])
-                        .filter((i) => i && i.status === 'sent' && i.sentAt)
-                        .map((i) => String(i.sentAt))
-                        .sort()
-                        .slice(-1)[0];
-                      if (maxSentAt && String(maxSentAt) > String(technicianSeenSentAt || '')) {
-                        setTechnicianSeenSentAt(String(maxSentAt));
-                        try {
-                          const k = `tech_seen_sent_at:${String(authUser.id)}`;
-                          localStorage.setItem(k, String(maxSentAt));
-                        } catch {
-                          // ignore
+                <div className="flex items-center gap-3">
+                  <img
+                    src={STHIC_LOGO_SRC}
+                    alt="STHIC"
+                    className="h-8 w-auto object-contain"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                  <button
+                    onClick={() => {
+                      if (isTechnician && authUser?.id) {
+                        const maxSentAt = (Array.isArray(interventions) ? interventions : [])
+                          .filter((i) => i && i.status === 'sent' && i.sentAt)
+                          .map((i) => String(i.sentAt))
+                          .sort()
+                          .slice(-1)[0];
+                        if (maxSentAt && String(maxSentAt) > String(technicianSeenSentAt || '')) {
+                          setTechnicianSeenSentAt(String(maxSentAt));
+                          try {
+                            const k = `tech_seen_sent_at:${String(authUser.id)}`;
+                            localStorage.setItem(k, String(maxSentAt));
+                          } catch {
+                            // ignore
+                          }
                         }
                       }
-                    }
-                    setShowInterventions(false);
-                    setInterventionsError('');
-                    setPlanningAssignments({});
-                    setCompleteModalOpen(false);
-                    setCompleteModalIntervention(null);
-                    setCompleteModalSite(null);
-                    setCompleteForm({ nhNow: '', doneDate: '' });
-                    setCompleteFormError('');
-                    setNhModalOpen(false);
-                    setNhModalIntervention(null);
-                    setNhModalSite(null);
-                    setNhForm({ nhValue: '', readingDate: '' });
-                    setNhFormError('');
-                  }}
-                  className="hover:bg-emerald-800 p-2 rounded"
-                >
-                  <X size={20} />
-                </button>
+                      setShowInterventions(false);
+                      setInterventionsError('');
+                      setPlanningAssignments({});
+                      setCompleteModalOpen(false);
+                      setCompleteModalIntervention(null);
+                      setCompleteModalSite(null);
+                      setCompleteForm({ nhNow: '', doneDate: '' });
+                      setCompleteFormError('');
+                      setNhModalOpen(false);
+                      setNhModalIntervention(null);
+                      setNhModalSite(null);
+                      setNhForm({ nhValue: '', readingDate: '' });
+                      setNhFormError('');
+                    }}
+                    className="hover:bg-emerald-800 p-2 rounded"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
               </div>
 
               <div className="p-4 sm:p-6 overflow-y-auto flex-1">
@@ -4387,18 +4475,28 @@ const GeneratorMaintenanceApp = () => {
                     <div className="bg-white rounded-lg shadow-xl max-w-lg w-full overflow-hidden">
                       <div className="flex justify-between items-center p-4 border-b bg-green-700 text-white">
                         <div className="font-bold">Valider l'intervention</div>
-                        <button
-                          onClick={() => {
-                            setCompleteModalOpen(false);
-                            setCompleteModalIntervention(null);
-                            setCompleteModalSite(null);
-                            setCompleteForm({ nhNow: '', doneDate: '' });
-                            setCompleteFormError('');
-                          }}
-                          className="hover:bg-green-800 p-2 rounded"
-                        >
-                          <X size={18} />
-                        </button>
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={STHIC_LOGO_SRC}
+                            alt="STHIC"
+                            className="h-7 w-auto object-contain"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                          <button
+                            onClick={() => {
+                              setCompleteModalOpen(false);
+                              setCompleteModalIntervention(null);
+                              setCompleteModalSite(null);
+                              setCompleteForm({ nhNow: '', doneDate: '' });
+                              setCompleteFormError('');
+                            }}
+                            className="hover:bg-green-800 p-2 rounded"
+                          >
+                            <X size={18} />
+                          </button>
+                        </div>
                       </div>
                       <div className="p-4 space-y-3">
                         <div className="text-sm text-gray-700">
@@ -4442,7 +4540,7 @@ const GeneratorMaintenanceApp = () => {
                           </div>
                         )}
                       </div>
-                      <div className="p-4 border-t bg-white flex justify-end gap-2">
+                      <div className={`p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2' : 'flex justify-end gap-2'}`}>
                         <button
                           onClick={() => {
                             setCompleteModalOpen(false);
@@ -4451,7 +4549,7 @@ const GeneratorMaintenanceApp = () => {
                             setCompleteForm({ nhNow: '', doneDate: '' });
                             setCompleteFormError('');
                           }}
-                          className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
+                          className={`bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold ${isAdmin ? 'w-full sm:w-auto' : ''}`}
                         >
                           Annuler
                         </button>
@@ -4483,7 +4581,7 @@ const GeneratorMaintenanceApp = () => {
                               // handled in handler
                             }
                           }}
-                          className="bg-green-700 text-white px-4 py-2 rounded-lg hover:bg-green-800 font-semibold"
+                          className={`bg-green-700 text-white px-4 py-2 rounded-lg hover:bg-green-800 font-semibold ${isAdmin ? 'w-full sm:w-auto' : ''}`}
                         >
                           Confirmer
                         </button>
@@ -4497,18 +4595,28 @@ const GeneratorMaintenanceApp = () => {
                     <div className="bg-white rounded-lg shadow-xl max-w-lg w-full overflow-hidden">
                       <div className="flex justify-between items-center p-4 border-b bg-slate-800 text-white">
                         <div className="font-bold">Mettre à jour le NH</div>
-                        <button
-                          onClick={() => {
-                            setNhModalOpen(false);
-                            setNhModalIntervention(null);
-                            setNhModalSite(null);
-                            setNhForm({ nhValue: '', readingDate: '' });
-                            setNhFormError('');
-                          }}
-                          className="hover:bg-slate-900 p-2 rounded"
-                        >
-                          <X size={18} />
-                        </button>
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={STHIC_LOGO_SRC}
+                            alt="STHIC"
+                            className="h-7 w-auto object-contain"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                          <button
+                            onClick={() => {
+                              setNhModalOpen(false);
+                              setNhModalIntervention(null);
+                              setNhModalSite(null);
+                              setNhForm({ nhValue: '', readingDate: '' });
+                              setNhFormError('');
+                            }}
+                            className="hover:bg-slate-900 p-2 rounded"
+                          >
+                            <X size={18} />
+                          </button>
+                        </div>
                       </div>
                       <div className="p-4 space-y-3">
                         <div className="text-sm text-gray-700">
@@ -4550,7 +4658,7 @@ const GeneratorMaintenanceApp = () => {
                           </div>
                         )}
                       </div>
-                      <div className="p-4 border-t bg-white flex justify-end gap-2">
+                      <div className={`p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2' : 'flex justify-end gap-2'}`}>
                         <button
                           onClick={() => {
                             setNhModalOpen(false);
@@ -4559,7 +4667,7 @@ const GeneratorMaintenanceApp = () => {
                             setNhForm({ nhValue: '', readingDate: '' });
                             setNhFormError('');
                           }}
-                          className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
+                          className={`bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold ${isAdmin ? 'w-full sm:w-auto' : ''}`}
                         >
                           Annuler
                         </button>
@@ -4601,7 +4709,7 @@ const GeneratorMaintenanceApp = () => {
                               setNhFormError(e?.message || 'Erreur serveur.');
                             }
                           }}
-                          className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold"
+                          className={`bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold ${isAdmin ? 'w-full sm:w-auto' : ''}`}
                         >
                           Confirmer
                         </button>
@@ -4611,7 +4719,7 @@ const GeneratorMaintenanceApp = () => {
                 )}
               </div>
 
-              <div className="p-4 border-t bg-white flex justify-end">
+              <div className={`p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:justify-end gap-2' : 'flex justify-end'}`}>
                 <button
                   onClick={() => {
                     setShowInterventions(false);
@@ -4628,7 +4736,7 @@ const GeneratorMaintenanceApp = () => {
                     setNhForm({ nhValue: '', readingDate: '' });
                     setNhFormError('');
                   }}
-                  className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
+                  className={`bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold ${isAdmin ? 'w-full sm:w-auto' : ''}`}
                 >
                   Fermer
                 </button>
@@ -4645,9 +4753,19 @@ const GeneratorMaintenanceApp = () => {
                   <Activity size={22} />
                   Présence & activité
                 </h2>
-                <button onClick={() => setShowPresenceModal(false)} className="hover:bg-indigo-800 p-2 rounded">
-                  <X size={20} />
-                </button>
+                <div className="flex items-center gap-3">
+                  <img
+                    src={STHIC_LOGO_SRC}
+                    alt="STHIC"
+                    className="h-8 w-auto object-contain"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                  <button onClick={() => setShowPresenceModal(false)} className="hover:bg-indigo-800 p-2 rounded">
+                    <X size={20} />
+                  </button>
+                </div>
               </div>
 
               <div className="p-4 sm:p-6 overflow-y-auto flex-1">
@@ -4682,10 +4800,10 @@ const GeneratorMaintenanceApp = () => {
                 )}
               </div>
 
-              <div className="p-4 border-t bg-white flex justify-end">
+              <div className={`p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:justify-end gap-2' : 'flex justify-end'}`}>
                 <button
                   onClick={() => setShowPresenceModal(false)}
-                  className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
+                  className={`bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold ${isAdmin ? 'w-full sm:w-auto' : ''}`}
                 >
                   Fermer
                 </button>
@@ -4702,9 +4820,19 @@ const GeneratorMaintenanceApp = () => {
                   <Users size={22} />
                   Gestion des utilisateurs
                 </h2>
-                <button onClick={() => { setShowUsersModal(false); setUserFormError(''); }} className="hover:bg-slate-800 p-2 rounded">
-                  <X size={20} />
-                </button>
+                <div className="flex items-center gap-3">
+                  <img
+                    src={STHIC_LOGO_SRC}
+                    alt="STHIC"
+                    className="h-8 w-auto object-contain"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                  <button onClick={() => { setShowUsersModal(false); setUserFormError(''); }} className="hover:bg-slate-800 p-2 rounded">
+                    <X size={20} />
+                  </button>
+                </div>
               </div>
 
               <div className="p-4 sm:p-6 overflow-y-auto flex-1">
@@ -4807,7 +4935,7 @@ const GeneratorMaintenanceApp = () => {
                       </div>
                     )}
 
-                    <div className="flex flex-col sm:flex-row gap-2 mt-4">
+                    <div className={`flex flex-col sm:flex-row gap-2 mt-4 ${isAdmin ? 'sm:justify-between' : ''}`}>
                       <button
                         onClick={() => {
                           const email = String(userForm.email || '').trim().toLowerCase();
@@ -4919,15 +5047,25 @@ const GeneratorMaintenanceApp = () => {
                   <h2 className="text-lg sm:text-xl font-bold text-gray-800">Détails du jour</h2>
                   <div className="text-sm text-gray-600">{selectedDate ? formatDate(selectedDate) : ''}</div>
                 </div>
-                <button
-                  onClick={() => {
-                    setShowDayDetailsModal(false);
-                    setSelectedDayEvents([]);
-                  }}
-                  className="bg-gray-400 text-white px-3 py-2 rounded-lg hover:bg-gray-500"
-                >
-                  <X size={20} />
-                </button>
+                <div className="flex items-center gap-3">
+                  <img
+                    src={STHIC_LOGO_SRC}
+                    alt="STHIC"
+                    className="h-8 w-auto object-contain"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                  <button
+                    onClick={() => {
+                      setShowDayDetailsModal(false);
+                      setSelectedDayEvents([]);
+                    }}
+                    className="bg-gray-400 text-white px-3 py-2 rounded-lg hover:bg-gray-500"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
               </div>
 
               <div className="p-4 sm:p-6 overflow-y-auto flex-1">
@@ -4960,37 +5098,73 @@ const GeneratorMaintenanceApp = () => {
                 )}
               </div>
 
-              <div className="p-4 border-t bg-white flex flex-col sm:flex-row gap-3 sm:justify-end">
-                <button
-                  onClick={() => {
-                    setShowDayDetailsModal(false);
-                    setSelectedDayEvents([]);
-                  }}
-                  className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
-                >
-                  Fermer
-                </button>
-                {canExportExcel && (
+              {isAdmin ? (
+                <div className="p-4 border-t bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <button
-                    type="button"
-                    onClick={handleExportSelectedDayExcel}
-                    className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold disabled:bg-gray-400 flex items-center gap-2"
-                    disabled={exportBusy || selectedDayEvents.length === 0}
+                    onClick={() => {
+                      setShowDayDetailsModal(false);
+                      setSelectedDayEvents([]);
+                    }}
+                    className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold w-full sm:w-auto"
                   >
-                    <Download size={18} />
-                    Exporter Excel
+                    Fermer
                   </button>
-                )}
-                {canGenerateFiche && (
+                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                    {canExportExcel && (
+                      <button
+                        type="button"
+                        onClick={handleExportSelectedDayExcel}
+                        className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold disabled:bg-gray-400 flex items-center justify-center gap-2 w-full sm:w-auto"
+                        disabled={exportBusy || selectedDayEvents.length === 0}
+                      >
+                        <Download size={18} />
+                        Exporter Excel
+                      </button>
+                    )}
+                    {canGenerateFiche && (
+                      <button
+                        disabled={selectedDayEvents.length === 0}
+                        onClick={() => startBatchFicheGeneration(selectedDayEvents)}
+                        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold disabled:bg-gray-400 w-full sm:w-auto"
+                      >
+                        Générer les fiches (batch)
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 border-t bg-white flex flex-col sm:flex-row gap-3 sm:justify-end">
                   <button
-                    disabled={selectedDayEvents.length === 0}
-                    onClick={() => startBatchFicheGeneration(selectedDayEvents)}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold disabled:bg-gray-400"
+                    onClick={() => {
+                      setShowDayDetailsModal(false);
+                      setSelectedDayEvents([]);
+                    }}
+                    className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
                   >
-                    Générer les fiches (batch)
+                    Fermer
                   </button>
-                )}
-              </div>
+                  {canExportExcel && (
+                    <button
+                      type="button"
+                      onClick={handleExportSelectedDayExcel}
+                      className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold disabled:bg-gray-400 flex items-center gap-2"
+                      disabled={exportBusy || selectedDayEvents.length === 0}
+                    >
+                      <Download size={18} />
+                      Exporter Excel
+                    </button>
+                  )}
+                  {canGenerateFiche && (
+                    <button
+                      disabled={selectedDayEvents.length === 0}
+                      onClick={() => startBatchFicheGeneration(selectedDayEvents)}
+                      className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold disabled:bg-gray-400"
+                    >
+                      Générer les fiches (batch)
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -5004,24 +5178,34 @@ const GeneratorMaintenanceApp = () => {
         {showResetConfirm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <AlertCircle className="text-red-600" size={32} />
-                <h2 className="text-xl font-bold text-gray-800">⚠️ ATTENTION</h2>
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div className="flex items-center gap-3">
+                  <AlertCircle className="text-red-600" size={32} />
+                  <h2 className="text-xl font-bold text-gray-800">⚠️ ATTENTION</h2>
+                </div>
+                <img
+                  src={STHIC_LOGO_SRC}
+                  alt="STHIC"
+                  className="h-8 w-auto object-contain"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
               </div>
               <p className="text-gray-700 mb-6">
                 Cette action va supprimer <strong>TOUTES les données stockées</strong> dans l'application. 
                 Cette action est <strong>irréversible</strong>.
               </p>
-              <div className="flex gap-3">
+              <div className={isAdmin ? 'flex flex-col sm:flex-row sm:justify-between gap-3' : 'flex gap-3'}>
                 <button
                   onClick={handleResetData}
-                  className="flex-1 bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 font-semibold"
+                  className={isAdmin ? 'bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 font-semibold w-full sm:w-auto' : 'flex-1 bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 font-semibold'}
                 >
                   Oui, tout supprimer
                 </button>
                 <button
                   onClick={() => setShowResetConfirm(false)}
-                  className="flex-1 bg-gray-300 text-gray-800 px-4 py-3 rounded-lg hover:bg-gray-400 font-semibold"
+                  className={isAdmin ? 'bg-gray-300 text-gray-800 px-4 py-3 rounded-lg hover:bg-gray-400 font-semibold w-full sm:w-auto' : 'flex-1 bg-gray-300 text-gray-800 px-4 py-3 rounded-lg hover:bg-gray-400 font-semibold'}
                 >
                   Annuler
                 </button>
@@ -5034,9 +5218,19 @@ const GeneratorMaintenanceApp = () => {
         {showDeleteConfirm && siteToDelete && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <AlertCircle className="text-red-600" size={32} />
-                <h2 className="text-xl font-bold text-gray-800">⚠️ Confirmer la suppression</h2>
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div className="flex items-center gap-3">
+                  <AlertCircle className="text-red-600" size={32} />
+                  <h2 className="text-xl font-bold text-gray-800">⚠️ Confirmer la suppression</h2>
+                </div>
+                <img
+                  src={STHIC_LOGO_SRC}
+                  alt="STHIC"
+                  className="h-8 w-auto object-contain"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
               </div>
               <p className="text-gray-700 mb-4">
                 Êtes-vous sûr de vouloir supprimer le site <strong>{siteToDelete.nameSite}</strong> ?
@@ -5044,10 +5238,10 @@ const GeneratorMaintenanceApp = () => {
               <p className="text-sm text-gray-600 mb-6">
                 Cette action est <strong>irréversible</strong>. Toutes les données du site seront perdues.
               </p>
-              <div className="flex gap-3">
+              <div className={isAdmin ? 'flex flex-col sm:flex-row sm:justify-between gap-3' : 'flex gap-3'}>
                 <button
                   onClick={handleDeleteSite}
-                  className="flex-1 bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 font-semibold"
+                  className={isAdmin ? 'bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 font-semibold w-full sm:w-auto' : 'flex-1 bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 font-semibold'}
                 >
                   Oui, supprimer
                 </button>
@@ -5056,7 +5250,7 @@ const GeneratorMaintenanceApp = () => {
                     setShowDeleteConfirm(false);
                     setSiteToDelete(null);
                   }}
-                  className="flex-1 bg-gray-300 text-gray-800 px-4 py-3 rounded-lg hover:bg-gray-400 font-semibold"
+                  className={isAdmin ? 'bg-gray-300 text-gray-800 px-4 py-3 rounded-lg hover:bg-gray-400 font-semibold w-full sm:w-auto' : 'flex-1 bg-gray-300 text-gray-800 px-4 py-3 rounded-lg hover:bg-gray-400 font-semibold'}
                 >
                   Annuler
                 </button>
@@ -5069,7 +5263,17 @@ const GeneratorMaintenanceApp = () => {
         {showBannerUpload && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">📤 Uploader la bannière</h2>
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <h2 className="text-xl font-bold text-gray-800">📤 Uploader la bannière</h2>
+                <img
+                  src={STHIC_LOGO_SRC}
+                  alt="STHIC"
+                  className="h-8 w-auto object-contain"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              </div>
               <p className="text-gray-600 mb-4">
                 Sélectionnez l'image PNG contenant les logos Helios Towers et STHIC
               </p>
@@ -5104,6 +5308,14 @@ const GeneratorMaintenanceApp = () => {
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gray-100">
                 <h2 className="text-xl font-bold text-gray-800">📄 Fiche d'Intervention - Aperçu</h2>
                 <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 w-full sm:w-auto">
+                  <img
+                    src={STHIC_LOGO_SRC}
+                    alt="STHIC"
+                    className="h-8 w-auto object-contain hidden sm:block"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
                   <button
                     onClick={handlePrintFiche}
                     className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold w-full sm:w-auto"
@@ -5242,9 +5454,19 @@ const GeneratorMaintenanceApp = () => {
                   <Activity size={24} />
                   Historique des Fiches d'Intervention
                 </h2>
-                <button onClick={() => setShowHistory(false)} className="hover:bg-amber-700 p-2 rounded">
-                  <X size={20} />
-                </button>
+                <div className="flex items-center gap-3">
+                  <img
+                    src={STHIC_LOGO_SRC}
+                    alt="STHIC"
+                    className="h-8 w-auto object-contain"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                  <button onClick={() => setShowHistory(false)} className="hover:bg-amber-700 p-2 rounded">
+                    <X size={20} />
+                  </button>
+                </div>
               </div>
               
               <div className="p-4 sm:p-6 overflow-y-auto flex-1">
@@ -5421,9 +5643,19 @@ const GeneratorMaintenanceApp = () => {
                   <Calendar size={24} />
                   Calendrier des Vidanges
                 </h2>
-                <button onClick={() => setShowCalendar(false)} className="hover:bg-cyan-700 p-2 rounded">
-                  <X size={20} />
-                </button>
+                <div className="flex items-center gap-3">
+                  <img
+                    src={STHIC_LOGO_SRC}
+                    alt="STHIC"
+                    className="h-8 w-auto object-contain"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                  <button onClick={() => setShowCalendar(false)} className="hover:bg-cyan-700 p-2 rounded">
+                    <X size={20} />
+                  </button>
+                </div>
               </div>
               
               <div className="p-3 sm:p-6 overflow-y-auto flex-1">
