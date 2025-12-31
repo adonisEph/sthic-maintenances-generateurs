@@ -14,6 +14,17 @@ const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
 const SPLASH_MIN_MS = 3000;
 
+const ModalWatermark = ({ className = '' }) => (
+  <img
+    src={STHIC_LOGO_SRC}
+    alt="STHIC"
+    className={`pointer-events-none select-none absolute bottom-2 right-3 h-10 w-auto object-contain opacity-5 grayscale ${className}`}
+    onError={(e) => {
+      e.currentTarget.style.display = 'none';
+    }}
+  />
+);
+
 const GeneratorMaintenanceApp = () => {
   const storage = useStorage();
   const [sites, setSites] = useState([]);
@@ -2959,14 +2970,6 @@ const GeneratorMaintenanceApp = () => {
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gray-100">
                 <h3 className="text-lg font-bold text-gray-800">{dashboardDetails.title}</h3>
                 <div className="flex items-center gap-3">
-                  <img
-                    src={STHIC_LOGO_SRC}
-                    alt="STHIC"
-                    className="h-8 w-auto object-contain"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                    }}
-                  />
                   <button
                     onClick={() => setDashboardDetails({ open: false, title: '', kind: '', items: [] })}
                     className="bg-gray-400 text-white px-3 py-2 rounded-lg hover:bg-gray-500"
@@ -3019,7 +3022,7 @@ const GeneratorMaintenanceApp = () => {
                 )}
               </div>
               {isAdmin ? (
-                <div className="p-4 border-t bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div className="relative p-4 border-t bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <button
                     onClick={() => setDashboardDetails({ open: false, title: '', kind: '', items: [] })}
                     className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold w-full sm:w-auto"
@@ -3039,9 +3042,10 @@ const GeneratorMaintenanceApp = () => {
                       </button>
                     )}
                   </div>
+                  <ModalWatermark />
                 </div>
               ) : (
-                <div className="p-4 border-t bg-white flex flex-col sm:flex-row gap-3 sm:justify-end">
+                <div className="relative p-4 border-t bg-white flex flex-col sm:flex-row gap-3 sm:justify-end">
                   {canExportExcel && dashboardDetails.items.length > 0 && (
                     <button
                       type="button"
@@ -3059,6 +3063,7 @@ const GeneratorMaintenanceApp = () => {
                   >
                     Fermer
                   </button>
+                  <ModalWatermark />
                 </div>
               )}
             </div>
@@ -3079,14 +3084,6 @@ const GeneratorMaintenanceApp = () => {
                   )}
                 </h2>
                 <div className="flex items-center gap-3">
-                  <img
-                    src={STHIC_LOGO_SRC}
-                    alt="STHIC"
-                    className="h-8 w-auto object-contain"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                    }}
-                  />
                   <button
                     onClick={() => {
                       setShowPm(false);
@@ -3652,7 +3649,7 @@ const GeneratorMaintenanceApp = () => {
                 })()}
               </div>
 
-              <div className={`p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:justify-end gap-2' : 'flex justify-end'}`}>
+              <div className={`relative p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:justify-end gap-2' : 'flex justify-end'}`}>
                 <button
                   onClick={() => {
                     setShowPm(false);
@@ -3663,6 +3660,7 @@ const GeneratorMaintenanceApp = () => {
                 >
                   Fermer
                 </button>
+                <ModalWatermark />
               </div>
             </div>
           </div>
@@ -3682,14 +3680,6 @@ const GeneratorMaintenanceApp = () => {
                   )}
                 </h2>
                 <div className="flex items-center gap-3">
-                  <img
-                    src={STHIC_LOGO_SRC}
-                    alt="STHIC"
-                    className="h-8 w-auto object-contain"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                    }}
-                  />
                   <button
                     onClick={() => {
                       setShowScoring(false);
@@ -3904,7 +3894,7 @@ const GeneratorMaintenanceApp = () => {
                 })()}
               </div>
 
-              <div className={`p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:justify-end gap-2' : 'flex justify-end'}`}>
+              <div className={`relative p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:justify-end gap-2' : 'flex justify-end'}`}>
                 <button
                   onClick={() => {
                     setShowScoring(false);
@@ -3914,6 +3904,7 @@ const GeneratorMaintenanceApp = () => {
                 >
                   Fermer
                 </button>
+                <ModalWatermark />
               </div>
             </div>
           </div>
@@ -3944,14 +3935,6 @@ const GeneratorMaintenanceApp = () => {
                   )}
                 </h2>
                 <div className="flex items-center gap-3">
-                  <img
-                    src={STHIC_LOGO_SRC}
-                    alt="STHIC"
-                    className="h-8 w-auto object-contain"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                    }}
-                  />
                   <button
                     onClick={() => {
                       if (isTechnician && authUser?.id) {
@@ -4476,14 +4459,6 @@ const GeneratorMaintenanceApp = () => {
                       <div className="flex justify-between items-center p-4 border-b bg-green-700 text-white">
                         <div className="font-bold">Valider l'intervention</div>
                         <div className="flex items-center gap-3">
-                          <img
-                            src={STHIC_LOGO_SRC}
-                            alt="STHIC"
-                            className="h-7 w-auto object-contain"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                            }}
-                          />
                           <button
                             onClick={() => {
                               setCompleteModalOpen(false);
@@ -4540,7 +4515,7 @@ const GeneratorMaintenanceApp = () => {
                           </div>
                         )}
                       </div>
-                      <div className={`p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2' : 'flex justify-end gap-2'}`}>
+                      <div className={`relative p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2' : 'flex justify-end gap-2'}`}>
                         <button
                           onClick={() => {
                             setCompleteModalOpen(false);
@@ -4585,6 +4560,7 @@ const GeneratorMaintenanceApp = () => {
                         >
                           Confirmer
                         </button>
+                        <ModalWatermark />
                       </div>
                     </div>
                   </div>
@@ -4596,14 +4572,6 @@ const GeneratorMaintenanceApp = () => {
                       <div className="flex justify-between items-center p-4 border-b bg-slate-800 text-white">
                         <div className="font-bold">Mettre à jour le NH</div>
                         <div className="flex items-center gap-3">
-                          <img
-                            src={STHIC_LOGO_SRC}
-                            alt="STHIC"
-                            className="h-7 w-auto object-contain"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                            }}
-                          />
                           <button
                             onClick={() => {
                               setNhModalOpen(false);
@@ -4658,7 +4626,7 @@ const GeneratorMaintenanceApp = () => {
                           </div>
                         )}
                       </div>
-                      <div className={`p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2' : 'flex justify-end gap-2'}`}>
+                      <div className={`relative p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2' : 'flex justify-end gap-2'}`}>
                         <button
                           onClick={() => {
                             setNhModalOpen(false);
@@ -4713,13 +4681,14 @@ const GeneratorMaintenanceApp = () => {
                         >
                           Confirmer
                         </button>
+                        <ModalWatermark />
                       </div>
                     </div>
                   </div>
                 )}
               </div>
 
-              <div className={`p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:justify-end gap-2' : 'flex justify-end'}`}>
+              <div className={`relative p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:justify-end gap-2' : 'flex justify-end'}`}>
                 <button
                   onClick={() => {
                     setShowInterventions(false);
@@ -4740,6 +4709,7 @@ const GeneratorMaintenanceApp = () => {
                 >
                   Fermer
                 </button>
+                <ModalWatermark />
               </div>
             </div>
           </div>
@@ -4754,14 +4724,6 @@ const GeneratorMaintenanceApp = () => {
                   Présence & activité
                 </h2>
                 <div className="flex items-center gap-3">
-                  <img
-                    src={STHIC_LOGO_SRC}
-                    alt="STHIC"
-                    className="h-8 w-auto object-contain"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                    }}
-                  />
                   <button onClick={() => setShowPresenceModal(false)} className="hover:bg-indigo-800 p-2 rounded">
                     <X size={20} />
                   </button>
@@ -4800,13 +4762,14 @@ const GeneratorMaintenanceApp = () => {
                 )}
               </div>
 
-              <div className={`p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:justify-end gap-2' : 'flex justify-end'}`}>
+              <div className={`relative p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:justify-end gap-2' : 'flex justify-end'}`}>
                 <button
                   onClick={() => setShowPresenceModal(false)}
                   className={`bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold ${isAdmin ? 'w-full sm:w-auto' : ''}`}
                 >
                   Fermer
                 </button>
+                <ModalWatermark />
               </div>
             </div>
           </div>
@@ -4821,14 +4784,6 @@ const GeneratorMaintenanceApp = () => {
                   Gestion des utilisateurs
                 </h2>
                 <div className="flex items-center gap-3">
-                  <img
-                    src={STHIC_LOGO_SRC}
-                    alt="STHIC"
-                    className="h-8 w-auto object-contain"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                    }}
-                  />
                   <button onClick={() => { setShowUsersModal(false); setUserFormError(''); }} className="hover:bg-slate-800 p-2 rounded">
                     <X size={20} />
                   </button>
@@ -4999,6 +4954,10 @@ const GeneratorMaintenanceApp = () => {
                   </div>
                 </div>
               </div>
+
+              <div className="relative p-3 border-t bg-white">
+                <ModalWatermark />
+              </div>
             </div>
           </div>
         )}
@@ -5048,14 +5007,6 @@ const GeneratorMaintenanceApp = () => {
                   <div className="text-sm text-gray-600">{selectedDate ? formatDate(selectedDate) : ''}</div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <img
-                    src={STHIC_LOGO_SRC}
-                    alt="STHIC"
-                    className="h-8 w-auto object-contain"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                    }}
-                  />
                   <button
                     onClick={() => {
                       setShowDayDetailsModal(false);
@@ -5099,7 +5050,7 @@ const GeneratorMaintenanceApp = () => {
               </div>
 
               {isAdmin ? (
-                <div className="p-4 border-t bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div className="relative p-4 border-t bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <button
                     onClick={() => {
                       setShowDayDetailsModal(false);
@@ -5131,9 +5082,10 @@ const GeneratorMaintenanceApp = () => {
                       </button>
                     )}
                   </div>
+                  <ModalWatermark />
                 </div>
               ) : (
-                <div className="p-4 border-t bg-white flex flex-col sm:flex-row gap-3 sm:justify-end">
+                <div className="relative p-4 border-t bg-white flex flex-col sm:flex-row gap-3 sm:justify-end">
                   <button
                     onClick={() => {
                       setShowDayDetailsModal(false);
@@ -5163,6 +5115,7 @@ const GeneratorMaintenanceApp = () => {
                       Générer les fiches (batch)
                     </button>
                   )}
+                  <ModalWatermark />
                 </div>
               )}
             </div>
@@ -5177,20 +5130,12 @@ const GeneratorMaintenanceApp = () => {
         {/* Modale Réinitialisation */}
         {showResetConfirm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
               <div className="flex items-center justify-between gap-3 mb-4">
                 <div className="flex items-center gap-3">
                   <AlertCircle className="text-red-600" size={32} />
                   <h2 className="text-xl font-bold text-gray-800">⚠️ ATTENTION</h2>
                 </div>
-                <img
-                  src={STHIC_LOGO_SRC}
-                  alt="STHIC"
-                  className="h-8 w-auto object-contain"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                  }}
-                />
               </div>
               <p className="text-gray-700 mb-6">
                 Cette action va supprimer <strong>TOUTES les données stockées</strong> dans l'application. 
@@ -5210,6 +5155,7 @@ const GeneratorMaintenanceApp = () => {
                   Annuler
                 </button>
               </div>
+              <ModalWatermark className="h-14" />
             </div>
           </div>
         )}
@@ -5217,20 +5163,12 @@ const GeneratorMaintenanceApp = () => {
         {/* Modale Suppression Site */}
         {showDeleteConfirm && siteToDelete && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
               <div className="flex items-center justify-between gap-3 mb-4">
                 <div className="flex items-center gap-3">
                   <AlertCircle className="text-red-600" size={32} />
                   <h2 className="text-xl font-bold text-gray-800">⚠️ Confirmer la suppression</h2>
                 </div>
-                <img
-                  src={STHIC_LOGO_SRC}
-                  alt="STHIC"
-                  className="h-8 w-auto object-contain"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                  }}
-                />
               </div>
               <p className="text-gray-700 mb-4">
                 Êtes-vous sûr de vouloir supprimer le site <strong>{siteToDelete.nameSite}</strong> ?
@@ -5255,6 +5193,7 @@ const GeneratorMaintenanceApp = () => {
                   Annuler
                 </button>
               </div>
+              <ModalWatermark className="h-14" />
             </div>
           </div>
         )}
@@ -5262,17 +5201,9 @@ const GeneratorMaintenanceApp = () => {
         {/* Modale Upload Bannière */}
         {showBannerUpload && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
               <div className="flex items-center justify-between gap-3 mb-4">
                 <h2 className="text-xl font-bold text-gray-800">📤 Uploader la bannière</h2>
-                <img
-                  src={STHIC_LOGO_SRC}
-                  alt="STHIC"
-                  className="h-8 w-auto object-contain"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                  }}
-                />
               </div>
               <p className="text-gray-600 mb-4">
                 Sélectionnez l'image PNG contenant les logos Helios Towers et STHIC
@@ -5297,6 +5228,7 @@ const GeneratorMaintenanceApp = () => {
               >
                 Annuler
               </button>
+              <ModalWatermark className="h-14" />
             </div>
           </div>
         )}
@@ -5308,14 +5240,6 @@ const GeneratorMaintenanceApp = () => {
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gray-100">
                 <h2 className="text-xl font-bold text-gray-800">📄 Fiche d'Intervention - Aperçu</h2>
                 <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 w-full sm:w-auto">
-                  <img
-                    src={STHIC_LOGO_SRC}
-                    alt="STHIC"
-                    className="h-8 w-auto object-contain hidden sm:block"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                    }}
-                  />
                   <button
                     onClick={handlePrintFiche}
                     className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold w-full sm:w-auto"
@@ -5337,6 +5261,10 @@ const GeneratorMaintenanceApp = () => {
                     <X size={20} />
                   </button>
                 </div>
+              </div>
+
+              <div className="relative border-b bg-white h-0">
+                <ModalWatermark className="h-16 bottom-3 right-4" />
               </div>
 
               <div className="bg-white p-8 overflow-auto" style={{maxHeight: '80vh'}}>
@@ -5455,14 +5383,6 @@ const GeneratorMaintenanceApp = () => {
                   Historique des Fiches d'Intervention
                 </h2>
                 <div className="flex items-center gap-3">
-                  <img
-                    src={STHIC_LOGO_SRC}
-                    alt="STHIC"
-                    className="h-8 w-auto object-contain"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                    }}
-                  />
                   <button onClick={() => setShowHistory(false)} className="hover:bg-amber-700 p-2 rounded">
                     <X size={20} />
                   </button>
@@ -5630,6 +5550,10 @@ const GeneratorMaintenanceApp = () => {
                   </div>
                 )}
               </div>
+
+              <div className="relative p-3 border-t bg-white">
+                <ModalWatermark />
+              </div>
             </div>
           </div>
         )}
@@ -5644,14 +5568,6 @@ const GeneratorMaintenanceApp = () => {
                   Calendrier des Vidanges
                 </h2>
                 <div className="flex items-center gap-3">
-                  <img
-                    src={STHIC_LOGO_SRC}
-                    alt="STHIC"
-                    className="h-8 w-auto object-contain"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                    }}
-                  />
                   <button onClick={() => setShowCalendar(false)} className="hover:bg-cyan-700 p-2 rounded">
                     <X size={20} />
                   </button>
@@ -5812,6 +5728,10 @@ const GeneratorMaintenanceApp = () => {
                     <span>OK (&gt;7j)</span>
                   </div>
                 </div>
+              </div>
+
+              <div className="relative p-3 border-t bg-white">
+                <ModalWatermark />
               </div>
             </div>
           </div>
