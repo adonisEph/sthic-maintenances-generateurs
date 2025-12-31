@@ -865,6 +865,8 @@ const GeneratorMaintenanceApp = () => {
           alert(`✅ Import NOC terminé. Mis à jour: ${res?.updated || 0}`);
         }
       } catch (err) {
+        setPmNocProgress(0);
+        setPmNocStep('');
         setPmError(err?.message || 'Erreur lors de l\'import NOC.');
       } finally {
         setPmBusy(false);

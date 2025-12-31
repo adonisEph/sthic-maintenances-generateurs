@@ -7,6 +7,12 @@ function normStr(v) {
   return s || null;
 }
 
+function chunkArray(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
 export async function onRequestPost({ request, env, data, params }) {
   try {
     await ensureAdminUser(env);
@@ -45,31 +51,69 @@ export async function onRequestPost({ request, env, data, params }) {
       )
       .run();
 
+    const cleanedRows = [];
     for (const r of rows) {
       const number = String(r?.number || '').trim();
       if (!number) continue;
+      cleanedRows.push({
+        number,
+        state: normStr(r?.state),
+        closedAt: normStr(r?.closedAt)
+      });
+    }
 
-      const state = normStr(r?.state);
-      const closedAt = normStr(r?.closedAt);
+    const CHUNK_SIZE = 80;
+    const chunks = chunkArray(cleanedRows, CHUNK_SIZE);
 
-      const rowId = newId();
-      await env.DB.prepare('INSERT INTO pm_noc_rows (id, import_id, month_id, number, state, closed_at) VALUES (?, ?, ?, ?, ?, ?)')
-        .bind(rowId, importId, monthId, number, state, closedAt)
-        .run();
+    for (const chunk of chunks) {
+      const numbers = chunk.map((r) => r.number);
+      if (numbers.length === 0) continue;
 
-      const res = await env.DB.prepare(
-        'UPDATE pm_items SET state = COALESCE(?, state), closed_at = COALESCE(?, closed_at), last_noc_import_at = ?, updated_at = ? WHERE month_id = ? AND number = ?'
+      const inPlaceholders = numbers.map(() => '?').join(',');
+      const existing = await env.DB.prepare(
+        `SELECT number FROM pm_items WHERE month_id = ? AND number IN (${inPlaceholders})`
       )
-        .bind(state, closedAt, now, now, monthId, number)
+        .bind(monthId, ...numbers)
+        .all();
+
+      const existingSet = new Set((existing?.results || []).map((r) => String(r.number)));
+      for (const n of numbers) {
+        if (existingSet.has(n)) {
+          updated += 1;
+        } else {
+          missing += 1;
+          if (missingNumbers.length < 50) missingNumbers.push(n);
+        }
+      }
+
+      const insertValues = chunk.map(() => '(?, ?, ?, ?, ?, ?)').join(',');
+      const insertArgs = [];
+      for (const r of chunk) {
+        insertArgs.push(newId(), importId, monthId, r.number, r.state, r.closedAt);
+      }
+      await env.DB.prepare(
+        `INSERT INTO pm_noc_rows (id, import_id, month_id, number, state, closed_at) VALUES ${insertValues}`
+      )
+        .bind(...insertArgs)
         .run();
 
-      const changes = Number(res?.meta?.changes || 0);
-      if (changes > 0) {
-        updated += 1;
-      } else {
-        missing += 1;
-        if (missingNumbers.length < 50) missingNumbers.push(number);
+      const updValues = chunk.map(() => '(?, ?, ?)').join(',');
+      const updArgs = [];
+      for (const r of chunk) {
+        updArgs.push(r.number, r.state, r.closedAt);
       }
+
+      await env.DB.prepare(
+        `WITH upd(number, state, closed_at) AS (VALUES ${updValues})
+         UPDATE pm_items
+         SET state = COALESCE((SELECT state FROM upd WHERE upd.number = pm_items.number), state),
+             closed_at = COALESCE((SELECT closed_at FROM upd WHERE upd.number = pm_items.number), closed_at),
+             last_noc_import_at = ?,
+             updated_at = ?
+         WHERE month_id = ? AND number IN (SELECT number FROM upd)`
+      )
+        .bind(...updArgs, now, now, monthId)
+        .run();
     }
 
     await env.DB.prepare('UPDATE pm_months SET updated_at = ? WHERE id = ?').bind(now, monthId).run();
