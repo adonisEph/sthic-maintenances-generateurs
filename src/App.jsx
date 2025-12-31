@@ -576,7 +576,7 @@ const GeneratorMaintenanceApp = () => {
     if (!raw) return '';
     if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
 
-    const m1 = raw.match(/^(\d{2})[\/-\.](\d{2})[\/-\.](\d{4})/);
+    const m1 = raw.match(/^(\d{2})[\/\.\-](\d{2})[\/\.\-](\d{4})/);
     if (m1) {
       const dd = m1[1];
       const mm = m1[2];
