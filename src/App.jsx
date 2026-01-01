@@ -4,7 +4,10 @@ import * as XLSX from 'xlsx';
 import { useStorage } from './hooks/useStorage';
 import {
   calculateRegime,
+  calculateDiffNHs,
   calculateDifferences,
+  calculateEstimatedNH,
+  calculateEPVDates,
   formatDate,
   getUrgencyClass
 } from './utils/calculations';
