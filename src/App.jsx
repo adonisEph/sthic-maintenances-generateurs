@@ -12,7 +12,7 @@ import {
 const APP_VERSION = '2.0.5';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
-const SPLASH_MIN_MS = 3000;
+const SPLASH_MIN_MS = 4000;
 
 const ModalWatermark = ({ className = '' }) => (
   <img
@@ -169,12 +169,20 @@ const GeneratorMaintenanceApp = () => {
       ...init
     });
 
-    const data = await res.json().catch(() => ({}));
+    const rawText = await res.text().catch(() => '');
+    const data = (() => {
+      try {
+        return rawText ? JSON.parse(rawText) : {};
+      } catch {
+        return {};
+      }
+    })();
     if (!res.ok) {
+      const fallbackMsg = String((data && (data.error || data.message)) || rawText || res.statusText || 'Erreur serveur.').trim();
       const msg =
         res.status === 429
           ? 'Trop de requêtes (429). Merci de patienter quelques secondes puis de réessayer.'
-          : (data?.error || 'Erreur serveur.');
+          : fallbackMsg;
       throw new Error(msg);
     }
     return data;
@@ -1607,7 +1615,7 @@ const GeneratorMaintenanceApp = () => {
         alert(`✅ ${importedSites.length} sites importés avec succès !`);
       } catch (error) {
         console.error('Erreur lors de l\'import:', error);
-        alert('❌ Erreur lors de l\'import du fichier Excel. Vérifiez la console pour plus de détails.');
+        alert(`❌ Erreur lors de l\'import du fichier Excel: ${error?.message || 'Erreur inconnue.'}`);
       } finally {
         setImportBusy(false);
         setTimeout(() => {
