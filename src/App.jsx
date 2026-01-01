@@ -18,7 +18,7 @@ const ModalWatermark = ({ className = '' }) => (
   <img
     src={STHIC_LOGO_SRC}
     alt="STHIC"
-    className={`pointer-events-none select-none absolute bottom-2 right-3 h-10 w-auto object-contain opacity-5 grayscale ${className}`}
+    className={`pointer-events-none select-none absolute bottom-3 left-1/2 -translate-x-1/2 h-16 w-auto max-w-[60%] object-contain opacity-[0.12] ${className}`}
     onError={(e) => {
       e.currentTarget.style.display = 'none';
     }}
@@ -5264,7 +5264,7 @@ const GeneratorMaintenanceApp = () => {
               </div>
 
               <div className="relative border-b bg-white h-0">
-                <ModalWatermark className="h-16 bottom-3 right-4" />
+                <ModalWatermark className="h-20" />
               </div>
 
               <div className="bg-white p-8 overflow-auto" style={{maxHeight: '80vh'}}>
