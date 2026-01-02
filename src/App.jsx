@@ -1358,18 +1358,29 @@ const GeneratorMaintenanceApp = () => {
     }
   };
 
-  const handleResetData = async () => {
+  const handleResetData = async (opts = {}) => {
     try {
-      const ok = window.confirm('Confirmer la réinitialisation complète ? Cette action est irréversible.');
+      const includePm = Boolean(opts?.includePm);
+      const ok = window.confirm(
+        includePm
+          ? 'Confirmer la réinitialisation complète (Vidanges + PM) ? Cette action est irréversible.'
+          : 'Confirmer la réinitialisation Vidanges ? (PM conservé) Cette action est irréversible.'
+      );
       if (!ok) return;
       if (authUser?.role === 'admin') {
         try {
-          await apiFetchJson('/api/admin/reset', { method: 'POST', body: JSON.stringify({}) });
+          await apiFetchJson('/api/admin/reset', { method: 'POST', body: JSON.stringify({ includePm }) });
         } catch (e) {
           // ignore
         }
       }
-      localStorage.clear();
+
+      try {
+        localStorage.removeItem(APP_VERSION_STORAGE_KEY);
+      } catch {
+        // ignore
+      }
+
       setSites([]);
       setFicheHistory([]);
       setInterventions([]);
@@ -1377,11 +1388,15 @@ const GeneratorMaintenanceApp = () => {
       setFilterTechnician('all');
       setSelectedSite(null);
       setSiteToDelete(null);
-      setAuthUser(null);
-      setUsers([]);
-      setLoginPassword('');
-      setLoginEmail('');
-      setLoginError('');
+
+      if (includePm) {
+        setPmMonths([]);
+        setPmItems([]);
+        setPmImports([]);
+        setPmDashboard(null);
+        setPmMonthId('');
+      }
+
       setShowResetConfirm(false);
       setShowDeleteConfirm(false);
       setShowCalendar(false);
@@ -1398,7 +1413,22 @@ const GeneratorMaintenanceApp = () => {
       setIsBatchFiche(false);
       setBatchFicheSites([]);
       setBatchFicheIndex(0);
-      alert('✅ Toutes les données ont été supprimées avec succès ! Vous pouvez maintenant importer votre fichier Excel.');
+
+      if (includePm) {
+        alert('✅ Réinitialisation complète terminée (Vidanges + PM).');
+      } else {
+        alert('✅ Réinitialisation Vidanges terminée (PM conservé).');
+      }
+
+      try {
+        await loadData();
+        await loadFicheHistory();
+        if (authUser?.role === 'admin') {
+          await loadTicketNumber();
+        }
+      } catch {
+        // ignore
+      }
     } catch (error) {
       console.error('Erreur lors de la suppression:', error);
       setSites([]);
@@ -5356,19 +5386,26 @@ const GeneratorMaintenanceApp = () => {
                 </div>
               </div>
               <p className="text-gray-700 mb-6">
-                Cette action va supprimer <strong>TOUTES les données stockées</strong> dans l'application. 
-                Cette action est <strong>irréversible</strong>.
+                Choisissez ce que vous souhaitez réinitialiser. Cette action est <strong>irréversible</strong>.
               </p>
-              <div className={isAdmin ? 'flex flex-col sm:flex-row sm:justify-between gap-3' : 'flex gap-3'}>
+              <div className="flex flex-col gap-2">
                 <button
-                  onClick={handleResetData}
-                  className={isAdmin ? 'bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 font-semibold w-full sm:w-auto' : 'flex-1 bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 font-semibold'}
+                  onClick={() => handleResetData({ includePm: false })}
+                  className="bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 font-semibold w-full"
                 >
-                  Oui, tout supprimer
+                  Réinitialiser Vidanges (PM conservé)
                 </button>
+
+                <button
+                  onClick={() => handleResetData({ includePm: true })}
+                  className="bg-red-800 text-white px-4 py-3 rounded-lg hover:bg-red-900 font-semibold w-full"
+                >
+                  Tout supprimer (incluant PM)
+                </button>
+
                 <button
                   onClick={() => setShowResetConfirm(false)}
-                  className={isAdmin ? 'bg-gray-300 text-gray-800 px-4 py-3 rounded-lg hover:bg-gray-400 font-semibold w-full sm:w-auto' : 'flex-1 bg-gray-300 text-gray-800 px-4 py-3 rounded-lg hover:bg-gray-400 font-semibold'}
+                  className="bg-gray-300 text-gray-800 px-4 py-3 rounded-lg hover:bg-gray-400 font-semibold w-full"
                 >
                   Annuler
                 </button>

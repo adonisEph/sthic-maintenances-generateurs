@@ -1,8 +1,8 @@
 import { ensureAdminUser } from '../_utils/db.js';
-import { json, requireAdmin } from '../_utils/http.js';
+import { json, requireAdmin, readJson } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
 
-export async function onRequestPost({ env, data }) {
+export async function onRequestPost({ request, env, data }) {
   try {
     await ensureAdminUser(env);
     if (!requireAdmin(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
@@ -19,15 +19,18 @@ export async function onRequestPost({ env, data }) {
       }
     };
 
+    const body = await readJson(request);
+    const includePm = Boolean(body?.includePm);
+
     const resSites = await safeDelete('sites');
     const resInterventions = await safeDelete('interventions');
     const resFiche = await safeDelete('fiche_history');
     const resPresence = await safeDelete('presence_sessions');
 
-    const resPmMonths = await safeDelete('pm_months');
-    const resPmItems = await safeDelete('pm_items');
-    const resPmImports = await safeDelete('pm_imports');
-    const resPmNocRows = await safeDelete('pm_noc_rows');
+    const resPmMonths = includePm ? await safeDelete('pm_months') : { meta: { changes: 0 } };
+    const resPmItems = includePm ? await safeDelete('pm_items') : { meta: { changes: 0 } };
+    const resPmImports = includePm ? await safeDelete('pm_imports') : { meta: { changes: 0 } };
+    const resPmNocRows = includePm ? await safeDelete('pm_noc_rows') : { meta: { changes: 0 } };
 
     await env.DB.prepare(
       "INSERT OR REPLACE INTO meta (meta_key, meta_value) VALUES ('ticket_number', '1179')"
