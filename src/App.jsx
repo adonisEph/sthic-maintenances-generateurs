@@ -22,7 +22,7 @@ const ModalWatermark = ({ className = '' }) => (
   <img
     src={STHIC_LOGO_SRC}
     alt="STHIC"
-    className={`pointer-events-none select-none absolute bottom-3 left-1/2 -translate-x-1/2 h-16 w-auto max-w-[60%] object-contain opacity-[0.12] ${className}`}
+    className={`pointer-events-none select-none absolute bottom-4 left-1/2 -translate-x-1/2 h-24 w-auto max-w-[80%] object-contain opacity-[0.26] ${className}`}
     onError={(e) => {
       e.currentTarget.style.display = 'none';
     }}
@@ -127,6 +127,11 @@ const GeneratorMaintenanceApp = () => {
   const [pmFilterDate, setPmFilterDate] = useState('');
   const [pmFilterReprog, setPmFilterReprog] = useState('all');
   const [pmSearch, setPmSearch] = useState('');
+  const [pmReprogOpen, setPmReprogOpen] = useState(false);
+  const [pmReprogItem, setPmReprogItem] = useState(null);
+  const [pmReprogForm, setPmReprogForm] = useState({ date: '', status: '', reason: '' });
+  const [pmReprogError, setPmReprogError] = useState('');
+  const [pmReprogSaving, setPmReprogSaving] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [calendarSendTechUserId, setCalendarSendTechUserId] = useState('');
   const [showDayDetailsModal, setShowDayDetailsModal] = useState(false);
@@ -269,6 +274,49 @@ const GeneratorMaintenanceApp = () => {
     };
     window.addEventListener('pwa:update', onUpdate);
     return () => window.removeEventListener('pwa:update', onUpdate);
+  }, []);
+
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    let reg = null;
+    let onUpdateFound = null;
+
+    (async () => {
+      try {
+        reg = await navigator.serviceWorker.getRegistration();
+        if (!reg) return;
+
+        if (reg.waiting) {
+          setPwaUpdate((prev) => ({ ...(prev || {}), available: true, registration: reg, forced: false }));
+        }
+
+        onUpdateFound = () => {
+          try {
+            const installing = reg?.installing;
+            if (!installing) return;
+            installing.addEventListener('statechange', () => {
+              if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+                setPwaUpdate((prev) => ({ ...(prev || {}), available: true, registration: reg, forced: false }));
+              }
+            });
+          } catch {
+            // ignore
+          }
+        };
+
+        reg.addEventListener('updatefound', onUpdateFound);
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => {
+      try {
+        if (reg && onUpdateFound) reg.removeEventListener('updatefound', onUpdateFound);
+      } catch {
+        // ignore
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -660,6 +708,68 @@ const GeneratorMaintenanceApp = () => {
   const loadPmItems = async (monthId) => {
     const data = await apiFetchJson(`/api/pm/months/${monthId}/items`, { method: 'GET' });
     setPmItems(Array.isArray(data?.items) ? data.items : []);
+  };
+
+  const handlePmOpenReprog = (it) => {
+    if (!isAdmin) return;
+    const date = it?.reprogrammationDate ? String(it.reprogrammationDate).slice(0, 10) : '';
+    const status = it?.reprogrammationStatus ? String(it.reprogrammationStatus).trim() : '';
+    const reason = it?.reprogrammationReason ? String(it.reprogrammationReason) : '';
+    setPmReprogItem(it || null);
+    setPmReprogForm({ date, status, reason });
+    setPmReprogError('');
+    setPmReprogOpen(true);
+  };
+
+  const handlePmSaveReprog = async () => {
+    if (!isAdmin) return;
+    if (!pmMonthId) {
+      setPmReprogError('Mois introuvable.');
+      return;
+    }
+    const it = pmReprogItem;
+    const itemId = String(it?.id || '').trim();
+    if (!itemId) {
+      setPmReprogError('Ticket introuvable.');
+      return;
+    }
+
+    const reprogrammationDate = String(pmReprogForm?.date || '').trim();
+    const reprogrammationStatus = String(pmReprogForm?.status || '').trim();
+    const reprogrammationReason = String(pmReprogForm?.reason || '').trim();
+
+    if (reprogrammationDate && !/^\d{4}-\d{2}-\d{2}$/.test(reprogrammationDate)) {
+      setPmReprogError('Date invalide.');
+      return;
+    }
+    if (reprogrammationStatus && !['APPROVED', 'REJECTED', 'PENDING'].includes(reprogrammationStatus)) {
+      setPmReprogError('Statut invalide.');
+      return;
+    }
+
+    try {
+      setPmReprogSaving(true);
+      setPmReprogError('');
+      await apiFetchJson(`/api/pm/months/${pmMonthId}/items`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          id: itemId,
+          reprogrammationDate: reprogrammationDate || null,
+          reprogrammationStatus: reprogrammationStatus || null,
+          reprogrammationReason: reprogrammationReason || null
+        })
+      });
+
+      await loadPmItems(pmMonthId);
+      await loadPmDashboard(pmMonthId);
+      setPmReprogOpen(false);
+      setPmReprogItem(null);
+      setPmReprogForm({ date: '', status: '', reason: '' });
+    } catch (e) {
+      setPmReprogError(e?.message || 'Erreur serveur.');
+    } finally {
+      setPmReprogSaving(false);
+    }
   };
 
   const loadPmImports = async (monthId) => {
@@ -2563,13 +2673,6 @@ const GeneratorMaintenanceApp = () => {
               <button
                 type="button"
                 onClick={() => {
-                  try {
-                    if (pwaUpdate?.forced) {
-                      localStorage.setItem(APP_VERSION_STORAGE_KEY, APP_VERSION);
-                    }
-                  } catch (e) {
-                    // ignore
-                  }
                   setPwaUpdate({ available: false, registration: null, requested: false, forced: false });
                 }}
                 className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 font-semibold w-full sm:w-auto"
@@ -2636,7 +2739,7 @@ const GeneratorMaintenanceApp = () => {
                 <span className="hidden sm:inline">Gestion Maintenance & Vidanges</span>
                 <span className="sm:hidden">Maintenance & Vidanges</span>
               </h1>
-              <p className="text-xs sm:text-sm text-gray-600 mt-1">Version 2.0.4 - Suivi H24/7j avec Fiches</p>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1">Version {APP_VERSION} - Suivi H24/7j avec Fiches</p>
             </div>
             <div className="text-left sm:text-right flex flex-col gap-2">
               <div>
@@ -3054,7 +3157,6 @@ const GeneratorMaintenanceApp = () => {
                       </button>
                     )}
                   </div>
-                  <ModalWatermark />
                 </div>
               ) : (
                 <div className="relative p-4 border-t bg-white flex flex-col sm:flex-row gap-3 sm:justify-end">
@@ -3075,7 +3177,6 @@ const GeneratorMaintenanceApp = () => {
                   >
                     Fermer
                   </button>
-                  <ModalWatermark />
                 </div>
               )}
             </div>
@@ -3559,12 +3660,13 @@ const GeneratorMaintenanceApp = () => {
                                 <th className="px-4 py-2">Statut</th>
                                 <th className="px-4 py-2">Reprogrammation</th>
                                 <th className="px-4 py-2">Raisons</th>
+                                {isAdmin && <th className="px-4 py-2">Action</th>}
                               </tr>
                             </thead>
                             <tbody>
                               {tableFiltered.length === 0 ? (
                                 <tr>
-                                  <td className="px-4 py-4 text-gray-600" colSpan={11}>
+                                  <td className="px-4 py-4 text-gray-600" colSpan={isAdmin ? 12 : 11}>
                                     Aucun ticket pour ces filtres.
                                   </td>
                                 </tr>
@@ -3596,6 +3698,18 @@ const GeneratorMaintenanceApp = () => {
                                       <td className="px-4 py-2 text-gray-800">{reprogStatus || '-'}</td>
                                       <td className="px-4 py-2 text-gray-800">{reprog || '-'}</td>
                                       <td className="px-4 py-2 text-gray-800">{reason || '-'}</td>
+                                      {isAdmin && (
+                                        <td className="px-4 py-2 text-gray-800">
+                                          <button
+                                            type="button"
+                                            onClick={() => handlePmOpenReprog(it)}
+                                            className="bg-teal-700 text-white px-3 py-1.5 rounded-lg hover:bg-teal-800 text-xs font-semibold"
+                                            disabled={pmBusy}
+                                          >
+                                            Reprogrammer
+                                          </button>
+                                        </td>
+                                      )}
                                     </tr>
                                   );
                                 })
@@ -3604,6 +3718,107 @@ const GeneratorMaintenanceApp = () => {
                           </table>
                         </div>
                       </div>
+
+                      {pmReprogOpen && pmReprogItem && (
+                        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+                          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full overflow-hidden">
+                            <div className="flex justify-between items-center p-4 border-b bg-teal-800 text-white">
+                              <div className="font-bold">Reprogrammation (PM)</div>
+                              <button
+                                onClick={() => {
+                                  setPmReprogOpen(false);
+                                  setPmReprogItem(null);
+                                  setPmReprogForm({ date: '', status: '', reason: '' });
+                                  setPmReprogError('');
+                                }}
+                                className="hover:bg-teal-900 p-2 rounded"
+                              >
+                                <X size={18} />
+                              </button>
+                            </div>
+
+                            <div className="p-4 space-y-3">
+                              <div className="text-sm text-gray-700">
+                                <div className="font-semibold text-gray-900">Ticket: {pmReprogItem?.number || '-'}</div>
+                                <div className="text-xs text-gray-600">Site: {pmReprogItem?.siteName || '-'} {pmReprogItem?.siteCode ? `(${pmReprogItem.siteCode})` : ''}</div>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="flex flex-col">
+                                  <label className="text-xs text-gray-600 mb-1">Date de reprogrammation</label>
+                                  <input
+                                    type="date"
+                                    value={pmReprogForm.date}
+                                    onChange={(e) => {
+                                      setPmReprogForm((prev) => ({ ...(prev || {}), date: e.target.value }));
+                                      setPmReprogError('');
+                                    }}
+                                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                                  />
+                                </div>
+                                <div className="flex flex-col">
+                                  <label className="text-xs text-gray-600 mb-1">Statut</label>
+                                  <select
+                                    value={pmReprogForm.status}
+                                    onChange={(e) => {
+                                      setPmReprogForm((prev) => ({ ...(prev || {}), status: e.target.value }));
+                                      setPmReprogError('');
+                                    }}
+                                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                                  >
+                                    <option value="">(auto)</option>
+                                    <option value="PENDING">En attente</option>
+                                    <option value="APPROVED">Approuvée</option>
+                                    <option value="REJECTED">Rejetée</option>
+                                  </select>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-col">
+                                <label className="text-xs text-gray-600 mb-1">Raison / commentaires</label>
+                                <textarea
+                                  value={pmReprogForm.reason}
+                                  onChange={(e) => {
+                                    setPmReprogForm((prev) => ({ ...(prev || {}), reason: e.target.value }));
+                                    setPmReprogError('');
+                                  }}
+                                  rows={3}
+                                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                                  placeholder="Ex: demande client / indisponibilité site / pièces…"
+                                />
+                              </div>
+
+                              {pmReprogError && (
+                                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">
+                                  {pmReprogError}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="p-4 border-t bg-white flex flex-col sm:flex-row sm:justify-end gap-2">
+                              <button
+                                onClick={() => {
+                                  setPmReprogOpen(false);
+                                  setPmReprogItem(null);
+                                  setPmReprogForm({ date: '', status: '', reason: '' });
+                                  setPmReprogError('');
+                                }}
+                                className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
+                                disabled={pmReprogSaving}
+                              >
+                                Annuler
+                              </button>
+                              <button
+                                onClick={handlePmSaveReprog}
+                                className="bg-teal-800 text-white px-4 py-2 rounded-lg hover:bg-teal-900 font-semibold"
+                                disabled={pmReprogSaving}
+                              >
+                                Enregistrer
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       <div className="border border-gray-200 rounded-xl overflow-hidden">
                         <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-3">
@@ -3672,7 +3887,6 @@ const GeneratorMaintenanceApp = () => {
                 >
                   Fermer
                 </button>
-                <ModalWatermark />
               </div>
             </div>
           </div>
@@ -3916,7 +4130,6 @@ const GeneratorMaintenanceApp = () => {
                 >
                   Fermer
                 </button>
-                <ModalWatermark />
               </div>
             </div>
           </div>
@@ -4527,7 +4740,7 @@ const GeneratorMaintenanceApp = () => {
                           </div>
                         )}
                       </div>
-                      <div className={`relative p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2' : 'flex justify-end gap-2'}`}>
+                      <div className={`p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2' : 'flex justify-end gap-2'}`}>
                         <button
                           onClick={() => {
                             setCompleteModalOpen(false);
@@ -4572,7 +4785,6 @@ const GeneratorMaintenanceApp = () => {
                         >
                           Confirmer
                         </button>
-                        <ModalWatermark />
                       </div>
                     </div>
                   </div>
@@ -4638,7 +4850,7 @@ const GeneratorMaintenanceApp = () => {
                           </div>
                         )}
                       </div>
-                      <div className={`relative p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2' : 'flex justify-end gap-2'}`}>
+                      <div className={`p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2' : 'flex justify-end gap-2'}`}>
                         <button
                           onClick={() => {
                             setNhModalOpen(false);
@@ -4693,14 +4905,13 @@ const GeneratorMaintenanceApp = () => {
                         >
                           Confirmer
                         </button>
-                        <ModalWatermark />
                       </div>
                     </div>
                   </div>
                 )}
               </div>
 
-              <div className={`relative p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:justify-end gap-2' : 'flex justify-end'}`}>
+              <div className={`p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:justify-end gap-2' : 'flex justify-end'}`}>
                 <button
                   onClick={() => {
                     setShowInterventions(false);
@@ -4721,7 +4932,6 @@ const GeneratorMaintenanceApp = () => {
                 >
                   Fermer
                 </button>
-                <ModalWatermark />
               </div>
             </div>
           </div>
@@ -4967,9 +5177,7 @@ const GeneratorMaintenanceApp = () => {
                 </div>
               </div>
 
-              <div className="relative p-3 border-t bg-white">
-                <ModalWatermark />
-              </div>
+              <div className="p-3 border-t bg-white" />
             </div>
           </div>
         )}
@@ -5094,7 +5302,6 @@ const GeneratorMaintenanceApp = () => {
                       </button>
                     )}
                   </div>
-                  <ModalWatermark />
                 </div>
               ) : (
                 <div className="relative p-4 border-t bg-white flex flex-col sm:flex-row gap-3 sm:justify-end">
@@ -5127,7 +5334,6 @@ const GeneratorMaintenanceApp = () => {
                       Générer les fiches (batch)
                     </button>
                   )}
-                  <ModalWatermark />
                 </div>
               )}
             </div>
@@ -5167,7 +5373,6 @@ const GeneratorMaintenanceApp = () => {
                   Annuler
                 </button>
               </div>
-              <ModalWatermark className="h-14" />
             </div>
           </div>
         )}
@@ -5563,9 +5768,7 @@ const GeneratorMaintenanceApp = () => {
                 )}
               </div>
 
-              <div className="relative p-3 border-t bg-white">
-                <ModalWatermark />
-              </div>
+              <div className="p-3 border-t bg-white" />
             </div>
           </div>
         )}
@@ -5742,9 +5945,7 @@ const GeneratorMaintenanceApp = () => {
                 </div>
               </div>
 
-              <div className="relative p-3 border-t bg-white">
-                <ModalWatermark />
-              </div>
+              <div className="p-3 border-t bg-white" />
             </div>
           </div>
         )}

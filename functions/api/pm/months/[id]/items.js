@@ -1,5 +1,6 @@
 import { ensureAdminUser } from '../../../_utils/db.js';
-import { json, requireAuth } from '../../../_utils/http.js';
+import { json, requireAuth, requireAdmin, readJson, isoNow } from '../../../_utils/http.js';
+import { touchLastUpdatedAt } from '../../../_utils/meta.js';
 
 function requireAdminOrViewer(data) {
   const role = String(data?.user?.role || '');
@@ -45,6 +46,59 @@ export async function onRequestGet({ env, data, params }) {
       .all();
     const rows = Array.isArray(res?.results) ? res.results : [];
     return json({ items: rows.map(mapItemRow) }, { status: 200 });
+  } catch (e) {
+    return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
+  }
+}
+
+function normStr(v) {
+  const s = String(v ?? '').trim();
+  return s || null;
+}
+
+export async function onRequestPatch({ request, env, data, params }) {
+  try {
+    await ensureAdminUser(env);
+    if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
+    if (!requireAdmin(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
+
+    const monthId = String(params?.id || '').trim();
+    if (!monthId) return json({ error: 'Mois requis.' }, { status: 400 });
+
+    const body = await readJson(request);
+    const id = String(body?.id || '').trim();
+    if (!id) return json({ error: 'ID requis.' }, { status: 400 });
+
+    const reprogrammationDateRaw = body?.reprogrammationDate;
+    const reprogrammationStatusRaw = body?.reprogrammationStatus;
+    const reprogrammationReasonRaw = body?.reprogrammationReason;
+
+    const reprogrammationDate = reprogrammationDateRaw == null ? null : normStr(reprogrammationDateRaw);
+    if (reprogrammationDate && !/^\d{4}-\d{2}-\d{2}$/.test(reprogrammationDate)) {
+      return json({ error: 'Date invalide.' }, { status: 400 });
+    }
+
+    const reprogrammationStatus = reprogrammationStatusRaw == null ? null : normStr(reprogrammationStatusRaw);
+    if (reprogrammationStatus && !['APPROVED', 'REJECTED', 'PENDING'].includes(reprogrammationStatus)) {
+      return json({ error: 'Statut invalide.' }, { status: 400 });
+    }
+
+    const reprogrammationReason = reprogrammationReasonRaw == null ? null : normStr(reprogrammationReasonRaw);
+
+    const existing = await env.DB.prepare('SELECT * FROM pm_items WHERE id = ? AND month_id = ?').bind(id, monthId).first();
+    if (!existing) return json({ error: 'Ticket introuvable.' }, { status: 404 });
+
+    const now = isoNow();
+    await env.DB.prepare(
+      'UPDATE pm_items SET reprogrammation_date = ?, reprogrammation_status = ?, reprogrammation_reason = ?, updated_at = ? WHERE id = ? AND month_id = ?'
+    )
+      .bind(reprogrammationDate, reprogrammationStatus, reprogrammationReason, now, id, monthId)
+      .run();
+
+    await touchLastUpdatedAt(env);
+
+    const updated = await env.DB.prepare('SELECT * FROM pm_items WHERE id = ? AND month_id = ?').bind(id, monthId).first();
+    return json({ item: mapItemRow(updated) }, { status: 200 });
   } catch (e) {
     return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
   }
