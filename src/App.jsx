@@ -2749,16 +2749,27 @@ const GeneratorMaintenanceApp = () => {
     const site = (Array.isArray(sites) ? sites : []).find((s) => String(s?.id) === siteId) || null;
     if (!site) return null;
 
+    const normalizeAnyYmd = (v) => {
+      const s = v == null ? '' : String(v).trim();
+      if (!s) return '';
+      const head = s.slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(head)) return head;
+      const m = s.match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})/);
+      if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+      return '';
+    };
+
     const monthKey = String(techCalendarMonth || '').trim();
-    const plannedShifted = ymdShiftForWorkdays(d);
+    const plannedYmd = normalizeAnyYmd(d);
+    const plannedShifted = ymdShiftForWorkdays(plannedYmd) || plannedYmd;
 
-    const epv1Raw = String(site?.epv1 || '').slice(0, 10);
-    const epv2Raw = String(site?.epv2 || '').slice(0, 10);
-    const epv3Raw = String(site?.epv3 || '').slice(0, 10);
+    const epv1Raw = normalizeAnyYmd(site?.epv1);
+    const epv2Raw = normalizeAnyYmd(site?.epv2);
+    const epv3Raw = normalizeAnyYmd(site?.epv3);
 
-    const epv1 = ymdShiftForWorkdays(epv1Raw);
-    const epv2 = ymdShiftForWorkdays(epv2Raw);
-    const epv3 = ymdShiftForWorkdays(epv3Raw);
+    const epv1 = ymdShiftForWorkdays(epv1Raw) || epv1Raw;
+    const epv2 = ymdShiftForWorkdays(epv2Raw) || epv2Raw;
+    const epv3 = ymdShiftForWorkdays(epv3Raw) || epv3Raw;
 
     const epvShiftedAll = [epv1, epv2, epv3].filter((v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')));
     const epvRawAll = [epv1Raw, epv2Raw, epv3Raw].filter((v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')));
