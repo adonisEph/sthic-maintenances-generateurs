@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AlertCircle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
 import { useStorage } from './hooks/useStorage';
 import {
   calculateRegime,
@@ -39,6 +40,7 @@ const GeneratorMaintenanceApp = () => {
   const [showFicheModal, setShowFicheModal] = useState(false);
   const [showBannerUpload, setShowBannerUpload] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
+  const [showTechCalendar, setShowTechCalendar] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showInterventions, setShowInterventions] = useState(false);
   const [showScoring, setShowScoring] = useState(false);
@@ -145,6 +147,10 @@ const GeneratorMaintenanceApp = () => {
   const [showDayDetailsModal, setShowDayDetailsModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedDayEvents, setSelectedDayEvents] = useState([]);
+  const [techCalendarMonth, setTechCalendarMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [techSelectedDate, setTechSelectedDate] = useState(null);
+  const [techSelectedDayEvents, setTechSelectedDayEvents] = useState([]);
+  const [showTechDayDetailsModal, setShowTechDayDetailsModal] = useState(false);
   const [isBatchFiche, setIsBatchFiche] = useState(false);
   const [batchFicheSites, setBatchFicheSites] = useState([]);
   const [batchFicheIndex, setBatchFicheIndex] = useState(0);
@@ -1050,6 +1056,73 @@ const GeneratorMaintenanceApp = () => {
     if (done) alert('✅ Export Excel généré.');
   };
 
+  const handlePmExportReprogExcel = async () => {
+    if (!canUsePm) return;
+    const ok = window.confirm(`Exporter les maintenances reprogrammées (${pmMonth}) en Excel ?`);
+    if (!ok) return;
+
+    const norm = (s) => String(s || '').trim().toLowerCase();
+    const normStatus = (s) => {
+      const v = String(s || '').trim().toLowerCase();
+      if (!v) return '';
+      if (v === 'approved' || v === 'ok' || v === 'yes' || v === 'oui' || v === 'validee' || v === 'validée' || v === 'approuvee' || v === 'approuvée') {
+        return 'APPROVED';
+      }
+      if (v === 'rejected' || v === 'ko' || v === 'no' || v === 'non' || v === 'rejete' || v === 'rejeté' || v === 'rejetee' || v === 'rejetée' || v === 'refusee' || v === 'refusée') {
+        return 'REJECTED';
+      }
+      if (v === 'pending' || v === 'attente' || v === 'en attente' || v === 'waiting') return 'PENDING';
+      return '';
+    };
+
+    const effectiveReprogStatus = (it) => {
+      const explicit = normStatus(it?.reprogrammationStatus);
+      if (explicit) return explicit;
+      const hasDate = !!String(it?.reprogrammationDate || '').trim();
+      const hasReason = !!String(it?.reprogrammationReason || '').trim();
+      if (hasDate) return 'APPROVED';
+      if (hasReason) return 'PENDING';
+      return '';
+    };
+
+    const reprogItems = (Array.isArray(pmItems) ? pmItems : [])
+      .filter((it) => it && effectiveReprogStatus(it))
+      .slice()
+      .sort((a, b) => {
+        const da = String(a?.scheduledWoDate || '').slice(0, 10);
+        const db = String(b?.scheduledWoDate || '').slice(0, 10);
+        const d = da.localeCompare(db);
+        if (d !== 0) return d;
+        return String(a?.number || '').localeCompare(String(b?.number || ''));
+      });
+
+    const rows = reprogItems.map((it) => ({
+      'Zone': it.zone || '',
+      'Region': it.region || '',
+      'Site': it.siteCode || '',
+      'Site Name': it.siteName || '',
+      'Maintenance Type': it.maintenanceType || '',
+      'Number': it.number || '',
+      'Assigned to': it.assignedTo || '',
+      'Scheduled WO Date': it.scheduledWoDate || '',
+      'Statut reprogrammation': effectiveReprogStatus(it) || '',
+      'Reprogrammation': it.reprogrammationDate || '',
+      'Raisons': it.reprogrammationReason || '',
+      'State': it.state || ''
+    }));
+
+    const done = await runExport({
+      label: 'Export Excel (reprogrammées)…',
+      fn: async () => {
+        exportXlsx({
+          fileBaseName: `PM_REPROG_${pmMonth}_${new Date().toISOString().split('T')[0]}`,
+          sheets: [{ name: `REPROG-${pmMonth}`, rows }]
+        });
+      }
+    });
+    if (done) alert('✅ Export Excel généré.');
+  };
+
   const handlePmPlanningImport = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -1523,6 +1596,7 @@ const GeneratorMaintenanceApp = () => {
       setShowResetConfirm(false);
       setShowDeleteConfirm(false);
       setShowCalendar(false);
+      setShowTechCalendar(false);
       setShowHistory(false);
       setShowFicheModal(false);
       setShowBannerUpload(false);
@@ -1533,6 +1607,9 @@ const GeneratorMaintenanceApp = () => {
       setSelectedDate(null);
       setSelectedDayEvents([]);
       setShowDayDetailsModal(false);
+      setTechSelectedDate(null);
+      setTechSelectedDayEvents([]);
+      setShowTechDayDetailsModal(false);
       setIsBatchFiche(false);
       setBatchFicheSites([]);
       setBatchFicheIndex(0);
@@ -1689,6 +1766,43 @@ const GeneratorMaintenanceApp = () => {
         }
       }
     })();
+  };
+
+  const handleSaveFichePdf = async () => {
+    const el = document.getElementById('fiche-print');
+    if (!el) {
+      alert("Zone d'impression introuvable.");
+      return;
+    }
+
+    try {
+      const fileBase = `Fiche_${String(siteForFiche?.nameSite || 'Site').replace(/[^a-z0-9_-]+/gi, '_')}_${new Date().toISOString().slice(0, 10)}`;
+      const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+
+      await new Promise((resolve, reject) => {
+        try {
+          doc.html(el, {
+            x: 0,
+            y: 0,
+            width: 210,
+            windowWidth: Math.max(1100, el.scrollWidth || 0),
+            html2canvas: { scale: 2, useCORS: true },
+            callback: () => {
+              try {
+                doc.save(`${fileBase}.pdf`);
+                resolve();
+              } catch (e) {
+                reject(e);
+              }
+            }
+          });
+        } catch (e) {
+          reject(e);
+        }
+      });
+    } catch (e) {
+      alert(e?.message || 'Erreur lors de la génération du PDF.');
+    }
   };
 
   const handleMarkAsCompleted = (ficheId) => {
@@ -2384,10 +2498,21 @@ const GeneratorMaintenanceApp = () => {
   }, [showCalendar, calendarMonthKey, sites]);
 
   useEffect(() => {
-    if (!showInterventions) return;
+    if (!showTechCalendar) return;
     if (!isTechnician) return;
-    loadPmAssignments(interventionsMonth);
-  }, [showInterventions, isTechnician, interventionsMonth]);
+    (async () => {
+      try {
+        await loadInterventions(techCalendarMonth, 'all', 'all');
+      } catch {
+        // ignore
+      }
+      try {
+        await loadPmAssignments(techCalendarMonth);
+      } catch {
+        // ignore
+      }
+    })();
+  }, [showTechCalendar, isTechnician, techCalendarMonth]);
 
   const calendarFilteredSites = sites
     .map(getUpdatedSite)
@@ -2414,6 +2539,143 @@ const GeneratorMaintenanceApp = () => {
       return d.toISOString().slice(0, 10);
     }
     return v;
+  };
+
+  const techCalendarItemsInMonth = (() => {
+    if (!isTechnician) return [];
+    const month = String(techCalendarMonth || '').trim();
+    const list = (Array.isArray(interventions) ? interventions : [])
+      .filter((i) => i && String(i?.plannedDate || '').slice(0, 7) === month)
+      .slice();
+
+    const pmTypeKey = (v) =>
+      String(v || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '');
+
+    const pmInMonth = (Array.isArray(pmAssignments) ? pmAssignments : [])
+      .filter((p) => p && String(p?.plannedDate || '').slice(0, 7) === month)
+      .map((p) => ({
+        ...p,
+        plannedDate: ymdShiftForWorkdays(String(p?.plannedDate || '').slice(0, 10)) || String(p?.plannedDate || '').slice(0, 10)
+      }));
+
+    const hasAnyVidangeInMonthBySite = new Set(
+      list.map((i) => String(i?.siteId || '')).filter(Boolean)
+    );
+
+    const pmOnlyItems = [];
+    for (const p of pmInMonth) {
+      const mt = pmTypeKey(p?.maintenanceType);
+      if (mt !== 'fullpmwo') continue;
+      const siteId = String(p?.siteId || '').trim();
+      const plannedDate = String(p?.plannedDate || '').slice(0, 10);
+      if (!siteId || !plannedDate) continue;
+      if (hasAnyVidangeInMonthBySite.has(siteId)) continue;
+      pmOnlyItems.push({
+        id: `pm-only:${String(p?.pmNumber || p?.id || plannedDate)}`,
+        siteId,
+        plannedDate,
+        epvType: 'PM',
+        technicianName: String(authUser?.technicianName || ''),
+        technicianUserId: String(authUser?.id || ''),
+        status: 'sent',
+        _pmOnly: true,
+        pmNumber: p?.pmNumber ? String(p.pmNumber) : ''
+      });
+    }
+
+    const out = [...list, ...pmOnlyItems].filter(Boolean);
+    out.sort((a, b) => String(a.plannedDate || '').localeCompare(String(b.plannedDate || '')));
+    return out;
+  })();
+
+  const techCalendarMatchInfoForItem = (it) => {
+    if (!isTechnician) return null;
+    const pmTypeKey = (v) =>
+      String(v || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '');
+
+    const month = String(techCalendarMonth || '').trim();
+    const pmInMonth = (Array.isArray(pmAssignments) ? pmAssignments : [])
+      .filter((p) => p && String(p?.plannedDate || '').slice(0, 7) === month)
+      .map((p) => ({
+        ...p,
+        plannedDate: ymdShiftForWorkdays(String(p?.plannedDate || '').slice(0, 10)) || String(p?.plannedDate || '').slice(0, 10)
+      }));
+
+    const pmFullBySiteDate = (() => {
+      const m = new Map();
+      for (const p of pmInMonth) {
+        const mt = pmTypeKey(p?.maintenanceType);
+        if (mt !== 'fullpmwo') continue;
+        const k = `${String(p.siteId)}|${String(p.plannedDate).slice(0, 10)}`;
+        if (!m.has(k)) m.set(k, p);
+      }
+      return m;
+    })();
+
+    const pmDgBySite = (() => {
+      const m = new Map();
+      for (const p of pmInMonth) {
+        const mt = pmTypeKey(p?.maintenanceType);
+        if (mt !== 'dgservice') continue;
+        const k = String(p.siteId);
+        if (!m.has(k)) m.set(k, []);
+        m.get(k).push(p);
+      }
+      for (const [k, arr] of m.entries()) {
+        arr.sort((a, b) => String(a.plannedDate || '').localeCompare(String(b.plannedDate || '')));
+        m.set(k, arr);
+      }
+      return m;
+    })();
+
+    if (it?._pmOnly) {
+      const ticket = it?.pmNumber ? String(it.pmNumber) : '';
+      return { kind: 'PM_SIMPLE', ticket, label: 'PM Simple' };
+    }
+
+    const d = String(it?.plannedDate || '').slice(0, 10);
+    const siteId = String(it?.siteId || '');
+    const epv = String(it?.epvType || '').toUpperCase().trim();
+    const isSecondOrThird = epv === 'EPV2' || epv === 'EPV3';
+    if (!d || !siteId) return null;
+
+    const full = pmFullBySiteDate.get(`${siteId}|${d}`) || null;
+    if (full?.pmNumber) {
+      return { kind: 'PM', ticket: String(full.pmNumber), label: 'PM et Vidange' };
+    }
+
+    if (!isSecondOrThird) return null;
+
+    const dgList = pmDgBySite.get(siteId) || [];
+    if (dgList.length === 0) {
+      return { kind: 'DG', ticket: '', label: 'Vidange Simple' };
+    }
+
+    const idx = epv === 'EPV3' ? 1 : 0;
+    const chosen = dgList[idx] || dgList[0] || null;
+    return { kind: 'DG', ticket: chosen?.pmNumber ? String(chosen.pmNumber) : '', label: 'Vidange Simple' };
+  };
+
+  const getTechCalendarEventsForDay = (dateStr) => {
+    if (!dateStr) return [];
+    const day = String(dateStr).slice(0, 10);
+    return techCalendarItemsInMonth
+      .filter((it) => String(it?.plannedDate || '').slice(0, 10) === day)
+      .map((it) => {
+        const site = (Array.isArray(sites) ? sites : []).find((s) => String(s?.id) === String(it?.siteId)) || null;
+        const matchInfo = techCalendarMatchInfoForItem(it);
+        return { item: it, site, matchInfo };
+      });
   };
 
   const getEventsForDay = (dateStr) => {
@@ -3097,9 +3359,23 @@ const GeneratorMaintenanceApp = () => {
               </button>
             )}
 
-            {!isTechnician && (
+            {!isTechnician ? (
               <button
                 onClick={() => setShowCalendar(true)}
+                className="bg-cyan-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-cyan-700 flex items-center justify-center gap-2 text-sm sm:text-base"
+              >
+                <Calendar size={18} />
+                <span className="hidden sm:inline">Calendrier</span>
+                <span className="sm:hidden">Cal.</span>
+              </button>
+            ) : (
+              <button
+                onClick={async () => {
+                  const m = interventionsMonth || new Date().toISOString().slice(0, 7);
+                  setTechCalendarMonth(m);
+                  setShowTechCalendar(true);
+                  await loadInterventions(m, 'all', 'all');
+                }}
                 className="bg-cyan-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-cyan-700 flex items-center justify-center gap-2 text-sm sm:text-base"
               >
                 <Calendar size={18} />
@@ -3694,7 +3970,7 @@ const GeneratorMaintenanceApp = () => {
 
                   {isAdmin && (
                     <div className="xl:col-span-4 bg-white border border-gray-200 rounded-xl p-3">
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 gap-2">
                         <label
                           className={`bg-emerald-700 text-white px-3 py-2 rounded-lg flex items-center justify-center gap-2 text-sm font-semibold ${
                             pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-emerald-800 cursor-pointer'
@@ -3748,6 +4024,20 @@ const GeneratorMaintenanceApp = () => {
                     </div>
                   )}
                 </div>
+
+                {isAdmin && (
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 mb-4">
+                    <button
+                      type="button"
+                      onClick={handlePmExportReprogExcel}
+                      className="bg-slate-800 text-white px-3 py-2 rounded-lg hover:bg-slate-900 text-sm font-semibold flex items-center justify-center gap-2"
+                      disabled={pmBusy || exportBusy}
+                    >
+                      <Download size={16} />
+                      Export reprogrammées
+                    </button>
+                  </div>
+                )}
 
                 {pmError && (
                   <div className="mb-4 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">
@@ -5037,94 +5327,16 @@ const GeneratorMaintenanceApp = () => {
                     return 2;
                   };
 
-                  const pmTypeKey = (v) =>
-                    String(v || '')
-                      .normalize('NFD')
-                      .replace(/[\u0300-\u036f]/g, '')
-                      .trim()
-                      .toLowerCase()
-                      .replace(/\s+/g, '');
-
-                  const pmInMonth = (Array.isArray(pmAssignments) ? pmAssignments : [])
-                    .filter((p) => p && String(p?.plannedDate || '').slice(0, 7) === String(interventionsMonth || '').trim());
-
-                  const pmFullBySiteDate = (() => {
-                    const m = new Map();
-                    for (const p of pmInMonth) {
-                      const mt = pmTypeKey(p?.maintenanceType);
-                      if (mt !== 'fullpmwo') continue;
-                      const k = `${String(p.siteId)}|${String(p.plannedDate).slice(0, 10)}`;
-                      if (!m.has(k)) m.set(k, p);
-                    }
-                    return m;
-                  })();
-
-                  const pmOnlyItems = (() => {
-                    if (!isTechnician) return [];
-                    const hasAnyVidangeInMonthBySite = new Set(
-                      list
-                        .filter((i) => i && String(i?.plannedDate || '').slice(0, 7) === String(month || ''))
-                        .map((i) => String(i?.siteId || ''))
-                        .filter(Boolean)
-                    );
-
-                    const out = [];
-                    for (const p of pmInMonth) {
-                      const mt = pmTypeKey(p?.maintenanceType);
-                      if (mt !== 'fullpmwo') continue;
-                      const siteId = String(p?.siteId || '').trim();
-                      const plannedDate = String(p?.plannedDate || '').slice(0, 10);
-                      if (!siteId || !plannedDate) continue;
-                      if (hasAnyVidangeInMonthBySite.has(siteId)) continue;
-                      out.push({
-                        id: `pm-only:${String(p?.pmNumber || p?.id || plannedDate)}`,
-                        siteId,
-                        plannedDate,
-                        epvType: 'PM',
-                        technicianName: String(authUser?.technicianName || ''),
-                        technicianUserId: String(authUser?.id || ''),
-                        status: 'sent',
-                        _pmOnly: true,
-                        pmNumber: p?.pmNumber ? String(p.pmNumber) : ''
-                      });
-                    }
-
-                    out.sort((a, b) => String(a.plannedDate || '').localeCompare(String(b.plannedDate || '')));
-                    return out;
-                  })();
-
-                  const pmDgBySite = (() => {
-                    const m = new Map();
-                    for (const p of pmInMonth) {
-                      const mt = pmTypeKey(p?.maintenanceType);
-                      if (mt !== 'dgservice') continue;
-                      const k = String(p.siteId);
-                      if (!m.has(k)) m.set(k, []);
-                      m.get(k).push(p);
-                    }
-                    for (const [k, arr] of m.entries()) {
-                      arr.sort((a, b) => String(a.plannedDate || '').localeCompare(String(b.plannedDate || '')));
-                      m.set(k, arr);
-                    }
-                    return m;
-                  })();
-
                   const todayItems = list
                     .filter((i) => i.plannedDate === today && i.status !== 'done')
                     .slice()
                     .sort((a, b) => statusRank(a.status) - statusRank(b.status));
-
-                  const todayPmOnly = pmOnlyItems.filter((p) => String(p.plannedDate || '') === String(today));
-                  const todayItemsWithPm = [...todayItems, ...todayPmOnly].sort((a, b) => statusRank(a.status) - statusRank(b.status));
 
                   const tomorrowRaw = list.filter((i) => i.plannedDate === tomorrow && i.status !== 'done');
                   const tomorrowSentCount = tomorrowRaw.filter((i) => i.status === 'sent').length;
                   const tomorrowItems = tomorrowRaw
                     .slice()
                     .sort((a, b) => statusRank(a.status) - statusRank(b.status));
-
-                  const tomorrowPmOnly = pmOnlyItems.filter((p) => String(p.plannedDate || '') === String(tomorrow));
-                  const tomorrowItemsWithPm = [...tomorrowItems, ...tomorrowPmOnly].sort((a, b) => statusRank(a.status) - statusRank(b.status));
 
                   const renderItem = (it) => {
                     const site = siteById.get(String(it.siteId)) || null;
@@ -5134,35 +5346,6 @@ const GeneratorMaintenanceApp = () => {
                       String(interventionsMonth || '').trim() &&
                       String(it?.plannedDate || '').slice(0, 7) === String(interventionsMonth || '').trim()
                     );
-
-                    const matchInfo = (() => {
-                      if (!isTechnician) return null;
-                      if (it?._pmOnly) {
-                        const ticket = it?.pmNumber ? String(it.pmNumber) : '';
-                        return { kind: 'PM_SIMPLE', ticket, label: 'PM Simple' };
-                      }
-                      const d = String(it?.plannedDate || '').slice(0, 10);
-                      const siteId = String(it?.siteId || '');
-                      const epv = String(it?.epvType || '').toUpperCase().trim();
-                      const isSecondOrThird = epv === 'EPV2' || epv === 'EPV3';
-                      if (!d || !siteId) return null;
-
-                      const full = pmFullBySiteDate.get(`${siteId}|${d}`) || null;
-                      if (full?.pmNumber) {
-                        return { kind: 'PM', ticket: String(full.pmNumber), label: 'PM et Vidange' };
-                      }
-
-                      if (!isSecondOrThird) return null;
-
-                      const dgList = pmDgBySite.get(siteId) || [];
-                      if (dgList.length === 0) {
-                        return { kind: 'DG', ticket: '', label: 'Vidange Simple' };
-                      }
-
-                      const idx = epv === 'EPV3' ? 1 : 0;
-                      const chosen = dgList[idx] || dgList[0] || null;
-                      return { kind: 'DG', ticket: chosen?.pmNumber ? String(chosen.pmNumber) : '', label: 'Vidange Simple' };
-                    })();
 
                     const canCatchUpInMonth = Boolean(
                       isTechnician &&
@@ -5185,11 +5368,6 @@ const GeneratorMaintenanceApp = () => {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{it.status}</span>
-                          {isTechnician && matchInfo?.label && (
-                            <span className={`text-xs px-2 py-1 rounded border font-semibold ${matchInfo.kind === 'PM' || matchInfo.kind === 'PM_SIMPLE' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-800 border-slate-200'}`}>
-                              {matchInfo.label}{matchInfo.ticket ? ` • ${matchInfo.kind === 'PM' || matchInfo.kind === 'PM_SIMPLE' ? 'FullPMWO' : 'DG Service'}: ${matchInfo.ticket}` : ''}
-                            </span>
-                          )}
                           {wasRetiredPrevMonth && (
                             <span className="text-xs px-2 py-1 rounded border font-semibold bg-amber-50 text-amber-900 border-amber-200">
                               Justif hors délais (retiré {interventionsPrevMonthKey || 'mois-1'})
@@ -5268,8 +5446,7 @@ const GeneratorMaintenanceApp = () => {
                           return String(i.plannedDate || '').slice(0, 7) === month;
                         });
 
-                      const monthPmOnly = pmOnlyItems.filter((p) => String(p.plannedDate || '').slice(0, 7) === String(month));
-                      const merged = [...catchUpPrevMonthItems, ...monthItems, ...monthPmOnly].filter(Boolean);
+                      const merged = [...catchUpPrevMonthItems, ...monthItems].filter(Boolean);
 
                       const byDate = new Map();
                       merged.forEach((it) => {
@@ -5281,16 +5458,6 @@ const GeneratorMaintenanceApp = () => {
                       const dates = Array.from(byDate.keys()).sort((a, b) => String(a).localeCompare(String(b)));
                       return (
                         <div className="space-y-6">
-                          {pmAssignmentsBusy && (
-                            <div className="bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2 text-sm">
-                              Chargement du planning PM…
-                            </div>
-                          )}
-                          {pmAssignmentsError && !pmAssignmentsBusy && (
-                            <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2 text-sm">
-                              Planning PM indisponible: {pmAssignmentsError}
-                            </div>
-                          )}
                           {catchUpPrevMonthItems.length > 0 && (
                             <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2 text-sm">
                               Rattrapage: <span className="font-semibold">{catchUpPrevMonthItems.length}</span> vidange(s) en retard du mois précédent affichée(s) dans ce mois.
@@ -5313,20 +5480,10 @@ const GeneratorMaintenanceApp = () => {
                     }
 
                     const selectedKey = technicianInterventionsTab === 'today' ? 'today' : 'tomorrow';
-                    const selected = selectedKey === 'today' ? todayItemsWithPm : tomorrowItemsWithPm;
-                    const title = selectedKey === 'today' ? "Aujourd'hui" : `Demain (${tomorrowItemsWithPm.length} dont ${tomorrowSentCount} envoyée(s))`;
+                    const selected = selectedKey === 'today' ? todayItems : tomorrowItems;
+                    const title = selectedKey === 'today' ? "Aujourd'hui" : `Demain (${tomorrowItems.length} dont ${tomorrowSentCount} envoyée(s))`;
                     return (
                       <div className="space-y-6">
-                        {pmAssignmentsBusy && (
-                          <div className="bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2 text-sm">
-                            Chargement du planning PM…
-                          </div>
-                        )}
-                        {pmAssignmentsError && !pmAssignmentsBusy && (
-                          <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2 text-sm">
-                            Planning PM indisponible: {pmAssignmentsError}
-                          </div>
-                        )}
                         <div>
                           <div className="font-semibold text-gray-800 mb-2">{title}</div>
                           {selected.length === 0 ? (
@@ -5865,6 +6022,204 @@ const GeneratorMaintenanceApp = () => {
           </div>
         )}
 
+        {/* Modal Calendrier (Technicien) */}
+        {showTechCalendar && isTechnician && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
+            <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-6xl sm:max-h-[90vh]">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-cyan-600 text-white">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <Calendar size={24} />
+                  Calendrier
+                </h2>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      setShowTechCalendar(false);
+                      setTechSelectedDate(null);
+                      setTechSelectedDayEvents([]);
+                      setShowTechDayDetailsModal(false);
+                    }}
+                    className="hover:bg-cyan-700 p-2 rounded"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <label className="text-xs font-semibold text-gray-700">Mois</label>
+                    <input
+                      type="month"
+                      value={techCalendarMonth}
+                      onChange={(e) => {
+                        const next = String(e.target.value || '').trim();
+                        setTechCalendarMonth(next);
+                      }}
+                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                    />
+                  </div>
+                  <div className="text-xs text-white/90 bg-cyan-700/40 border border-white/20 rounded-lg px-3 py-2">
+                    Lecture seule
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-7 gap-2 mb-2">
+                  {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map((day) => (
+                    <div key={day} className="text-center font-bold text-gray-700 py-2">
+                      {day}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-7 gap-2">
+                  {(() => {
+                    const m = String(techCalendarMonth || '').trim();
+                    const mm = m.match(/^(\d{4})-(\d{2})$/);
+                    const year = mm ? Number(mm[1]) : new Date().getFullYear();
+                    const month = mm ? Number(mm[2]) - 1 : new Date().getMonth();
+                    const firstDay = new Date(year, month, 1);
+                    const lastDay = new Date(year, month + 1, 0);
+                    const startDay = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
+                    const days = [];
+
+                    for (let i = 0; i < startDay; i++) {
+                      days.push(<div key={`empty-${i}`} className="h-24 bg-gray-50 rounded" />);
+                    }
+
+                    const pad2 = (n) => String(n).padStart(2, '0');
+                    const ymd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+                    const todayStr = ymd(new Date());
+
+                    for (let day = 1; day <= lastDay.getDate(); day++) {
+                      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                      const dow = new Date(`${dateStr}T00:00:00`).getDay();
+                      const isWeekend = dow === 0 || dow === 6;
+
+                      if (isWeekend) {
+                        days.push(
+                          <div
+                            key={day}
+                            className="h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full bg-slate-200/70 border-gray-300"
+                          />
+                        );
+                        continue;
+                      }
+
+                      const eventsForDay = getTechCalendarEventsForDay(dateStr);
+                      const isToday = todayStr === dateStr;
+                      const isSelected = techSelectedDate === dateStr;
+
+                      days.push(
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => {
+                            const ev = getTechCalendarEventsForDay(dateStr);
+                            setTechSelectedDate(dateStr);
+                            setTechSelectedDayEvents(ev);
+                            setShowTechDayDetailsModal(true);
+                          }}
+                          className={`h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full hover:bg-gray-50 ${isToday ? 'border-blue-500 bg-blue-50' : 'border-gray-300'} ${isSelected ? 'ring-2 ring-cyan-500' : ''}`}
+                        >
+                          <div className="text-sm font-semibold text-gray-700">{day}</div>
+                          {eventsForDay.length > 0 && (
+                            <div className="text-xs space-y-1 mt-1">
+                              {eventsForDay.slice(0, 2).map((ev) => {
+                                const daysUntil = getDaysUntil(dateStr);
+                                const color = daysUntil <= 3 ? 'bg-red-500' : daysUntil <= 7 ? 'bg-orange-500' : 'bg-green-500';
+                                return (
+                                  <div key={`${ev?.site?.id || ev?.item?.id}`} className={`${color} text-white px-1 rounded truncate flex items-center gap-1`}>
+                                    <span className="truncate">{ev?.site?.nameSite || ev?.item?.siteId || '-'}</span>
+                                    {ev?.matchInfo?.label && (
+                                      <span className="ml-auto text-[10px] font-bold opacity-90">
+                                        {ev.matchInfo.label === 'PM Simple' ? 'PM' : ev.matchInfo.label === 'PM et Vidange' ? 'PM+V' : 'V'}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                              {eventsForDay.length > 2 && (
+                                <div className="text-gray-600 text-center">+{eventsForDay.length - 2}</div>
+                              )}
+                            </div>
+                          )}
+                        </button>
+                      );
+                    }
+
+                    return days;
+                  })()}
+                </div>
+              </div>
+
+              <div className="p-3 border-t bg-white" />
+            </div>
+          </div>
+        )}
+
+        {showTechDayDetailsModal && showTechCalendar && isTechnician && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full overflow-hidden">
+              <div className="flex justify-between items-center p-4 border-b bg-cyan-600 text-white">
+                <div className="font-bold">Détails du {techSelectedDate ? formatDate(techSelectedDate) : ''}</div>
+                <button
+                  onClick={() => {
+                    setShowTechDayDetailsModal(false);
+                  }}
+                  className="hover:bg-cyan-700 p-2 rounded"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-4 space-y-3">
+                {techSelectedDayEvents.length === 0 ? (
+                  <div className="text-gray-600">Aucune activité planifiée ce jour.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {techSelectedDayEvents.map((evt) => {
+                      const it = evt?.item;
+                      const site = evt?.site;
+                      const matchInfo = evt?.matchInfo;
+                      const statusColor = it?.status === 'done' ? 'bg-green-100 text-green-800 border-green-200' : it?.status === 'sent' ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-amber-100 text-amber-800 border-amber-200';
+                      return (
+                        <div key={String(it?.id || `${site?.id}-${it?.plannedDate}-${it?.epvType}`)} className="border border-gray-200 rounded-lg p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="font-semibold text-gray-800 truncate">{site?.nameSite || it?.siteId || '-'}</div>
+                              {site?.idSite && <div className="text-xs text-gray-600">ID: {site.idSite}</div>}
+                              <div className="text-xs text-gray-600">{String(it?.epvType || '').toUpperCase()} • {formatDate(it?.plannedDate)} • {String(it?.technicianName || '')}</div>
+                              {matchInfo?.label && (
+                                <div className="mt-2">
+                                  <span className={`text-xs px-2 py-1 rounded border font-semibold ${matchInfo.kind === 'PM' || matchInfo.kind === 'PM_SIMPLE' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-800 border-slate-200'}`}>
+                                    {matchInfo.label}{matchInfo.ticket ? ` • ${matchInfo.kind === 'PM' || matchInfo.kind === 'PM_SIMPLE' ? 'FullPMWO' : 'DG Service'}: ${matchInfo.ticket}` : ''}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            <div className="text-right">
+                              <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{String(it?.status || '')}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="p-4 border-t bg-white flex justify-end">
+                <button
+                  onClick={() => setShowTechDayDetailsModal(false)}
+                  className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
+                >
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {urgentSites.length > 0 && (
           <div className="bg-red-50 border-2 border-red-400 rounded-lg p-3 sm:p-4 md:p-6 mb-4 md:mb-6">
             <h2 className="text-base sm:text-lg md:text-xl font-bold text-red-800 flex items-center gap-2 mb-3 md:mb-4">
@@ -6170,6 +6525,12 @@ const GeneratorMaintenanceApp = () => {
                     className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold w-full sm:w-auto"
                   >
                     Imprimer
+                  </button>
+                  <button
+                    onClick={handleSaveFichePdf}
+                    className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold w-full sm:w-auto"
+                  >
+                    Enregistrer le PDF
                   </button>
                   <button
                     onClick={() => {
@@ -6599,21 +6960,29 @@ const GeneratorMaintenanceApp = () => {
                       const dow = new Date(`${dateStr}T00:00:00`).getDay();
                       const isWeekend = dow === 0 || dow === 6;
 
+                      if (isWeekend) {
+                        days.push(
+                          <div
+                            key={day}
+                            className={`h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full bg-slate-200/70 border-gray-300`}
+                          />
+                        );
+                        continue;
+                      }
+
                       days.push(
                         <button
                           key={day}
                           type="button"
                           onClick={() => {
-                            if (isWeekend) return;
                             const events = getEventsForDay(dateStr);
                             setSelectedDate(dateStr);
                             setSelectedDayEvents(events);
                             setShowDayDetailsModal(true);
                           }}
-                          disabled={isWeekend}
-                          className={`h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full ${isWeekend ? 'bg-slate-200/70 text-slate-500 cursor-not-allowed' : 'hover:bg-gray-50'} ${isToday ? 'border-blue-500 bg-blue-50' : 'border-gray-300'} ${isSelected ? 'ring-2 ring-cyan-500' : ''} ${isWeekend ? 'hover:bg-slate-200/70' : ''}`}
+                          className={`h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full hover:bg-gray-50 ${isToday ? 'border-blue-500 bg-blue-50' : 'border-gray-300'} ${isSelected ? 'ring-2 ring-cyan-500' : ''}`}
                         >
-                          <div className={`text-sm font-semibold ${isWeekend ? 'text-slate-500' : 'text-gray-700'}`}>{day}</div>
+                          <div className="text-sm font-semibold text-gray-700">{day}</div>
                           {eventsForDay.length > 0 && (
                             <div className="text-xs space-y-1 mt-1">
                               {eventsForDay.slice(0, 2).map((ev) => {
