@@ -2601,11 +2601,6 @@ const GeneratorMaintenanceApp = () => {
     if (!isTechnician) return;
     (async () => {
       try {
-        await loadInterventions(techCalendarMonth, 'all', 'all');
-      } catch {
-        // ignore
-      }
-      try {
         await loadPmAssignments(techCalendarMonth);
       } catch {
         // ignore
@@ -2643,9 +2638,7 @@ const GeneratorMaintenanceApp = () => {
   const techCalendarItemsInMonth = (() => {
     if (!isTechnician) return [];
     const month = String(techCalendarMonth || '').trim();
-    const list = (Array.isArray(interventions) ? interventions : [])
-      .filter((i) => i && String(i?.plannedDate || '').slice(0, 7) === month)
-      .slice();
+    const list = [];
 
     const pmTypeKey = (v) =>
       String(v || '')
@@ -2662,7 +2655,7 @@ const GeneratorMaintenanceApp = () => {
         plannedDate: ymdShiftForWorkdays(String(p?.plannedDate || '').slice(0, 10)) || String(p?.plannedDate || '').slice(0, 10)
       }));
 
-    const hasAnyVidangeInMonthBySite = new Set(list.map((i) => String(i?.siteId || '')).filter(Boolean));
+    const hasAnyVidangeInMonthBySite = new Set();
 
     const pmFullBySiteDate = (() => {
       const m = new Map();
@@ -2716,69 +2709,22 @@ const GeneratorMaintenanceApp = () => {
     };
 
     const out = [];
-    const usedCombined = new Set();
-
-    for (const it of list) {
-      const siteId = String(it?.siteId || '').trim();
-      const d = String(it?.plannedDate || '').slice(0, 10);
-      const epv = String(it?.epvType || '').toUpperCase().trim();
-      if (!siteId || !d) continue;
-
-      if (epv === 'EPV1') {
-        const full = pmFullBySiteDate.get(`${siteId}|${d}`) || null;
-        if (full?.pmNumber) {
-          usedCombined.add(`${siteId}|${d}`);
-          out.push({
-            ...it,
-            id: `pm-vidange:${String(it?.id || `${siteId}-${d}`)}`,
-            epvType: 'EPV1',
-            _kind: 'PM_ET_VIDANGE',
-            _ticket: String(full.pmNumber)
-          });
-          continue;
-        }
-        out.push({ ...it, _kind: 'VIDANGE' });
-        continue;
-      }
-
-      if (epv === 'EPV2' || epv === 'EPV3') {
-        const dgList = pmDgBySite.get(siteId) || [];
-        const ticket = pickNearestPmTicket(dgList, d);
-        out.push({
-          ...it,
-          epvType: epv,
-          _kind: 'VIDANGE_SIMPLE',
-          _ticket: ticket
-        });
-        continue;
-      }
-
-      out.push({ ...it, _kind: 'VIDANGE' });
-    }
-
     for (const p of pmInMonth) {
       const mt = pmTypeKey(p?.maintenanceType);
+      if (mt !== 'fullpmwo' && mt !== 'dgservice') continue;
       const siteId = String(p?.siteId || '').trim();
       const d = String(p?.plannedDate || '').slice(0, 10);
       if (!siteId || !d) continue;
-
-      if (mt === 'fullpmwo') {
-        if (usedCombined.has(`${siteId}|${d}`)) continue;
-        const hasAnyVidange = hasAnyVidangeInMonthBySite.has(siteId);
-        if (hasAnyVidange) continue;
-        out.push({
-          id: `pm-full:${String(p?.pmNumber || p?.id || `${siteId}-${d}`)}`,
-          siteId,
-          plannedDate: d,
-          epvType: 'PM',
-          technicianName: String(authUser?.technicianName || ''),
-          technicianUserId: String(authUser?.id || ''),
-          status: 'sent',
-          _kind: 'PM_SIMPLE',
-          _ticket: p?.pmNumber ? String(p.pmNumber) : ''
-        });
-        continue;
-      }
+      out.push({
+        id: `pm:${mt}:${String(p?.pmNumber || p?.id || `${siteId}-${d}`)}`,
+        siteId,
+        plannedDate: d,
+        maintenanceType: mt,
+        pmNumber: p?.pmNumber ? String(p.pmNumber) : '',
+        technicianName: String(authUser?.technicianName || ''),
+        technicianUserId: String(authUser?.id || ''),
+        status: String(p?.status || 'sent')
+      });
     }
 
     out.sort((a, b) => {
@@ -2794,13 +2740,35 @@ const GeneratorMaintenanceApp = () => {
 
   const techCalendarMatchInfoForItem = (it) => {
     if (!isTechnician) return null;
-    const kind = String(it?._kind || '').trim();
-    const ticket = it?._ticket ? String(it._ticket) : '';
-    if (kind === 'PM_ET_VIDANGE') return { kind: 'PM', ticket, label: 'PM et Vidange' };
-    if (kind === 'PM_SIMPLE') return { kind: 'PM_SIMPLE', ticket, label: 'PM Simple' };
-    if (kind === 'VIDANGE_SIMPLE') return { kind: 'DG', ticket, label: 'Vidange Simple' };
-    if (kind === 'DG_SERVICE') return { kind: 'DG', ticket, label: 'DG Service' };
-    if (kind === 'PM') return { kind: 'PM', ticket, label: 'PM' };
+    const mt = String(it?.maintenanceType || '').trim();
+    const ticket = it?.pmNumber ? String(it.pmNumber) : '';
+    const siteId = String(it?.siteId || '').trim();
+    const d = String(it?.plannedDate || '').slice(0, 10);
+    if (!siteId || !d) return null;
+
+    const site = (Array.isArray(sites) ? sites : []).find((s) => String(s?.id) === siteId) || null;
+    if (!site) return null;
+
+    const epv1 = ymdShiftForWorkdays(String(site?.epv1 || '').slice(0, 10));
+    const epv2 = ymdShiftForWorkdays(String(site?.epv2 || '').slice(0, 10));
+    const epv3 = ymdShiftForWorkdays(String(site?.epv3 || '').slice(0, 10));
+    const epvDatesInMonth = [epv1, epv2, epv3]
+      .filter((v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')))
+      .filter((v) => String(v).slice(0, 7) === String(techCalendarMonth || '').trim());
+
+    if (mt === 'fullpmwo') {
+      const matchesEpv = epvDatesInMonth.includes(d);
+      if (matchesEpv) return { kind: 'PM', ticket, label: 'PM et Vidange' };
+      if (epvDatesInMonth.length === 0) return { kind: 'PM_SIMPLE', ticket, label: 'PM Simple' };
+      return null;
+    }
+
+    if (mt === 'dgservice') {
+      const matches = [epv2, epv3].includes(d);
+      if (matches) return { kind: 'DG', ticket, label: 'Vidange Simple' };
+      return null;
+    }
+
     return null;
   };
 
@@ -2814,6 +2782,13 @@ const GeneratorMaintenanceApp = () => {
         const matchInfo = techCalendarMatchInfoForItem(it);
         return { item: it, site, matchInfo };
       });
+  };
+
+  const techCalendarPmTypeLabel = (it) => {
+    const mt = String(it?.maintenanceType || '').trim();
+    if (mt === 'fullpmwo') return 'FullPMWO';
+    if (mt === 'dgservice') return 'DG Service';
+    return 'PM';
   };
 
   const getEventsForDay = (dateStr) => {
@@ -6220,14 +6195,15 @@ const GeneratorMaintenanceApp = () => {
                               {eventsForDay.slice(0, 2).map((ev) => {
                                 const daysUntil = getDaysUntil(dateStr);
                                 const color = daysUntil <= 3 ? 'bg-red-500' : daysUntil <= 7 ? 'bg-orange-500' : 'bg-green-500';
+                                const ticket = String(ev?.item?.pmNumber || '').trim();
+                                const typeLabel = techCalendarPmTypeLabel(ev?.item);
                                 return (
                                   <div key={`${ev?.site?.id || ev?.item?.id}`} className={`${color} text-white px-1 rounded truncate flex items-center gap-1`}>
                                     <span className="truncate">{ev?.site?.nameSite || ev?.item?.siteId || '-'}</span>
-                                    {ev?.matchInfo?.label && (
-                                      <span className="ml-auto text-[10px] font-bold opacity-90">
-                                        {ev.matchInfo.label === 'PM Simple' ? 'PM' : ev.matchInfo.label === 'PM et Vidange' ? 'PM+V' : 'V'}
-                                      </span>
-                                    )}
+                                    <span className="ml-auto text-[10px] font-bold opacity-90">
+                                      {typeLabel}{ticket ? `:${ticket}` : ''}
+                                      {ev?.matchInfo?.label ? ` • ${ev.matchInfo.label === 'PM Simple' ? 'PM' : ev.matchInfo.label === 'PM et Vidange' ? 'PM+V' : 'V'}` : ''}
+                                    </span>
                                   </div>
                                 );
                               })}
@@ -6274,20 +6250,25 @@ const GeneratorMaintenanceApp = () => {
                       const site = evt?.site;
                       const matchInfo = evt?.matchInfo;
                       const statusColor = it?.status === 'done' ? 'bg-green-100 text-green-800 border-green-200' : it?.status === 'sent' ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-amber-100 text-amber-800 border-amber-200';
+                      const ticket = String(it?.pmNumber || '').trim();
+                      const typeLabel = techCalendarPmTypeLabel(it);
                       return (
-                        <div key={String(it?.id || `${site?.id}-${it?.plannedDate}-${it?.epvType}`)} className="border border-gray-200 rounded-lg p-3">
+                        <div key={String(it?.id || `${site?.id}-${it?.plannedDate}-${it?.maintenanceType}`)} className="border border-gray-200 rounded-lg p-3">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <div className="font-semibold text-gray-800 truncate">{site?.nameSite || it?.siteId || '-'}</div>
                               {site?.idSite && <div className="text-xs text-gray-600">ID: {site.idSite}</div>}
-                              <div className="text-xs text-gray-600">{String(it?.epvType || '').toUpperCase()} • {formatDate(it?.plannedDate)} • {String(it?.technicianName || '')}</div>
-                              {matchInfo?.label && (
-                                <div className="mt-2">
+                              <div className="text-xs text-gray-600">{typeLabel} • {formatDate(it?.plannedDate)} • {String(it?.technicianName || '')}</div>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <span className="text-xs px-2 py-1 rounded border font-semibold bg-slate-50 text-slate-800 border-slate-200">
+                                  {typeLabel}{ticket ? `: ${ticket}` : ''}
+                                </span>
+                                {matchInfo?.label && (
                                   <span className={`text-xs px-2 py-1 rounded border font-semibold ${matchInfo.kind === 'PM' || matchInfo.kind === 'PM_SIMPLE' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-800 border-slate-200'}`}>
-                                    {matchInfo.label}{matchInfo.ticket ? ` • ${matchInfo.kind === 'PM' || matchInfo.kind === 'PM_SIMPLE' ? 'FullPMWO' : 'DG Service'}: ${matchInfo.ticket}` : ''}
+                                    {matchInfo.label}
                                   </span>
-                                </div>
-                              )}
+                                )}
+                              </div>
                             </div>
                             <div className="text-right">
                               <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{String(it?.status || '')}</span>
