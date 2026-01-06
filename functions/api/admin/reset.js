@@ -33,7 +33,7 @@ export async function onRequestPost({ request, env, data }) {
     const resPmNocRows = includePm ? await safeDelete('pm_noc_rows') : { meta: { changes: 0 } };
 
     await env.DB.prepare(
-      "INSERT OR REPLACE INTO meta (meta_key, meta_value) VALUES ('ticket_number', '1179')"
+      "INSERT OR REPLACE INTO meta (meta_key, meta_value) VALUES ('ticket_number', '1200')"
     ).run();
 
     await touchLastUpdatedAt(env);

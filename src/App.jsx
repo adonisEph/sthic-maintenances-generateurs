@@ -16,7 +16,7 @@ import {
 const APP_VERSION = '2.0.5';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
-const SPLASH_MIN_MS = 4000;
+const SPLASH_MIN_MS = 4200;
 
 const ModalWatermark = ({ className = '' }) => (
   <img
@@ -69,7 +69,7 @@ const GeneratorMaintenanceApp = () => {
   const [siteToDelete, setSiteToDelete] = useState(null);
   const [selectedSite, setSelectedSite] = useState(null);
   const [filterTechnician, setFilterTechnician] = useState('all');
-  const [ticketNumber, setTicketNumber] = useState(1150);
+  const [ticketNumber, setTicketNumber] = useState(1201);
   const [importBusy, setImportBusy] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [importStep, setImportStep] = useState('');
@@ -85,8 +85,12 @@ const GeneratorMaintenanceApp = () => {
   const [authChecking, setAuthChecking] = useState(true);
   const [users, setUsers] = useState([]);
   const [showUsersModal, setShowUsersModal] = useState(false);
+  const [showAccountModal, setShowAccountModal] = useState(false);
   const [showPresenceModal, setShowPresenceModal] = useState(false);
   const [presenceSessions, setPresenceSessions] = useState([]);
+  const [accountForm, setAccountForm] = useState({ password: '', confirm: '' });
+  const [accountError, setAccountError] = useState('');
+  const [accountSaving, setAccountSaving] = useState(false);
   const [userFormId, setUserFormId] = useState(null);
   const [userForm, setUserForm] = useState({ email: '', role: 'viewer', technicianName: '', password: '' });
   const [userFormError, setUserFormError] = useState('');
@@ -576,7 +580,7 @@ const GeneratorMaintenanceApp = () => {
         setTicketNumber(Number(data.next));
       }
     } catch (error) {
-      console.log('Numéro de ticket par défaut: T01133');
+      console.log('Numéro de ticket par défaut: T01201');
     }
   };
 
@@ -609,6 +613,7 @@ const GeneratorMaintenanceApp = () => {
 
   const getCurrentActivityLabel = () => {
     if (showUsersModal) return 'Gestion des utilisateurs';
+    if (showAccountModal) return 'Mon compte';
     if (showPresenceModal) return 'Consultation présence';
     if (showCalendar) return 'Calendrier';
     if (showHistory) return 'Historique';
@@ -1384,7 +1389,7 @@ const GeneratorMaintenanceApp = () => {
       setSites([]);
       setFicheHistory([]);
       setInterventions([]);
-      setTicketNumber(1150);
+      setTicketNumber(1201);
       setFilterTechnician('all');
       setSelectedSite(null);
       setSiteToDelete(null);
@@ -1433,7 +1438,7 @@ const GeneratorMaintenanceApp = () => {
       console.error('Erreur lors de la suppression:', error);
       setSites([]);
       setFicheHistory([]);
-      setTicketNumber(1150);
+      setTicketNumber(1201);
       setShowResetConfirm(false);
       alert('✅ Données réinitialisées avec succès !');
     }
@@ -2273,6 +2278,9 @@ const GeneratorMaintenanceApp = () => {
         if (data?.user?.email) {
           setAuthUser(data.user);
           setLoginError('');
+          setShowAccountModal(false);
+          setAccountForm({ password: '', confirm: '' });
+          setAccountError('');
           await loadData();
           await loadFicheHistory();
           if (data?.user?.role === 'admin') {
@@ -2297,6 +2305,7 @@ const GeneratorMaintenanceApp = () => {
 
   const handleLogout = () => {
     setShowUsersModal(false);
+    setShowAccountModal(false);
     setShowPresenceModal(false);
     setShowCalendar(false);
     setShowHistory(false);
@@ -2312,6 +2321,9 @@ const GeneratorMaintenanceApp = () => {
     setLoginEmail('');
     setLoginPassword('');
     setLoginError('');
+    setAccountForm({ password: '', confirm: '' });
+    setAccountError('');
+    setAccountSaving(false);
 
     (async () => {
       try {
@@ -2786,12 +2798,24 @@ const GeneratorMaintenanceApp = () => {
                   )}
                 </p>
               </div>
-              <button
-                onClick={handleLogout}
-                className="bg-gray-200 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-300 text-sm font-semibold"
-              >
-                Déconnexion
-              </button>
+              <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
+                <button
+                  onClick={() => {
+                    setAccountForm({ password: '', confirm: '' });
+                    setAccountError('');
+                    setShowAccountModal(true);
+                  }}
+                  className="bg-slate-800 text-white px-3 py-2 rounded-lg hover:bg-slate-900 text-sm font-semibold"
+                >
+                  Mon compte
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="bg-gray-200 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-300 text-sm font-semibold"
+                >
+                  Déconnexion
+                </button>
+              </div>
             </div>
           </div>
 
@@ -3209,6 +3233,133 @@ const GeneratorMaintenanceApp = () => {
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {showAccountModal && authUser?.email && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full overflow-hidden flex flex-col">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-slate-800 text-white">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <Edit size={22} />
+                  Mon compte
+                </h2>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      setShowAccountModal(false);
+                      setAccountForm({ password: '', confirm: '' });
+                      setAccountError('');
+                    }}
+                    className="hover:bg-slate-900 p-2 rounded"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-4 sm:p-6">
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Email</label>
+                    <input
+                      type="email"
+                      value={authUser.email}
+                      readOnly
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-700"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Nouveau mot de passe</label>
+                    <input
+                      type="password"
+                      value={accountForm.password}
+                      onChange={(e) => {
+                        setAccountForm((prev) => ({ ...(prev || {}), password: e.target.value }));
+                        setAccountError('');
+                      }}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      placeholder="Minimum 6 caractères"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Confirmer le mot de passe</label>
+                    <input
+                      type="password"
+                      value={accountForm.confirm}
+                      onChange={(e) => {
+                        setAccountForm((prev) => ({ ...(prev || {}), confirm: e.target.value }));
+                        setAccountError('');
+                      }}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+
+                  {accountError && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">
+                      {accountError}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-4 border-t bg-white flex flex-col sm:flex-row sm:justify-end gap-2">
+                <button
+                  onClick={() => {
+                    setShowAccountModal(false);
+                    setAccountForm({ password: '', confirm: '' });
+                    setAccountError('');
+                  }}
+                  className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
+                  disabled={accountSaving}
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={() => {
+                    (async () => {
+                      try {
+                        if (accountSaving) return;
+                        const password = String(accountForm.password || '');
+                        const confirm = String(accountForm.confirm || '');
+                        if (!password) {
+                          setAccountError('Veuillez saisir un mot de passe.');
+                          return;
+                        }
+                        if (password.length < 6) {
+                          setAccountError('Mot de passe trop court (min 6 caractères).');
+                          return;
+                        }
+                        if (password !== confirm) {
+                          setAccountError('Les mots de passe ne correspondent pas.');
+                          return;
+                        }
+                        setAccountSaving(true);
+                        setAccountError('');
+                        await apiFetchJson('/api/auth/change-password', {
+                          method: 'POST',
+                          body: JSON.stringify({ password })
+                        });
+                        setShowAccountModal(false);
+                        setAccountForm({ password: '', confirm: '' });
+                        setAccountError('');
+                        alert('✅ Mot de passe mis à jour.');
+                      } catch (e) {
+                        setAccountError(e?.message || 'Erreur serveur.');
+                      } finally {
+                        setAccountSaving(false);
+                      }
+                    })();
+                  }}
+                  className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold"
+                  disabled={accountSaving}
+                >
+                  Enregistrer
+                </button>
+              </div>
             </div>
           </div>
         )}

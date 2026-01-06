@@ -1,5 +1,3 @@
-INSERT OR IGNORE INTO meta (meta_key, meta_value) VALUES ('ticket_number', '1200');
-
 UPDATE meta
 SET meta_value = '1200'
 WHERE meta_key = 'ticket_number'
