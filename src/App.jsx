@@ -2746,7 +2746,10 @@ const GeneratorMaintenanceApp = () => {
     const d = String(it?.plannedDate || '').slice(0, 10);
     if (!siteId || !d) return null;
 
-    const site = (Array.isArray(sites) ? sites : []).find((s) => String(s?.id) === siteId) || null;
+    const site =
+      (Array.isArray(sites) ? sites : []).find((s) => String(s?.id) === siteId) ||
+      (Array.isArray(sites) ? sites : []).find((s) => String(s?.idSite || '').trim() === siteId) ||
+      null;
     if (!site) return null;
 
     const normalizeAnyYmd = (v) => {
@@ -2798,7 +2801,11 @@ const GeneratorMaintenanceApp = () => {
     return techCalendarItemsInMonth
       .filter((it) => String(it?.plannedDate || '').slice(0, 10) === day)
       .map((it) => {
-        const site = (Array.isArray(sites) ? sites : []).find((s) => String(s?.id) === String(it?.siteId)) || null;
+        const sid = String(it?.siteId || '').trim();
+        const site =
+          (Array.isArray(sites) ? sites : []).find((s) => String(s?.id) === sid) ||
+          (Array.isArray(sites) ? sites : []).find((s) => String(s?.idSite || '').trim() === sid) ||
+          null;
         const matchInfo = techCalendarMatchInfoForItem(it);
         return { item: it, site, matchInfo };
       });
