@@ -3216,14 +3216,6 @@ const GeneratorMaintenanceApp = () => {
             <div className="text-sm text-gray-600">
               Interventions, fiches et compteurs (NH) dans une seule application.
             </div>
-            <img
-              src={STHIC_LOGO_SRC}
-              alt="STHIC"
-              className="h-12 mt-3 w-auto max-w-[240px] object-contain mx-auto"
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-              }}
-            />
           </div>
 
           <form onSubmit={handleLogin} className="space-y-3">
@@ -3266,6 +3258,15 @@ const GeneratorMaintenanceApp = () => {
             >
               Se connecter
             </button>
+
+            <img
+              src={STHIC_LOGO_SRC}
+              alt="STHIC"
+              className="h-14 mt-4 w-auto max-w-[260px] object-contain mx-auto"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
           </form>
         </div>
       </div>
@@ -6228,7 +6229,7 @@ const GeneratorMaintenanceApp = () => {
 
         {showTechDayDetailsModal && showTechCalendar && isTechnician && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full overflow-hidden">
+            <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
               <div className="flex justify-between items-center p-4 border-b bg-cyan-600 text-white">
                 <div className="font-bold">Détails du {techSelectedDate ? formatDate(techSelectedDate) : ''}</div>
                 <button
@@ -6240,7 +6241,7 @@ const GeneratorMaintenanceApp = () => {
                   <X size={18} />
                 </button>
               </div>
-              <div className="p-4 space-y-3">
+              <div className="p-4 overflow-y-auto flex-1">
                 {techSelectedDayEvents.length === 0 ? (
                   <div className="text-gray-600">Aucune activité planifiée ce jour.</div>
                 ) : (
