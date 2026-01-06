@@ -2749,22 +2749,31 @@ const GeneratorMaintenanceApp = () => {
     const site = (Array.isArray(sites) ? sites : []).find((s) => String(s?.id) === siteId) || null;
     if (!site) return null;
 
-    const epv1 = ymdShiftForWorkdays(String(site?.epv1 || '').slice(0, 10));
-    const epv2 = ymdShiftForWorkdays(String(site?.epv2 || '').slice(0, 10));
-    const epv3 = ymdShiftForWorkdays(String(site?.epv3 || '').slice(0, 10));
-    const epvDatesInMonth = [epv1, epv2, epv3]
-      .filter((v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')))
-      .filter((v) => String(v).slice(0, 7) === String(techCalendarMonth || '').trim());
+    const monthKey = String(techCalendarMonth || '').trim();
+    const plannedShifted = ymdShiftForWorkdays(d);
+
+    const epv1Raw = String(site?.epv1 || '').slice(0, 10);
+    const epv2Raw = String(site?.epv2 || '').slice(0, 10);
+    const epv3Raw = String(site?.epv3 || '').slice(0, 10);
+
+    const epv1 = ymdShiftForWorkdays(epv1Raw);
+    const epv2 = ymdShiftForWorkdays(epv2Raw);
+    const epv3 = ymdShiftForWorkdays(epv3Raw);
+
+    const epvShiftedAll = [epv1, epv2, epv3].filter((v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')));
+    const epvRawAll = [epv1Raw, epv2Raw, epv3Raw].filter((v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')));
+
+    const hasAnyEpvInMonth = [...epvRawAll, ...epvShiftedAll].some((v) => String(v).slice(0, 7) === monthKey);
 
     if (mt === 'fullpmwo') {
-      const matchesEpv = epvDatesInMonth.includes(d);
+      const matchesEpv = epvShiftedAll.includes(plannedShifted);
       if (matchesEpv) return { kind: 'PM', ticket, label: 'PM et Vidange' };
-      if (epvDatesInMonth.length === 0) return { kind: 'PM_SIMPLE', ticket, label: 'PM Simple' };
+      if (!hasAnyEpvInMonth) return { kind: 'PM_SIMPLE', ticket, label: 'PM Simple' };
       return null;
     }
 
     if (mt === 'dgservice') {
-      const matches = [epv2, epv3].includes(d);
+      const matches = [epv2, epv3].includes(plannedShifted);
       if (matches) return { kind: 'DG', ticket, label: 'Vidange Simple' };
       return null;
     }
