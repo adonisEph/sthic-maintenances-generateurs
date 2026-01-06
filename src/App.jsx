@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { AlertCircle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 import { useStorage } from './hooks/useStorage';
 import {
   calculateRegime,
@@ -378,6 +379,60 @@ const GeneratorMaintenanceApp = () => {
     exportBusyRef.current = Boolean(exportBusy);
   }, [exportBusy]);
 
+  const renderPwaUpdateBanner = () => {
+    if (!pwaUpdate?.available) return null;
+    return (
+      <div className="fixed bottom-4 left-0 right-0 z-[70] px-4">
+        <div className="max-w-3xl mx-auto bg-white border border-emerald-200 shadow-lg rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="min-w-0">
+            <div className="font-bold text-gray-900">Nouvelle version disponible</div>
+            <div className="text-sm text-gray-600">Clique sur “Mettre à jour” pour appliquer la mise à jour.</div>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => {
+                const reg = pwaUpdate?.registration;
+                const waiting = reg?.waiting;
+                if (!waiting) {
+                  try {
+                    localStorage.setItem(APP_VERSION_STORAGE_KEY, APP_VERSION);
+                  } catch (e) {
+                  }
+                  window.location.reload();
+                  return;
+                }
+                try {
+                  try {
+                    localStorage.setItem(APP_VERSION_STORAGE_KEY, APP_VERSION);
+                  } catch (e) {
+                  }
+                  waiting.postMessage({ type: 'SKIP_WAITING' });
+                } catch {
+                  window.location.reload();
+                  return;
+                }
+                setPwaUpdate((prev) => ({ ...(prev || {}), requested: true, forced: false }));
+              }}
+              className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold w-full sm:w-auto"
+            >
+              Mettre à jour
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPwaUpdate({ available: false, registration: null, requested: false, forced: false });
+              }}
+              className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 font-semibold w-full sm:w-auto"
+            >
+              Plus tard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   useEffect(() => {
     const onUpdate = (e) => {
       const reg = e?.detail?.registration || null;
@@ -392,6 +447,8 @@ const GeneratorMaintenanceApp = () => {
     if (!('serviceWorker' in navigator)) return;
     let reg = null;
     let onUpdateFound = null;
+    let onFocus = null;
+    let onVisibility = null;
 
     (async () => {
       try {
@@ -417,6 +474,23 @@ const GeneratorMaintenanceApp = () => {
         };
 
         reg.addEventListener('updatefound', onUpdateFound);
+
+        onFocus = () => {
+          try {
+            reg?.update?.();
+          } catch {
+            // ignore
+          }
+        };
+        onVisibility = () => {
+          try {
+            if (document.visibilityState === 'visible') reg?.update?.();
+          } catch {
+            // ignore
+          }
+        };
+        window.addEventListener('focus', onFocus);
+        document.addEventListener('visibilitychange', onVisibility);
       } catch {
         // ignore
       }
@@ -425,6 +499,8 @@ const GeneratorMaintenanceApp = () => {
     return () => {
       try {
         if (reg && onUpdateFound) reg.removeEventListener('updatefound', onUpdateFound);
+        if (onFocus) window.removeEventListener('focus', onFocus);
+        if (onVisibility) document.removeEventListener('visibilitychange', onVisibility);
       } catch {
         // ignore
       }
@@ -1777,32 +1853,55 @@ const GeneratorMaintenanceApp = () => {
 
     try {
       const fileBase = `Fiche_${String(siteForFiche?.nameSite || 'Site').replace(/[^a-z0-9_-]+/gi, '_')}_${new Date().toISOString().slice(0, 10)}`;
-      const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
 
-      await new Promise((resolve, reject) => {
-        try {
-          doc.html(el, {
-            x: 0,
-            y: 0,
-            width: 210,
-            windowWidth: Math.max(1100, el.scrollWidth || 0),
-            html2canvas: { scale: 2, useCORS: true },
-            callback: () => {
-              try {
-                doc.save(`${fileBase}.pdf`);
-                resolve();
-              } catch (e) {
-                reject(e);
-              }
-            }
-          });
-        } catch (e) {
-          reject(e);
-        }
+      await new Promise((r) => setTimeout(r, 80));
+
+      const canvas = await html2canvas(el, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: '#ffffff',
+        scrollX: 0,
+        scrollY: -window.scrollY,
+        windowWidth: Math.max(document.documentElement.clientWidth, el.scrollWidth || 0),
+        windowHeight: Math.max(document.documentElement.clientHeight, el.scrollHeight || 0)
       });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+
+      const pageW = 210;
+      const pageH = 297;
+      const imgW = pageW;
+      const imgH = (canvas.height * imgW) / canvas.width;
+
+      let heightLeft = imgH;
+      let position = 0;
+
+      pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH, undefined, 'FAST');
+      heightLeft -= pageH;
+
+      while (heightLeft > 0) {
+        position -= pageH;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH, undefined, 'FAST');
+        heightLeft -= pageH;
+      }
+
+      pdf.save(`${fileBase}.pdf`);
     } catch (e) {
       alert(e?.message || 'Erreur lors de la génération du PDF.');
     }
+  };
+
+  const goBatchFiche = (delta) => {
+    if (!isBatchFiche) return;
+    const nextIndex = Number(batchFicheIndex) + Number(delta || 0);
+    if (!Number.isFinite(nextIndex)) return;
+    if (nextIndex < 0 || nextIndex >= batchFicheSites.length) return;
+    setBatchFicheIndex(nextIndex);
+    setSiteForFiche(batchFicheSites[nextIndex].site);
+    setFicheContext({ plannedDate: batchFicheSites[nextIndex].date || null, epvType: batchFicheSites[nextIndex].type || null });
   };
 
   const handleMarkAsCompleted = (ficheId) => {
@@ -2563,61 +2662,17 @@ const GeneratorMaintenanceApp = () => {
         plannedDate: ymdShiftForWorkdays(String(p?.plannedDate || '').slice(0, 10)) || String(p?.plannedDate || '').slice(0, 10)
       }));
 
-    const hasAnyVidangeInMonthBySite = new Set(
-      list.map((i) => String(i?.siteId || '')).filter(Boolean)
-    );
-
-    const pmOnlyItems = [];
-    for (const p of pmInMonth) {
-      const mt = pmTypeKey(p?.maintenanceType);
-      if (mt !== 'fullpmwo') continue;
-      const siteId = String(p?.siteId || '').trim();
-      const plannedDate = String(p?.plannedDate || '').slice(0, 10);
-      if (!siteId || !plannedDate) continue;
-      if (hasAnyVidangeInMonthBySite.has(siteId)) continue;
-      pmOnlyItems.push({
-        id: `pm-only:${String(p?.pmNumber || p?.id || plannedDate)}`,
-        siteId,
-        plannedDate,
-        epvType: 'PM',
-        technicianName: String(authUser?.technicianName || ''),
-        technicianUserId: String(authUser?.id || ''),
-        status: 'sent',
-        _pmOnly: true,
-        pmNumber: p?.pmNumber ? String(p.pmNumber) : ''
-      });
-    }
-
-    const out = [...list, ...pmOnlyItems].filter(Boolean);
-    out.sort((a, b) => String(a.plannedDate || '').localeCompare(String(b.plannedDate || '')));
-    return out;
-  })();
-
-  const techCalendarMatchInfoForItem = (it) => {
-    if (!isTechnician) return null;
-    const pmTypeKey = (v) =>
-      String(v || '')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, '');
-
-    const month = String(techCalendarMonth || '').trim();
-    const pmInMonth = (Array.isArray(pmAssignments) ? pmAssignments : [])
-      .filter((p) => p && String(p?.plannedDate || '').slice(0, 7) === month)
-      .map((p) => ({
-        ...p,
-        plannedDate: ymdShiftForWorkdays(String(p?.plannedDate || '').slice(0, 10)) || String(p?.plannedDate || '').slice(0, 10)
-      }));
+    const hasAnyVidangeInMonthBySite = new Set(list.map((i) => String(i?.siteId || '')).filter(Boolean));
 
     const pmFullBySiteDate = (() => {
       const m = new Map();
       for (const p of pmInMonth) {
         const mt = pmTypeKey(p?.maintenanceType);
         if (mt !== 'fullpmwo') continue;
-        const k = `${String(p.siteId)}|${String(p.plannedDate).slice(0, 10)}`;
-        if (!m.has(k)) m.set(k, p);
+        const siteId = String(p?.siteId || '').trim();
+        const d = String(p?.plannedDate || '').slice(0, 10);
+        if (!siteId || !d) continue;
+        m.set(`${siteId}|${d}`, p);
       }
       return m;
     })();
@@ -2627,43 +2682,126 @@ const GeneratorMaintenanceApp = () => {
       for (const p of pmInMonth) {
         const mt = pmTypeKey(p?.maintenanceType);
         if (mt !== 'dgservice') continue;
-        const k = String(p.siteId);
-        if (!m.has(k)) m.set(k, []);
-        m.get(k).push(p);
+        const siteId = String(p?.siteId || '').trim();
+        if (!siteId) continue;
+        if (!m.has(siteId)) m.set(siteId, []);
+        m.get(siteId).push(p);
       }
       for (const [k, arr] of m.entries()) {
-        arr.sort((a, b) => String(a.plannedDate || '').localeCompare(String(b.plannedDate || '')));
+        arr.sort((a, b) => String(a?.plannedDate || '').localeCompare(String(b?.plannedDate || '')));
         m.set(k, arr);
       }
       return m;
     })();
 
-    if (it?._pmOnly) {
-      const ticket = it?.pmNumber ? String(it.pmNumber) : '';
-      return { kind: 'PM_SIMPLE', ticket, label: 'PM Simple' };
+    const pickNearestPmTicket = (arr, targetYmd) => {
+      if (!Array.isArray(arr) || arr.length === 0) return '';
+      const t = new Date(`${String(targetYmd).slice(0, 10)}T00:00:00`).getTime();
+      if (!Number.isFinite(t)) {
+        const first = arr[0];
+        return first?.pmNumber ? String(first.pmNumber) : '';
+      }
+      let best = arr[0];
+      let bestDiff = Infinity;
+      for (const p of arr) {
+        const pd = new Date(`${String(p?.plannedDate || '').slice(0, 10)}T00:00:00`).getTime();
+        if (!Number.isFinite(pd)) continue;
+        const diff = Math.abs(pd - t);
+        if (diff < bestDiff) {
+          best = p;
+          bestDiff = diff;
+        }
+      }
+      return best?.pmNumber ? String(best.pmNumber) : '';
+    };
+
+    const out = [];
+    const usedCombined = new Set();
+
+    for (const it of list) {
+      const siteId = String(it?.siteId || '').trim();
+      const d = String(it?.plannedDate || '').slice(0, 10);
+      const epv = String(it?.epvType || '').toUpperCase().trim();
+      if (!siteId || !d) continue;
+
+      if (epv === 'EPV1') {
+        const full = pmFullBySiteDate.get(`${siteId}|${d}`) || null;
+        if (full?.pmNumber) {
+          usedCombined.add(`${siteId}|${d}`);
+          out.push({
+            ...it,
+            id: `pm-vidange:${String(it?.id || `${siteId}-${d}`)}`,
+            epvType: 'EPV1',
+            _kind: 'PM_ET_VIDANGE',
+            _ticket: String(full.pmNumber)
+          });
+          continue;
+        }
+        out.push({ ...it, _kind: 'VIDANGE' });
+        continue;
+      }
+
+      if (epv === 'EPV2' || epv === 'EPV3') {
+        const dgList = pmDgBySite.get(siteId) || [];
+        const ticket = pickNearestPmTicket(dgList, d);
+        out.push({
+          ...it,
+          epvType: epv,
+          _kind: 'VIDANGE_SIMPLE',
+          _ticket: ticket
+        });
+        continue;
+      }
+
+      out.push({ ...it, _kind: 'VIDANGE' });
     }
 
-    const d = String(it?.plannedDate || '').slice(0, 10);
-    const siteId = String(it?.siteId || '');
-    const epv = String(it?.epvType || '').toUpperCase().trim();
-    const isSecondOrThird = epv === 'EPV2' || epv === 'EPV3';
-    if (!d || !siteId) return null;
+    for (const p of pmInMonth) {
+      const mt = pmTypeKey(p?.maintenanceType);
+      const siteId = String(p?.siteId || '').trim();
+      const d = String(p?.plannedDate || '').slice(0, 10);
+      if (!siteId || !d) continue;
 
-    const full = pmFullBySiteDate.get(`${siteId}|${d}`) || null;
-    if (full?.pmNumber) {
-      return { kind: 'PM', ticket: String(full.pmNumber), label: 'PM et Vidange' };
+      if (mt === 'fullpmwo') {
+        if (usedCombined.has(`${siteId}|${d}`)) continue;
+        const hasAnyVidange = hasAnyVidangeInMonthBySite.has(siteId);
+        if (hasAnyVidange) continue;
+        out.push({
+          id: `pm-full:${String(p?.pmNumber || p?.id || `${siteId}-${d}`)}`,
+          siteId,
+          plannedDate: d,
+          epvType: 'PM',
+          technicianName: String(authUser?.technicianName || ''),
+          technicianUserId: String(authUser?.id || ''),
+          status: 'sent',
+          _kind: 'PM_SIMPLE',
+          _ticket: p?.pmNumber ? String(p.pmNumber) : ''
+        });
+        continue;
+      }
     }
 
-    if (!isSecondOrThird) return null;
+    out.sort((a, b) => {
+      const da = String(a?.plannedDate || '');
+      const db = String(b?.plannedDate || '');
+      const c = da.localeCompare(db);
+      if (c !== 0) return c;
+      return String(a?.siteId || '').localeCompare(String(b?.siteId || ''));
+    });
 
-    const dgList = pmDgBySite.get(siteId) || [];
-    if (dgList.length === 0) {
-      return { kind: 'DG', ticket: '', label: 'Vidange Simple' };
-    }
+    return out;
+  })();
 
-    const idx = epv === 'EPV3' ? 1 : 0;
-    const chosen = dgList[idx] || dgList[0] || null;
-    return { kind: 'DG', ticket: chosen?.pmNumber ? String(chosen.pmNumber) : '', label: 'Vidange Simple' };
+  const techCalendarMatchInfoForItem = (it) => {
+    if (!isTechnician) return null;
+    const kind = String(it?._kind || '').trim();
+    const ticket = it?._ticket ? String(it._ticket) : '';
+    if (kind === 'PM_ET_VIDANGE') return { kind: 'PM', ticket, label: 'PM et Vidange' };
+    if (kind === 'PM_SIMPLE') return { kind: 'PM_SIMPLE', ticket, label: 'PM Simple' };
+    if (kind === 'VIDANGE_SIMPLE') return { kind: 'DG', ticket, label: 'Vidange Simple' };
+    if (kind === 'DG_SERVICE') return { kind: 'DG', ticket, label: 'DG Service' };
+    if (kind === 'PM') return { kind: 'PM', ticket, label: 'PM' };
+    return null;
   };
 
   const getTechCalendarEventsForDay = (dateStr) => {
@@ -3088,16 +3226,12 @@ const GeneratorMaintenanceApp = () => {
 
   if (!authUser) {
     return (
-      <div className="min-h-screen bg-gray-50 p-4 flex items-center justify-center">
-        <div className="bg-white w-full max-w-md rounded-xl shadow-lg p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="bg-cyan-600 text-white rounded-lg p-3">
-              <Activity size={22} />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-800">Connexion</h1>
-              <p className="text-sm text-gray-600">Gestion Maintenance & Vidanges</p>
-            </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        {renderPwaUpdateBanner()}
+        <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+          <div className="text-center mb-6">
+            <h1 className="text-2xl font-bold text-gray-800">GMA Maintenance</h1>
+            <p className="text-gray-600 mt-1">Connexion</p>
             <div className="ml-auto">
               <img
                 src={STHIC_LOGO_SRC}
@@ -3158,56 +3292,7 @@ const GeneratorMaintenanceApp = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 p-2 sm:p-4 md:p-6">
-      {pwaUpdate?.available && (
-        <div className="fixed bottom-4 left-0 right-0 z-[70] px-4">
-          <div className="max-w-3xl mx-auto bg-white border border-emerald-200 shadow-lg rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="min-w-0">
-              <div className="font-bold text-gray-900">Nouvelle version disponible</div>
-              <div className="text-sm text-gray-600">Clique sur “Mettre à jour” pour appliquer la mise à jour.</div>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-              <button
-                type="button"
-                onClick={() => {
-                  const reg = pwaUpdate?.registration;
-                  const waiting = reg?.waiting;
-                  if (!waiting) {
-                    try {
-                      localStorage.setItem(APP_VERSION_STORAGE_KEY, APP_VERSION);
-                    } catch (e) {
-                    }
-                    window.location.reload();
-                    return;
-                  }
-                  try {
-                    try {
-                      localStorage.setItem(APP_VERSION_STORAGE_KEY, APP_VERSION);
-                    } catch (e) {
-                    }
-                    waiting.postMessage({ type: 'SKIP_WAITING' });
-                  } catch {
-                    window.location.reload();
-                    return;
-                  }
-                  setPwaUpdate((prev) => ({ ...(prev || {}), requested: true, forced: false }));
-                }}
-                className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold w-full sm:w-auto"
-              >
-                Mettre à jour
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setPwaUpdate({ available: false, registration: null, requested: false, forced: false });
-                }}
-                className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 font-semibold w-full sm:w-auto"
-              >
-                Plus tard
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {renderPwaUpdateBanner()}
       {exportBusy && (
         <div className="fixed inset-0 z-[60] bg-black/30 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-5">
@@ -5350,8 +5435,7 @@ const GeneratorMaintenanceApp = () => {
                     const canCatchUpInMonth = Boolean(
                       isTechnician &&
                       technicianInterventionsTab === 'month' &&
-                      String(it?.plannedDate || '') &&
-                      String(it.plannedDate) <= String(today)
+                      String(it?.plannedDate || '')
                     );
                     const isOverdueInMonth = Boolean(
                       isTechnician &&
@@ -6517,9 +6601,27 @@ const GeneratorMaintenanceApp = () => {
         {showFicheModal && siteForFiche && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full my-8">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gray-100">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gray-100">
                 <h2 className="text-xl font-bold text-gray-800">📄 Fiche d'Intervention - Aperçu</h2>
                 <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 w-full sm:w-auto">
+                  {isBatchFiche && (
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <button
+                        onClick={() => goBatchFiche(-1)}
+                        disabled={batchFicheIndex <= 0}
+                        className="bg-slate-600 text-white px-3 py-2 rounded-lg hover:bg-slate-700 font-semibold disabled:bg-gray-400 w-full sm:w-auto"
+                      >
+                        Précédent
+                      </button>
+                      <button
+                        onClick={() => goBatchFiche(1)}
+                        disabled={batchFicheIndex >= batchFicheSites.length - 1}
+                        className="bg-slate-600 text-white px-3 py-2 rounded-lg hover:bg-slate-700 font-semibold disabled:bg-gray-400 w-full sm:w-auto"
+                      >
+                        Suivant
+                      </button>
+                    </div>
+                  )}
                   <button
                     onClick={handlePrintFiche}
                     className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold w-full sm:w-auto"
