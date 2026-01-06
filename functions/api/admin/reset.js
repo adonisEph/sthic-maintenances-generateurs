@@ -31,6 +31,7 @@ export async function onRequestPost({ request, env, data }) {
     const resPmItems = includePm ? await safeDelete('pm_items') : { meta: { changes: 0 } };
     const resPmImports = includePm ? await safeDelete('pm_imports') : { meta: { changes: 0 } };
     const resPmNocRows = includePm ? await safeDelete('pm_noc_rows') : { meta: { changes: 0 } };
+    const resPmAssignments = includePm ? await safeDelete('pm_assignments') : { meta: { changes: 0 } };
 
     await env.DB.prepare(
       "INSERT OR REPLACE INTO meta (meta_key, meta_value) VALUES ('ticket_number', '1200')"
@@ -49,7 +50,8 @@ export async function onRequestPost({ request, env, data }) {
           pmMonths: resPmMonths?.meta?.changes || 0,
           pmItems: resPmItems?.meta?.changes || 0,
           pmImports: resPmImports?.meta?.changes || 0,
-          pmNocRows: resPmNocRows?.meta?.changes || 0
+          pmNocRows: resPmNocRows?.meta?.changes || 0,
+          pmAssignments: resPmAssignments?.meta?.changes || 0
         }
       },
       { status: 200 }

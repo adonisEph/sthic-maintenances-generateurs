@@ -5,7 +5,6 @@ import { useStorage } from './hooks/useStorage';
 import {
   calculateRegime,
   calculateDiffNHs,
-  calculateDifferences,
   calculateEstimatedNH,
   calculateEPVDates,
   formatDate,
@@ -138,6 +137,11 @@ const GeneratorMaintenanceApp = () => {
   const [pmReprogSaving, setPmReprogSaving] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [calendarSendTechUserId, setCalendarSendTechUserId] = useState('');
+  const [pmSendTechUserId, setPmSendTechUserId] = useState('');
+  const [pmSendBusy, setPmSendBusy] = useState(false);
+  const [pmAssignments, setPmAssignments] = useState([]);
+  const [pmAssignmentsBusy, setPmAssignmentsBusy] = useState(false);
+  const [pmAssignmentsError, setPmAssignmentsError] = useState('');
   const [showDayDetailsModal, setShowDayDetailsModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedDayEvents, setSelectedDayEvents] = useState([]);
@@ -227,9 +231,11 @@ const GeneratorMaintenanceApp = () => {
         const add = (epvType, plannedDate) => {
           if (!plannedDate || plannedDate === 'N/A') return;
           if (String(plannedDate).slice(0, 7) !== month) return;
+          const shifted = ymdShiftForWorkdays(String(plannedDate).slice(0, 10));
+          const finalPlannedDate = shifted || String(plannedDate).slice(0, 10);
           interventionsToSend.push({
             siteId: s.id,
-            plannedDate,
+            plannedDate: finalPlannedDate,
             epvType,
             technicianUserId: techId,
             technicianName
@@ -262,6 +268,102 @@ const GeneratorMaintenanceApp = () => {
       await loadInterventions(month, 'all', 'all');
     } catch (e) {
       alert(e?.message || 'Erreur lors de l\'envoi du planning mensuel.');
+    }
+  };
+
+  const handleSendPmMonthPlanning = async () => {
+    try {
+      if (!isAdmin) return;
+
+      const techId = String(pmSendTechUserId || '').trim();
+      if (!techId) {
+        alert('Veuillez sélectionner un technicien.');
+        return;
+      }
+
+      const tech = (Array.isArray(users) ? users : []).find((u) => u && String(u.id) === techId) || null;
+      const technicianName = String(tech?.technicianName || '').trim();
+      if (!technicianName) {
+        alert("Le technicien sélectionné n'a pas de nom de technicien configuré.");
+        return;
+      }
+
+      const month = String(pmMonth || '').trim();
+      if (!/^\d{4}-\d{2}$/.test(month)) {
+        alert('Mois PM invalide.');
+        return;
+      }
+
+      const normalizeYmd = (v) => {
+        const s = v ? String(v).slice(0, 10) : '';
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+        return s;
+      };
+
+      const sitesByIdSite = new Map(
+        (Array.isArray(sites) ? sites : [])
+          .map(getUpdatedSite)
+          .filter(Boolean)
+          .map((s) => [String(s.idSite || '').trim(), s])
+          .filter(([k]) => Boolean(k))
+      );
+
+      const items = Array.isArray(pmItems) ? pmItems : [];
+      const assignments = [];
+      for (const it of items) {
+        const pmNumber = String(it?.number || '').trim();
+        if (!pmNumber) continue;
+
+        const siteCode = String(it?.siteCode || '').trim();
+        if (!siteCode) continue;
+
+        const site = sitesByIdSite.get(siteCode) || null;
+        if (!site) continue;
+
+        if (String(site?.technician || '').trim() !== technicianName) continue;
+
+        const rawDate = normalizeYmd(it?.reprogrammationDate) || normalizeYmd(it?.scheduledWoDate);
+        if (!rawDate) continue;
+
+        const shifted = ymdShiftForWorkdays(rawDate);
+        const plannedDate = shifted || rawDate;
+        if (String(plannedDate).slice(0, 7) !== month) continue;
+
+        assignments.push({
+          month,
+          pmNumber,
+          siteId: String(site.id),
+          siteCode,
+          plannedDate,
+          maintenanceType: it?.maintenanceType ? String(it.maintenanceType) : null,
+          technicianUserId: techId,
+          technicianName
+        });
+      }
+
+      if (assignments.length === 0) {
+        alert('Aucune maintenance PM à envoyer pour ce technicien sur ce mois.');
+        return;
+      }
+
+      const ok = window.confirm(
+        `Confirmer l'envoi du planning PM mensuel ?\n\nMois: ${month}\nTechnicien: ${technicianName}\nTickets: ${assignments.length}`
+      );
+      if (!ok) return;
+
+      setPmSendBusy(true);
+      const data = await apiFetchJson('/api/pm-assignments/send-month', {
+        method: 'POST',
+        body: JSON.stringify({ assignments })
+      });
+
+      alert(
+        `✅ Planning PM envoyé.\n\nCréées: ${Number(data?.created || 0)}\nMises à jour: ${Number(data?.updated || 0)}\nEn statut envoyée: ${Number(data?.sent || 0)}`
+      );
+    } catch (e) {
+      alert(e?.message || "Erreur lors de l'envoi du planning PM.");
+    } finally {
+      setPmSendBusy(false);
     }
   };
 
@@ -442,6 +544,22 @@ const GeneratorMaintenanceApp = () => {
     const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
     const to = `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
     return { from, to };
+  };
+
+  const loadPmAssignments = async (yyyyMm = interventionsMonth) => {
+    setPmAssignmentsError('');
+    setPmAssignmentsBusy(true);
+    try {
+      const { from, to } = monthRange(yyyyMm);
+      const qs = new URLSearchParams({ from, to });
+      const data = await apiFetchJson(`/api/pm-assignments?${qs.toString()}`, { method: 'GET' });
+      setPmAssignments(Array.isArray(data?.assignments) ? data.assignments : []);
+    } catch (e) {
+      setPmAssignments([]);
+      setPmAssignmentsError(e?.message || 'Erreur serveur.');
+    } finally {
+      setPmAssignmentsBusy(false);
+    }
   };
 
   const loadInterventions = async (
@@ -2202,6 +2320,75 @@ const GeneratorMaintenanceApp = () => {
     return String(tech?.technicianName || '').trim();
   })();
 
+  const calendarMonthKey = yyyyMmFromDate(currentMonth);
+  const calendarPrevMonthKey = (() => {
+    const raw = String(calendarMonthKey || '').trim();
+    const m = raw.match(/^(\d{4})-(\d{2})$/);
+    if (!m) return '';
+    const y = Number(m[1]);
+    const mm = Number(m[2]);
+    if (!Number.isFinite(y) || !Number.isFinite(mm) || mm < 1 || mm > 12) return '';
+    const prevY = mm === 1 ? y - 1 : y;
+    const prevM = mm === 1 ? 12 : mm - 1;
+    return `${prevY}-${String(prevM).padStart(2, '0')}`;
+  })();
+
+  const calendarPrevMonthRetiredSiteIds = (() => {
+    try {
+      if (!calendarPrevMonthKey) return new Set();
+      const raw = localStorage.getItem(`retired_sites_snapshot:${calendarPrevMonthKey}`);
+      const arr = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(arr)) return new Set();
+      return new Set(arr.map((v) => String(v)).filter(Boolean));
+    } catch {
+      return new Set();
+    }
+  })();
+
+  const interventionsPrevMonthKey = (() => {
+    const raw = String(interventionsMonth || '').trim();
+    const m = raw.match(/^(\d{4})-(\d{2})$/);
+    if (!m) return '';
+    const y = Number(m[1]);
+    const mm = Number(m[2]);
+    if (!Number.isFinite(y) || !Number.isFinite(mm) || mm < 1 || mm > 12) return '';
+    const py = mm === 1 ? y - 1 : y;
+    const pm = mm === 1 ? 12 : mm - 1;
+    return `${py}-${String(pm).padStart(2, '0')}`;
+  })();
+
+  const interventionsPrevMonthRetiredSiteIds = (() => {
+    try {
+      if (!interventionsPrevMonthKey) return new Set();
+      const raw = localStorage.getItem(`retired_sites_snapshot:${interventionsPrevMonthKey}`);
+      const arr = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(arr)) return new Set();
+      return new Set(arr.map((v) => String(v)).filter(Boolean));
+    } catch {
+      return new Set();
+    }
+  })();
+
+  useEffect(() => {
+    if (!showCalendar) return;
+    try {
+      const retiredIds = (Array.isArray(sites) ? sites : [])
+        .map(getUpdatedSite)
+        .filter((s) => s && s.retired)
+        .map((s) => String(s.id))
+        .filter(Boolean);
+      localStorage.setItem(`retired_sites_snapshot:${calendarMonthKey}`, JSON.stringify(retiredIds));
+    } catch {
+      // ignore
+    }
+  }, [showCalendar, calendarMonthKey, sites]);
+
+  useEffect(() => {
+    if (!showInterventions) return;
+    if (!isTechnician) return;
+    loadPmAssignments(interventionsMonth);
+  }, [showInterventions, isTechnician, interventionsMonth]);
+
   const calendarFilteredSites = sites
     .map(getUpdatedSite)
     .filter((site) => {
@@ -2213,24 +2400,46 @@ const GeneratorMaintenanceApp = () => {
     (Array.isArray(interventions) ? interventions : []).filter(Boolean).map((i) => [getInterventionKey(i.siteId, i.plannedDate, i.epvType), i])
   );
 
+  const ymdShiftForWorkdays = (ymd) => {
+    const v = String(ymd || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return '';
+    const d = new Date(`${v}T00:00:00`);
+    const dow = d.getDay();
+    if (dow === 6) {
+      d.setDate(d.getDate() - 1);
+      return d.toISOString().slice(0, 10);
+    }
+    if (dow === 0) {
+      d.setDate(d.getDate() + 1);
+      return d.toISOString().slice(0, 10);
+    }
+    return v;
+  };
+
   const getEventsForDay = (dateStr) => {
     if (!dateStr) return [];
     const events = [];
 
     calendarFilteredSites.forEach((site) => {
       if (site.retired) return;
-      if (site.epv1 === dateStr) {
-        const intervention = interventionsByKey.get(getInterventionKey(site.id, site.epv1, 'EPV1')) || null;
-        events.push({ site, type: 'EPV1', date: site.epv1, intervention });
-      }
-      if (site.epv2 === dateStr) {
-        const intervention = interventionsByKey.get(getInterventionKey(site.id, site.epv2, 'EPV2')) || null;
-        events.push({ site, type: 'EPV2', date: site.epv2, intervention });
-      }
-      if (site.epv3 === dateStr) {
-        const intervention = interventionsByKey.get(getInterventionKey(site.id, site.epv3, 'EPV3')) || null;
-        events.push({ site, type: 'EPV3', date: site.epv3, intervention });
-      }
+
+      const wasRetiredPrevMonth = calendarPrevMonthRetiredSiteIds.has(String(site.id));
+
+      const add = (type, rawDate) => {
+        const src = String(rawDate || '').slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(src)) return;
+        const shifted = ymdShiftForWorkdays(src);
+        if (shifted !== String(dateStr)) return;
+        const intervention =
+          interventionsByKey.get(getInterventionKey(site.id, shifted, type)) ||
+          interventionsByKey.get(getInterventionKey(site.id, src, type)) ||
+          null;
+        events.push({ site, type, date: shifted, originalDate: src, intervention, wasRetiredPrevMonth });
+      };
+
+      add('EPV1', site.epv1);
+      add('EPV2', site.epv2);
+      add('EPV3', site.epv3);
     });
 
     return events;
@@ -3366,7 +3575,7 @@ const GeneratorMaintenanceApp = () => {
 
         {showPm && canUsePm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col">
+            <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-7xl sm:max-h-[95vh]">
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-teal-800 text-white">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <TrendingUp size={22} />
@@ -3426,6 +3635,36 @@ const GeneratorMaintenanceApp = () => {
                       Exporter Excel
                     </button>
                   </div>
+
+                  {isAdmin && (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      <select
+                        value={pmSendTechUserId}
+                        onChange={(e) => setPmSendTechUserId(e.target.value)}
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                        disabled={pmBusy || pmSendBusy}
+                      >
+                        <option value="">-- Technicien --</option>
+                        {(Array.isArray(users) ? users : [])
+                          .filter((u) => u && u.role === 'technician')
+                          .slice()
+                          .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')))
+                          .map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.technicianName || u.email}
+                            </option>
+                          ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={handleSendPmMonthPlanning}
+                        className="bg-emerald-700 text-white px-3 py-2 rounded-lg hover:bg-emerald-800 text-sm font-semibold disabled:bg-gray-400"
+                        disabled={!pmSendTechUserId || pmBusy || pmSendBusy}
+                      >
+                        Envoyer planning PM
+                      </button>
+                    </div>
+                  )}
 
                   {isAdmin && (
                     <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
@@ -3600,6 +3839,7 @@ const GeneratorMaintenanceApp = () => {
                     }
                     if (reprogFilter && reprogFilter !== 'all') {
                       const st = effectiveReprogStatus(it);
+                      if (reprogFilter === 'any' && !st) return false;
                       if (reprogFilter === 'approved' && st !== 'APPROVED') return false;
                       if (reprogFilter === 'rejected' && st !== 'REJECTED') return false;
                       if (reprogFilter === 'pending' && st !== 'PENDING') return false;
@@ -3644,7 +3884,8 @@ const GeneratorMaintenanceApp = () => {
                     closed: 0,
                     wip: 0,
                     awaiting: 0,
-                    assigned: 0
+                    assigned: 0,
+                    reprog: 0
                   };
                   for (const it of baseFiltered) {
                     const b = bucketForState(it?.state);
@@ -3652,6 +3893,8 @@ const GeneratorMaintenanceApp = () => {
                     else if (b === 'wip') counts.wip += 1;
                     else if (b === 'awaiting') counts.awaiting += 1;
                     else counts.assigned += 1;
+
+                    if (effectiveReprogStatus(it)) counts.reprog += 1;
                   }
 
                   const cards = [
@@ -3659,42 +3902,79 @@ const GeneratorMaintenanceApp = () => {
                       key: 'total',
                       title: 'Total',
                       value: Number(counts.total || 0),
-                      className: 'bg-white border-gray-200 hover:bg-gray-50',
-                      onClick: () => setPmFilterState('all')
+                      className: 'bg-red-700 border-red-800 hover:bg-red-800',
+                      titleClassName: 'text-white/90',
+                      valueClassName: 'text-white',
+                      onClick: () => {
+                        setPmFilterState('all');
+                        setPmFilterReprog('all');
+                      }
                     },
                     {
                       key: 'closed',
                       title: 'Closed Complete',
                       value: Number(counts.closed || 0),
                       className: 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100',
-                      onClick: () => setPmFilterState('closed')
+                      titleClassName: 'text-gray-700',
+                      valueClassName: 'text-gray-900',
+                      onClick: () => {
+                        setPmFilterState('closed');
+                        setPmFilterReprog('all');
+                      }
                     },
                     {
                       key: 'wip',
                       title: 'Work in progress',
                       value: Number(counts.wip || 0),
-                      className: 'bg-blue-50 border-blue-200 hover:bg-blue-100',
-                      onClick: () => setPmFilterState('wip')
+                      className: 'bg-rose-100 border-rose-200 hover:bg-rose-200',
+                      titleClassName: 'text-gray-700',
+                      valueClassName: 'text-gray-900',
+                      onClick: () => {
+                        setPmFilterState('wip');
+                        setPmFilterReprog('all');
+                      }
                     },
                     {
                       key: 'awaiting',
                       title: 'Awaiting Closure',
                       value: Number(counts.awaiting || 0),
-                      className: 'bg-amber-50 border-amber-200 hover:bg-amber-100',
-                      onClick: () => setPmFilterState('awaiting')
+                      className: 'bg-white border-gray-200 hover:bg-gray-50',
+                      titleClassName: 'text-gray-700',
+                      valueClassName: 'text-gray-900',
+                      onClick: () => {
+                        setPmFilterState('awaiting');
+                        setPmFilterReprog('all');
+                      }
                     },
                     {
                       key: 'assigned',
                       title: 'Assigned',
                       value: Number(counts.assigned || 0),
+                      className: 'bg-amber-200 border-amber-300 hover:bg-amber-300',
+                      titleClassName: 'text-gray-700',
+                      valueClassName: 'text-gray-900',
+                      onClick: () => {
+                        setPmFilterState('assigned');
+                        setPmFilterReprog('all');
+                      }
+                    },
+                    {
+                      key: 'reprog',
+                      title: 'Reprogrammation',
+                      value: Number(counts.reprog || 0),
                       className: 'bg-slate-50 border-slate-200 hover:bg-slate-100',
-                      onClick: () => setPmFilterState('assigned')
+                      titleClassName: 'text-gray-700',
+                      valueClassName: 'text-gray-900',
+                      onClick: () => {
+                        setPmFilterState('all');
+                        setPmFilterReprog('any');
+                      }
                     }
                   ];
 
                   return (
                     <>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
                         {cards.map((c) => (
                           <button
                             key={c.key}
@@ -3703,8 +3983,8 @@ const GeneratorMaintenanceApp = () => {
                             className={`${c.className} border rounded-xl p-3 text-left`}
                             disabled={pmBusy}
                           >
-                            <div className="text-[11px] font-semibold text-gray-700">{c.title}</div>
-                            <div className="text-2xl font-bold text-gray-900 mt-1">{c.value}</div>
+                            <div className={`text-[11px] font-semibold ${c.titleClassName || 'text-gray-700'}`}>{c.title}</div>
+                            <div className={`text-2xl font-bold mt-1 ${c.valueClassName || 'text-gray-900'}`}>{c.value}</div>
                           </button>
                         ))}
                       </div>
@@ -3792,6 +4072,7 @@ const GeneratorMaintenanceApp = () => {
                               disabled={pmBusy}
                             >
                               <option value="all">Toutes</option>
+                              <option value="any">Toute reprogrammation</option>
                               <option value="pending">En attente</option>
                               <option value="approved">Approuvée</option>
                               <option value="rejected">Rejetée</option>
@@ -3827,21 +4108,21 @@ const GeneratorMaintenanceApp = () => {
                           <div className="text-xs text-gray-600">Tri: date planifiée puis ticket</div>
                         </div>
                         <div className="overflow-auto">
-                          <table className="min-w-[980px] w-full text-sm">
-                            <thead className="bg-white sticky top-0">
-                              <tr className="text-left text-xs text-gray-600 border-b border-gray-200">
-                                <th className="px-4 py-2">Ticket</th>
-                                <th className="px-4 py-2">État</th>
-                                <th className="px-4 py-2">Date planifiée</th>
-                                <th className="px-4 py-2">Site</th>
-                                <th className="px-4 py-2">Zone</th>
-                                <th className="px-4 py-2">Type</th>
-                                <th className="px-4 py-2">Assigné à</th>
-                                <th className="px-4 py-2">Clôture</th>
-                                <th className="px-4 py-2">Statut</th>
-                                <th className="px-4 py-2">Reprogrammation</th>
-                                <th className="px-4 py-2">Raisons</th>
-                                {isAdmin && <th className="px-4 py-2">Action</th>}
+                          <table className="min-w-[1100px] w-full text-sm">
+                            <thead className="bg-gray-50 sticky top-0 z-10">
+                              <tr className="text-left text-xs text-gray-700 border-b border-gray-200">
+                                <th className="px-3 py-2 font-semibold whitespace-nowrap">Ticket</th>
+                                <th className="px-3 py-2 font-semibold whitespace-nowrap">État</th>
+                                <th className="px-3 py-2 font-semibold whitespace-nowrap">Date planifiée</th>
+                                <th className="px-3 py-2 font-semibold whitespace-nowrap">Site</th>
+                                <th className="px-3 py-2 font-semibold whitespace-nowrap">Zone</th>
+                                <th className="px-3 py-2 font-semibold whitespace-nowrap">Type</th>
+                                <th className="px-3 py-2 font-semibold whitespace-nowrap">Assigné à</th>
+                                <th className="px-3 py-2 font-semibold whitespace-nowrap">Clôture</th>
+                                <th className="px-3 py-2 font-semibold whitespace-nowrap">Statut reprog.</th>
+                                <th className="px-3 py-2 font-semibold whitespace-nowrap">Date reprog.</th>
+                                <th className="px-3 py-2 font-semibold whitespace-nowrap">Raison</th>
+                                {isAdmin && <th className="px-3 py-2 font-semibold whitespace-nowrap">Action</th>}
                               </tr>
                             </thead>
                             <tbody>
@@ -3852,7 +4133,7 @@ const GeneratorMaintenanceApp = () => {
                                   </td>
                                 </tr>
                               ) : (
-                                tableFiltered.map((it) => {
+                                tableFiltered.map((it, idx) => {
                                   const bucket = bucketForState(it?.state);
                                   const badge = badgeForBucket(bucket);
                                   const sched = it?.scheduledWoDate ? String(it.scheduledWoDate).slice(0, 10) : '';
@@ -3863,24 +4144,24 @@ const GeneratorMaintenanceApp = () => {
                                   const siteLabel = [it?.siteName, it?.siteCode].filter(Boolean).join(' • ');
                                   const st = stateLabel(it?.state);
                                   return (
-                                    <tr key={it?.id || it?.number} className="border-b border-gray-100 hover:bg-gray-50">
-                                      <td className="px-4 py-2 font-semibold text-gray-900">{it?.number || '-'}</td>
-                                      <td className="px-4 py-2">
+                                    <tr key={it?.id || it?.number} className={`border-b border-gray-100 hover:bg-gray-50 ${idx % 2 === 1 ? 'bg-white' : 'bg-gray-50/40'}`}>
+                                      <td className="px-3 py-2 font-semibold text-gray-900 whitespace-nowrap">{it?.number || '-'}</td>
+                                      <td className="px-3 py-2 whitespace-nowrap">
                                         <span className={`inline-flex items-center border px-2 py-0.5 rounded-full text-xs font-semibold ${badge.cls}`}>
                                           {st}
                                         </span>
                                       </td>
-                                      <td className="px-4 py-2 text-gray-800">{sched || '-'}</td>
-                                      <td className="px-4 py-2 text-gray-800">{siteLabel || '-'}</td>
-                                      <td className="px-4 py-2 text-gray-800">{it?.zone || '-'}</td>
-                                      <td className="px-4 py-2 text-gray-800">{it?.maintenanceType || '-'}</td>
-                                      <td className="px-4 py-2 text-gray-800">{it?.assignedTo || '-'}</td>
-                                      <td className="px-4 py-2 text-gray-800">{closed || '-'}</td>
-                                      <td className="px-4 py-2 text-gray-800">{reprogStatus || '-'}</td>
-                                      <td className="px-4 py-2 text-gray-800">{reprog || '-'}</td>
-                                      <td className="px-4 py-2 text-gray-800">{reason || '-'}</td>
+                                      <td className="px-3 py-2 text-gray-800 whitespace-nowrap">{sched || '-'}</td>
+                                      <td className="px-3 py-2 text-gray-800 max-w-[260px] truncate" title={siteLabel || ''}>{siteLabel || '-'}</td>
+                                      <td className="px-3 py-2 text-gray-800 whitespace-nowrap">{it?.zone || '-'}</td>
+                                      <td className="px-3 py-2 text-gray-800 whitespace-nowrap">{it?.maintenanceType || '-'}</td>
+                                      <td className="px-3 py-2 text-gray-800 max-w-[200px] truncate" title={String(it?.assignedTo || '')}>{it?.assignedTo || '-'}</td>
+                                      <td className="px-3 py-2 text-gray-800 whitespace-nowrap">{closed || '-'}</td>
+                                      <td className="px-3 py-2 text-gray-800 whitespace-nowrap">{reprogStatus || '-'}</td>
+                                      <td className="px-3 py-2 text-gray-800 whitespace-nowrap">{reprog || '-'}</td>
+                                      <td className="px-3 py-2 text-gray-800 max-w-[260px] truncate" title={reason || ''}>{reason || '-'}</td>
                                       {isAdmin && (
-                                        <td className="px-4 py-2 text-gray-800">
+                                        <td className="px-3 py-2 text-gray-800 whitespace-nowrap">
                                           <button
                                             type="button"
                                             onClick={() => handlePmOpenReprog(it)}
@@ -4555,15 +4836,20 @@ const GeneratorMaintenanceApp = () => {
                           ]
                             .filter((ev) => ev.date && String(ev.date).slice(0, 7) === interventionsMonth)
                             .map((ev) => ({
-                              key: getInterventionKey(site.id, ev.date, ev.type),
+                              plannedDate: ymdShiftForWorkdays(String(ev.date).slice(0, 10)) || String(ev.date).slice(0, 10),
+                              originalDate: String(ev.date).slice(0, 10),
                               siteId: site.id,
                               siteName: site.nameSite,
                               technicianName: site.technician,
-                              plannedDate: ev.date,
+                              wasRetiredPrevMonth: interventionsPrevMonthRetiredSiteIds.has(String(site.id)),
                               epvType: ev.type
                             }));
                         })
                         .sort((a, b) => String(a.plannedDate).localeCompare(String(b.plannedDate)));
+
+                      plannedEvents.forEach((ev) => {
+                        ev.key = getInterventionKey(ev.siteId, ev.plannedDate, ev.epvType);
+                      });
 
                       const already = new Set(
                         interventions.map((i) => getInterventionKey(i.siteId, i.plannedDate, i.epvType))
@@ -4579,7 +4865,19 @@ const GeneratorMaintenanceApp = () => {
                             <div key={ev.key} className="border border-gray-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                               <div className="min-w-0">
                                 <div className="font-semibold text-gray-800 truncate">{ev.siteName}</div>
-                                <div className="text-xs text-gray-600">{ev.epvType} • {formatDate(ev.plannedDate)} • {ev.technicianName}</div>
+                                <div className="text-xs text-gray-600">
+                                  {ev.epvType} • {formatDate(ev.plannedDate)} • {ev.technicianName}
+                                  {ev.originalDate && String(ev.originalDate) !== String(ev.plannedDate) && (
+                                    <span className="ml-2 text-[11px] bg-slate-50 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full font-semibold">
+                                      Déplacée (origine: {formatDate(ev.originalDate)})
+                                    </span>
+                                  )}
+                                  {ev.wasRetiredPrevMonth && (
+                                    <span className="ml-2 text-[11px] bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">
+                                      Justif hors délais (retiré {interventionsPrevMonthKey || 'le mois passé'})
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                               <div className="flex items-center gap-2">
                                 {already.has(ev.key) ? (
@@ -4669,6 +4967,11 @@ const GeneratorMaintenanceApp = () => {
                                   {g.items.map((it) => {
                                     const site = siteById.get(String(it.siteId)) || null;
                                     const statusColor = it.status === 'done' ? 'bg-green-100 text-green-800 border-green-200' : it.status === 'sent' ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-amber-100 text-amber-800 border-amber-200';
+                                    const wasRetiredPrevMonth = Boolean(
+                                      interventionsPrevMonthRetiredSiteIds.has(String(it.siteId)) &&
+                                      String(interventionsMonth || '').trim() &&
+                                      String(it?.plannedDate || '').slice(0, 7) === String(interventionsMonth || '').trim()
+                                    );
                                     return (
                                       <div key={it.id} className="border border-gray-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                         <div className="min-w-0">
@@ -4678,6 +4981,11 @@ const GeneratorMaintenanceApp = () => {
                                         </div>
                                         <div className="flex items-center gap-2">
                                           <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{it.status}</span>
+                                          {wasRetiredPrevMonth && (
+                                            <span className="text-xs px-2 py-1 rounded border font-semibold bg-amber-50 text-amber-900 border-amber-200">
+                                              Justif hors délais (retiré {interventionsPrevMonthKey || 'mois-1'})
+                                            </span>
+                                          )}
                                         </div>
                                       </div>
                                     );
@@ -4705,10 +5013,85 @@ const GeneratorMaintenanceApp = () => {
                     return 2;
                   };
 
+                  const pmTypeKey = (v) =>
+                    String(v || '')
+                      .normalize('NFD')
+                      .replace(/[\u0300-\u036f]/g, '')
+                      .trim()
+                      .toLowerCase()
+                      .replace(/\s+/g, '');
+
+                  const pmInMonth = (Array.isArray(pmAssignments) ? pmAssignments : [])
+                    .filter((p) => p && String(p?.plannedDate || '').slice(0, 7) === String(interventionsMonth || '').trim());
+
+                  const pmFullBySiteDate = (() => {
+                    const m = new Map();
+                    for (const p of pmInMonth) {
+                      const mt = pmTypeKey(p?.maintenanceType);
+                      if (mt !== 'fullpmwo') continue;
+                      const k = `${String(p.siteId)}|${String(p.plannedDate).slice(0, 10)}`;
+                      if (!m.has(k)) m.set(k, p);
+                    }
+                    return m;
+                  })();
+
+                  const pmOnlyItems = (() => {
+                    if (!isTechnician) return [];
+                    const hasAnyVidangeInMonthBySite = new Set(
+                      list
+                        .filter((i) => i && String(i?.plannedDate || '').slice(0, 7) === String(month || ''))
+                        .map((i) => String(i?.siteId || ''))
+                        .filter(Boolean)
+                    );
+
+                    const out = [];
+                    for (const p of pmInMonth) {
+                      const mt = pmTypeKey(p?.maintenanceType);
+                      if (mt !== 'fullpmwo') continue;
+                      const siteId = String(p?.siteId || '').trim();
+                      const plannedDate = String(p?.plannedDate || '').slice(0, 10);
+                      if (!siteId || !plannedDate) continue;
+                      if (hasAnyVidangeInMonthBySite.has(siteId)) continue;
+                      out.push({
+                        id: `pm-only:${String(p?.pmNumber || p?.id || plannedDate)}`,
+                        siteId,
+                        plannedDate,
+                        epvType: 'PM',
+                        technicianName: String(authUser?.technicianName || ''),
+                        technicianUserId: String(authUser?.id || ''),
+                        status: 'sent',
+                        _pmOnly: true,
+                        pmNumber: p?.pmNumber ? String(p.pmNumber) : ''
+                      });
+                    }
+
+                    out.sort((a, b) => String(a.plannedDate || '').localeCompare(String(b.plannedDate || '')));
+                    return out;
+                  })();
+
+                  const pmDgBySite = (() => {
+                    const m = new Map();
+                    for (const p of pmInMonth) {
+                      const mt = pmTypeKey(p?.maintenanceType);
+                      if (mt !== 'dgservice') continue;
+                      const k = String(p.siteId);
+                      if (!m.has(k)) m.set(k, []);
+                      m.get(k).push(p);
+                    }
+                    for (const [k, arr] of m.entries()) {
+                      arr.sort((a, b) => String(a.plannedDate || '').localeCompare(String(b.plannedDate || '')));
+                      m.set(k, arr);
+                    }
+                    return m;
+                  })();
+
                   const todayItems = list
                     .filter((i) => i.plannedDate === today && i.status !== 'done')
                     .slice()
                     .sort((a, b) => statusRank(a.status) - statusRank(b.status));
+
+                  const todayPmOnly = pmOnlyItems.filter((p) => String(p.plannedDate || '') === String(today));
+                  const todayItemsWithPm = [...todayItems, ...todayPmOnly].sort((a, b) => statusRank(a.status) - statusRank(b.status));
 
                   const tomorrowRaw = list.filter((i) => i.plannedDate === tomorrow && i.status !== 'done');
                   const tomorrowSentCount = tomorrowRaw.filter((i) => i.status === 'sent').length;
@@ -4716,9 +5099,47 @@ const GeneratorMaintenanceApp = () => {
                     .slice()
                     .sort((a, b) => statusRank(a.status) - statusRank(b.status));
 
+                  const tomorrowPmOnly = pmOnlyItems.filter((p) => String(p.plannedDate || '') === String(tomorrow));
+                  const tomorrowItemsWithPm = [...tomorrowItems, ...tomorrowPmOnly].sort((a, b) => statusRank(a.status) - statusRank(b.status));
+
                   const renderItem = (it) => {
                     const site = siteById.get(String(it.siteId)) || null;
                     const statusColor = it.status === 'done' ? 'bg-green-100 text-green-800 border-green-200' : it.status === 'sent' ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-amber-100 text-amber-800 border-amber-200';
+                    const wasRetiredPrevMonth = Boolean(
+                      interventionsPrevMonthRetiredSiteIds.has(String(it.siteId)) &&
+                      String(interventionsMonth || '').trim() &&
+                      String(it?.plannedDate || '').slice(0, 7) === String(interventionsMonth || '').trim()
+                    );
+
+                    const matchInfo = (() => {
+                      if (!isTechnician) return null;
+                      if (it?._pmOnly) {
+                        const ticket = it?.pmNumber ? String(it.pmNumber) : '';
+                        return { kind: 'PM_SIMPLE', ticket, label: 'PM Simple' };
+                      }
+                      const d = String(it?.plannedDate || '').slice(0, 10);
+                      const siteId = String(it?.siteId || '');
+                      const epv = String(it?.epvType || '').toUpperCase().trim();
+                      const isSecondOrThird = epv === 'EPV2' || epv === 'EPV3';
+                      if (!d || !siteId) return null;
+
+                      const full = pmFullBySiteDate.get(`${siteId}|${d}`) || null;
+                      if (full?.pmNumber) {
+                        return { kind: 'PM', ticket: String(full.pmNumber), label: 'PM et Vidange' };
+                      }
+
+                      if (!isSecondOrThird) return null;
+
+                      const dgList = pmDgBySite.get(siteId) || [];
+                      if (dgList.length === 0) {
+                        return { kind: 'DG', ticket: '', label: 'Vidange Simple' };
+                      }
+
+                      const idx = epv === 'EPV3' ? 1 : 0;
+                      const chosen = dgList[idx] || dgList[0] || null;
+                      return { kind: 'DG', ticket: chosen?.pmNumber ? String(chosen.pmNumber) : '', label: 'Vidange Simple' };
+                    })();
+
                     const canCatchUpInMonth = Boolean(
                       isTechnician &&
                       technicianInterventionsTab === 'month' &&
@@ -4740,6 +5161,16 @@ const GeneratorMaintenanceApp = () => {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{it.status}</span>
+                          {isTechnician && matchInfo?.label && (
+                            <span className={`text-xs px-2 py-1 rounded border font-semibold ${matchInfo.kind === 'PM' || matchInfo.kind === 'PM_SIMPLE' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-800 border-slate-200'}`}>
+                              {matchInfo.label}{matchInfo.ticket ? ` • ${matchInfo.kind === 'PM' || matchInfo.kind === 'PM_SIMPLE' ? 'FullPMWO' : 'DG Service'}: ${matchInfo.ticket}` : ''}
+                            </span>
+                          )}
+                          {wasRetiredPrevMonth && (
+                            <span className="text-xs px-2 py-1 rounded border font-semibold bg-amber-50 text-amber-900 border-amber-200">
+                              Justif hors délais (retiré {interventionsPrevMonthKey || 'mois-1'})
+                            </span>
+                          )}
                           {isOverdueInMonth && (
                             <span className="text-xs px-2 py-1 rounded border font-semibold bg-red-100 text-red-800 border-red-200">
                               RETARD
@@ -4787,6 +5218,25 @@ const GeneratorMaintenanceApp = () => {
 
                   if (isTechnician) {
                     if (technicianInterventionsTab === 'month') {
+                      const prevMonth = (() => {
+                        const raw = String(month || '').trim();
+                        const m = raw.match(/^(\d{4})-(\d{2})$/);
+                        if (!m) return '';
+                        const y = Number(m[1]);
+                        const mm = Number(m[2]);
+                        if (!Number.isFinite(y) || !Number.isFinite(mm) || mm < 1 || mm > 12) return '';
+                        const py = mm === 1 ? y - 1 : y;
+                        const pm = mm === 1 ? 12 : mm - 1;
+                        return `${py}-${String(pm).padStart(2, '0')}`;
+                      })();
+
+                      const catchUpPrevMonthItems = list
+                        .filter((i) => i && i.status !== 'done')
+                        .filter((i) => {
+                          if (!prevMonth) return false;
+                          return String(i.plannedDate || '').slice(0, 7) === prevMonth;
+                        });
+
                       const monthItems = list
                         .filter((i) => i && i.status !== 'done')
                         .filter((i) => {
@@ -4794,8 +5244,11 @@ const GeneratorMaintenanceApp = () => {
                           return String(i.plannedDate || '').slice(0, 7) === month;
                         });
 
+                      const monthPmOnly = pmOnlyItems.filter((p) => String(p.plannedDate || '').slice(0, 7) === String(month));
+                      const merged = [...catchUpPrevMonthItems, ...monthItems, ...monthPmOnly].filter(Boolean);
+
                       const byDate = new Map();
-                      monthItems.forEach((it) => {
+                      merged.forEach((it) => {
                         const k = String(it.plannedDate || '');
                         if (!byDate.has(k)) byDate.set(k, []);
                         byDate.get(k).push(it);
@@ -4804,6 +5257,21 @@ const GeneratorMaintenanceApp = () => {
                       const dates = Array.from(byDate.keys()).sort((a, b) => String(a).localeCompare(String(b)));
                       return (
                         <div className="space-y-6">
+                          {pmAssignmentsBusy && (
+                            <div className="bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2 text-sm">
+                              Chargement du planning PM…
+                            </div>
+                          )}
+                          {pmAssignmentsError && !pmAssignmentsBusy && (
+                            <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2 text-sm">
+                              Planning PM indisponible: {pmAssignmentsError}
+                            </div>
+                          )}
+                          {catchUpPrevMonthItems.length > 0 && (
+                            <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2 text-sm">
+                              Rattrapage: <span className="font-semibold">{catchUpPrevMonthItems.length}</span> vidange(s) en retard du mois précédent affichée(s) dans ce mois.
+                            </div>
+                          )}
                           {dates.length === 0 ? (
                             <div className="text-sm text-gray-600">Aucune intervention.</div>
                           ) : (
@@ -4821,10 +5289,20 @@ const GeneratorMaintenanceApp = () => {
                     }
 
                     const selectedKey = technicianInterventionsTab === 'today' ? 'today' : 'tomorrow';
-                    const selected = selectedKey === 'today' ? todayItems : tomorrowItems;
-                    const title = selectedKey === 'today' ? "Aujourd'hui" : `Demain (${tomorrowItems.length} dont ${tomorrowSentCount} envoyée(s))`;
+                    const selected = selectedKey === 'today' ? todayItemsWithPm : tomorrowItemsWithPm;
+                    const title = selectedKey === 'today' ? "Aujourd'hui" : `Demain (${tomorrowItemsWithPm.length} dont ${tomorrowSentCount} envoyée(s))`;
                     return (
                       <div className="space-y-6">
+                        {pmAssignmentsBusy && (
+                          <div className="bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-3 py-2 text-sm">
+                            Chargement du planning PM…
+                          </div>
+                        )}
+                        {pmAssignmentsError && !pmAssignmentsBusy && (
+                          <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2 text-sm">
+                            Planning PM indisponible: {pmAssignmentsError}
+                          </div>
+                        )}
                         <div>
                           <div className="font-semibold text-gray-800 mb-2">{title}</div>
                           {selected.length === 0 ? (
@@ -5429,18 +5907,33 @@ const GeneratorMaintenanceApp = () => {
                       const daysUntil = getDaysUntil(evt.date);
                       const color = daysUntil !== null && daysUntil <= 3 ? 'bg-red-500' : daysUntil !== null && daysUntil <= 7 ? 'bg-orange-500' : 'bg-green-500';
                       const st = String(evt?.intervention?.status || '');
-                      const stColor = st === 'done' ? 'bg-green-100 text-green-800 border-green-200' : st === 'sent' ? 'bg-blue-100 text-blue-800 border-blue-200' : st === 'planned' ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-gray-100 text-gray-700 border-gray-200';
+                      const dot = st === 'done' ? 'bg-green-200' : st === 'sent' ? 'bg-blue-200' : st === 'planned' ? 'bg-amber-200' : 'bg-gray-200';
+                      const moved = evt?.originalDate && String(evt.originalDate) !== String(evt.date);
+
                       return (
                         <div key={`${evt.site.id}-${evt.type}`} className="border border-gray-200 rounded-lg p-3">
                           <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className="font-semibold text-gray-800">{evt.site.nameSite}</div>
-                              <div className="text-sm text-gray-600">{evt.site.idSite} | {evt.site.technician}</div>
+                            <div className="min-w-0">
+                              <div className="font-semibold text-gray-800 truncate">{evt.site.nameSite}</div>
+                              <div className="text-xs text-gray-600">
+                                {evt.type} • {formatDate(evt.date)} • {evt.site.technician}
+                                {moved && (
+                                  <span className="ml-2 text-[11px] bg-slate-50 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full font-semibold">
+                                    Déplacée (origine: {formatDate(evt.originalDate)})
+                                  </span>
+                                )}
+                                {evt?.wasRetiredPrevMonth && (
+                                  <span className="ml-2 text-[11px] bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">
+                                    Retiré le mois passé
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            <div className="flex flex-col items-end gap-1">
-                              <div className={`${color} text-white text-xs px-2 py-1 rounded`}>{evt.type}</div>
-                              <div className={`text-xs px-2 py-1 rounded border font-semibold ${stColor}`}>{st || 'non planifiée'}</div>
-                              <div className="text-sm text-gray-700">{formatDate(evt.date)}</div>
+                            <div className="text-right">
+                              <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-2 ${color} text-white`}>
+                                <span className={`inline-block w-2 h-2 rounded-full ${dot}`} />
+                                {daysUntil !== null ? `${daysUntil}j` : '-'}
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -5520,11 +6013,6 @@ const GeneratorMaintenanceApp = () => {
             </div>
           </div>
         )}
-
-        {/* Continuation dans un autre message - limite de caractères atteinte */}
-        <div className="bg-white rounded-lg shadow-md p-4 text-center">
-          <p className="text-gray-600">L'application est prête ! Les formulaires et tableaux sont fonctionnels.</p>
-        </div>
 
         {/* Modale Réinitialisation */}
         {showResetConfirm && (
@@ -6076,6 +6564,8 @@ const GeneratorMaintenanceApp = () => {
 
                       const isToday = new Date().toISOString().split('T')[0] === dateStr;
                       const isSelected = selectedDate === dateStr;
+                      const dow = new Date(`${dateStr}T00:00:00`).getDay();
+                      const isWeekend = dow === 0 || dow === 6;
 
                       days.push(
                         <button
@@ -6087,9 +6577,9 @@ const GeneratorMaintenanceApp = () => {
                             setSelectedDayEvents(events);
                             setShowDayDetailsModal(true);
                           }}
-                          className={`h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full hover:bg-gray-50 ${isToday ? 'border-blue-500 bg-blue-50' : 'border-gray-200'} ${isSelected ? 'ring-2 ring-cyan-500' : ''}`}
+                          className={`h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full hover:bg-gray-50 ${isToday ? 'border-blue-500 bg-blue-50' : 'border-gray-200'} ${isSelected ? 'ring-2 ring-cyan-500' : ''} ${isWeekend ? 'bg-gray-100 text-gray-400 hover:bg-gray-100' : ''}`}
                         >
-                          <div className="text-sm font-semibold text-gray-700">{day}</div>
+                          <div className={`text-sm font-semibold ${isWeekend ? 'text-gray-400' : 'text-gray-700'}`}>{day}</div>
                           {eventsForDay.length > 0 && (
                             <div className="text-xs space-y-1 mt-1">
                               {eventsForDay.slice(0, 2).map((ev) => {
@@ -6097,10 +6587,12 @@ const GeneratorMaintenanceApp = () => {
                                 const color = daysUntil <= 3 ? 'bg-red-500' : daysUntil <= 7 ? 'bg-orange-500' : 'bg-green-500';
                                 const st = String(ev?.intervention?.status || '');
                                 const dot = st === 'done' ? 'bg-green-200' : st === 'sent' ? 'bg-blue-200' : st === 'planned' ? 'bg-amber-200' : 'bg-gray-200';
+                                const moved = ev?.originalDate && String(ev.originalDate) !== String(ev.date);
                                 return (
                                   <div key={`${ev.site.id}-${ev.type}`} className={`${color} text-white px-1 rounded truncate flex items-center gap-1`}>
                                     <span className={`inline-block w-2 h-2 rounded-full ${dot}`} />
                                     <span className="truncate">{ev.site.nameSite}</span>
+                                    {moved && <span className="ml-auto text-[10px] font-bold opacity-90">↔</span>}
                                   </div>
                                 );
                               })}
