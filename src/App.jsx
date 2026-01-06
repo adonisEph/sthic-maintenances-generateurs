@@ -2463,6 +2463,18 @@ const GeneratorMaintenanceApp = () => {
     })();
   }, [showCalendar, authUser?.role, currentMonth]);
 
+  useEffect(() => {
+    if (!showPm) return;
+    if (!isAdmin) return;
+    (async () => {
+      try {
+        await refreshUsers();
+      } catch (e) {
+        // ignore
+      }
+    })();
+  }, [showPm, isAdmin]);
+
   const handleLogin = (e) => {
     e.preventDefault();
 
@@ -3601,74 +3613,88 @@ const GeneratorMaintenanceApp = () => {
               </div>
 
               <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-                <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-3 mb-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                    <label className="text-xs text-gray-600">Mois</label>
-                    <input
-                      type="month"
-                      value={pmMonth}
-                      onChange={async (e) => {
-                        const next = String(e.target.value || '').trim();
-                        setPmMonth(next);
-                        await refreshPmAll(next);
-                      }}
-                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      disabled={pmBusy}
-                    />
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        await refreshPmAll(pmMonth);
-                      }}
-                      className="bg-gray-200 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-300 text-sm font-semibold"
-                      disabled={pmBusy}
-                    >
-                      Rafraîchir
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handlePmExportExcel}
-                      className="bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-800 text-sm font-semibold flex items-center gap-2"
-                      disabled={pmBusy}
-                    >
-                      <Download size={16} />
-                      Exporter Excel
-                    </button>
+                <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 mb-4">
+                  <div className="xl:col-span-4 bg-gray-50 border border-gray-200 rounded-xl p-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-end">
+                      <div className="flex flex-col">
+                        <label className="text-xs font-semibold text-gray-700 mb-1">Mois</label>
+                        <input
+                          type="month"
+                          value={pmMonth}
+                          onChange={async (e) => {
+                            const next = String(e.target.value || '').trim();
+                            setPmMonth(next);
+                            await refreshPmAll(next);
+                          }}
+                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                          disabled={pmBusy}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await refreshPmAll(pmMonth);
+                        }}
+                        className="bg-gray-200 text-gray-900 px-3 py-2 rounded-lg hover:bg-gray-300 text-sm font-semibold"
+                        disabled={pmBusy}
+                      >
+                        Rafraîchir
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handlePmExportExcel}
+                        className="sm:col-span-2 bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-800 text-sm font-semibold flex items-center justify-center gap-2"
+                        disabled={pmBusy}
+                      >
+                        <Download size={16} />
+                        Exporter Excel
+                      </button>
+                    </div>
                   </div>
 
                   {isAdmin && (
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                      <select
-                        value={pmSendTechUserId}
-                        onChange={(e) => setPmSendTechUserId(e.target.value)}
-                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
-                        disabled={pmBusy || pmSendBusy}
-                      >
-                        <option value="">-- Technicien --</option>
-                        {(Array.isArray(users) ? users : [])
-                          .filter((u) => u && u.role === 'technician')
-                          .slice()
-                          .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')))
-                          .map((u) => (
-                            <option key={u.id} value={u.id}>
-                              {u.technicianName || u.email}
-                            </option>
-                          ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={handleSendPmMonthPlanning}
-                        className="bg-emerald-700 text-white px-3 py-2 rounded-lg hover:bg-emerald-800 text-sm font-semibold disabled:bg-gray-400"
-                        disabled={!pmSendTechUserId || pmBusy || pmSendBusy}
-                      >
-                        Envoyer planning PM
-                      </button>
+                    <div className="xl:col-span-4 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-end">
+                        <div className="flex flex-col">
+                          <label className="text-xs font-semibold text-emerald-900 mb-1">Technicien</label>
+                          <select
+                            value={pmSendTechUserId}
+                            onChange={(e) => setPmSendTechUserId(e.target.value)}
+                            className="border border-emerald-200 rounded-lg px-3 py-2 text-sm bg-white"
+                            disabled={pmBusy || pmSendBusy}
+                          >
+                            <option value="">-- Technicien --</option>
+                            {(Array.isArray(users) ? users : [])
+                              .filter((u) => u && u.role === 'technician')
+                              .slice()
+                              .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')))
+                              .map((u) => (
+                                <option key={u.id} value={u.id}>
+                                  {u.technicianName || u.email}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleSendPmMonthPlanning}
+                          className="bg-emerald-700 text-white px-3 py-2 rounded-lg hover:bg-emerald-800 text-sm font-semibold disabled:bg-gray-400"
+                          disabled={!pmSendTechUserId || pmBusy || pmSendBusy}
+                        >
+                          Envoyer planning PM
+                        </button>
+                      </div>
+                      {(Array.isArray(users) ? users : []).filter((u) => u && u.role === 'technician').length === 0 && (
+                        <div className="mt-2 text-xs text-emerald-900/80">
+                          Aucun technicien trouvé. Vérifie que des utilisateurs "technician" existent dans le module Utilisateurs.
+                        </div>
+                      )}
                     </div>
                   )}
 
                   {isAdmin && (
-                    <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
-                      <div className="grid grid-cols-2 sm:flex sm:flex-row gap-2">
+                    <div className="xl:col-span-4 bg-white border border-gray-200 rounded-xl p-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                         <label
                           className={`bg-emerald-700 text-white px-3 py-2 rounded-lg flex items-center justify-center gap-2 text-sm font-semibold ${
                             pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-emerald-800 cursor-pointer'
@@ -3700,9 +3726,7 @@ const GeneratorMaintenanceApp = () => {
                             disabled={pmBusy}
                           />
                         </label>
-                      </div>
 
-                      <div className="grid grid-cols-2 sm:flex sm:flex-row gap-2 sm:pl-2 sm:border-l sm:border-gray-200">
                         <button
                           type="button"
                           onClick={() => handlePmReset('imports')}
@@ -4102,15 +4126,15 @@ const GeneratorMaintenanceApp = () => {
                         </div>
                       </div>
 
-                      <div className="border border-gray-200 rounded-xl overflow-hidden mb-6">
-                        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-3">
+                      <div className="border border-slate-300 rounded-xl overflow-hidden mb-6">
+                        <div className="px-4 py-3 bg-slate-100 border-b border-slate-300 flex items-center justify-between gap-3">
                           <div className="font-semibold text-gray-800">Tickets</div>
                           <div className="text-xs text-gray-600">Tri: date planifiée puis ticket</div>
                         </div>
                         <div className="overflow-auto">
                           <table className="min-w-[1100px] w-full text-sm">
-                            <thead className="bg-gray-50 sticky top-0 z-10">
-                              <tr className="text-left text-xs text-gray-700 border-b border-gray-200">
+                            <thead className="bg-slate-100 sticky top-0 z-10">
+                              <tr className="text-left text-xs text-slate-800 border-b border-slate-300">
                                 <th className="px-3 py-2 font-semibold whitespace-nowrap">Ticket</th>
                                 <th className="px-3 py-2 font-semibold whitespace-nowrap">État</th>
                                 <th className="px-3 py-2 font-semibold whitespace-nowrap">Date planifiée</th>
@@ -4144,22 +4168,22 @@ const GeneratorMaintenanceApp = () => {
                                   const siteLabel = [it?.siteName, it?.siteCode].filter(Boolean).join(' • ');
                                   const st = stateLabel(it?.state);
                                   return (
-                                    <tr key={it?.id || it?.number} className={`border-b border-gray-100 hover:bg-gray-50 ${idx % 2 === 1 ? 'bg-white' : 'bg-gray-50/40'}`}>
-                                      <td className="px-3 py-2 font-semibold text-gray-900 whitespace-nowrap">{it?.number || '-'}</td>
+                                    <tr key={it?.id || it?.number} className={`border-b border-slate-200 hover:bg-slate-100/60 ${idx % 2 === 1 ? 'bg-white' : 'bg-slate-50'}`}>
+                                      <td className="px-3 py-2 font-semibold text-slate-900 whitespace-nowrap">{it?.number || '-'}</td>
                                       <td className="px-3 py-2 whitespace-nowrap">
                                         <span className={`inline-flex items-center border px-2 py-0.5 rounded-full text-xs font-semibold ${badge.cls}`}>
                                           {st}
                                         </span>
                                       </td>
-                                      <td className="px-3 py-2 text-gray-800 whitespace-nowrap">{sched || '-'}</td>
-                                      <td className="px-3 py-2 text-gray-800 max-w-[260px] truncate" title={siteLabel || ''}>{siteLabel || '-'}</td>
-                                      <td className="px-3 py-2 text-gray-800 whitespace-nowrap">{it?.zone || '-'}</td>
-                                      <td className="px-3 py-2 text-gray-800 whitespace-nowrap">{it?.maintenanceType || '-'}</td>
-                                      <td className="px-3 py-2 text-gray-800 max-w-[200px] truncate" title={String(it?.assignedTo || '')}>{it?.assignedTo || '-'}</td>
-                                      <td className="px-3 py-2 text-gray-800 whitespace-nowrap">{closed || '-'}</td>
-                                      <td className="px-3 py-2 text-gray-800 whitespace-nowrap">{reprogStatus || '-'}</td>
-                                      <td className="px-3 py-2 text-gray-800 whitespace-nowrap">{reprog || '-'}</td>
-                                      <td className="px-3 py-2 text-gray-800 max-w-[260px] truncate" title={reason || ''}>{reason || '-'}</td>
+                                      <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{sched || '-'}</td>
+                                      <td className="px-3 py-2 text-slate-900 max-w-[260px] truncate" title={siteLabel || ''}>{siteLabel || '-'}</td>
+                                      <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.zone || '-'}</td>
+                                      <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.maintenanceType || '-'}</td>
+                                      <td className="px-3 py-2 text-slate-900 max-w-[200px] truncate" title={String(it?.assignedTo || '')}>{it?.assignedTo || '-'}</td>
+                                      <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{closed || '-'}</td>
+                                      <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{reprogStatus || '-'}</td>
+                                      <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{reprog || '-'}</td>
+                                      <td className="px-3 py-2 text-slate-900 max-w-[260px] truncate" title={reason || ''}>{reason || '-'}</td>
                                       {isAdmin && (
                                         <td className="px-3 py-2 text-gray-800 whitespace-nowrap">
                                           <button
@@ -5909,6 +5933,14 @@ const GeneratorMaintenanceApp = () => {
                       const st = String(evt?.intervention?.status || '');
                       const dot = st === 'done' ? 'bg-green-200' : st === 'sent' ? 'bg-blue-200' : st === 'planned' ? 'bg-amber-200' : 'bg-gray-200';
                       const moved = evt?.originalDate && String(evt.originalDate) !== String(evt.date);
+                      const daysLabel =
+                        daysUntil === null
+                          ? '-'
+                          : daysUntil < 0
+                            ? `RETARD ${Math.abs(daysUntil)}j`
+                            : daysUntil === 0
+                              ? "AUJOURD'HUI"
+                              : `${daysUntil}j`;
 
                       return (
                         <div key={`${evt.site.id}-${evt.type}`} className="border border-gray-200 rounded-lg p-3">
@@ -5932,7 +5964,7 @@ const GeneratorMaintenanceApp = () => {
                             <div className="text-right">
                               <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-2 ${color} text-white`}>
                                 <span className={`inline-block w-2 h-2 rounded-full ${dot}`} />
-                                {daysUntil !== null ? `${daysUntil}j` : '-'}
+                                {daysLabel}
                               </div>
                             </div>
                           </div>
@@ -6572,14 +6604,16 @@ const GeneratorMaintenanceApp = () => {
                           key={day}
                           type="button"
                           onClick={() => {
+                            if (isWeekend) return;
                             const events = getEventsForDay(dateStr);
                             setSelectedDate(dateStr);
                             setSelectedDayEvents(events);
                             setShowDayDetailsModal(true);
                           }}
-                          className={`h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full hover:bg-gray-50 ${isToday ? 'border-blue-500 bg-blue-50' : 'border-gray-200'} ${isSelected ? 'ring-2 ring-cyan-500' : ''} ${isWeekend ? 'bg-gray-100 text-gray-400 hover:bg-gray-100' : ''}`}
+                          disabled={isWeekend}
+                          className={`h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full ${isWeekend ? 'bg-slate-200/70 text-slate-500 cursor-not-allowed' : 'hover:bg-gray-50'} ${isToday ? 'border-blue-500 bg-blue-50' : 'border-gray-300'} ${isSelected ? 'ring-2 ring-cyan-500' : ''} ${isWeekend ? 'hover:bg-slate-200/70' : ''}`}
                         >
-                          <div className={`text-sm font-semibold ${isWeekend ? 'text-gray-400' : 'text-gray-700'}`}>{day}</div>
+                          <div className={`text-sm font-semibold ${isWeekend ? 'text-slate-500' : 'text-gray-700'}`}>{day}</div>
                           {eventsForDay.length > 0 && (
                             <div className="text-xs space-y-1 mt-1">
                               {eventsForDay.slice(0, 2).map((ev) => {
