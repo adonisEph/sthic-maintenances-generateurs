@@ -3230,18 +3230,25 @@ const GeneratorMaintenanceApp = () => {
         {renderPwaUpdateBanner()}
         <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
           <div className="text-center mb-6">
-            <h1 className="text-2xl font-bold text-gray-800">GMA Maintenance</h1>
-            <p className="text-gray-600 mt-1">Connexion</p>
-            <div className="ml-auto">
-              <img
-                src={STHIC_LOGO_SRC}
-                alt="STHIC"
-                className="h-14 w-auto max-w-[240px] object-contain"
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none';
-                }}
-              />
+            <div className="w-16 h-16 mx-auto bg-cyan-600 rounded-full flex items-center justify-center text-white mb-4">
+              <Activity size={28} />
             </div>
+            <h1 className="text-2xl font-bold text-gray-800">Gestion Maintenance & Vidanges</h1>
+            <p className="text-gray-600 mt-1">Connexion</p>
+            <div className="text-sm text-gray-600 mt-3">
+              Planifie, suis et historise les vidanges de tes générateurs.
+            </div>
+            <div className="text-sm text-gray-600">
+              Interventions, fiches et compteurs (NH) dans une seule application.
+            </div>
+            <img
+              src={STHIC_LOGO_SRC}
+              alt="STHIC"
+              className="h-12 mt-3 w-auto max-w-[240px] object-contain mx-auto"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
           </div>
 
           <form onSubmit={handleLogin} className="space-y-3">
