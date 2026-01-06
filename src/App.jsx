@@ -2746,11 +2746,11 @@ const GeneratorMaintenanceApp = () => {
     const d = String(it?.plannedDate || '').slice(0, 10);
     if (!siteId || !d) return null;
 
-    const site =
+    const rawSite =
       (Array.isArray(sites) ? sites : []).find((s) => String(s?.id) === siteId) ||
       (Array.isArray(sites) ? sites : []).find((s) => String(s?.idSite || '').trim() === siteId) ||
       null;
-    if (!site) return null;
+    if (!rawSite) return null;
 
     const normalizeAnyYmd = (v) => {
       const s = v == null ? '' : String(v).trim();
@@ -2762,13 +2762,15 @@ const GeneratorMaintenanceApp = () => {
       return '';
     };
 
+    const computedSite = getUpdatedSite(rawSite);
+
     const monthKey = String(techCalendarMonth || '').trim();
     const plannedYmd = normalizeAnyYmd(d);
     const plannedShifted = ymdShiftForWorkdays(plannedYmd) || plannedYmd;
 
-    const epv1Raw = normalizeAnyYmd(site?.epv1);
-    const epv2Raw = normalizeAnyYmd(site?.epv2);
-    const epv3Raw = normalizeAnyYmd(site?.epv3);
+    const epv1Raw = normalizeAnyYmd(rawSite?.epv1) || normalizeAnyYmd(computedSite?.epv1);
+    const epv2Raw = normalizeAnyYmd(rawSite?.epv2) || normalizeAnyYmd(computedSite?.epv2);
+    const epv3Raw = normalizeAnyYmd(rawSite?.epv3) || normalizeAnyYmd(computedSite?.epv3);
 
     const epv1 = ymdShiftForWorkdays(epv1Raw) || epv1Raw;
     const epv2 = ymdShiftForWorkdays(epv2Raw) || epv2Raw;
@@ -2802,10 +2804,11 @@ const GeneratorMaintenanceApp = () => {
       .filter((it) => String(it?.plannedDate || '').slice(0, 10) === day)
       .map((it) => {
         const sid = String(it?.siteId || '').trim();
-        const site =
+        const rawSite =
           (Array.isArray(sites) ? sites : []).find((s) => String(s?.id) === sid) ||
           (Array.isArray(sites) ? sites : []).find((s) => String(s?.idSite || '').trim() === sid) ||
           null;
+        const site = rawSite ? getUpdatedSite(rawSite) : null;
         const matchInfo = techCalendarMatchInfoForItem(it);
         return { item: it, site, matchInfo };
       });
