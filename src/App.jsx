@@ -1788,6 +1788,7 @@ const GeneratorMaintenanceApp = () => {
           if (Number.isFinite(Number(data?.ticketNumber))) {
             usedTicketNumber = Number(data.ticketNumber);
             setTicketNumber(usedTicketNumber);
+            await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
           }
         } catch (e) {
           // fallback: keep local state
