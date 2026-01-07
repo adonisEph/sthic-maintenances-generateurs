@@ -1852,6 +1852,20 @@ const GeneratorMaintenanceApp = () => {
     }
 
     try {
+      let usedTicketNumber = ticketNumber;
+      if (isAdmin) {
+        try {
+          const data = await apiFetchJson('/api/meta/ticket-number/next', { method: 'POST', body: JSON.stringify({}) });
+          if (Number.isFinite(Number(data?.ticketNumber))) {
+            usedTicketNumber = Number(data.ticketNumber);
+            setTicketNumber(usedTicketNumber);
+            await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          }
+        } catch {
+          // ignore
+        }
+      }
+
       const fileBase = `Fiche_${String(siteForFiche?.nameSite || 'Site').replace(/[^a-z0-9_-]+/gi, '_')}_${new Date().toISOString().slice(0, 10)}`;
 
       await new Promise((r) => setTimeout(r, 80));
@@ -1862,9 +1876,9 @@ const GeneratorMaintenanceApp = () => {
         allowTaint: false,
         backgroundColor: '#ffffff',
         scrollX: 0,
-        scrollY: -window.scrollY,
-        windowWidth: Math.max(document.documentElement.clientWidth, el.scrollWidth || 0),
-        windowHeight: Math.max(document.documentElement.clientHeight, el.scrollHeight || 0)
+        scrollY: 0,
+        windowWidth: Math.max(1, Number(el.scrollWidth || el.clientWidth || 0)),
+        windowHeight: Math.max(1, Number(el.scrollHeight || el.clientHeight || 0))
       });
 
       const imgData = canvas.toDataURL('image/png');
@@ -1872,23 +1886,63 @@ const GeneratorMaintenanceApp = () => {
 
       const pageW = 210;
       const pageH = 297;
-      const imgW = pageW;
-      const imgH = (canvas.height * imgW) / canvas.width;
-
-      let heightLeft = imgH;
-      let position = 0;
-
-      pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH, undefined, 'FAST');
-      heightLeft -= pageH;
-
-      while (heightLeft > 0) {
-        position -= pageH;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH, undefined, 'FAST');
-        heightLeft -= pageH;
+      let imgW = pageW;
+      let imgH = (canvas.height * imgW) / canvas.width;
+      if (imgH > pageH) {
+        const s = pageH / imgH;
+        imgW *= s;
+        imgH *= s;
       }
+      const x = (pageW - imgW) / 2;
+      const y = (pageH - imgH) / 2;
+      pdf.addImage(imgData, 'PNG', x, y, imgW, imgH, undefined, 'FAST');
 
       pdf.save(`${fileBase}.pdf`);
+
+      if (isAdmin && Number.isFinite(Number(usedTicketNumber))) {
+        const newFiche = {
+          id: Date.now(),
+          ticketNumber: `T${String(usedTicketNumber).padStart(5, '0')}`,
+          siteId: siteForFiche.id,
+          siteName: siteForFiche.nameSite,
+          technician: siteForFiche.technician,
+          dateGenerated: new Date().toISOString(),
+          status: 'En attente',
+          nh1DV: siteForFiche.nh1DV,
+          plannedDate: ficheContext?.plannedDate || null,
+          epvType: ficheContext?.epvType || null,
+          createdBy: authUser?.email || null
+        };
+
+        setFicheHistory((prev) => {
+          const updatedHistory = [newFiche, ...prev];
+          saveFicheHistory(updatedHistory);
+          return updatedHistory;
+        });
+
+        try {
+          await loadTicketNumber();
+        } catch {
+          // ignore
+        }
+      }
+
+      if (isAdmin && isBatchFiche) {
+        const nextIndex = batchFicheIndex + 1;
+        if (nextIndex < batchFicheSites.length) {
+          setBatchFicheIndex(nextIndex);
+          setSiteForFiche(batchFicheSites[nextIndex].site);
+          setFicheContext({ plannedDate: batchFicheSites[nextIndex].date || null, epvType: batchFicheSites[nextIndex].type || null });
+        } else {
+          setIsBatchFiche(false);
+          setBatchFicheSites([]);
+          setBatchFicheIndex(0);
+          setShowFicheModal(false);
+          setSiteForFiche(null);
+          setBannerImage('');
+          setFicheContext(null);
+        }
+      }
     } catch (e) {
       alert(e?.message || 'Erreur lors de la génération du PDF.');
     }
@@ -6576,7 +6630,6 @@ const GeneratorMaintenanceApp = () => {
                   Annuler
                 </button>
               </div>
-              <ModalWatermark className="h-14" />
             </div>
           </div>
         )}
@@ -6611,7 +6664,6 @@ const GeneratorMaintenanceApp = () => {
               >
                 Annuler
               </button>
-              <ModalWatermark className="h-14" />
             </div>
           </div>
         )}
@@ -6671,7 +6723,7 @@ const GeneratorMaintenanceApp = () => {
               </div>
 
               <div className="relative border-b bg-white h-0">
-                <ModalWatermark className="h-20" />
+                <div className="h-20" />
               </div>
 
               <div className="bg-white p-8 overflow-auto" style={{maxHeight: '80vh'}}>
@@ -6769,11 +6821,6 @@ const GeneratorMaintenanceApp = () => {
                     </div>
                   </div>
 
-                  <div className="no-print mt-6 p-4 bg-blue-50 border border-blue-200 rounded text-center">
-                    <p className="text-sm text-gray-700">
-                      💡 <strong>Astuce :</strong> Utilisez <kbd className="px-2 py-1 bg-white border rounded">Ctrl+P</kbd> (Windows) ou <kbd className="px-2 py-1 bg-white border rounded">Cmd+P</kbd> (Mac) pour imprimer cette fiche
-                    </p>
-                  </div>
                 </div>
               </div>
             </div>
