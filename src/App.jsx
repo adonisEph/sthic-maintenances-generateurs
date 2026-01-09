@@ -784,6 +784,32 @@ const GeneratorMaintenanceApp = () => {
     }
   };
 
+  const handleSetNextTicketNumber = async () => {
+    try {
+      if (!isAdmin) return;
+      const raw = window.prompt('Définir le prochain ticket (ex: 1250 pour T01250)', String(ticketNumber || 1250));
+      if (raw == null) return;
+      const next = Number(String(raw).replace(/[^0-9]+/g, ''));
+      if (!Number.isFinite(next) || Math.floor(next) !== next || next < 1) {
+        alert('Valeur invalide.');
+        return;
+      }
+
+      const ok = window.confirm(`Confirmer: prochain ticket = T${String(next).padStart(5, '0')} ?`);
+      if (!ok) return;
+
+      const res = await apiFetchJson('/api/meta/ticket-number/set', {
+        method: 'POST',
+        body: JSON.stringify({ next })
+      });
+
+      await loadTicketNumber();
+      alert(`✅ Prochain ticket défini sur ${String(res?.nextTicket || `T${String(next).padStart(5, '0')}`)}`);
+    } catch (e) {
+      alert(e?.message || 'Erreur serveur.');
+    }
+  };
+
   const loadFicheHistory = async () => {
     try {
       const data = await apiFetchJson('/api/fiche-history', { method: 'GET' });
@@ -6585,6 +6611,13 @@ const GeneratorMaintenanceApp = () => {
                   className="bg-red-800 text-white px-4 py-3 rounded-lg hover:bg-red-900 font-semibold w-full"
                 >
                   Tout supprimer (incluant PM)
+                </button>
+
+                <button
+                  onClick={handleSetNextTicketNumber}
+                  className="bg-slate-700 text-white px-4 py-3 rounded-lg hover:bg-slate-800 font-semibold w-full"
+                >
+                  Définir le prochain ticket
                 </button>
 
                 <button
