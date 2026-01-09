@@ -145,6 +145,12 @@ const GeneratorMaintenanceApp = () => {
   const [pmAssignments, setPmAssignments] = useState([]);
   const [pmAssignmentsBusy, setPmAssignmentsBusy] = useState(false);
   const [pmAssignmentsError, setPmAssignmentsError] = useState('');
+  const [basePlanBaseRows, setBasePlanBaseRows] = useState([]);
+  const [basePlanPreview, setBasePlanPreview] = useState([]);
+  const [basePlanTargetMonth, setBasePlanTargetMonth] = useState('');
+  const [basePlanErrors, setBasePlanErrors] = useState([]);
+  const [basePlanBusy, setBasePlanBusy] = useState(false);
+  const [basePlanProgress, setBasePlanProgress] = useState(0);
   const [showDayDetailsModal, setShowDayDetailsModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedDayEvents, setSelectedDayEvents] = useState([]);
@@ -1152,6 +1158,371 @@ const GeneratorMaintenanceApp = () => {
         exportXlsx({
           fileBaseName: `PM_${pmMonth}_${new Date().toISOString().split('T')[0]}`,
           sheets: [{ name: `PM-${pmMonth}`, rows }]
+        });
+      }
+    });
+    if (done) alert('✅ Export Excel généré.');
+  };
+
+  const basePlanNormalizeYmd = (value) => {
+    if (!value && value !== 0) return '';
+    if (typeof value === 'number') {
+      try {
+        const d = XLSX.SSF.parse_date_code(value);
+        if (!d || !d.y || !d.m || !d.d) return '';
+        return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
+      } catch {
+        return '';
+      }
+    }
+    const s = String(value || '').trim();
+    if (!s) return '';
+    const m = s.match(/(\d{4})[-/](\d{2})[-/](\d{2})/);
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    const fr = s.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (fr) return `${fr[3]}-${fr[2]}-${fr[1]}`;
+    return '';
+  };
+
+  const getNextMonthYyyyMm = (d) => {
+    const dt = d instanceof Date ? d : new Date();
+    const year = dt.getFullYear();
+    const month = dt.getMonth();
+    const next = new Date(year, month + 1, 1);
+    return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
+  };
+
+  const handleImportBasePlanExcel = (e) => {
+    const file = e?.target?.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        setBasePlanBusy(true);
+        setBasePlanProgress(10);
+        setBasePlanErrors([]);
+
+        const data = new Uint8Array(event.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(sheet);
+        setBasePlanProgress(35);
+
+        const rows = [];
+        for (const row of Array.isArray(jsonData) ? jsonData : []) {
+          const siteCode = String(pmGet(row, 'Site (id)', 'Site', 'Site id', 'Site Code') || '').trim();
+          const siteName = String(pmGet(row, 'Site Name', 'Site name', 'Name Site') || '').trim();
+          const region = String(pmGet(row, 'Region', 'REGION', 'Région') || '').trim();
+          const shortDescription = String(pmGet(row, 'Short description', 'Short Description') || '').trim();
+          const assignedTo = String(pmGet(row, 'Assigned to', 'Assigned To') || '').trim();
+          const pairGroup = String(pmGet(row, 'PairGroup', 'Pair Group', 'Pair group') || '').trim();
+
+          if (!siteCode && !siteName) continue;
+          rows.push({
+            siteCode,
+            siteName,
+            region,
+            shortDescription,
+            assignedTo,
+            pairGroup
+          });
+        }
+
+        setBasePlanBaseRows(rows);
+        setBasePlanPreview([]);
+        setBasePlanTargetMonth(getNextMonthYyyyMm(currentMonth));
+        setBasePlanProgress(100);
+        alert(`✅ Base importée: ${rows.length} lignes.`);
+      } catch (err) {
+        alert(err?.message || 'Erreur lors de la lecture du fichier.');
+      } finally {
+        setTimeout(() => {
+          setBasePlanBusy(false);
+          setBasePlanProgress(0);
+        }, 200);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
+  };
+
+  const generateBasePlanPreview = async () => {
+    if (!isAdmin) return;
+    const month = getNextMonthYyyyMm(currentMonth);
+    setBasePlanTargetMonth(month);
+
+    const baseRows = Array.isArray(basePlanBaseRows) ? basePlanBaseRows : [];
+    if (baseRows.length === 0) {
+      alert('Veuillez d\'abord importer le fichier base.');
+      return;
+    }
+
+    const siteByCode = new Map(
+      (Array.isArray(sites) ? sites : [])
+        .filter(Boolean)
+        .map((s) => [String(s?.idSite || '').trim(), s])
+        .filter(([k]) => k)
+    );
+
+    const findSiteForRow = (r) => {
+      const code = String(r?.siteCode || '').trim();
+      if (code) {
+        const s = siteByCode.get(code);
+        if (s) return s;
+      }
+      const name = String(r?.siteName || '').trim();
+      if (!name) return null;
+      return (Array.isArray(sites) ? sites : []).find((s) => String(s?.nameSite || '').trim() === name) || null;
+    };
+
+    const byTech = new Map();
+    for (const r of baseRows) {
+      const tech = String(r?.assignedTo || '').trim() || 'Non assigné';
+      if (!byTech.has(tech)) byTech.set(tech, []);
+      byTech.get(tech).push(r);
+    }
+
+    const errors = [];
+    const candidatesByTech = new Map();
+
+    for (const [tech, rows] of byTech.entries()) {
+      const uniqueSites = new Set(rows.map((r) => String(r?.siteCode || r?.siteName || '').trim()).filter(Boolean));
+      const capacityPerDay = uniqueSites.size > 20 ? 2 : 1;
+
+      const items = [];
+      for (const r of rows) {
+        const s0 = findSiteForRow(r);
+        if (!s0) {
+          errors.push(`Site introuvable (base): ${String(r?.siteCode || r?.siteName || '').trim()}`);
+          continue;
+        }
+        const s = getUpdatedSite(s0);
+
+        const pick = (() => {
+          const epv1 = String(s?.epv1 || '').slice(0, 10);
+          const epv2 = String(s?.epv2 || '').slice(0, 10);
+          const epv3 = String(s?.epv3 || '').slice(0, 10);
+          const inMonth = (d) => d && String(d).slice(0, 7) === month;
+          if (inMonth(epv1)) return { slot: 'EPV1', date: epv1, type: 'FullPMWO' };
+          const c2 = inMonth(epv2) ? { slot: 'EPV2', date: epv2, type: 'DG Service' } : null;
+          const c3 = inMonth(epv3) ? { slot: 'EPV3', date: epv3, type: 'DG Service' } : null;
+          if (c2 && c3) return c2.date <= c3.date ? c2 : c3;
+          return c2 || c3;
+        })();
+        if (!pick?.date) continue;
+
+        const shifted = ymdShiftForWorkdays(pick.date);
+        const targetDate = shifted || pick.date;
+
+        items.push({
+          technician: tech,
+          capacityPerDay,
+          siteId: String(s0?.id || ''),
+          siteCode: String(s0?.idSite || r?.siteCode || '').trim(),
+          siteName: String(s0?.nameSite || r?.siteName || '').trim(),
+          region: String(r?.region || '').trim(),
+          assignedTo: tech === 'Non assigné' ? '' : tech,
+          pairGroup: String(r?.pairGroup || '').trim(),
+          epvSlot: pick.slot,
+          recommendedMaintenanceType: pick.type,
+          shortDescription: String(r?.shortDescription || '').trim() || pick.type,
+          targetDate,
+          plannedDate: ''
+        });
+      }
+
+      candidatesByTech.set(tech, items);
+
+      if (capacityPerDay === 2) {
+        const byGroup = new Map();
+        for (const it of items) {
+          const g = String(it?.pairGroup || '').trim();
+          if (!g) continue;
+          if (!byGroup.has(g)) byGroup.set(g, 0);
+          byGroup.set(g, byGroup.get(g) + 1);
+        }
+        for (const [g, n] of byGroup.entries()) {
+          if (n !== 2) errors.push(`PairGroup '${g}' pour '${tech}' doit contenir 2 sites (trouvé ${n}).`);
+        }
+      }
+    }
+
+    const monthStart = `${month}-01`;
+    const monthEndD = new Date(`${month}-01T00:00:00`);
+    monthEndD.setMonth(monthEndD.getMonth() + 1);
+    monthEndD.setDate(monthEndD.getDate() - 1);
+    const monthEnd = monthEndD.toISOString().slice(0, 10);
+
+    const addDaysYmd = (ymd, days) => {
+      const d = new Date(`${String(ymd).slice(0, 10)}T00:00:00`);
+      d.setDate(d.getDate() + days);
+      return d.toISOString().slice(0, 10);
+    };
+
+    const isInMonth = (d) => String(d).slice(0, 7) === month;
+
+    const scheduledAll = [];
+    for (const [tech, items] of candidatesByTech.entries()) {
+      const capacityPerDay = Number(items?.[0]?.capacityPerDay || 1);
+      const used = new Map();
+
+      const units = [];
+      if (capacityPerDay === 2) {
+        const grouped = new Map();
+        const singles = [];
+        for (const it of items) {
+          const g = String(it?.pairGroup || '').trim();
+          if (g) {
+            if (!grouped.has(g)) grouped.set(g, []);
+            grouped.get(g).push(it);
+          } else {
+            singles.push(it);
+          }
+        }
+        for (const [g, arr] of grouped.entries()) {
+          units.push({ kind: 'pair', size: arr.length, group: g, items: arr.slice() });
+        }
+        for (const it of singles) {
+          units.push({ kind: 'single', size: 1, group: '', items: [it] });
+        }
+      } else {
+        for (const it of items) units.push({ kind: 'single', size: 1, group: '', items: [it] });
+      }
+
+      units.sort((a, b) => {
+        const da = String(a?.items?.[0]?.targetDate || '');
+        const db = String(b?.items?.[0]?.targetDate || '');
+        const c = da.localeCompare(db);
+        if (c !== 0) return c;
+        return String(a?.group || '').localeCompare(String(b?.group || ''));
+      });
+
+      for (const u of units) {
+        const need = u.kind === 'pair' ? 2 : 1;
+        const target = String(u?.items?.[0]?.targetDate || '').slice(0, 10);
+        let d = target;
+        if (!/^(\d{4}-\d{2}-\d{2})$/.test(d)) d = monthStart;
+        if (!isInMonth(d)) d = monthStart;
+
+        let scheduledDate = '';
+        for (let step = 0; step < 80; step += 1) {
+          const shifted = ymdShiftForWorkdays(d);
+          const cur = shifted || d;
+          if (!isInMonth(cur) || cur < monthStart || cur > monthEnd) {
+            d = addDaysYmd(d, 1);
+            continue;
+          }
+          const curUsed = Number(used.get(cur) || 0);
+          if (curUsed + need <= capacityPerDay) {
+            scheduledDate = cur;
+            used.set(cur, curUsed + need);
+            break;
+          }
+          d = addDaysYmd(d, 1);
+        }
+
+        if (!scheduledDate) {
+          for (const it of u.items) {
+            errors.push(`Impossible de planifier '${it.siteCode || it.siteName}' pour '${tech}' dans ${month}.`);
+          }
+          continue;
+        }
+
+        for (const it of u.items) {
+          scheduledAll.push({ ...it, plannedDate: scheduledDate });
+        }
+      }
+    }
+
+    setBasePlanErrors(errors);
+    setBasePlanPreview(
+      scheduledAll
+        .slice()
+        .sort((a, b) => {
+          const d = String(a.plannedDate || '').localeCompare(String(b.plannedDate || ''));
+          if (d !== 0) return d;
+          const t = String(a.technician || '').localeCompare(String(b.technician || ''));
+          if (t !== 0) return t;
+          return String(a.siteCode || '').localeCompare(String(b.siteCode || ''));
+        })
+    );
+
+    alert(`✅ Planning généré: ${scheduledAll.length} sites planifiés pour ${month}.`);
+  };
+
+  const saveBasePlanToDb = async () => {
+    if (!isAdmin) return;
+    const month = String(basePlanTargetMonth || '').trim();
+    const items = Array.isArray(basePlanPreview) ? basePlanPreview : [];
+    if (!/^\d{4}-\d{2}$/.test(month) || items.length === 0) {
+      alert('Aucun planning à enregistrer.');
+      return;
+    }
+    const ok = window.confirm(`Enregistrer le planning de base (mois ${month}) en base de données ?`);
+    if (!ok) return;
+
+    setBasePlanBusy(true);
+    setBasePlanProgress(15);
+    try {
+      const planRes = await apiFetchJson('/api/pm/base-plans', { method: 'POST', body: JSON.stringify({ month }) });
+      const finalPlanId = String(planRes?.plan?.id || '').trim();
+      if (!finalPlanId) throw new Error('Plan ID introuvable.');
+      setBasePlanProgress(45);
+
+      const payloadItems = items.map((it) => ({
+        siteId: it.siteId,
+        siteCode: it.siteCode,
+        siteName: it.siteName,
+        region: it.region,
+        zone: it.zone,
+        assignedTo: it.assignedTo,
+        pairGroup: it.pairGroup,
+        epvSlot: it.epvSlot,
+        shortDescription: it.shortDescription,
+        recommendedMaintenanceType: it.recommendedMaintenanceType,
+        plannedDate: it.plannedDate,
+        state: 'Planned'
+      }));
+      await apiFetchJson(`/api/pm/base-plans/${finalPlanId}/items`, { method: 'POST', body: JSON.stringify({ items: payloadItems }) });
+      setBasePlanProgress(100);
+      alert('✅ Planning de base enregistré.');
+    } catch (e) {
+      alert(e?.message || 'Erreur serveur.');
+    } finally {
+      setTimeout(() => {
+        setBasePlanBusy(false);
+        setBasePlanProgress(0);
+      }, 300);
+    }
+  };
+
+  const exportBasePlanPreviewExcel = async () => {
+    const month = String(basePlanTargetMonth || '').trim();
+    const items = Array.isArray(basePlanPreview) ? basePlanPreview : [];
+    if (!/^\d{4}-\d{2}$/.test(month) || items.length === 0) {
+      alert('Aucun planning à exporter.');
+      return;
+    }
+    const done = await runExport({
+      label: 'Export Excel (planning base)…',
+      fn: async () => {
+        const rows = items.map((it) => ({
+          'Site (id)': it.siteCode,
+          'Site Name': it.siteName,
+          Region: it.region,
+          'Short description': it.shortDescription,
+          Number: '',
+          'Assigned to': it.assignedTo,
+          'Scheduled WO Date': it.plannedDate,
+          'Date of closing': '',
+          State: '',
+          PairGroup: it.pairGroup || '',
+          EPV: it.epvSlot || '',
+          'Maintenance Type': it.recommendedMaintenanceType || ''
+        }));
+        exportXlsx({
+          fileBaseName: `Planning_Base_${month}_${new Date().toISOString().slice(0, 10)}`,
+          sheets: [{ name: `BASE-${month}`, rows }]
         });
       }
     });
@@ -2703,17 +3074,65 @@ const GeneratorMaintenanceApp = () => {
   const ymdShiftForWorkdays = (ymd) => {
     const v = String(ymd || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return '';
-    const d = new Date(`${v}T00:00:00`);
-    const dow = d.getDay();
-    if (dow === 6) {
-      d.setDate(d.getDate() - 1);
-      return d.toISOString().slice(0, 10);
+
+    const fixedHolidaysMmDd = new Set(['01-01', '05-01', '06-10', '08-15', '11-01', '11-28', '12-25']);
+
+    const getEasterSunday = (year) => {
+      const a = year % 19;
+      const b = Math.floor(year / 100);
+      const c = year % 100;
+      const d = Math.floor(b / 4);
+      const e = b % 4;
+      const f = Math.floor((b + 8) / 25);
+      const g = Math.floor((b - f + 1) / 3);
+      const h = (19 * a + b - d - g + 15) % 30;
+      const i = Math.floor(c / 4);
+      const k = c % 4;
+      const l = (32 + 2 * e + 2 * i - h - k) % 7;
+      const m = Math.floor((a + 11 * h + 22 * l) / 451);
+      const month = Math.floor((h + l - 7 * m + 114) / 31);
+      const day = ((h + l - 7 * m + 114) % 31) + 1;
+      return new Date(Date.UTC(year, month - 1, day));
+    };
+
+    const ymdFromUtcDate = (d) => {
+      return new Date(d.getTime()).toISOString().slice(0, 10);
+    };
+
+    const isHolidayYmd = (ymdStr) => {
+      const mmdd = String(ymdStr).slice(5, 10);
+      if (fixedHolidaysMmDd.has(mmdd)) return true;
+
+      const year = Number(String(ymdStr).slice(0, 4));
+      if (!Number.isFinite(year) || year < 1970) return false;
+      const easterSunday = getEasterSunday(year);
+      const easterMonday = new Date(easterSunday.getTime());
+      easterMonday.setUTCDate(easterMonday.getUTCDate() + 1);
+      const pentecostMonday = new Date(easterSunday.getTime());
+      pentecostMonday.setUTCDate(pentecostMonday.getUTCDate() + 50);
+
+      const s = String(ymdStr);
+      return s === ymdFromUtcDate(easterMonday) || s === ymdFromUtcDate(pentecostMonday);
+    };
+
+    const origin = v;
+    let d = new Date(`${v}T00:00:00`);
+
+    for (let i = 0; i < 12; i += 1) {
+      const cur = d.toISOString().slice(0, 10);
+      const dow = d.getDay();
+      const nonWorking = dow === 0 || dow === 6 || isHolidayYmd(cur);
+      if (!nonWorking) break;
+
+      if (dow === 6) {
+        d.setDate(d.getDate() - 1);
+      } else {
+        d.setDate(d.getDate() + 1);
+      }
     }
-    if (dow === 0) {
-      d.setDate(d.getDate() + 1);
-      return d.toISOString().slice(0, 10);
-    }
-    return v;
+
+    const shifted = d.toISOString().slice(0, 10);
+    return shifted !== origin ? shifted : '';
   };
 
   const techCalendarItemsInMonth = (() => {
@@ -7130,6 +7549,104 @@ const GeneratorMaintenanceApp = () => {
                       </button>
                     )}
                   </div>
+
+                  {isAdmin && (
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
+                      <label className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold flex items-center justify-center gap-2 w-full cursor-pointer">
+                        <Upload size={18} />
+                        Importer base (Excel)
+                        <input
+                          type="file"
+                          accept=".xlsx,.xls"
+                          onChange={handleImportBasePlanExcel}
+                          className="hidden"
+                          disabled={basePlanBusy}
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={generateBasePlanPreview}
+                        className="bg-indigo-700 text-white px-4 py-2 rounded-lg hover:bg-indigo-800 font-semibold w-full disabled:bg-gray-400"
+                        disabled={basePlanBusy || basePlanBaseRows.length === 0}
+                      >
+                        Générer planning mois suivant
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={exportBasePlanPreviewExcel}
+                        className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold w-full disabled:bg-gray-400"
+                        disabled={basePlanBusy || basePlanPreview.length === 0}
+                      >
+                        Exporter planning base
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={saveBasePlanToDb}
+                        className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold w-full disabled:bg-gray-400"
+                        disabled={basePlanBusy || basePlanPreview.length === 0}
+                      >
+                        Enregistrer (DB)
+                      </button>
+                    </div>
+                  )}
+
+                  {isAdmin && (basePlanBusy || basePlanErrors.length > 0 || basePlanPreview.length > 0) && (
+                    <div className="mt-3 space-y-2">
+                      {basePlanBusy && (
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div className="bg-indigo-600 h-2 rounded-full" style={{ width: `${basePlanProgress}%` }} />
+                        </div>
+                      )}
+                      {basePlanTargetMonth && (
+                        <div className="text-xs text-gray-700">
+                          Mois cible: <strong>{basePlanTargetMonth}</strong> | Base: <strong>{basePlanBaseRows.length}</strong> | Planning: <strong>{basePlanPreview.length}</strong>
+                        </div>
+                      )}
+                      {basePlanErrors.length > 0 && (
+                        <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2 max-h-32 overflow-auto">
+                          {basePlanErrors.slice(0, 20).map((m, idx) => (
+                            <div key={idx}>{m}</div>
+                          ))}
+                          {basePlanErrors.length > 20 && <div>… ({basePlanErrors.length - 20} autres)</div>}
+                        </div>
+                      )}
+
+                      {basePlanPreview.length > 0 && (
+                        <div className="border rounded-lg overflow-auto max-h-64">
+                          <table className="min-w-full text-xs">
+                            <thead className="sticky top-0 bg-gray-50">
+                              <tr className="text-left">
+                                <th className="p-2 border-b">Date</th>
+                                <th className="p-2 border-b">Technicien</th>
+                                <th className="p-2 border-b">Site</th>
+                                <th className="p-2 border-b">Type</th>
+                                <th className="p-2 border-b">EPV</th>
+                                <th className="p-2 border-b">PairGroup</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {basePlanPreview.slice(0, 80).map((it, idx) => (
+                                <tr key={`${it.siteCode}-${it.plannedDate}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-gray-50'}>
+                                  <td className="p-2 border-b whitespace-nowrap">{it.plannedDate}</td>
+                                  <td className="p-2 border-b">{it.technician}</td>
+                                  <td className="p-2 border-b">{it.siteCode || it.siteName}</td>
+                                  <td className="p-2 border-b">{it.recommendedMaintenanceType}</td>
+                                  <td className="p-2 border-b">{it.epvSlot}</td>
+                                  <td className="p-2 border-b">{it.pairGroup || ''}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {basePlanPreview.length > 80 && (
+                            <div className="text-xs text-gray-600 p-2">Affichage limité aux 80 premières lignes (total: {basePlanPreview.length}).</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-7 gap-2 mb-2">

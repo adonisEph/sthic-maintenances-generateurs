@@ -27,6 +27,9 @@ export async function onRequestPost({ request, env, data }) {
     const resFiche = await safeDelete('fiche_history');
     const resPresence = await safeDelete('presence_sessions');
 
+    const resPmBasePlanItems = includePm ? await safeDelete('pm_base_plan_items') : { meta: { changes: 0 } };
+    const resPmBasePlans = includePm ? await safeDelete('pm_base_plans') : { meta: { changes: 0 } };
+
     const resPmMonths = includePm ? await safeDelete('pm_months') : { meta: { changes: 0 } };
     const resPmItems = includePm ? await safeDelete('pm_items') : { meta: { changes: 0 } };
     const resPmImports = includePm ? await safeDelete('pm_imports') : { meta: { changes: 0 } };
@@ -47,6 +50,8 @@ export async function onRequestPost({ request, env, data }) {
           interventions: resInterventions?.meta?.changes || 0,
           ficheHistory: resFiche?.meta?.changes || 0,
           presenceSessions: resPresence?.meta?.changes || 0,
+          pmBasePlanItems: resPmBasePlanItems?.meta?.changes || 0,
+          pmBasePlans: resPmBasePlans?.meta?.changes || 0,
           pmMonths: resPmMonths?.meta?.changes || 0,
           pmItems: resPmItems?.meta?.changes || 0,
           pmImports: resPmImports?.meta?.changes || 0,
