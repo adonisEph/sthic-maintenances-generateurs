@@ -126,6 +126,9 @@ const GeneratorMaintenanceApp = () => {
   const [pmPlanningStep, setPmPlanningStep] = useState('');
   const [pmNocProgress, setPmNocProgress] = useState(0);
   const [pmNocStep, setPmNocStep] = useState('');
+  const [pmClientProgress, setPmClientProgress] = useState(0);
+  const [pmClientStep, setPmClientStep] = useState('');
+  const [pmClientCompare, setPmClientCompare] = useState(null);
   const [pmResetBusy, setPmResetBusy] = useState(false);
   const [pmFilterState, setPmFilterState] = useState('all');
   const [pmFilterType, setPmFilterType] = useState('all');
@@ -1309,6 +1312,192 @@ const GeneratorMaintenanceApp = () => {
     e.target.value = '';
   };
 
+  const handlePmClientImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const ok = window.confirm(
+      `Confirmer l'import du retour client ?\n\nMois: ${pmMonth}\nFichier: ${file?.name || ''}`
+    );
+    if (!ok) {
+      e.target.value = '';
+      return;
+    }
+
+    const normalizeType = (t) => {
+      const s = String(t || '').trim().toLowerCase();
+      if (!s) return '';
+      if (s.includes('fullpm') || s.includes('pmwo')) return 'fullpmwo';
+      if (s.includes('dg')) return 'dg';
+      if (s.includes('air') || s.includes('conditioning') || s.includes('clim')) return 'air';
+      return s;
+    };
+
+    const normalizeYmd = (v) => String(v || '').slice(0, 10);
+
+    const reader = new FileReader();
+    setPmBusy(true);
+    setPmError('');
+    setPmNotice('');
+    setPmClientCompare(null);
+    setPmClientProgress(5);
+    setPmClientStep('Lecture du fichier…');
+
+    reader.onload = async (event) => {
+      try {
+        setPmClientProgress(20);
+        setPmClientStep('Analyse Excel…');
+
+        const data = new Uint8Array(event.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(sheet);
+
+        setPmClientProgress(40);
+        setPmClientStep('Chargement planning de base…');
+
+        const plansRes = await apiFetchJson('/api/pm/base-plans', { method: 'GET' });
+        const plans = Array.isArray(plansRes?.plans) ? plansRes.plans : [];
+        const basePlan = plans.find((p) => String(p?.month || '').trim() === String(pmMonth || '').trim()) || null;
+        if (!basePlan?.id) {
+          throw new Error(`Planning de base introuvable pour ${pmMonth}.`);
+        }
+        const itemsRes = await apiFetchJson(`/api/pm/base-plans/${String(basePlan.id)}/items`, { method: 'GET' });
+        const baseItems = Array.isArray(itemsRes?.items) ? itemsRes.items : [];
+
+        setPmClientProgress(60);
+        setPmClientStep('Préparation comparaison…');
+
+        const parseClientRows = () => {
+          const out = [];
+          const arr = Array.isArray(jsonData) ? jsonData : [];
+          for (let idx = 0; idx < arr.length; idx += 1) {
+            const row = arr[idx];
+
+            const rawSiteCode = pmGet(row, 'Site (id)', 'Site', 'Site id', 'Site Code', 'Site (Id)');
+            const rawSiteName = pmGet(row, 'Site Name', 'Site name', 'Name Site');
+            const rawNumber = pmGet(row, 'Number', 'Ticket', 'Ticket Number');
+            const rawType = pmGet(row, 'Maintenance Type') || pmInferType(row);
+            const rawDate = pmNormalizeDate(pmGet(row, 'Scheduled WO Date', 'Scheduled Wo Date', 'Scheduled date', 'Scheduled Date', 'Date'));
+            const shortDescription = String(pmGet(row, 'Short description', 'Short Description') || '').trim();
+            const assignedTo = String(pmGet(row, 'Assigned to', 'Assigned To') || '').trim();
+
+            const codes = basePlanSplitCell(rawSiteCode);
+            const names = basePlanSplitCell(rawSiteName);
+            const nums = basePlanSplitCell(rawNumber);
+            const n = Math.max(codes.length, names.length, nums.length, 1);
+            for (let i = 0; i < Math.min(n, 2); i += 1) {
+              const siteCode = String(codes[i] || codes[0] || '').trim();
+              const siteName = String(names[i] || names[0] || '').trim();
+              const number = String(nums[i] || nums[0] || '').trim();
+              if (!siteCode && !siteName) continue;
+              out.push({
+                number,
+                siteCode,
+                siteName,
+                maintenanceType: String(rawType || '').trim(),
+                scheduledWoDate: rawDate,
+                shortDescription,
+                assignedTo,
+                _row: idx + 2
+              });
+            }
+          }
+          return out;
+        };
+
+        const clientRows = parseClientRows();
+
+        const baseMap = new Map();
+        for (const it of baseItems) {
+          const siteCode = String(it?.siteCode || '').trim();
+          const date = normalizeYmd(it?.plannedDate);
+          const t = normalizeType(it?.recommendedMaintenanceType);
+          if (!siteCode || !date || !t) continue;
+          const key = `${siteCode}|${date}|${t}`;
+          baseMap.set(key, it);
+        }
+
+        const clientMap = new Map();
+        for (const it of clientRows) {
+          const siteCode = String(it?.siteCode || '').trim();
+          const date = normalizeYmd(it?.scheduledWoDate);
+          const t = normalizeType(it?.maintenanceType);
+          if (!siteCode || !date || !t) continue;
+          const key = `${siteCode}|${date}|${t}`;
+          clientMap.set(key, it);
+        }
+
+        const retained = [];
+        const removed = [];
+        const added = [];
+
+        for (const [key, b] of baseMap.entries()) {
+          const c = clientMap.get(key);
+          if (c) {
+            retained.push({
+              siteCode: b.siteCode,
+              siteName: b.siteName,
+              plannedDate: normalizeYmd(b.plannedDate),
+              maintenanceType: b.recommendedMaintenanceType,
+              assignedTo: b.assignedTo,
+              number: c.number || ''
+            });
+          } else {
+            removed.push({
+              siteCode: b.siteCode,
+              siteName: b.siteName,
+              plannedDate: normalizeYmd(b.plannedDate),
+              maintenanceType: b.recommendedMaintenanceType,
+              assignedTo: b.assignedTo
+            });
+          }
+        }
+
+        for (const [key, c] of clientMap.entries()) {
+          if (baseMap.has(key)) continue;
+          added.push({
+            siteCode: c.siteCode,
+            siteName: c.siteName,
+            plannedDate: normalizeYmd(c.scheduledWoDate),
+            maintenanceType: c.maintenanceType,
+            assignedTo: c.assignedTo,
+            number: c.number || ''
+          });
+        }
+
+        retained.sort((a, b) => String(a.plannedDate).localeCompare(String(b.plannedDate)) || String(a.siteCode).localeCompare(String(b.siteCode)));
+        removed.sort((a, b) => String(a.plannedDate).localeCompare(String(b.plannedDate)) || String(a.siteCode).localeCompare(String(b.siteCode)));
+        added.sort((a, b) => String(a.plannedDate).localeCompare(String(b.plannedDate)) || String(a.siteCode).localeCompare(String(b.siteCode)));
+
+        setPmClientCompare({
+          month: pmMonth,
+          basePlanId: String(basePlan.id),
+          baseCount: baseMap.size,
+          clientCount: clientMap.size,
+          retained,
+          removed,
+          added
+        });
+
+        setPmClientProgress(100);
+        setPmClientStep('Terminé');
+        setPmNotice(`✅ Retour client importé. Retenus: ${retained.length} • Retirés: ${removed.length} • Ajouts: ${added.length}`);
+      } catch (err) {
+        setPmClientProgress(0);
+        setPmClientStep('');
+        setPmError(err?.message || 'Erreur lors de l\'import retour client.');
+      } finally {
+        setPmBusy(false);
+      }
+    };
+
+    setPmClientProgress(10);
+    setPmClientStep('Lecture du fichier…');
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
+  };
+
   const generateBasePlanPreview = async () => {
     if (!isAdmin) return;
     const month = getNextMonthYyyyMm(currentMonth);
@@ -1338,18 +1527,6 @@ const GeneratorMaintenanceApp = () => {
       return (Array.isArray(sites) ? sites : []).find((s) => String(s?.nameSite || '').trim() === name) || null;
     };
 
-    const doneBySiteType = new Map();
-    for (const f of Array.isArray(ficheHistory) ? ficheHistory : []) {
-      if (!f || String(f.status || '') !== 'Effectuée') continue;
-      const sid = String(f.siteId || '').trim();
-      const t = String(f.epvType || '').trim();
-      const doneDate = String(f.dateCompleted || f.plannedDate || '').slice(0, 10);
-      if (!sid || !t || !/^\d{4}-\d{2}-\d{2}$/.test(doneDate)) continue;
-      const key = `${sid}|${t}`;
-      const prev = doneBySiteType.get(key);
-      if (!prev || doneDate > prev) doneBySiteType.set(key, doneDate);
-    }
-
     const byTech = new Map();
     for (const r of baseRows) {
       const tech = String(r?.assignedTo || '').trim() || 'Non assigné';
@@ -1370,9 +1547,6 @@ const GeneratorMaintenanceApp = () => {
         const computed = s0 ? getUpdatedSite(s0) : null;
         const zone = String(r?.zone || r?.region || '').trim();
 
-        const siteIdForDone = s0 ? String(s0?.id || '').trim() : '';
-        const epv1DoneAt = siteIdForDone ? doneBySiteType.get(`${siteIdForDone}|EPV1`) : '';
-
         const pick = (() => {
           const srcEpv1 = isBzvPoolZone(zone) ? computed?.epv1 : r?.epv1 || computed?.epv1;
           const srcEpv2 = isBzvPoolZone(zone) ? computed?.epv2 : r?.epv2 || computed?.epv2;
@@ -1382,24 +1556,10 @@ const GeneratorMaintenanceApp = () => {
           const epv3 = String(srcEpv3 || '').slice(0, 10);
           const inMonth = (d) => d && String(d).slice(0, 7) === month;
 
-          const epv1Shifted = ymdShiftForWorkdays(epv1) || epv1;
-
           const manualPlanned = String(r?.scheduledWoDate || '').slice(0, 10);
           if (inMonth(manualPlanned)) {
             const t = String(r?.maintenanceType || '').trim() || pmInferType(r) || 'FullPMWO';
             return { slot: 'Manual', date: manualPlanned, type: t, epv1, epv2, epv3 };
-          }
-
-          if (inMonth(epv1Shifted)) {
-            return { slot: 'EPV1', date: epv1Shifted, type: 'FullPMWO', epv1, epv2, epv3 };
-          }
-
-          const monthStart = `${month}-01`;
-          const epv1IsValid = /^\d{4}-\d{2}-\d{2}$/.test(epv1);
-          const epv1IsOverdue = epv1IsValid && epv1 < monthStart;
-          const epv1IsDone = epv1IsValid && epv1DoneAt && epv1DoneAt >= epv1;
-          if (epv1IsOverdue && !epv1IsDone) {
-            return { slot: 'EPV1', date: monthStart, type: 'FullPMWO', epv1, epv2, epv3 };
           }
 
           if (inMonth(epv1)) return { slot: 'EPV1', date: epv1, type: 'FullPMWO' };
@@ -4797,6 +4957,22 @@ const GeneratorMaintenanceApp = () => {
                           />
                         </label>
 
+                        <label
+                          className={`bg-slate-700 text-white px-3 py-2 rounded-lg flex items-center justify-center gap-2 text-sm font-semibold ${
+                            pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-800 cursor-pointer'
+                          }`}
+                        >
+                          <Upload size={16} />
+                          Import retour client
+                          <input
+                            type="file"
+                            accept=".xlsx,.xls"
+                            onChange={handlePmClientImport}
+                            className="hidden"
+                            disabled={pmBusy}
+                          />
+                        </label>
+
                         <button
                           type="button"
                           onClick={() => handlePmReset('imports')}
@@ -4859,6 +5035,112 @@ const GeneratorMaintenanceApp = () => {
                     <div className="text-xs text-gray-700 mb-1">Import NOC: {pmNocStep || '…'}</div>
                     <div className="w-full bg-gray-200 rounded h-2 overflow-hidden">
                       <div className="bg-purple-700 h-2" style={{ width: `${pmNocProgress}%` }} />
+                    </div>
+                  </div>
+                )}
+
+                {pmClientProgress > 0 && (
+                  <div className="mb-4">
+                    <div className="text-xs text-gray-700 mb-1">Import retour client: {pmClientStep || '…'}</div>
+                    <div className="w-full bg-gray-200 rounded h-2 overflow-hidden">
+                      <div className="bg-slate-700 h-2" style={{ width: `${pmClientProgress}%` }} />
+                    </div>
+                  </div>
+                )}
+
+                {pmClientCompare && (
+                  <div className="mb-4 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                    <div className="text-sm font-semibold text-slate-900 mb-2">
+                      Retour client vs planning de base ({pmClientCompare.month})
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs text-slate-800">
+                      <div className="bg-white border border-slate-200 rounded p-2">Base: <span className="font-semibold">{pmClientCompare.baseCount}</span></div>
+                      <div className="bg-white border border-slate-200 rounded p-2">Client: <span className="font-semibold">{pmClientCompare.clientCount}</span></div>
+                      <div className="bg-emerald-50 border border-emerald-200 rounded p-2">Retenus: <span className="font-semibold">{pmClientCompare.retained.length}</span></div>
+                      <div className="bg-red-50 border border-red-200 rounded p-2">Retirés: <span className="font-semibold">{pmClientCompare.removed.length}</span></div>
+                      <div className="bg-amber-50 border border-amber-200 rounded p-2 sm:col-span-2">Ajouts: <span className="font-semibold">{pmClientCompare.added.length}</span></div>
+                      <div className="bg-white border border-slate-200 rounded p-2 sm:col-span-2">Plan ID: <span className="font-mono">{pmClientCompare.basePlanId}</span></div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 lg:grid-cols-3 gap-3">
+                      <div className="bg-white border border-slate-200 rounded-lg overflow-auto max-h-64">
+                        <div className="text-xs font-semibold px-3 py-2 border-b">Retenus</div>
+                        <table className="min-w-full text-xs">
+                          <thead className="sticky top-0 bg-gray-50">
+                            <tr>
+                              <th className="p-2 border-b">Date</th>
+                              <th className="p-2 border-b">Site</th>
+                              <th className="p-2 border-b">Type</th>
+                              <th className="p-2 border-b">Ticket</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pmClientCompare.retained.slice(0, 50).map((r, idx) => (
+                              <tr key={`ret-${r.siteCode}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-gray-50'}>
+                                <td className="p-2 border-b whitespace-nowrap">{r.plannedDate}</td>
+                                <td className="p-2 border-b">{r.siteCode}</td>
+                                <td className="p-2 border-b">{r.maintenanceType}</td>
+                                <td className="p-2 border-b">{r.number || ''}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        {pmClientCompare.retained.length > 50 && (
+                          <div className="text-xs text-gray-600 p-2">Affichage limité (50) — total: {pmClientCompare.retained.length}</div>
+                        )}
+                      </div>
+
+                      <div className="bg-white border border-red-200 rounded-lg overflow-auto max-h-64">
+                        <div className="text-xs font-semibold px-3 py-2 border-b text-red-800">Retirés</div>
+                        <table className="min-w-full text-xs">
+                          <thead className="sticky top-0 bg-red-50">
+                            <tr>
+                              <th className="p-2 border-b">Date</th>
+                              <th className="p-2 border-b">Site</th>
+                              <th className="p-2 border-b">Type</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pmClientCompare.removed.slice(0, 50).map((r, idx) => (
+                              <tr key={`rem-${r.siteCode}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-red-50'}>
+                                <td className="p-2 border-b whitespace-nowrap">{r.plannedDate}</td>
+                                <td className="p-2 border-b">{r.siteCode}</td>
+                                <td className="p-2 border-b">{r.maintenanceType}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        {pmClientCompare.removed.length > 50 && (
+                          <div className="text-xs text-gray-600 p-2">Affichage limité (50) — total: {pmClientCompare.removed.length}</div>
+                        )}
+                      </div>
+
+                      <div className="bg-white border border-amber-200 rounded-lg overflow-auto max-h-64">
+                        <div className="text-xs font-semibold px-3 py-2 border-b text-amber-900">Ajouts</div>
+                        <table className="min-w-full text-xs">
+                          <thead className="sticky top-0 bg-amber-50">
+                            <tr>
+                              <th className="p-2 border-b">Date</th>
+                              <th className="p-2 border-b">Site</th>
+                              <th className="p-2 border-b">Type</th>
+                              <th className="p-2 border-b">Ticket</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pmClientCompare.added.slice(0, 50).map((r, idx) => (
+                              <tr key={`add-${r.siteCode}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-amber-50'}>
+                                <td className="p-2 border-b whitespace-nowrap">{r.plannedDate}</td>
+                                <td className="p-2 border-b">{r.siteCode}</td>
+                                <td className="p-2 border-b">{r.maintenanceType}</td>
+                                <td className="p-2 border-b">{r.number || ''}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        {pmClientCompare.added.length > 50 && (
+                          <div className="text-xs text-gray-600 p-2">Affichage limité (50) — total: {pmClientCompare.added.length}</div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
