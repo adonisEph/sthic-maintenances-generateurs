@@ -1338,6 +1338,18 @@ const GeneratorMaintenanceApp = () => {
       return (Array.isArray(sites) ? sites : []).find((s) => String(s?.nameSite || '').trim() === name) || null;
     };
 
+    const doneBySiteType = new Map();
+    for (const f of Array.isArray(ficheHistory) ? ficheHistory : []) {
+      if (!f || String(f.status || '') !== 'Effectuée') continue;
+      const sid = String(f.siteId || '').trim();
+      const t = String(f.epvType || '').trim();
+      const doneDate = String(f.dateCompleted || f.plannedDate || '').slice(0, 10);
+      if (!sid || !t || !/^\d{4}-\d{2}-\d{2}$/.test(doneDate)) continue;
+      const key = `${sid}|${t}`;
+      const prev = doneBySiteType.get(key);
+      if (!prev || doneDate > prev) doneBySiteType.set(key, doneDate);
+    }
+
     const byTech = new Map();
     for (const r of baseRows) {
       const tech = String(r?.assignedTo || '').trim() || 'Non assigné';
@@ -1358,6 +1370,9 @@ const GeneratorMaintenanceApp = () => {
         const computed = s0 ? getUpdatedSite(s0) : null;
         const zone = String(r?.zone || r?.region || '').trim();
 
+        const siteIdForDone = s0 ? String(s0?.id || '').trim() : '';
+        const epv1DoneAt = siteIdForDone ? doneBySiteType.get(`${siteIdForDone}|EPV1`) : '';
+
         const pick = (() => {
           const srcEpv1 = isBzvPoolZone(zone) ? computed?.epv1 : r?.epv1 || computed?.epv1;
           const srcEpv2 = isBzvPoolZone(zone) ? computed?.epv2 : r?.epv2 || computed?.epv2;
@@ -1367,10 +1382,24 @@ const GeneratorMaintenanceApp = () => {
           const epv3 = String(srcEpv3 || '').slice(0, 10);
           const inMonth = (d) => d && String(d).slice(0, 7) === month;
 
+          const epv1Shifted = ymdShiftForWorkdays(epv1) || epv1;
+
           const manualPlanned = String(r?.scheduledWoDate || '').slice(0, 10);
           if (inMonth(manualPlanned)) {
             const t = String(r?.maintenanceType || '').trim() || pmInferType(r) || 'FullPMWO';
             return { slot: 'Manual', date: manualPlanned, type: t, epv1, epv2, epv3 };
+          }
+
+          if (inMonth(epv1Shifted)) {
+            return { slot: 'EPV1', date: epv1Shifted, type: 'FullPMWO', epv1, epv2, epv3 };
+          }
+
+          const monthStart = `${month}-01`;
+          const epv1IsValid = /^\d{4}-\d{2}-\d{2}$/.test(epv1);
+          const epv1IsOverdue = epv1IsValid && epv1 < monthStart;
+          const epv1IsDone = epv1IsValid && epv1DoneAt && epv1DoneAt >= epv1;
+          if (epv1IsOverdue && !epv1IsDone) {
+            return { slot: 'EPV1', date: monthStart, type: 'FullPMWO', epv1, epv2, epv3 };
           }
 
           if (inMonth(epv1)) return { slot: 'EPV1', date: epv1, type: 'FullPMWO' };
@@ -1634,8 +1663,8 @@ const GeneratorMaintenanceApp = () => {
           const second = sorted[1] || null;
           const hasTwo = sorted.length === 2;
 
-          const siteCode = hasTwo ? `${first.siteCode || ''}\n${second?.siteCode || ''}`.trim() : first.siteCode || '';
-          const siteName = hasTwo ? `${first.siteName || ''}\n${second?.siteName || ''}`.trim() : first.siteName || '';
+          const siteCode = hasTwo ? `${first.siteCode || ''}\r\n${second?.siteCode || ''}`.trim() : first.siteCode || '';
+          const siteName = hasTwo ? `${first.siteName || ''}\r\n${second?.siteName || ''}`.trim() : first.siteName || '';
           const mt = hasTwo && first.recommendedMaintenanceType !== second?.recommendedMaintenanceType
             ? `${first.recommendedMaintenanceType || ''} + ${second?.recommendedMaintenanceType || ''}`.trim()
             : first.recommendedMaintenanceType || '';
@@ -2755,12 +2784,41 @@ const GeneratorMaintenanceApp = () => {
       const name = nameRaw.trim().slice(0, 31) || `Feuille${idx + 1}`;
       const rows = Array.isArray(sh?.rows) ? sh.rows : [];
       const ws = XLSX.utils.json_to_sheet(rows);
+
+      const rowsToGrow = new Set();
+      for (const k of Object.keys(ws || {})) {
+        if (!k || k[0] === '!') continue;
+        const cell = ws[k];
+        if (!cell || typeof cell.v !== 'string') continue;
+        if (cell.v.includes('\n')) {
+          cell.s = { ...(cell.s || {}), alignment: { ...((cell.s || {}).alignment || {}), wrapText: true } };
+          try {
+            const rc = XLSX.utils.decode_cell(k);
+            if (rc && Number.isFinite(rc.r)) rowsToGrow.add(rc.r);
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      if (rowsToGrow.size > 0) {
+        const max = Math.max(...Array.from(rowsToGrow.values()));
+        const out = Array.isArray(ws['!rows']) ? ws['!rows'].slice() : [];
+        while (out.length <= max) out.push(null);
+        for (const r of rowsToGrow.values()) {
+          const prev = out[r] || {};
+          const hpt = Math.max(Number(prev.hpt || 0), 30);
+          out[r] = { ...prev, hpt };
+        }
+        ws['!rows'] = out;
+      }
+
       XLSX.utils.book_append_sheet(wb, ws, name);
     });
     if (exportBusyRef.current) {
       setExportProgress((p) => Math.max(p, 80));
     }
-    XLSX.writeFile(wb, `${safeBase}.xlsx`);
+    XLSX.writeFile(wb, `${safeBase}.xlsx`, { cellStyles: true });
     if (exportBusyRef.current) {
       setExportProgress((p) => Math.max(p, 95));
     }
