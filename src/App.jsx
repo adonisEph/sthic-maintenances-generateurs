@@ -17,7 +17,7 @@ import {
 const APP_VERSION = '2.0.5';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
-const SPLASH_MIN_MS = 4200;
+const SPLASH_MIN_MS = 4300;
 
 const ModalWatermark = ({ className = '' }) => (
   <img
