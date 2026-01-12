@@ -1547,7 +1547,7 @@ const GeneratorMaintenanceApp = () => {
         const computed = s0 ? getUpdatedSite(s0) : null;
         const zone = String(r?.zone || r?.region || '').trim();
 
-        const pick = (() => {
+        const picks = (() => {
           const srcEpv1 = isBzvPoolZone(zone) ? computed?.epv1 : r?.epv1 || computed?.epv1;
           const srcEpv2 = isBzvPoolZone(zone) ? computed?.epv2 : r?.epv2 || computed?.epv2;
           const srcEpv3 = isBzvPoolZone(zone) ? computed?.epv3 : r?.epv3 || computed?.epv3;
@@ -1555,57 +1555,80 @@ const GeneratorMaintenanceApp = () => {
           const epv2 = String(srcEpv2 || '').slice(0, 10);
           const epv3 = String(srcEpv3 || '').slice(0, 10);
           const inMonth = (d) => d && String(d).slice(0, 7) === month;
+          const monthStart = `${month}-01`;
 
           const manualPlanned = String(r?.scheduledWoDate || '').slice(0, 10);
           if (inMonth(manualPlanned)) {
             const t = String(r?.maintenanceType || '').trim() || pmInferType(r) || 'FullPMWO';
-            return { slot: 'Manual', date: manualPlanned, type: t, epv1, epv2, epv3 };
+            return [{ slot: 'Manual', date: manualPlanned, type: t, epv1, epv2, epv3, keepPairGroup: true }];
           }
 
-          if (inMonth(epv1)) return { slot: 'EPV1', date: epv1, type: 'FullPMWO' };
-          const c2 = inMonth(epv2) ? { slot: 'EPV2', date: epv2, type: 'DG Service' } : null;
-          const c3 = inMonth(epv3) ? { slot: 'EPV3', date: epv3, type: 'DG Service' } : null;
-          if (c2 && c3) return c2.date <= c3.date ? c2 : c3;
+          // CAS 2 : EPV1 dans le mois cible => on conserve la logique normale
+          if (inMonth(epv1)) {
+            return [{ slot: 'EPV1', date: epv1, type: 'FullPMWO', epv1, epv2, epv3, keepPairGroup: true }];
+          }
+
+          // CAS 1 : EPV1 est dans un mois précédent ET EPV2 dans le mois cible => transition
+          // EPV2 devient EPV1 (FullPMWO) et EPV3 devient EPV2 (DG Service) si EPV3 est aussi dans le mois
+          const epv1IsBeforeMonth = epv1 && /^\d{4}-\d{2}-\d{2}$/.test(epv1) && epv1 < monthStart;
+          if (epv1IsBeforeMonth && inMonth(epv2)) {
+            const out = [];
+            out.push({ slot: 'EPV1', date: epv2, type: 'FullPMWO', epv1, epv2, epv3, keepPairGroup: true });
+            if (inMonth(epv3)) {
+              out.push({ slot: 'EPV2', date: epv3, type: 'DG Service', epv1, epv2, epv3, keepPairGroup: false });
+            }
+            return out;
+          }
+
+          // Sinon: logique fallback (DG sur EPV2/EPV3 dans le mois)
+          const c2 = inMonth(epv2) ? { slot: 'EPV2', date: epv2, type: 'DG Service', epv1, epv2, epv3, keepPairGroup: true } : null;
+          const c3 = inMonth(epv3) ? { slot: 'EPV3', date: epv3, type: 'DG Service', epv1, epv2, epv3, keepPairGroup: true } : null;
+          if (c2 && c3) return [c2.date <= c3.date ? c2 : c3];
+
           const fallbackType = String(r?.maintenanceType || '').trim() || pmInferType(r) || '';
-          if (fallbackType && inMonth(epv1)) return { slot: 'EPV1', date: epv1, type: fallbackType };
           const best = c2 || c3;
-          if (best) return { ...best, epv1, epv2, epv3 };
-          if (fallbackType && (inMonth(epv1) || epv1)) return { slot: 'EPV1', date: epv1, type: fallbackType, epv1, epv2, epv3 };
-          return null;
+          if (best) return [best];
+          if (fallbackType && (inMonth(epv1) || epv1)) return [{ slot: 'EPV1', date: epv1, type: fallbackType, epv1, epv2, epv3, keepPairGroup: true }];
+          return [];
         })();
-        if (!pick?.date) {
+
+        if (!Array.isArray(picks) || picks.length === 0) {
           if (!s0 && (r?.siteCode || r?.siteName)) {
             errors.push(`Site introuvable (base): ${String(r?.siteCode || r?.siteName || '').trim()}`);
           }
           continue;
         }
 
-        const shifted = ymdShiftForWorkdays(pick.date);
-        const targetDate = shifted || pick.date;
-
         const resolvedSiteId = s0 ? String(s0?.id || '') : '';
         const resolvedSiteCode = s0 ? String(s0?.idSite || r?.siteCode || '').trim() : String(r?.siteCode || '').trim();
         const resolvedSiteName = s0 ? String(s0?.nameSite || r?.siteName || '').trim() : String(r?.siteName || '').trim();
 
-        items.push({
-          technician: tech,
-          capacityPerDay,
-          siteId: resolvedSiteId,
-          siteCode: resolvedSiteCode,
-          siteName: resolvedSiteName,
-          region: String(r?.region || '').trim(),
-          zone,
-          assignedTo: tech === 'Non assigné' ? '' : tech,
-          pairGroup: String(r?.pairGroup || '').trim(),
-          epvSlot: pick.slot,
-          recommendedMaintenanceType: pick.type,
-          shortDescription: String(r?.shortDescription || '').trim() || pick.type,
-          epv1: String(pick?.epv1 || (computed?.epv1 || r?.epv1) || '').slice(0, 10),
-          epv2: String(pick?.epv2 || (computed?.epv2 || r?.epv2) || '').slice(0, 10),
-          epv3: String(pick?.epv3 || (computed?.epv3 || r?.epv3) || '').slice(0, 10),
-          targetDate,
-          plannedDate: ''
-        });
+        for (const pick of picks) {
+          const shifted = ymdShiftForWorkdays(pick.date);
+          const targetDate = shifted || pick.date;
+          const baseShort = String(r?.shortDescription || '').trim();
+          const isManual = String(pick?.slot || '').toLowerCase() === 'manual';
+
+          items.push({
+            technician: tech,
+            capacityPerDay,
+            siteId: resolvedSiteId,
+            siteCode: resolvedSiteCode,
+            siteName: resolvedSiteName,
+            region: String(r?.region || '').trim(),
+            zone,
+            assignedTo: tech === 'Non assigné' ? '' : tech,
+            pairGroup: pick?.keepPairGroup ? String(r?.pairGroup || '').trim() : '',
+            epvSlot: pick.slot,
+            recommendedMaintenanceType: pick.type,
+            shortDescription: isManual ? (baseShort || pick.type) : pick.type,
+            epv1: String(pick?.epv1 || (computed?.epv1 || r?.epv1) || '').slice(0, 10),
+            epv2: String(pick?.epv2 || (computed?.epv2 || r?.epv2) || '').slice(0, 10),
+            epv3: String(pick?.epv3 || (computed?.epv3 || r?.epv3) || '').slice(0, 10),
+            targetDate,
+            plannedDate: ''
+          });
+        }
       }
 
       candidatesByTech.set(tech, items);
