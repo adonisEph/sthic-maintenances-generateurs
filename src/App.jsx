@@ -1589,6 +1589,12 @@ const GeneratorMaintenanceApp = () => {
           const best = c2 || c3;
           if (best) return [best];
           if (fallbackType && (inMonth(epv1) || epv1)) return [{ slot: 'EPV1', date: epv1, type: fallbackType, epv1, epv2, epv3, keepPairGroup: true }];
+
+          // Option A : aucune EPV dans le mois cible => PM Simple (PM sans vidange)
+          if (!inMonth(epv1) && !inMonth(epv2) && !inMonth(epv3)) {
+            return [{ slot: 'PM', date: monthStart, type: 'PM Simple', epv1, epv2, epv3, keepPairGroup: true }];
+          }
+
           return [];
         })();
 
@@ -1706,7 +1712,17 @@ const GeneratorMaintenanceApp = () => {
           }
         }
         for (const [g, arr] of grouped.entries()) {
-          units.push({ kind: 'pair', size: arr.length, group: g, items: arr.slice() });
+          const sortedArr = arr
+            .slice()
+            .sort((a, b) => {
+              const aIsPmSimple = String(a?.recommendedMaintenanceType || '').trim() === 'PM Simple' || String(a?.epvSlot || '').trim() === 'PM';
+              const bIsPmSimple = String(b?.recommendedMaintenanceType || '').trim() === 'PM Simple' || String(b?.epvSlot || '').trim() === 'PM';
+              // Mettre PM Simple en second si l'autre item n'est pas PM Simple
+              if (aIsPmSimple !== bIsPmSimple) return aIsPmSimple ? 1 : -1;
+              // Sinon, garder une cohérence par date cible
+              return String(a?.targetDate || '').localeCompare(String(b?.targetDate || ''));
+            });
+          units.push({ kind: 'pair', size: sortedArr.length, group: g, items: sortedArr });
         }
         for (const it of singles) {
           units.push({ kind: 'single', size: 1, group: '', items: [it] });
