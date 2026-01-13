@@ -1170,7 +1170,11 @@ const GeneratorMaintenanceApp = () => {
   const deleteBasePlanFromDb = async () => {
     if (!isAdmin) return;
 
-    const defaultMonth = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}`;
+    const defaultMonth = (() => {
+      const t = String(basePlanTargetMonth || '').trim();
+      if (/^\d{4}-\d{2}$/.test(t)) return t;
+      return `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}`;
+    })();
     const month = String(window.prompt('Mois à supprimer (YYYY-MM)', defaultMonth) || '').trim();
     if (!month) return;
     if (!/^\d{4}-\d{2}$/.test(month)) {
@@ -1189,16 +1193,22 @@ const GeneratorMaintenanceApp = () => {
       const plansRes = await apiFetchJson('/api/pm/base-plans', { method: 'GET' });
       const plans = Array.isArray(plansRes?.plans) ? plansRes.plans : [];
       const plan = plans.find((p) => String(p?.month || '').trim() === month) || null;
-      if (!plan?.id) throw new Error(`Planning de base introuvable pour ${month}.`);
+      if (!plan?.id) {
+        const available = plans
+          .map((p) => String(p?.month || '').trim())
+          .filter(Boolean)
+          .join(', ');
+        throw new Error(`Planning de base introuvable pour ${month}.${available ? `\n\nMois disponibles: ${available}` : ''}`);
+      }
 
       setBasePlanProgress(60);
       await apiFetchJson(`/api/pm/base-plans/${String(plan.id)}`, { method: 'DELETE' });
       setBasePlanProgress(100);
 
-      if (String(basePlanTargetMonth || '').trim() === month) {
-        setBasePlanPreview([]);
-        setBasePlanErrors([]);
-      }
+      // Après suppression DB, on réinitialise l'UI du planning de base pour éviter les confusions
+      setBasePlanPreview([]);
+      setBasePlanErrors([]);
+      setBasePlanBaseRows([]);
 
       alert(`✅ Planning de base supprimé (${month}).`);
     } catch (e) {
@@ -1404,7 +1414,11 @@ const GeneratorMaintenanceApp = () => {
         const plans = Array.isArray(plansRes?.plans) ? plansRes.plans : [];
         const basePlan = plans.find((p) => String(p?.month || '').trim() === String(pmMonth || '').trim()) || null;
         if (!basePlan?.id) {
-          throw new Error(`Planning de base introuvable pour ${pmMonth}.`);
+          const available = plans
+            .map((p) => String(p?.month || '').trim())
+            .filter(Boolean)
+            .join(', ');
+          throw new Error(`Planning de base introuvable pour ${pmMonth}.${available ? `\n\nMois disponibles: ${available}` : ''}`);
         }
         const itemsRes = await apiFetchJson(`/api/pm/base-plans/${String(basePlan.id)}/items`, { method: 'GET' });
         const baseItems = Array.isArray(itemsRes?.items) ? itemsRes.items : [];
@@ -1756,6 +1770,13 @@ const GeneratorMaintenanceApp = () => {
           }
         }
         for (const [g, arr] of grouped.entries()) {
+          if (arr.length !== 2) {
+            errors.push(`PairGroup '${g}' pour '${tech}' doit contenir 2 sites (trouvé ${arr.length}).`);
+            for (const it of arr) {
+              units.push({ kind: 'single', size: 1, group: '', items: [{ ...it, pairGroup: '' }] });
+            }
+            continue;
+          }
           const sortedArr = arr
             .slice()
             .sort((a, b) => {
@@ -1808,9 +1829,11 @@ const GeneratorMaintenanceApp = () => {
         }
 
         if (!scheduledDate) {
-          for (const it of u.items) {
-            errors.push(`Impossible de planifier '${it.siteCode || it.siteName}' pour '${tech}' dans ${month}.`);
-          }
+          const sitesLabel = u.items
+            .map((it) => String(it?.siteCode || it?.siteName || '').trim())
+            .filter(Boolean)
+            .join(' / ');
+          errors.push(`Impossible de planifier '${sitesLabel || 'site(s)'}' pour '${tech}' dans ${month}.`);
           continue;
         }
 
@@ -8113,7 +8136,7 @@ const GeneratorMaintenanceApp = () => {
 
                   {isAdmin && (
                     <div className="grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
-                      <label className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold flex items-center justify-center gap-2 w-full cursor-pointer">
+                      <label className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold flex items-center justify-center gap-2 w-full cursor-pointer whitespace-nowrap text-sm">
                         <Upload size={18} />
                         Importer base (Excel)
                         <input
@@ -8128,7 +8151,7 @@ const GeneratorMaintenanceApp = () => {
                       <button
                         type="button"
                         onClick={generateBasePlanPreview}
-                        className="bg-indigo-700 text-white px-4 py-2 rounded-lg hover:bg-indigo-800 font-semibold w-full disabled:bg-gray-400"
+                        className="bg-indigo-700 text-white px-4 py-2 rounded-lg hover:bg-indigo-800 font-semibold w-full disabled:bg-gray-400 whitespace-nowrap text-sm"
                         disabled={basePlanBusy || basePlanBaseRows.length === 0}
                       >
                         Générer planning mois suivant
@@ -8137,7 +8160,7 @@ const GeneratorMaintenanceApp = () => {
                       <button
                         type="button"
                         onClick={exportBasePlanPreviewExcel}
-                        className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold w-full disabled:bg-gray-400"
+                        className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold w-full disabled:bg-gray-400 whitespace-nowrap text-sm"
                         disabled={basePlanBusy || basePlanPreview.length === 0}
                       >
                         Exporter planning base
@@ -8146,7 +8169,7 @@ const GeneratorMaintenanceApp = () => {
                       <button
                         type="button"
                         onClick={saveBasePlanToDb}
-                        className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold w-full disabled:bg-gray-400"
+                        className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold w-full disabled:bg-gray-400 whitespace-nowrap text-sm"
                         disabled={basePlanBusy || basePlanPreview.length === 0}
                       >
                         Enregistrer (DB)
@@ -8155,7 +8178,7 @@ const GeneratorMaintenanceApp = () => {
                       <button
                         type="button"
                         onClick={deleteBasePlanFromDb}
-                        className="bg-red-700 text-white px-4 py-2 rounded-lg hover:bg-red-800 font-semibold w-full disabled:bg-gray-400"
+                        className="bg-red-700 text-white px-4 py-2 rounded-lg hover:bg-red-800 font-semibold w-full disabled:bg-gray-400 whitespace-nowrap text-sm"
                         disabled={basePlanBusy}
                       >
                         Supprimer (DB)
