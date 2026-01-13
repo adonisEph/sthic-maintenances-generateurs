@@ -1347,6 +1347,31 @@ const GeneratorMaintenanceApp = () => {
           }
         }
 
+        // Si un technicien est en capacité 2 sites/jour et que PairGroup est vide,
+        // on applique la parité "à la STHIC" en groupant 2 lignes consécutives du même technicien.
+        // (on respecte l'ordre du fichier Excel)
+        const normTech = (s) => String(s || '').trim().replace(/\s+/g, ' ');
+        const techToRows = new Map();
+        for (const r of rows) {
+          const tech = normTech(r?.assignedTo) || 'Non assigné';
+          if (!techToRows.has(tech)) techToRows.set(tech, []);
+          techToRows.get(tech).push(r);
+        }
+        for (const [tech, techRows] of techToRows.entries()) {
+          const uniqueSites = new Set(techRows.map((r) => String(r?.siteCode || r?.siteName || '').trim()).filter(Boolean));
+          const capacityPerDay = uniqueSites.size > 20 ? 2 : 1;
+          if (capacityPerDay !== 2) continue;
+
+          const free = techRows.filter((r) => !String(r?.pairGroup || '').trim());
+          let k = 1;
+          for (let i = 0; i + 1 < free.length; i += 2) {
+            const g = `AUTO2-${String(tech).replace(/\s+/g, '-')}-${k}`;
+            free[i].pairGroup = g;
+            free[i + 1].pairGroup = g;
+            k += 1;
+          }
+        }
+
         setBasePlanBaseRows(rows);
         setBasePlanPreview([]);
         setBasePlanTargetMonth(getNextMonthYyyyMm(currentMonth));

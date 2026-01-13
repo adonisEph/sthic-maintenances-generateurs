@@ -30,16 +30,26 @@ export const calculateEstimatedNH = (nh2A, dateA, regime) => {
   return base + (r * daysSinceUpdate);
 };
 
+const ymdLocal = (d) => {
+  const pad2 = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+};
+
 export const addDays = (date, days) => {
   if (!date || days === null || days === undefined || isNaN(days)) {
     return 'N/A';
   }
   try {
-    const result = new Date(date);
-    if (isNaN(result.getTime())) {
+    const src = String(date || '').slice(0, 10);
+    const m = src.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) {
       return 'N/A';
     }
-    result.setDate(result.getDate() + Math.round(days));
+    const yy = Number(m[1]);
+    const mm = Number(m[2]);
+    const dd = Number(m[3]);
+    const result = new Date(Date.UTC(yy, mm - 1, dd));
+    result.setUTCDate(result.getUTCDate() + Math.round(days));
     return result.toISOString().split('T')[0];
   } catch (error) {
     console.error('Erreur addDays:', error, 'date:', date, 'days:', days);
@@ -56,11 +66,12 @@ export const calculateEPVDates = (regime, dateA, nh1DV, nhEstimated) => {
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const todayYmd = ymdLocal(today);
   
   const diffEstimated = nhEstimated - nh1DV;
   const remainingHours = SEUIL - diffEstimated;
   const daysToEPV1 = remainingHours / regime;
-  const epv1 = addDays(today.toISOString().split('T')[0], daysToEPV1);
+  const epv1 = addDays(todayYmd, daysToEPV1);
 
   const daysToEPV2 = SEUIL / regime;
   const epv2 = addDays(epv1, daysToEPV2);
