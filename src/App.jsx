@@ -1818,6 +1818,8 @@ const GeneratorMaintenanceApp = () => {
         let scheduledDate = '';
         const tryScheduleFrom = (startYmd) => {
           let dd = startYmd;
+          let best = '';
+          let bestCurUsed = 0;
           for (let step = 0; step < 80; step += 1) {
             const shifted = ymdShiftForWorkdays(dd);
             const cur = shifted || dd;
@@ -1827,11 +1829,29 @@ const GeneratorMaintenanceApp = () => {
             }
             const curUsed = Number(used.get(cur) || 0);
             if (curUsed + need <= capacityPerDay) {
-              scheduledDate = cur;
-              used.set(cur, curUsed + need);
-              return;
+              if (need === 1 && capacityPerDay === 2) {
+                // Préférer compléter une journée déjà entamée (1/2) plutôt que d'ouvrir une nouvelle journée.
+                if (curUsed === 1) {
+                  best = cur;
+                  bestCurUsed = curUsed;
+                  break;
+                }
+                if (!best) {
+                  best = cur;
+                  bestCurUsed = curUsed;
+                }
+              } else {
+                best = cur;
+                bestCurUsed = curUsed;
+                break;
+              }
             }
             dd = addDaysYmd(dd, 1);
+          }
+
+          if (best) {
+            scheduledDate = best;
+            used.set(best, bestCurUsed + need);
           }
         };
 
@@ -3810,12 +3830,13 @@ const GeneratorMaintenanceApp = () => {
         const src = String(rawDate || '').slice(0, 10);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(src)) return;
         const shifted = ymdShiftForWorkdays(src);
-        if (shifted !== String(dateStr)) return;
+        const planned = shifted || src;
+        if (planned !== String(dateStr)) return;
         const intervention =
-          interventionsByKey.get(getInterventionKey(site.id, shifted, type)) ||
+          interventionsByKey.get(getInterventionKey(site.id, planned, type)) ||
           interventionsByKey.get(getInterventionKey(site.id, src, type)) ||
           null;
-        events.push({ site, type, date: shifted, originalDate: src, intervention, wasRetiredPrevMonth });
+        events.push({ site, type, date: planned, originalDate: src, intervention, wasRetiredPrevMonth });
       };
 
       add('EPV1', site.epv1);
