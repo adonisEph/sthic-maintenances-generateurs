@@ -1167,6 +1167,50 @@ const GeneratorMaintenanceApp = () => {
     if (done) alert('✅ Export Excel généré.');
   };
 
+  const deleteBasePlanFromDb = async () => {
+    if (!isAdmin) return;
+
+    const defaultMonth = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}`;
+    const month = String(window.prompt('Mois à supprimer (YYYY-MM)', defaultMonth) || '').trim();
+    if (!month) return;
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      alert('Mois invalide (YYYY-MM).');
+      return;
+    }
+
+    const ok = window.confirm(
+      `Supprimer définitivement le planning de base en DB pour ${month} ?\n\nCette action supprime aussi toutes les lignes (items).`
+    );
+    if (!ok) return;
+
+    setBasePlanBusy(true);
+    setBasePlanProgress(20);
+    try {
+      const plansRes = await apiFetchJson('/api/pm/base-plans', { method: 'GET' });
+      const plans = Array.isArray(plansRes?.plans) ? plansRes.plans : [];
+      const plan = plans.find((p) => String(p?.month || '').trim() === month) || null;
+      if (!plan?.id) throw new Error(`Planning de base introuvable pour ${month}.`);
+
+      setBasePlanProgress(60);
+      await apiFetchJson(`/api/pm/base-plans/${String(plan.id)}`, { method: 'DELETE' });
+      setBasePlanProgress(100);
+
+      if (String(basePlanTargetMonth || '').trim() === month) {
+        setBasePlanPreview([]);
+        setBasePlanErrors([]);
+      }
+
+      alert(`✅ Planning de base supprimé (${month}).`);
+    } catch (e) {
+      alert(e?.message || 'Erreur serveur.');
+    } finally {
+      setTimeout(() => {
+        setBasePlanBusy(false);
+        setBasePlanProgress(0);
+      }, 300);
+    }
+  };
+
   const basePlanNormalizeYmd = (value) => {
     if (!value && value !== 0) return '';
     if (typeof value === 'number') {
@@ -8068,7 +8112,7 @@ const GeneratorMaintenanceApp = () => {
                   </div>
 
                   {isAdmin && (
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
                       <label className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold flex items-center justify-center gap-2 w-full cursor-pointer">
                         <Upload size={18} />
                         Importer base (Excel)
@@ -8106,6 +8150,15 @@ const GeneratorMaintenanceApp = () => {
                         disabled={basePlanBusy || basePlanPreview.length === 0}
                       >
                         Enregistrer (DB)
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={deleteBasePlanFromDb}
+                        className="bg-red-700 text-white px-4 py-2 rounded-lg hover:bg-red-800 font-semibold w-full disabled:bg-gray-400"
+                        disabled={basePlanBusy}
+                      >
+                        Supprimer (DB)
                       </button>
                     </div>
                   )}
