@@ -1812,20 +1812,30 @@ const GeneratorMaintenanceApp = () => {
         if (!isInMonth(d)) d = monthStart;
 
         let scheduledDate = '';
-        for (let step = 0; step < 80; step += 1) {
-          const shifted = ymdShiftForWorkdays(d);
-          const cur = shifted || d;
-          if (!isInMonth(cur) || cur < monthStart || cur > monthEnd) {
-            d = addDaysYmd(d, 1);
-            continue;
+        const tryScheduleFrom = (startYmd) => {
+          let dd = startYmd;
+          for (let step = 0; step < 80; step += 1) {
+            const shifted = ymdShiftForWorkdays(dd);
+            const cur = shifted || dd;
+            if (!isInMonth(cur) || cur < monthStart || cur > monthEnd) {
+              dd = addDaysYmd(dd, 1);
+              continue;
+            }
+            const curUsed = Number(used.get(cur) || 0);
+            if (curUsed + need <= capacityPerDay) {
+              scheduledDate = cur;
+              used.set(cur, curUsed + need);
+              return;
+            }
+            dd = addDaysYmd(dd, 1);
           }
-          const curUsed = Number(used.get(cur) || 0);
-          if (curUsed + need <= capacityPerDay) {
-            scheduledDate = cur;
-            used.set(cur, curUsed + need);
-            break;
-          }
-          d = addDaysYmd(d, 1);
+        };
+
+        // 1) Essai "naturel": depuis la date cible (EPV / targetDate) vers l'avant
+        tryScheduleFrom(d);
+        // 2) Fallback: si fin de mois saturée, on réessaie depuis le début du mois
+        if (!scheduledDate && d !== monthStart) {
+          tryScheduleFrom(monthStart);
         }
 
         if (!scheduledDate) {
@@ -8050,7 +8060,7 @@ const GeneratorMaintenanceApp = () => {
         {/* Modal Calendrier */}
         {showCalendar && !isTechnician && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
-            <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-6xl sm:max-h-[90vh]">
+            <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-7xl sm:max-h-[95vh]">
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-cyan-600 text-white">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <Calendar size={24} />
