@@ -1331,6 +1331,7 @@ const GeneratorMaintenanceApp = () => {
             const siteName = String(names[i] || names[0] || '').trim();
             if (!siteCode && !siteName) continue;
             rows.push({
+              importOrder: idx * 10 + i,
               siteCode,
               siteName,
               region,
@@ -1701,6 +1702,7 @@ const GeneratorMaintenanceApp = () => {
           items.push({
             technician: tech,
             capacityPerDay,
+            importOrder: Number(r?.importOrder ?? 0),
             siteId: resolvedSiteId,
             siteCode: resolvedSiteCode,
             siteName: resolvedSiteName,
@@ -1813,7 +1815,10 @@ const GeneratorMaintenanceApp = () => {
               const bIsPmSimple = String(b?.recommendedMaintenanceType || '').trim() === 'PM Simple' || String(b?.epvSlot || '').trim() === 'PM';
               // Mettre PM Simple en second si l'autre item n'est pas PM Simple
               if (aIsPmSimple !== bIsPmSimple) return aIsPmSimple ? 1 : -1;
-              // Sinon, garder une cohérence par date cible
+              // Sinon, garder l'ordre du fichier Excel autant que possible
+              const oa = Number(a?.importOrder ?? 0);
+              const ob = Number(b?.importOrder ?? 0);
+              if (oa !== ob) return oa - ob;
               return String(a?.targetDate || '').localeCompare(String(b?.targetDate || ''));
             });
           units.push({ kind: 'pair', size: sortedArr.length, group: g, items: sortedArr });
@@ -1911,6 +1916,9 @@ const GeneratorMaintenanceApp = () => {
           if (d !== 0) return d;
           const t = String(a.technician || '').localeCompare(String(b.technician || ''));
           if (t !== 0) return t;
+          const oa = Number(a?.importOrder ?? 0);
+          const ob = Number(b?.importOrder ?? 0);
+          if (oa !== ob) return oa - ob;
           return String(a.siteCode || '').localeCompare(String(b.siteCode || ''));
         })
     );
@@ -1983,13 +1991,20 @@ const GeneratorMaintenanceApp = () => {
         }
         const rows = [];
         for (const arr of groups.values()) {
-          const sorted = arr.slice().sort((a, b) => String(a.siteCode || '').localeCompare(String(b.siteCode || '')));
+          const sorted = arr
+            .slice()
+            .sort((a, b) => {
+              const oa = Number(a?.importOrder ?? 0);
+              const ob = Number(b?.importOrder ?? 0);
+              if (oa !== ob) return oa - ob;
+              return String(a.siteCode || '').localeCompare(String(b.siteCode || ''));
+            });
           const first = sorted[0] || {};
           const second = sorted[1] || null;
           const hasTwo = sorted.length === 2;
 
-          const siteCode = hasTwo ? `${first.siteCode || ''}\r\n${second?.siteCode || ''}`.trim() : first.siteCode || '';
-          const siteName = hasTwo ? `${first.siteName || ''}\r\n${second?.siteName || ''}`.trim() : first.siteName || '';
+          const siteCode = hasTwo ? `${first.siteCode || ''}\n${second?.siteCode || ''}`.trim() : first.siteCode || '';
+          const siteName = hasTwo ? `${first.siteName || ''}\n${second?.siteName || ''}`.trim() : first.siteName || '';
           const mt = hasTwo && first.recommendedMaintenanceType !== second?.recommendedMaintenanceType
             ? `${first.recommendedMaintenanceType || ''} + ${second?.recommendedMaintenanceType || ''}`.trim()
             : first.recommendedMaintenanceType || '';
@@ -3592,7 +3607,7 @@ const GeneratorMaintenanceApp = () => {
     (Array.isArray(interventions) ? interventions : []).filter(Boolean).map((i) => [getInterventionKey(i.siteId, i.plannedDate, i.epvType), i])
   );
 
-  const ymdShiftForWorkdays = (ymd) => {
+  const ymdShiftForWorkdays = (ymd, opts) => {
     const v = String(ymd || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return '';
 
@@ -3636,24 +3651,87 @@ const GeneratorMaintenanceApp = () => {
       return s === ymdFromUtcDate(easterMonday) || s === ymdFromUtcDate(pentecostMonday);
     };
 
-    const origin = v;
-    let d = new Date(`${v}T00:00:00Z`);
+    const ymdAddDaysUtc = (ymdStr, days) => {
+      const src = String(ymdStr).slice(0, 10);
+      const yy = Number(src.slice(0, 4));
+      const mm = Number(src.slice(5, 7));
+      const dd = Number(src.slice(8, 10));
+      const d = new Date(Date.UTC(yy, mm - 1, dd));
+      d.setUTCDate(d.getUTCDate() + Number(days || 0));
+      return d.toISOString().slice(0, 10);
+    };
 
-    for (let i = 0; i < 12; i += 1) {
-      const cur = d.toISOString().slice(0, 10);
+    const ymdDiffDaysUtc = (aYmd, bYmd) => {
+      const a = new Date(`${String(aYmd).slice(0, 10)}T00:00:00Z`).getTime();
+      const b = new Date(`${String(bYmd).slice(0, 10)}T00:00:00Z`).getTime();
+      if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+      return Math.round((a - b) / (1000 * 60 * 60 * 24));
+    };
+
+    const todayLocalYmd = (() => {
+      const d = new Date();
+      const pad2 = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    })();
+
+    const isNonWorkingYmd = (ymdStr) => {
+      const d = new Date(`${String(ymdStr).slice(0, 10)}T00:00:00Z`);
       const dow = d.getUTCDay();
-      const nonWorking = dow === 0 || dow === 6 || isHolidayYmd(cur);
-      if (!nonWorking) break;
+      return dow === 0 || dow === 6 || isHolidayYmd(String(ymdStr).slice(0, 10));
+    };
 
-      if (dow === 6) {
-        d.setUTCDate(d.getUTCDate() - 1);
-      } else {
-        d.setUTCDate(d.getUTCDate() + 1);
+    if (!isNonWorkingYmd(v)) return '';
+
+    const originDow = new Date(`${v}T00:00:00Z`).getUTCDay();
+
+    const findPrevWorkday = (fromYmd) => {
+      let cur = String(fromYmd).slice(0, 10);
+      for (let i = 0; i < 15; i += 1) {
+        cur = ymdAddDaysUtc(cur, -1);
+        if (!isNonWorkingYmd(cur)) return cur;
       }
+      return '';
+    };
+
+    const findNextWorkday = (fromYmd) => {
+      let cur = String(fromYmd).slice(0, 10);
+      for (let i = 0; i < 15; i += 1) {
+        cur = ymdAddDaysUtc(cur, 1);
+        if (!isNonWorkingYmd(cur)) return cur;
+      }
+      return '';
+    };
+
+    // Règle explicite week-end: plus proche
+    if (originDow === 6) {
+      const prev = findPrevWorkday(v);
+      return prev && prev !== v ? prev : '';
+    }
+    if (originDow === 0) {
+      const next = findNextWorkday(v);
+      return next && next !== v ? next : '';
     }
 
-    const shifted = d.toISOString().slice(0, 10);
-    return shifted !== origin ? shifted : '';
+    // Jour férié sur jour ouvré: choisir le plus proche; tie-break selon urgence
+    const prev = findPrevWorkday(v);
+    const next = findNextWorkday(v);
+    if (!prev && !next) return '';
+    if (!prev) return next !== v ? next : '';
+    if (!next) return prev !== v ? prev : '';
+
+    const prevDist = Math.abs(Number(ymdDiffDaysUtc(v, prev) ?? 9999));
+    const nextDist = Math.abs(Number(ymdDiffDaysUtc(next, v) ?? 9999));
+    if (prevDist < nextDist) return prev !== v ? prev : '';
+    if (nextDist < prevDist) return next !== v ? next : '';
+
+    const prefer = String(opts?.prefer || 'auto').toLowerCase();
+    if (prefer === 'before' || prefer === 'prev') return prev !== v ? prev : '';
+    if (prefer === 'after' || prefer === 'next') return next !== v ? next : '';
+
+    const daysUntil = ymdDiffDaysUtc(v, todayLocalYmd);
+    const urgent = Number.isFinite(daysUntil) && daysUntil <= 3;
+    const pick = urgent ? prev : next;
+    return pick && pick !== v ? pick : '';
   };
 
   const techCalendarItemsInMonth = (() => {
@@ -8281,16 +8359,52 @@ const GeneratorMaintenanceApp = () => {
                               </tr>
                             </thead>
                             <tbody>
-                              {basePlanPreview.slice(0, 80).map((it, idx) => (
-                                <tr key={`${it.siteCode}-${it.plannedDate}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-gray-50'}>
-                                  <td className="p-2 border-b whitespace-nowrap">{it.plannedDate}</td>
-                                  <td className="p-2 border-b">{it.technician}</td>
-                                  <td className="p-2 border-b">{it.siteCode || it.siteName}</td>
-                                  <td className="p-2 border-b">{it.recommendedMaintenanceType}</td>
-                                  <td className="p-2 border-b">{it.epvSlot}</td>
-                                  <td className="p-2 border-b">{it.pairGroup || ''}</td>
-                                </tr>
-                              ))}
+                              {(() => {
+                                const items = Array.isArray(basePlanPreview) ? basePlanPreview.slice(0, 80) : [];
+                                const groups = new Map();
+                                for (const it of items) {
+                                  const g = String(it?.pairGroup || '').trim();
+                                  const key = `${it.plannedDate}||${it.technician}||${g || it.siteCode || it.siteName || ''}`;
+                                  if (!groups.has(key)) groups.set(key, []);
+                                  groups.get(key).push(it);
+                                }
+                                const out = [];
+                                for (const arr of groups.values()) {
+                                  const sorted = arr
+                                    .slice()
+                                    .sort((a, b) => Number(a?.importOrder ?? 0) - Number(b?.importOrder ?? 0));
+                                  const first = sorted[0] || {};
+                                  const second = sorted[1] || null;
+                                  const hasTwo = sorted.length === 2;
+                                  out.push({
+                                    plannedDate: first.plannedDate,
+                                    technician: first.technician,
+                                    siteCode: hasTwo ? `${first.siteCode || ''}\n${second?.siteCode || ''}`.trim() : first.siteCode || '',
+                                    siteName: hasTwo ? `${first.siteName || ''}\n${second?.siteName || ''}`.trim() : first.siteName || '',
+                                    maintenanceType:
+                                      hasTwo && first.recommendedMaintenanceType !== second?.recommendedMaintenanceType
+                                        ? `${first.recommendedMaintenanceType || ''} + ${second?.recommendedMaintenanceType || ''}`.trim()
+                                        : first.recommendedMaintenanceType || '',
+                                    epvSlot: first.epvSlot,
+                                    pairGroup: first.pairGroup || ''
+                                  });
+                                }
+                                out.sort((a, b) => {
+                                  const d = String(a.plannedDate || '').localeCompare(String(b.plannedDate || ''));
+                                  if (d !== 0) return d;
+                                  return String(a.technician || '').localeCompare(String(b.technician || ''));
+                                });
+                                return out.map((it, idx) => (
+                                  <tr key={`${it.siteCode}-${it.plannedDate}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-gray-50'}>
+                                    <td className="p-2 border-b whitespace-nowrap">{it.plannedDate}</td>
+                                    <td className="p-2 border-b">{it.technician}</td>
+                                    <td className="p-2 border-b whitespace-pre-line">{it.siteCode || it.siteName}</td>
+                                    <td className="p-2 border-b">{it.maintenanceType}</td>
+                                    <td className="p-2 border-b">{it.epvSlot}</td>
+                                    <td className="p-2 border-b">{it.pairGroup || ''}</td>
+                                  </tr>
+                                ));
+                              })()}
                             </tbody>
                           </table>
                           {basePlanPreview.length > 80 && (
