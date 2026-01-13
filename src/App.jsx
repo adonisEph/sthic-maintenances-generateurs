@@ -1712,14 +1712,18 @@ const GeneratorMaintenanceApp = () => {
     }
 
     const monthStart = `${month}-01`;
-    const monthEndD = new Date(`${month}-01T00:00:00`);
-    monthEndD.setMonth(monthEndD.getMonth() + 1);
-    monthEndD.setDate(monthEndD.getDate() - 1);
+    const monthEndD = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1));
+    monthEndD.setUTCMonth(monthEndD.getUTCMonth() + 1);
+    monthEndD.setUTCDate(monthEndD.getUTCDate() - 1);
     const monthEnd = monthEndD.toISOString().slice(0, 10);
 
     const addDaysYmd = (ymd, days) => {
-      const d = new Date(`${String(ymd).slice(0, 10)}T00:00:00`);
-      d.setDate(d.getDate() + days);
+      const src = String(ymd).slice(0, 10);
+      const yy = Number(src.slice(0, 4));
+      const mm = Number(src.slice(5, 7));
+      const dd = Number(src.slice(8, 10));
+      const d = new Date(Date.UTC(yy, mm - 1, dd));
+      d.setUTCDate(d.getUTCDate() + days);
       return d.toISOString().slice(0, 10);
     };
 
@@ -3588,18 +3592,18 @@ const GeneratorMaintenanceApp = () => {
     };
 
     const origin = v;
-    let d = new Date(`${v}T00:00:00`);
+    let d = new Date(`${v}T00:00:00Z`);
 
     for (let i = 0; i < 12; i += 1) {
       const cur = d.toISOString().slice(0, 10);
-      const dow = d.getDay();
+      const dow = d.getUTCDay();
       const nonWorking = dow === 0 || dow === 6 || isHolidayYmd(cur);
       if (!nonWorking) break;
 
       if (dow === 6) {
-        d.setDate(d.getDate() - 1);
+        d.setUTCDate(d.getUTCDate() - 1);
       } else {
-        d.setDate(d.getDate() + 1);
+        d.setUTCDate(d.getUTCDate() + 1);
       }
     }
 
