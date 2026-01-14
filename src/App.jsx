@@ -1414,9 +1414,12 @@ const GeneratorMaintenanceApp = () => {
               .replace(/\u00A0/g, ' ')
               .normalize('NFD')
               .replace(/[\u0300-\u036f]/g, '')
-              .trim()
               .toLowerCase()
-              .replace(/[’`]/g, "'")
+              .replace(/[“”«»"'’`]/g, ' ')
+              .replace(/[\u2010\u2011\u2012\u2013\u2014\u2212\-]/g, ' ')
+              .replace(/[\\/|_]/g, ' ')
+              .replace(/[^a-z0-9 ]+/g, ' ')
+              .trim()
               .replace(/\s+/g, ' ');
 
           const nameToRows = new Map();
@@ -1502,11 +1505,6 @@ const GeneratorMaintenanceApp = () => {
               if (cand === r) continue;
               if (isExplicitGroup(cand)) continue;
               if (isAlreadyCrossPaired(cand)) continue;
-
-              const partnerPg = normName(cand?.pairGroup);
-              const partnerSelf = normName(cand?.siteName);
-              const partnerOk = !partnerPg || partnerPg === myName || partnerPg === partnerSelf;
-              if (!partnerOk) continue;
               partner = cand;
               break;
             }
@@ -1540,15 +1538,39 @@ const GeneratorMaintenanceApp = () => {
 
           for (const [g, n] of counts2.entries()) {
             if (n !== 2) {
-              const looksLikeSiteName = !!(nameToRows.get(normName(g)) || []).length;
+              const gNorm = normName(g);
+              const targets = nameToRows.get(gNorm) || [];
+              const looksLikeSiteName = targets.length > 0;
+              const refs = techRows.filter((r) => normName(r?.pairGroup) === gNorm);
+              const refSite = String(refs?.[0]?.siteName || '').trim();
+              const techName = techRows?.[0]?.assignedTo || 'technicien';
+
+              const isSelfRef = refs.some((r) => {
+                const rn = normName(r?.siteName);
+                return rn && rn === gNorm;
+              });
+
               if (looksLikeSiteName) {
-                errors.push(
-                  `⚠️ PairGroup '${g}' pour '${techRows?.[0]?.assignedTo || 'technicien'}': binôme introuvable ou non apparié (trouvé ${n}). Vérifie que '${g}' existe exactement dans une autre ligne 'Site Name' du même technicien.`
-                );
+                if (isSelfRef && targets.length === refs.length) {
+                  errors.push(
+                    `⚠️ PairGroup '${g}' pour '${techName}': auto-référence détectée (PairGroup = Site Name), donc aucun binôme possible (trouvé ${n}). Mets le nom du site binôme dans PairGroup, ou mets une même valeur de groupe sur exactement 2 lignes.`
+                  );
+                } else if (targets.length > 1) {
+                  errors.push(
+                    `⚠️ PairGroup '${g}' pour '${techName}': binôme ambigu (plusieurs lignes ont Site Name='${g}', trouvé ${targets.length}). Renomme/qualifie ces sites ou utilise un PairGroup identique sur 2 lignes.`
+                  );
+                } else {
+                  const t = targets[0];
+                  const targetSite = String(t?.siteName || '').trim();
+                  const targetPg = String(t?.pairGroup || '').trim();
+                  const targetPgHint = targetPg ? ` (PairGroup cible='${targetPg}')` : '';
+                  const refHint = refSite ? ` Référence='${refSite}'.` : '';
+                  errors.push(
+                    `⚠️ PairGroup '${g}' pour '${techName}': binôme introuvable ou non apparié (trouvé ${n}). Cible trouvée: '${targetSite}'${targetPgHint}.${refHint} Vérifie que la cible est dans le même technicien et qu'elle n'est pas déjà appariée ailleurs.`
+                  );
+                }
               } else {
-                errors.push(
-                  `⚠️ PairGroup '${g}' pour '${techRows?.[0]?.assignedTo || 'technicien'}' doit regrouper exactement 2 lignes (trouvé ${n}).`
-                );
+                errors.push(`⚠️ PairGroup '${g}' pour '${techName}' doit regrouper exactement 2 lignes (trouvé ${n}).`);
               }
             }
           }
