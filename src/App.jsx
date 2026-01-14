@@ -1422,6 +1422,23 @@ const GeneratorMaintenanceApp = () => {
               .trim()
               .replace(/\s+/g, ' ');
 
+          const rawCounts = new Map();
+          for (const r of techRows) {
+            const g = String(r?.pairGroup || '').trim();
+            if (!g) continue;
+            rawCounts.set(g, Number(rawCounts.get(g) || 0) + 1);
+          }
+
+          for (const r of techRows) {
+            const g = String(r?.pairGroup || '').trim();
+            if (!g) continue;
+            const n = Number(rawCounts.get(g) || 0);
+            if (n !== 1) continue;
+            const gNorm = normName(g);
+            const myNorm = normName(r?.siteName);
+            if (gNorm && myNorm && gNorm === myNorm) r.pairGroup = '';
+          }
+
           const nameToRows = new Map();
           for (const r of techRows) {
             const nm = normName(r?.siteName);
