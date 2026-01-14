@@ -8600,6 +8600,51 @@ const GeneratorMaintenanceApp = () => {
                         </div>
                       )}
 
+                      {basePlanBaseRows.length > 0 && (
+                        <div className="border rounded-lg overflow-x-auto max-h-64">
+                          <div className="text-xs font-semibold px-3 py-2 border-b bg-gray-50">Base importée (aperçu)</div>
+                          <table className="min-w-[1400px] w-full text-xs">
+                            <thead className="sticky top-0 bg-white">
+                              <tr className="text-left">
+                                <th className="p-2 border-b whitespace-nowrap">Zone</th>
+                                <th className="p-2 border-b whitespace-nowrap">Region</th>
+                                <th className="p-2 border-b whitespace-nowrap">Site (id)</th>
+                                <th className="p-2 border-b whitespace-nowrap">Site Name</th>
+                                <th className="p-2 border-b whitespace-nowrap">Short description</th>
+                                <th className="p-2 border-b whitespace-nowrap">Assigned to</th>
+                                <th className="p-2 border-b whitespace-nowrap">Maintenance Type</th>
+                                <th className="p-2 border-b whitespace-nowrap">Scheduled WO Date</th>
+                                <th className="p-2 border-b whitespace-nowrap">Date EPV 1</th>
+                                <th className="p-2 border-b whitespace-nowrap">Date EPV 2</th>
+                                <th className="p-2 border-b whitespace-nowrap">Date EPV 3</th>
+                                <th className="p-2 border-b whitespace-nowrap">PairGroup</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(Array.isArray(basePlanBaseRows) ? basePlanBaseRows : []).slice(0, 120).map((r, idx) => (
+                                <tr key={`${String(r?.siteCode || r?.siteName || '')}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-gray-50'}>
+                                  <td className="p-2 border-b whitespace-nowrap">{r?.zone || ''}</td>
+                                  <td className="p-2 border-b whitespace-nowrap">{r?.region || ''}</td>
+                                  <td className="p-2 border-b whitespace-nowrap">{r?.siteCode || ''}</td>
+                                  <td className="p-2 border-b max-w-[340px] whitespace-pre-line leading-tight break-words">{r?.siteName || ''}</td>
+                                  <td className="p-2 border-b max-w-[420px] whitespace-pre-line leading-tight break-words">{r?.shortDescription || ''}</td>
+                                  <td className="p-2 border-b whitespace-nowrap">{r?.assignedTo || ''}</td>
+                                  <td className="p-2 border-b whitespace-nowrap">{r?.maintenanceType || ''}</td>
+                                  <td className="p-2 border-b whitespace-nowrap">{r?.scheduledWoDate || ''}</td>
+                                  <td className="p-2 border-b whitespace-nowrap">{r?.epv1 || ''}</td>
+                                  <td className="p-2 border-b whitespace-nowrap">{r?.epv2 || ''}</td>
+                                  <td className="p-2 border-b whitespace-nowrap">{r?.epv3 || ''}</td>
+                                  <td className="p-2 border-b whitespace-nowrap">{r?.pairGroup || ''}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {basePlanBaseRows.length > 120 && (
+                            <div className="text-xs text-gray-600 p-2">Affichage limité aux 120 premières lignes (total: {basePlanBaseRows.length}).</div>
+                          )}
+                        </div>
+                      )}
+
                       {basePlanPreview.length > 0 && (
                         <div className="border rounded-lg overflow-auto max-h-64">
                           <table className="min-w-full text-xs">
