@@ -1410,10 +1410,13 @@ const GeneratorMaintenanceApp = () => {
 
           const normName = (s) =>
             String(s || '')
+              .replace(/[\u200B-\u200D\uFEFF]/g, '')
+              .replace(/\u00A0/g, ' ')
               .normalize('NFD')
               .replace(/[\u0300-\u036f]/g, '')
               .trim()
               .toLowerCase()
+              .replace(/[’`]/g, "'")
               .replace(/\s+/g, ' ');
 
           const nameToRows = new Map();
@@ -1433,29 +1436,83 @@ const GeneratorMaintenanceApp = () => {
 
           let crossK = 1;
           const usedCross = new Set();
+          const isExplicitGroup = (r) => {
+            const g = String(r?.pairGroup || '').trim();
+            if (!g) return false;
+            return Number(counts.get(g) || 0) >= 2;
+          };
+
+          const isAlreadyCrossPaired = (r) => {
+            const nm = normName(r?.siteName);
+            const key = `${Number(r?.importOrder ?? 0)}|${nm}`;
+            return usedCross.has(key);
+          };
+
+          const applyCrossPair = (a, b) => {
+            const aName = normName(a?.siteName);
+            const bName = normName(b?.siteName);
+            if (!aName || !bName) return false;
+            const keyA = `${Number(a?.importOrder ?? 0)}|${aName}`;
+            const keyB = `${Number(b?.importOrder ?? 0)}|${bName}`;
+            if (usedCross.has(keyA) || usedCross.has(keyB)) return false;
+            const canonical = `XPAIR-${String(techRows?.[0]?.assignedTo || 'TECH').replace(/\s+/g, '-')}-${crossK}`;
+            crossK += 1;
+            a.pairGroup = canonical;
+            b.pairGroup = canonical;
+            usedCross.add(keyA);
+            usedCross.add(keyB);
+            counts.set(canonical, 2);
+            return true;
+          };
+
+          // 1) Mutual reference: A.PairGroup == B.SiteName AND B.PairGroup == A.SiteName
           for (const r of techRows) {
             const gRaw = String(r?.pairGroup || '').trim();
             if (!gRaw) continue;
-            if (Number(counts.get(gRaw) || 0) >= 2) continue;
+            if (isExplicitGroup(r)) continue;
+            if (isAlreadyCrossPaired(r)) continue;
 
             const myName = normName(r?.siteName);
             const targetName = normName(gRaw);
             if (!myName || !targetName) continue;
+            if (myName === targetName) continue;
+
             const candidates = nameToRows.get(targetName) || [];
-            const partner = candidates.find((x) => normName(x?.pairGroup) === myName) || null;
+            const partner =
+              candidates.find((x) => x !== r && normName(x?.pairGroup) === myName && !isExplicitGroup(x) && !isAlreadyCrossPaired(x)) || null;
+            if (!partner) continue;
+            applyCrossPair(r, partner);
+          }
+
+          // 2) One-way reference: A.PairGroup == B.SiteName (B can be empty/self)
+          for (const r of techRows) {
+            const gRaw = String(r?.pairGroup || '').trim();
+            if (!gRaw) continue;
+            if (isExplicitGroup(r)) continue;
+            if (isAlreadyCrossPaired(r)) continue;
+
+            const myName = normName(r?.siteName);
+            const targetName = normName(gRaw);
+            if (!myName || !targetName) continue;
+            if (myName === targetName) continue;
+
+            const candidates = nameToRows.get(targetName) || [];
+            let partner = null;
+            for (const cand of candidates) {
+              if (cand === r) continue;
+              if (isExplicitGroup(cand)) continue;
+              if (isAlreadyCrossPaired(cand)) continue;
+
+              const partnerPg = normName(cand?.pairGroup);
+              const partnerSelf = normName(cand?.siteName);
+              const partnerOk = !partnerPg || partnerPg === myName || partnerPg === partnerSelf;
+              if (!partnerOk) continue;
+              partner = cand;
+              break;
+            }
             if (!partner) continue;
 
-            const keyA = `${Number(r?.importOrder ?? 0)}|${myName}`;
-            const keyB = `${Number(partner?.importOrder ?? 0)}|${targetName}`;
-            if (usedCross.has(keyA) || usedCross.has(keyB)) continue;
-
-            const canonical = `XPAIR-${String(techRows?.[0]?.assignedTo || 'TECH').replace(/\s+/g, '-')}-${crossK}`;
-            crossK += 1;
-            r.pairGroup = canonical;
-            partner.pairGroup = canonical;
-            usedCross.add(keyA);
-            usedCross.add(keyB);
-            counts.set(canonical, 2);
+            applyCrossPair(r, partner);
           }
 
           for (let i = 0; i + 1 < techRows.length; i += 1) {
@@ -1483,9 +1540,16 @@ const GeneratorMaintenanceApp = () => {
 
           for (const [g, n] of counts2.entries()) {
             if (n !== 2) {
-              errors.push(
-                `⚠️ PairGroup '${g}' pour '${techRows?.[0]?.assignedTo || 'technicien'}' doit regrouper exactement 2 lignes (trouvé ${n}).`
-              );
+              const looksLikeSiteName = !!(nameToRows.get(normName(g)) || []).length;
+              if (looksLikeSiteName) {
+                errors.push(
+                  `⚠️ PairGroup '${g}' pour '${techRows?.[0]?.assignedTo || 'technicien'}': binôme introuvable ou non apparié (trouvé ${n}). Vérifie que '${g}' existe exactement dans une autre ligne 'Site Name' du même technicien.`
+                );
+              } else {
+                errors.push(
+                  `⚠️ PairGroup '${g}' pour '${techRows?.[0]?.assignedTo || 'technicien'}' doit regrouper exactement 2 lignes (trouvé ${n}).`
+                );
+              }
             }
           }
         }
