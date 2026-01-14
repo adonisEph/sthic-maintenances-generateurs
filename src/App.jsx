@@ -2248,8 +2248,8 @@ const GeneratorMaintenanceApp = () => {
           const second = sorted[1] || null;
           const hasTwo = sorted.length === 2;
 
-          const siteCode = hasTwo ? `${first.siteCode || ''}\n${second?.siteCode || ''}`.trim() : first.siteCode || '';
-          const siteName = hasTwo ? `${first.siteName || ''}\n${second?.siteName || ''}`.trim() : first.siteName || '';
+          const siteCode = hasTwo ? `${first.siteCode || ''}\r\n${second?.siteCode || ''}`.trim() : first.siteCode || '';
+          const siteName = hasTwo ? `${first.siteName || ''}\r\n${second?.siteName || ''}`.trim() : first.siteName || '';
           const mt = hasTwo && first.recommendedMaintenanceType !== second?.recommendedMaintenanceType
             ? `${first.recommendedMaintenanceType || ''} + ${second?.recommendedMaintenanceType || ''}`.trim()
             : first.recommendedMaintenanceType || '';
@@ -3359,7 +3359,7 @@ const GeneratorMaintenanceApp = () => {
 
   const exportXlsx = ({ fileBaseName, sheets }) => {
     const base = String(fileBaseName || 'export').trim() || 'export';
-    const safeBase = base.replace(/[\\/:*?"<>|]+/g, '_');
+    const safeBase = base.replace(/[\/:*?"<>|]+/g, '_');
     const wb = XLSX.utils.book_new();
     if (exportBusyRef.current) {
       setExportProgress((p) => Math.max(p, 55));
@@ -3370,30 +3370,40 @@ const GeneratorMaintenanceApp = () => {
       const rows = Array.isArray(sh?.rows) ? sh.rows : [];
       const ws = XLSX.utils.json_to_sheet(rows);
 
-      const rowsToGrow = new Set();
+      const rowToMaxLines = new Map();
       for (const k of Object.keys(ws || {})) {
         if (!k || k[0] === '!') continue;
         const cell = ws[k];
         if (!cell || typeof cell.v !== 'string') continue;
         if (cell.v.includes('\n')) {
-          cell.s = { ...(cell.s || {}), alignment: { ...((cell.s || {}).alignment || {}), wrapText: true } };
+          const existingAlign = (cell.s || {}).alignment || {};
+          cell.s = {
+            ...(cell.s || {}),
+            alignment: { ...existingAlign, wrapText: true, vertical: existingAlign.vertical || 'top' }
+          };
           try {
             const rc = XLSX.utils.decode_cell(k);
-            if (rc && Number.isFinite(rc.r)) rowsToGrow.add(rc.r);
+            if (rc && Number.isFinite(rc.r)) {
+              const lines = String(cell.v).split(/\r?\n/).length;
+              const prev = Number(rowToMaxLines.get(rc.r) || 0);
+              if (lines > prev) rowToMaxLines.set(rc.r, lines);
+            }
           } catch {
             // ignore
           }
         }
       }
 
-      if (rowsToGrow.size > 0) {
-        const max = Math.max(...Array.from(rowsToGrow.values()));
+      if (rowToMaxLines.size > 0) {
+        const max = Math.max(...Array.from(rowToMaxLines.keys()));
         const out = Array.isArray(ws['!rows']) ? ws['!rows'].slice() : [];
         while (out.length <= max) out.push(null);
-        for (const r of rowsToGrow.values()) {
+        for (const [r, lines] of rowToMaxLines.entries()) {
           const prev = out[r] || {};
-          const hpt = Math.max(Number(prev.hpt || 0), 30);
-          out[r] = { ...prev, hpt };
+          const baseHpt = 18;
+          const hpt = Math.max(Number(prev.hpt || 0), baseHpt * Math.max(1, Number(lines || 1)));
+          const hpx = Math.max(Number(prev.hpx || 0), Math.round(hpt * (96 / 72)));
+          out[r] = { ...prev, hpt, hpx };
         }
         ws['!rows'] = out;
       }
@@ -7871,7 +7881,7 @@ const GeneratorMaintenanceApp = () => {
                         <div key={`${evt.site.id}-${evt.type}`} className="border border-gray-200 rounded-lg p-3">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <div className="font-semibold text-gray-800 truncate">{evt.site.nameSite}</div>
+                              <div className="font-semibold text-gray-800 whitespace-pre-line leading-tight break-words">{evt.site.nameSite}</div>
                               <div className="text-xs text-gray-600">
                                 {evt.type} • {formatDate(evt.date)} • {evt.site.technician}
                                 {moved && (
