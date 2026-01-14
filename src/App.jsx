@@ -1284,30 +1284,56 @@ const GeneratorMaintenanceApp = () => {
         const rows = [];
         const errors = [];
         const arr = Array.isArray(jsonData) ? jsonData : [];
+        const importPairGroupStats = {
+          headerUsed: '',
+          nonEmptyCount: 0,
+          possibleHeaders: []
+        };
+        try {
+          const firstRow = arr?.[0];
+          if (firstRow && typeof firstRow === 'object') {
+            const keys = Object.keys(firstRow);
+            importPairGroupStats.possibleHeaders = keys.filter((k) => {
+              const nk = pmNormKey(k).replace(/\s+/g, '');
+              return nk.includes('pair') || nk.includes('grp') || nk.includes('binome') || nk.includes('groupe');
+            });
+          }
+        } catch {
+          // ignore
+        }
         for (let idx = 0; idx < arr.length; idx += 1) {
           const row = arr[idx];
           const rawSiteCode = String(pmGet(row, 'Site (id)', 'Site', 'Site id', 'Site Code') || '').trim();
           const rawSiteName = String(pmGet(row, 'Site Name', 'Site name', 'Name Site') || '').trim();
           const region = String(pmGet(row, 'Region', 'REGION', 'Région') || '').trim();
-          const zone = String(
-            pmGet(
-              row,
-              'Zones',
-              'ZONES',
-              'ZONE',
-              'ZONE/PMWO',
-              'Zone/PMWO',
-              'ZONE / PMWO',
-              'Zone / PMWO',
-              'Zone PMWO',
-              'ZONE PMWO',
-              'Zone'
-            ) ||
-              ''
-          ).trim();
+          const zone = String(pmGet(row, 'Zone', 'ZONE') || '').trim();
           const shortDescription = String(pmGet(row, 'Short description', 'Short Description') || '').trim();
           const assignedTo = String(pmGet(row, 'Assigned to', 'Assigned To') || '').trim();
-          const pairGroupRaw = String(pmGet(row, 'PairGroup', 'Pair Group', 'Pair group') || '').trim();
+          let pairGroupRaw = String(pmGet(row, 'PairGroup', 'Pair Group', 'Pair group') || '').trim();
+          if (!pairGroupRaw) {
+            try {
+              const keys = Object.keys(row || {});
+              for (const k of keys) {
+                const nk = pmNormKey(k).replace(/\s+/g, '');
+                const looksLikePairGroup =
+                  nk.includes('pairgroup') ||
+                  nk.includes('pairgrp') ||
+                  nk.includes('pairgr') ||
+                  (nk.includes('pair') && nk.includes('group'));
+                if (!looksLikePairGroup) continue;
+                const v = row?.[k];
+                if (v != null && String(v).trim() !== '') {
+                  pairGroupRaw = String(v).trim();
+                  if (!importPairGroupStats.headerUsed) importPairGroupStats.headerUsed = String(k);
+                  break;
+                }
+              }
+            } catch {
+              // ignore
+            }
+          }
+
+          if (pairGroupRaw) importPairGroupStats.nonEmptyCount += 1;
           const scheduledWoDate = basePlanNormalizeYmd(
             pmGet(row, 'Scheduled WO Date', 'Scheduled Wo Date', 'Scheduled date', 'Scheduled Date')
           );
@@ -1348,6 +1374,14 @@ const GeneratorMaintenanceApp = () => {
           }
         }
 
+        if (importPairGroupStats.nonEmptyCount === 0 && importPairGroupStats.possibleHeaders.length > 0) {
+          errors.push(
+            `⚠️ PairGroup: 0 valeur détectée dans ce fichier. Colonnes proches détectées: ${importPairGroupStats.possibleHeaders
+              .slice(0, 8)
+              .join(', ')}${importPairGroupStats.possibleHeaders.length > 8 ? '…' : ''}.`
+          );
+        }
+
         // Si un technicien est en capacité 2 sites/jour et que PairGroup est vide,
         // on applique la parité "à la STHIC" en groupant 2 lignes consécutives du même technicien.
         // (on respecte l'ordre du fichier Excel)
@@ -1362,6 +1396,11 @@ const GeneratorMaintenanceApp = () => {
           const uniqueSites = new Set(techRows.map((r) => String(r?.siteCode || r?.siteName || '').trim()).filter(Boolean));
           const capacityPerDay = uniqueSites.size > 20 ? 2 : 1;
           if (capacityPerDay !== 2) continue;
+
+          // Option A: si le fichier contient déjà des PairGroup pour ce technicien,
+          // on ne fabrique PAS de paires artificielles (l'Excel fait foi).
+          const hasAnyPairGroup = techRows.some((r) => String(r?.pairGroup || '').trim());
+          if (hasAnyPairGroup) continue;
 
           const free = techRows.filter((r) => !String(r?.pairGroup || '').trim());
           let k = 1;
@@ -1659,7 +1698,7 @@ const GeneratorMaintenanceApp = () => {
             const out = [];
             out.push({ slot: 'EPV1', date: epv2, type: 'FullPMWO', epv1, epv2, epv3, keepPairGroup: true });
             if (inMonth(epv3)) {
-              out.push({ slot: 'EPV2', date: epv3, type: 'DG Service', epv1, epv2, epv3, keepPairGroup: false });
+              out.push({ slot: 'EPV2', date: epv3, type: 'DG Service', epv1, epv2, epv3, keepPairGroup: true });
             }
             return out;
           }
