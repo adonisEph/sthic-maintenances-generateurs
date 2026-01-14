@@ -1287,7 +1287,8 @@ const GeneratorMaintenanceApp = () => {
         const importPairGroupStats = {
           headerUsed: '',
           nonEmptyCount: 0,
-          possibleHeaders: []
+          possibleHeaders: [],
+          hasAnyPairGroupHeader: false
         };
         try {
           const firstRow = arr?.[0];
@@ -1296,6 +1297,10 @@ const GeneratorMaintenanceApp = () => {
             importPairGroupStats.possibleHeaders = keys.filter((k) => {
               const nk = pmNormKey(k).replace(/\s+/g, '');
               return nk.includes('pair') || nk.includes('grp') || nk.includes('binome') || nk.includes('groupe');
+            });
+            importPairGroupStats.hasAnyPairGroupHeader = keys.some((k) => {
+              const nk = pmNormKey(k).replace(/\s+/g, '');
+              return nk.includes('pairgroup') || nk.includes('pairgrp') || nk.includes('pairgr') || nk.includes('binome') || nk.includes('paire');
             });
           }
         } catch {
@@ -1319,7 +1324,10 @@ const GeneratorMaintenanceApp = () => {
                   nk.includes('pairgroup') ||
                   nk.includes('pairgrp') ||
                   nk.includes('pairgr') ||
-                  (nk.includes('pair') && nk.includes('group'));
+                  (nk.includes('pair') && (nk.includes('group') || nk.includes('grp'))) ||
+                  nk.includes('binome') ||
+                  nk.includes('paire') ||
+                  nk.includes('groupe');
                 if (!looksLikePairGroup) continue;
                 const v = row?.[k];
                 if (v != null && String(v).trim() !== '') {
@@ -1382,6 +1390,106 @@ const GeneratorMaintenanceApp = () => {
           );
         }
 
+        if (!importPairGroupStats.hasAnyPairGroupHeader) {
+          errors.push(
+            `⚠️ PairGroup: colonne absente dans ce fichier (sur la première ligne). Si tu veux imposer les vraies paires géographiques, ajoute une colonne "PairGroup" (ou "Binôme"/"Paire") avec la même valeur sur 2 lignes.`
+          );
+        }
+
+        // Cas Excel courant: PairGroup saisi sur une seule ligne (cellules fusionnées / non répétées).
+        // On propage au voisin direct si ce PairGroup n'apparaît qu'une seule fois.
+        const normTech2 = (s) => String(s || '').trim().replace(/\s+/g, ' ');
+        const byTech2 = new Map();
+        for (const r of rows) {
+          const tech = normTech2(r?.assignedTo) || 'Non assigné';
+          if (!byTech2.has(tech)) byTech2.set(tech, []);
+          byTech2.get(tech).push(r);
+        }
+        for (const techRows of byTech2.values()) {
+          techRows.sort((a, b) => Number(a?.importOrder ?? 0) - Number(b?.importOrder ?? 0));
+
+          const normName = (s) =>
+            String(s || '')
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+              .trim()
+              .toLowerCase()
+              .replace(/\s+/g, ' ');
+
+          const nameToRows = new Map();
+          for (const r of techRows) {
+            const nm = normName(r?.siteName);
+            if (!nm) continue;
+            if (!nameToRows.has(nm)) nameToRows.set(nm, []);
+            nameToRows.get(nm).push(r);
+          }
+
+          const counts = new Map();
+          for (const r of techRows) {
+            const g = String(r?.pairGroup || '').trim();
+            if (!g) continue;
+            counts.set(g, Number(counts.get(g) || 0) + 1);
+          }
+
+          let crossK = 1;
+          const usedCross = new Set();
+          for (const r of techRows) {
+            const gRaw = String(r?.pairGroup || '').trim();
+            if (!gRaw) continue;
+            if (Number(counts.get(gRaw) || 0) >= 2) continue;
+
+            const myName = normName(r?.siteName);
+            const targetName = normName(gRaw);
+            if (!myName || !targetName) continue;
+            const candidates = nameToRows.get(targetName) || [];
+            const partner = candidates.find((x) => normName(x?.pairGroup) === myName) || null;
+            if (!partner) continue;
+
+            const keyA = `${Number(r?.importOrder ?? 0)}|${myName}`;
+            const keyB = `${Number(partner?.importOrder ?? 0)}|${targetName}`;
+            if (usedCross.has(keyA) || usedCross.has(keyB)) continue;
+
+            const canonical = `XPAIR-${String(techRows?.[0]?.assignedTo || 'TECH').replace(/\s+/g, '-')}-${crossK}`;
+            crossK += 1;
+            r.pairGroup = canonical;
+            partner.pairGroup = canonical;
+            usedCross.add(keyA);
+            usedCross.add(keyB);
+            counts.set(canonical, 2);
+          }
+
+          for (let i = 0; i + 1 < techRows.length; i += 1) {
+            const cur = techRows[i];
+            const next = techRows[i + 1];
+            const g = String(cur?.pairGroup || '').trim();
+            if (!g) continue;
+            if (String(next?.pairGroup || '').trim()) continue;
+            const n = Number(counts.get(g) || 0);
+            if (n !== 1) continue;
+
+            const looksLikeSiteName = !!(nameToRows.get(normName(g)) || []).length;
+            if (looksLikeSiteName) continue;
+
+            next.pairGroup = g;
+            counts.set(g, 2);
+          }
+
+          const counts2 = new Map();
+          for (const r of techRows) {
+            const g = String(r?.pairGroup || '').trim();
+            if (!g) continue;
+            counts2.set(g, Number(counts2.get(g) || 0) + 1);
+          }
+
+          for (const [g, n] of counts2.entries()) {
+            if (n !== 2) {
+              errors.push(
+                `⚠️ PairGroup '${g}' pour '${techRows?.[0]?.assignedTo || 'technicien'}' doit regrouper exactement 2 lignes (trouvé ${n}).`
+              );
+            }
+          }
+        }
+
         // Si un technicien est en capacité 2 sites/jour et que PairGroup est vide,
         // on applique la parité "à la STHIC" en groupant 2 lignes consécutives du même technicien.
         // (on respecte l'ordre du fichier Excel)
@@ -1396,11 +1504,6 @@ const GeneratorMaintenanceApp = () => {
           const uniqueSites = new Set(techRows.map((r) => String(r?.siteCode || r?.siteName || '').trim()).filter(Boolean));
           const capacityPerDay = uniqueSites.size > 20 ? 2 : 1;
           if (capacityPerDay !== 2) continue;
-
-          // Option A: si le fichier contient déjà des PairGroup pour ce technicien,
-          // on ne fabrique PAS de paires artificielles (l'Excel fait foi).
-          const hasAnyPairGroup = techRows.some((r) => String(r?.pairGroup || '').trim());
-          if (hasAnyPairGroup) continue;
 
           const free = techRows.filter((r) => !String(r?.pairGroup || '').trim());
           let k = 1;
