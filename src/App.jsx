@@ -5567,7 +5567,7 @@ const GeneratorMaintenanceApp = () => {
                             {pmClientCompare.retained.slice(0, 50).map((r, idx) => (
                               <tr key={`ret-${r.siteCode}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-gray-50'}>
                                 <td className="p-2 border-b whitespace-nowrap">{r.plannedDate}</td>
-                                <td className="p-2 border-b">{r.siteCode}</td>
+                                <td className="p-2 border-b whitespace-pre-line leading-tight break-words">{r.siteName || r.siteCode}</td>
                                 <td className="p-2 border-b">{r.maintenanceType}</td>
                                 <td className="p-2 border-b">{r.number || ''}</td>
                               </tr>
@@ -5593,7 +5593,7 @@ const GeneratorMaintenanceApp = () => {
                             {pmClientCompare.removed.slice(0, 50).map((r, idx) => (
                               <tr key={`rem-${r.siteCode}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-red-50'}>
                                 <td className="p-2 border-b whitespace-nowrap">{r.plannedDate}</td>
-                                <td className="p-2 border-b">{r.siteCode}</td>
+                                <td className="p-2 border-b whitespace-pre-line leading-tight break-words">{r.siteName || r.siteCode}</td>
                                 <td className="p-2 border-b">{r.maintenanceType}</td>
                               </tr>
                             ))}
@@ -5619,7 +5619,7 @@ const GeneratorMaintenanceApp = () => {
                             {pmClientCompare.added.slice(0, 50).map((r, idx) => (
                               <tr key={`add-${r.siteCode}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-amber-50'}>
                                 <td className="p-2 border-b whitespace-nowrap">{r.plannedDate}</td>
-                                <td className="p-2 border-b">{r.siteCode}</td>
+                                <td className="p-2 border-b whitespace-pre-line leading-tight break-words">{r.siteName || r.siteCode}</td>
                                 <td className="p-2 border-b">{r.maintenanceType}</td>
                                 <td className="p-2 border-b">{r.number || ''}</td>
                               </tr>
@@ -6020,7 +6020,7 @@ const GeneratorMaintenanceApp = () => {
                                   const reprogStatus = effectiveReprogStatus(it);
                                   const reprog = it?.reprogrammationDate ? String(it.reprogrammationDate).slice(0, 10) : '';
                                   const reason = String(it?.reprogrammationReason || '').trim();
-                                  const siteLabel = [it?.siteName, it?.siteCode].filter(Boolean).join(' • ');
+                                  const siteLabel = [it?.siteName, it?.siteCode].filter(Boolean).join('\n');
                                   const st = stateLabel(it?.state);
                                   return (
                                     <tr key={it?.id || it?.number} className={`border-b border-slate-200 hover:bg-slate-100/60 ${idx % 2 === 1 ? 'bg-white' : 'bg-slate-50'}`}>
@@ -6031,7 +6031,7 @@ const GeneratorMaintenanceApp = () => {
                                         </span>
                                       </td>
                                       <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{sched || '-'}</td>
-                                      <td className="px-3 py-2 text-slate-900 max-w-[260px] truncate" title={siteLabel || ''}>{siteLabel || '-'}</td>
+                                      <td className="px-3 py-2 text-slate-900 max-w-[260px] whitespace-pre-line leading-tight break-words" title={siteLabel || ''}>{siteLabel || '-'}</td>
                                       <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.zone || '-'}</td>
                                       <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.maintenanceType || '-'}</td>
                                       <td className="px-3 py-2 text-slate-900 max-w-[200px] truncate" title={String(it?.assignedTo || '')}>{it?.assignedTo || '-'}</td>
@@ -7696,8 +7696,8 @@ const GeneratorMaintenanceApp = () => {
                                 const ticket = String(ev?.item?.pmNumber || '').trim();
                                 const typeLabel = techCalendarPmTypeLabel(ev?.item);
                                 return (
-                                  <div key={`${ev?.site?.id || ev?.item?.id}`} className={`${color} text-white px-1 rounded truncate flex items-center gap-1`}>
-                                    <span className="truncate">{ev?.site?.nameSite || ev?.item?.siteId || '-'}</span>
+                                  <div key={`${ev?.site?.id || ev?.item?.id}`} className={`${color} text-white px-1 rounded flex items-start gap-1`}>
+                                    <span className="min-w-0 flex-1 whitespace-pre-line leading-tight break-words">{ev?.site?.nameSite || ev?.item?.siteId || '-'}</span>
                                     <span className="ml-auto text-[10px] font-bold opacity-90">
                                       {typeLabel}{ticket ? `:${ticket}` : ''}
                                       {ev?.matchInfo?.label ? ` • ${ev.matchInfo.label === 'PM Simple' ? 'PM' : ev.matchInfo.label === 'PM et Vidange' ? 'PM+V' : 'V'}` : ''}
@@ -7754,7 +7754,7 @@ const GeneratorMaintenanceApp = () => {
                         <div key={String(it?.id || `${site?.id}-${it?.plannedDate}-${it?.maintenanceType}`)} className="border border-gray-200 rounded-lg p-3">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <div className="font-semibold text-gray-800 truncate">{site?.nameSite || it?.siteId || '-'}</div>
+                              <div className="font-semibold text-gray-800 whitespace-pre-line leading-tight break-words">{site?.nameSite || it?.siteId || '-'}</div>
                               {site?.idSite && <div className="text-xs text-gray-600">ID: {site.idSite}</div>}
                               <div className="text-xs text-gray-600">{typeLabel} • {formatDate(it?.plannedDate)} • {String(it?.technicianName || '')}</div>
                               <div className="mt-2 flex flex-wrap gap-2">
@@ -8643,7 +8643,7 @@ const GeneratorMaintenanceApp = () => {
                                   <tr key={`${it.siteCode}-${it.plannedDate}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-gray-50'}>
                                     <td className="p-2 border-b whitespace-nowrap">{it.plannedDate}</td>
                                     <td className="p-2 border-b">{it.technician}</td>
-                                    <td className="p-2 border-b whitespace-pre-line">{it.siteCode || it.siteName}</td>
+                                    <td className="p-2 border-b whitespace-pre-line leading-tight break-words">{it.siteName || it.siteCode}</td>
                                     <td className="p-2 border-b">{it.maintenanceType}</td>
                                     <td className="p-2 border-b">{it.epvSlot}</td>
                                     <td className="p-2 border-b">{it.pairGroup || ''}</td>
@@ -8723,9 +8723,9 @@ const GeneratorMaintenanceApp = () => {
                                 const dot = st === 'done' ? 'bg-green-200' : st === 'sent' ? 'bg-blue-200' : st === 'planned' ? 'bg-amber-200' : 'bg-gray-200';
                                 const moved = ev?.originalDate && String(ev.originalDate) !== String(ev.date);
                                 return (
-                                  <div key={`${ev.site.id}-${ev.type}`} className={`${color} text-white px-1 rounded truncate flex items-center gap-1`}>
+                                  <div key={`${ev.site.id}-${ev.type}`} className={`${color} text-white px-1 rounded flex items-start gap-1`}>
                                     <span className={`inline-block w-2 h-2 rounded-full ${dot}`} />
-                                    <span className="truncate">{ev.site.nameSite}</span>
+                                    <span className="min-w-0 flex-1 whitespace-pre-line leading-tight break-words">{ev.site.nameSite}</span>
                                     {moved && <span className="ml-auto text-[10px] font-bold opacity-90">↔</span>}
                                   </div>
                                 );
