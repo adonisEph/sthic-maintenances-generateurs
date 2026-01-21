@@ -30,7 +30,9 @@ export async function onRequestGet({ env, data, params }) {
 
     const today = ymdToday();
 
-    const res = await env.DB.prepare('SELECT state, scheduled_wo_date, maintenance_type, zone FROM pm_items WHERE month_id = ?')
+    const res = await env.DB.prepare(
+      'SELECT state, scheduled_wo_date, maintenance_type, zone, reprogrammation_date, reprogrammation_status, reprogrammation_reason FROM pm_items WHERE month_id = ?'
+    )
       .bind(monthId)
       .all();
     const rows = Array.isArray(res?.results) ? res.results : [];
@@ -42,6 +44,7 @@ export async function onRequestGet({ env, data, params }) {
       awaiting: 0,
       assigned: 0,
       other: 0,
+      reprogrammation: 0,
       overdueAssigned: 0,
       remaining: 0,
       donePct: 0
@@ -55,21 +58,26 @@ export async function onRequestGet({ env, data, params }) {
       const bucket = bucketForState(r?.state);
       totals[bucket] += 1;
 
+      const hasReprog = Boolean(r?.reprogrammation_date || r?.reprogrammation_status || r?.reprogrammation_reason);
+      if (hasReprog) totals.reprogrammation += 1;
+
       const sched = r?.scheduled_wo_date ? String(r.scheduled_wo_date).slice(0, 10) : '';
       if (bucket === 'assigned' && sched && sched < today) totals.overdueAssigned += 1;
 
       const zone = String(r?.zone || '').trim() || 'N/A';
       const typ = String(r?.maintenance_type || '').trim() || 'N/A';
 
-      if (!byZone[zone]) byZone[zone] = { zone, total: 0, done: 0, wip: 0, awaiting: 0, assigned: 0, other: 0, overdueAssigned: 0 };
-      if (!byType[typ]) byType[typ] = { maintenanceType: typ, total: 0, done: 0, wip: 0, awaiting: 0, assigned: 0, other: 0, overdueAssigned: 0 };
+      if (!byZone[zone]) byZone[zone] = { zone, total: 0, done: 0, wip: 0, awaiting: 0, assigned: 0, other: 0, reprogrammation: 0, overdueAssigned: 0 };
+      if (!byType[typ]) byType[typ] = { maintenanceType: typ, total: 0, done: 0, wip: 0, awaiting: 0, assigned: 0, other: 0, reprogrammation: 0, overdueAssigned: 0 };
 
       byZone[zone].total += 1;
       byZone[zone][bucket] += 1;
+      if (hasReprog) byZone[zone].reprogrammation += 1;
       if (bucket === 'assigned' && sched && sched < today) byZone[zone].overdueAssigned += 1;
 
       byType[typ].total += 1;
       byType[typ][bucket] += 1;
+      if (hasReprog) byType[typ].reprogrammation += 1;
       if (bucket === 'assigned' && sched && sched < today) byType[typ].overdueAssigned += 1;
     }
 

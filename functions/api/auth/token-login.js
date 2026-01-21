@@ -1,4 +1,4 @@
-import { createSessionCookie, verifyPassword } from '../../_utils/auth.js';
+import { signSession, verifyPassword } from '../../_utils/auth.js';
 import { ensureAdminUser } from '../_utils/db.js';
 import { writeAuditLog } from '../_utils/audit.js';
 
@@ -18,7 +18,7 @@ export async function onRequestPost({ request, env }) {
 
     if (!normalizedEmail || !rawPassword) {
       await writeAuditLog(env, null, {
-        action: 'AUTH_LOGIN_FAIL',
+        action: 'AUTH_TOKEN_LOGIN_FAIL',
         request,
         metadata: { reason: 'missing_credentials', email: normalizedEmail || null }
       });
@@ -29,14 +29,10 @@ export async function onRequestPost({ request, env }) {
       return json({ error: 'Binding D1 manquant: DB' }, { status: 500 });
     }
 
-    const user = await env.DB
-      .prepare('SELECT * FROM users WHERE email = ?')
-      .bind(normalizedEmail)
-      .first();
-
+    const user = await env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(normalizedEmail).first();
     if (!user || user.disabled_at) {
       await writeAuditLog(env, null, {
-        action: 'AUTH_LOGIN_FAIL',
+        action: 'AUTH_TOKEN_LOGIN_FAIL',
         request,
         metadata: { reason: 'user_not_found_or_disabled', email: normalizedEmail }
       });
@@ -46,7 +42,7 @@ export async function onRequestPost({ request, env }) {
     const ok = await verifyPassword(rawPassword, user.password_salt, user.password_iters, user.password_hash);
     if (!ok) {
       await writeAuditLog(env, null, {
-        action: 'AUTH_LOGIN_FAIL',
+        action: 'AUTH_TOKEN_LOGIN_FAIL',
         request,
         metadata: { reason: 'invalid_password', email: normalizedEmail, userId: user.id }
       });
@@ -58,10 +54,19 @@ export async function onRequestPost({ request, env }) {
       return json({ error: 'Configuration serveur manquante (SESSION_SECRET).' }, { status: 500 });
     }
 
-    const cookie = await createSessionCookie(secret, user);
+    const expiresIn = 60 * 60 * 12;
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      technicianName: user.technician_name || '',
+      exp: Date.now() + expiresIn * 1000
+    };
+
+    const accessToken = await signSession(secret, payload);
 
     await writeAuditLog(env, null, {
-      action: 'AUTH_LOGIN_SUCCESS',
+      action: 'AUTH_TOKEN_LOGIN_SUCCESS',
       request,
       userId: user.id,
       email: user.email,
@@ -71,6 +76,9 @@ export async function onRequestPost({ request, env }) {
 
     return json(
       {
+        accessToken,
+        tokenType: 'Bearer',
+        expiresIn,
         user: {
           id: user.id,
           email: user.email,
@@ -78,12 +86,7 @@ export async function onRequestPost({ request, env }) {
           technicianName: user.technician_name || ''
         }
       },
-      {
-        status: 200,
-        headers: {
-          'Set-Cookie': cookie
-        }
-      }
+      { status: 200 }
     );
   } catch (e) {
     return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });

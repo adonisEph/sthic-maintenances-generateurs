@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AlertCircle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users } from 'lucide-react';
+import { AlertCircle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users, Menu } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -32,6 +32,7 @@ const ModalWatermark = ({ className = '' }) => (
 
 const GeneratorMaintenanceApp = () => {
   const storage = useStorage();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sites, setSites] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showUpdateForm, setShowUpdateForm] = useState(false);
@@ -90,6 +91,14 @@ const GeneratorMaintenanceApp = () => {
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [showPresenceModal, setShowPresenceModal] = useState(false);
   const [presenceSessions, setPresenceSessions] = useState([]);
+  const [presenceTab, setPresenceTab] = useState('sessions');
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [auditBusy, setAuditBusy] = useState(false);
+  const [auditError, setAuditError] = useState('');
+  const [auditUserId, setAuditUserId] = useState('');
+  const [auditFrom, setAuditFrom] = useState('');
+  const [auditTo, setAuditTo] = useState('');
+  const [auditQuery, setAuditQuery] = useState('');
   const [accountForm, setAccountForm] = useState({ password: '', confirm: '' });
   const [accountError, setAccountError] = useState('');
   const [accountSaving, setAccountSaving] = useState(false);
@@ -122,8 +131,6 @@ const GeneratorMaintenanceApp = () => {
   const [pmBusy, setPmBusy] = useState(false);
   const [pmError, setPmError] = useState('');
   const [pmNotice, setPmNotice] = useState('');
-  const [pmPlanningProgress, setPmPlanningProgress] = useState(0);
-  const [pmPlanningStep, setPmPlanningStep] = useState('');
   const [pmNocProgress, setPmNocProgress] = useState(0);
   const [pmNocStep, setPmNocStep] = useState('');
   const [pmClientProgress, setPmClientProgress] = useState(0);
@@ -1027,10 +1034,10 @@ const GeneratorMaintenanceApp = () => {
       setPmBusy(true);
       setPmError('');
       setPmNotice('');
-      setPmPlanningProgress(0);
-      setPmPlanningStep('');
       setPmNocProgress(0);
       setPmNocStep('');
+      setPmClientProgress(0);
+      setPmClientStep('');
       const m = String(yyyymm || '').trim();
       const id = await ensurePmMonth(m);
       setPmMonth(m);
@@ -1642,7 +1649,7 @@ const GeneratorMaintenanceApp = () => {
     if (!file) return;
 
     const ok = window.confirm(
-      `Confirmer l'import du retour client ?\n\nMois: ${pmMonth}\nFichier: ${file?.name || ''}`
+      `Confirmer l'import du retour client ?\n\nCe fichier va remplacer le planning du mois PM ${pmMonth} et permettra le suivi via NOC.\n\nFichier: ${file?.name || ''}`
     );
     if (!ok) {
       e.target.value = '';
@@ -1659,6 +1666,16 @@ const GeneratorMaintenanceApp = () => {
     };
 
     const normalizeYmd = (v) => String(v || '').slice(0, 10);
+
+    const normSiteName = (s) =>
+      String(s || '')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/\u00A0/g, ' ')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ');
 
     const reader = new FileReader();
     setPmBusy(true);
@@ -1693,6 +1710,33 @@ const GeneratorMaintenanceApp = () => {
         }
         const itemsRes = await apiFetchJson(`/api/pm/base-plans/${String(basePlan.id)}/items`, { method: 'GET' });
         const baseItems = Array.isArray(itemsRes?.items) ? itemsRes.items : [];
+
+        const siteByIdSite = new Map(
+          (Array.isArray(sites) ? sites : [])
+            .filter(Boolean)
+            .map((s) => [String(s?.idSite || '').trim(), s])
+            .filter(([k]) => Boolean(k))
+        );
+        const siteByName = new Map(
+          (Array.isArray(sites) ? sites : [])
+            .filter(Boolean)
+            .map((s) => [normSiteName(s?.nameSite), s])
+            .filter(([k]) => Boolean(k))
+        );
+
+        const findSite = (siteCode, siteName) => {
+          const code = String(siteCode || '').trim();
+          if (code) {
+            const byCode = siteByIdSite.get(code);
+            if (byCode) return byCode;
+          }
+          const nm = normSiteName(siteName);
+          if (nm) {
+            const byName = siteByName.get(nm);
+            if (byName) return byName;
+          }
+          return null;
+        };
 
         setPmClientProgress(60);
         setPmClientStep('Préparation comparaison…');
@@ -1736,6 +1780,20 @@ const GeneratorMaintenanceApp = () => {
         };
 
         const clientRows = parseClientRows();
+
+        const numberSeen = new Set();
+        for (const r of clientRows) {
+          const n = String(r?.number || '').trim();
+          if (!n) {
+            throw new Error(`Ticket manquant (Number) dans le fichier retour client (ligne Excel ${r?._row || '?'}).`);
+          }
+          if (numberSeen.has(n)) {
+            throw new Error(
+              `Doublon de ticket (Number) dans le fichier retour client: '${n}'.\n\nChaque ligne (site) doit avoir un ticket unique, y compris en cas de paire.`
+            );
+          }
+          numberSeen.add(n);
+        }
 
         const baseMap = new Map();
         for (const it of baseItems) {
@@ -1785,12 +1843,13 @@ const GeneratorMaintenanceApp = () => {
 
         for (const [key, c] of clientMap.entries()) {
           if (baseMap.has(key)) continue;
+          const s = findSite(c.siteCode, c.siteName);
           added.push({
             siteCode: c.siteCode,
-            siteName: c.siteName,
+            siteName: String(c.siteName || s?.nameSite || '').trim(),
             plannedDate: normalizeYmd(c.scheduledWoDate),
             maintenanceType: c.maintenanceType,
-            assignedTo: c.assignedTo,
+            assignedTo: String(c.assignedTo || s?.technician || '').trim(),
             number: c.number || ''
           });
         }
@@ -1809,9 +1868,67 @@ const GeneratorMaintenanceApp = () => {
           added
         });
 
+        setPmClientProgress(75);
+        setPmClientStep('Construction planning mensuel…');
+
+        const items = [];
+        for (const r of clientRows) {
+          const number = String(r?.number || '').trim();
+          if (!number) continue;
+          const siteCode = String(r?.siteCode || '').trim();
+          const date = normalizeYmd(r?.scheduledWoDate);
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            throw new Error(`Date invalide dans le fichier retour client (ligne Excel ${r?._row || '?'}): '${String(r?.scheduledWoDate || '')}'.`);
+          }
+          const t = normalizeType(r?.maintenanceType);
+          const key = `${siteCode}|${date}|${t}`;
+          const b = baseMap.get(key) || null;
+          const s = b ? null : findSite(siteCode, r?.siteName);
+          items.push({
+            number,
+            siteCode: siteCode || String(b?.siteCode || s?.idSite || '').trim(),
+            siteName: String(b?.siteName || r?.siteName || s?.nameSite || '').trim(),
+            region: String(b?.region || '').trim(),
+            zone: String(b?.zone || b?.region || '').trim(),
+            shortDescription: String(b?.shortDescription || r?.shortDescription || '').trim(),
+            maintenanceType: String(b?.recommendedMaintenanceType || r?.maintenanceType || '').trim(),
+            scheduledWoDate: date,
+            assignedTo: String(b?.assignedTo || r?.assignedTo || s?.technician || '').trim(),
+            state: 'Assigned',
+            closedAt: '',
+            reprogrammationDate: '',
+            reprogrammationReason: '',
+            reprogrammationStatus: ''
+          });
+        }
+
+        if (items.length === 0) {
+          throw new Error('Aucune ligne exploitable trouvée dans le fichier retour client (tickets manquants ?).');
+        }
+
+        setPmClientProgress(85);
+        setPmClientStep('Enregistrement planning mensuel…');
+
+        const monthId = pmMonthId || (await ensurePmMonth(pmMonth));
+        setPmMonthId(monthId);
+        await apiFetchJson(`/api/pm/months/${monthId}/client-import`, {
+          method: 'POST',
+          body: JSON.stringify({ filename: file?.name || null, items })
+        });
+
+        setPmClientProgress(95);
+        setPmClientStep('Rafraîchissement…');
+
+        await loadPmMonths();
+        await loadPmItems(monthId);
+        await loadPmImports(monthId);
+        await loadPmDashboard(monthId);
+
         setPmClientProgress(100);
         setPmClientStep('Terminé');
-        setPmNotice(`✅ Retour client importé. Retenus: ${retained.length} • Retirés: ${removed.length} • Ajouts: ${added.length}`);
+        setPmNotice(
+          `✅ Retour client importé. Planning mensuel mis à jour (${items.length} tickets). Retenus: ${retained.length} • Retirés: ${removed.length} • Ajouts: ${added.length}`
+        );
       } catch (err) {
         setPmClientProgress(0);
         setPmClientStep('');
@@ -2343,151 +2460,6 @@ const GeneratorMaintenanceApp = () => {
       }
     });
     if (done) alert('✅ Export Excel généré.');
-  };
-
-  const handlePmPlanningImport = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const ok = window.confirm(
-      `Confirmer l'import du planning mensuel PM ?\n\nCe fichier va remplacer le planning du mois ${pmMonth}.\nFichier: ${file?.name || ''}`
-    );
-    if (!ok) {
-      e.target.value = '';
-      return;
-    }
-
-    const reader = new FileReader();
-    setPmBusy(true);
-    setPmError('');
-    setPmNotice('');
-    setPmPlanningProgress(5);
-    setPmPlanningStep('Lecture du fichier…');
-
-    reader.onload = async (event) => {
-      try {
-        setPmPlanningProgress(20);
-        setPmPlanningStep('Analyse Excel…');
-        const data = new Uint8Array(event.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(sheet);
-
-        setPmPlanningProgress(40);
-        setPmPlanningStep('Préparation des données…');
-
-        const monthId = pmMonthId || (await ensurePmMonth(pmMonth));
-        setPmMonthId(monthId);
-
-        const normStatus = (s) => {
-          const v = String(s || '').trim().toLowerCase();
-          if (!v) return '';
-          if (v === 'approved' || v === 'ok' || v === 'yes' || v === 'oui' || v === 'validee' || v === 'validée' || v === 'approuvee' || v === 'approuvée') {
-            return 'APPROVED';
-          }
-          if (v === 'rejected' || v === 'ko' || v === 'no' || v === 'non' || v === 'rejete' || v === 'rejeté' || v === 'rejetee' || v === 'rejetée' || v === 'refusee' || v === 'refusée') {
-            return 'REJECTED';
-          }
-          if (v === 'pending' || v === 'attente' || v === 'en attente' || v === 'waiting') return 'PENDING';
-          return '';
-        };
-
-        const items = [];
-        for (const row of Array.isArray(jsonData) ? jsonData : []) {
-          const number = String(pmGet(row, 'Number') || '').trim();
-          if (!number) continue;
-
-          const state = String(pmGet(row, 'State') || 'Assigned').trim() || 'Assigned';
-          const closedAt = pmNormalizeDate(pmGet(row, 'Date of closing', 'Closed'));
-          const scheduledWoDate = pmNormalizeDate(pmGet(row, 'Scheduled WO Date', 'Scheduled Wo Date', 'Scheduled date'));
-
-          const siteCode = String(pmGet(row, 'Site', 'Site Code') || '').trim();
-          const siteName = String(pmGet(row, 'Site Name', 'Name Site') || '').trim();
-          const region = String(pmGet(row, 'Region', 'REGION', 'Région', 'REGION/PMWO', 'Region/PMWO', 'Region / PMWO') || '').trim();
-          const zone = String(
-            pmGet(
-              row,
-              'Zones',
-              'ZONES',
-              'ZONE',
-              'ZONE/PMWO',
-              'Zone/PMWO',
-              'ZONE / PMWO',
-              'Zone / PMWO',
-              'Zone PMWO',
-              'ZONE PMWO',
-              'Zone'
-            ) ||
-              ''
-          ).trim();
-          const shortDescription = String(pmGet(row, 'Short description', 'Short Description') || '').trim();
-          const assignedTo = String(pmGet(row, 'Assigned to', 'Assigned To') || '').trim();
-
-          const reprogrammationDate = pmNormalizeDate(pmGet(row, 'Reprogrammation', 'Reprogramming'));
-          const reprogrammationReason = String(pmGet(row, 'Raisons', 'Reasons', 'Reason') || '').trim();
-
-          const excelStatus = pmGet(
-            row,
-            'Reprogrammation Status',
-            'Reprogramming Status',
-            'Statut reprogrammation',
-            'Statut de reprogrammation',
-            'Decision client',
-            'Décision client',
-            'Statut report',
-            'Statut de report'
-          );
-          const explicitStatus = normStatus(excelStatus);
-          const fallbackStatus = reprogrammationDate ? 'APPROVED' : reprogrammationReason ? 'PENDING' : '';
-          const reprogrammationStatus = explicitStatus || fallbackStatus;
-
-          const maintenanceType = String(pmGet(row, 'Maintenance Type') || '').trim() || pmInferType(row);
-
-          items.push({
-            number,
-            siteCode,
-            siteName,
-            region,
-            zone: zone || region,
-            shortDescription,
-            maintenanceType,
-            scheduledWoDate,
-            assignedTo,
-            state,
-            closedAt,
-            reprogrammationDate,
-            reprogrammationReason,
-            reprogrammationStatus
-          });
-        }
-
-        await apiFetchJson(`/api/pm/months/${monthId}/planning-import`, {
-          method: 'POST',
-          body: JSON.stringify({ filename: file?.name || null, items })
-        });
-
-        setPmPlanningProgress(80);
-        setPmPlanningStep('Rafraîchissement…');
-
-        await loadPmMonths();
-        await loadPmItems(monthId);
-        await loadPmImports(monthId);
-        await loadPmDashboard(monthId);
-        setPmPlanningProgress(100);
-        setPmPlanningStep('Terminé');
-        setPmNotice(`✅ Planning PM importé (${items.length} lignes).`);
-        alert(`✅ Planning PM importé (${items.length} lignes).`);
-      } catch (err) {
-        setPmError(err?.message || 'Erreur lors de l\'import planning PM.');
-      } finally {
-        setPmBusy(false);
-      }
-    };
-
-    setPmPlanningProgress(10);
-    setPmPlanningStep('Lecture du fichier…');
-    reader.readAsArrayBuffer(file);
-    e.target.value = '';
   };
 
   const handlePmNocImport = (e) => {
@@ -4379,6 +4351,54 @@ const GeneratorMaintenanceApp = () => {
     };
   }, [showPresenceModal]);
 
+  const loadAuditLogs = async () => {
+    if (!isAdmin) return;
+    setAuditBusy(true);
+    setAuditError('');
+    try {
+      const qs = new URLSearchParams();
+      if (auditUserId) qs.set('userId', auditUserId);
+      if (auditFrom) qs.set('from', auditFrom);
+      if (auditTo) qs.set('to', auditTo);
+      if (auditQuery) qs.set('q', auditQuery);
+      qs.set('limit', '1000');
+
+      const data = await apiFetchJson(`/api/audit?${qs.toString()}`, { method: 'GET' });
+      setAuditLogs(Array.isArray(data?.logs) ? data.logs : []);
+    } catch (e) {
+      setAuditLogs([]);
+      setAuditError(e?.message || 'Erreur serveur.');
+    } finally {
+      setAuditBusy(false);
+    }
+  };
+
+  const handleExportAuditExcel = async () => {
+    const rows = (Array.isArray(auditLogs) ? auditLogs : []).map((l) => ({
+      Date: l?.createdAt || '',
+      Email: l?.email || '',
+      Role: l?.role || '',
+      Action: l?.action || '',
+      Method: l?.method || '',
+      Path: l?.path || '',
+      Status: l?.status ?? '',
+      IP: l?.ip || '',
+      "User-Agent": l?.userAgent || '',
+      Metadata: l?.metadata ? JSON.stringify(l.metadata) : ''
+    }));
+
+    const done = await runExport({
+      label: 'Export Excel (audit)…',
+      fn: async () => {
+        exportXlsx({
+          fileBaseName: `Audit_${new Date().toISOString().slice(0, 10)}`,
+          sheets: [{ name: 'Audit', rows }]
+        });
+      }
+    });
+    if (done) alert('✅ Export Excel généré.');
+  };
+
   const technicianUnseenSentCount = isTechnician
     ? (Array.isArray(interventions) ? interventions : []).filter(
         (i) =>
@@ -4656,7 +4676,7 @@ const GeneratorMaintenanceApp = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-2 sm:p-4 md:p-6">
+    <div className="min-h-screen bg-gray-50">
       {renderPwaUpdateBanner()}
       {exportBusy && (
         <div className="fixed inset-0 z-[60] bg-black/30 flex items-center justify-center p-4">
@@ -4704,277 +4724,328 @@ const GeneratorMaintenanceApp = () => {
           .no-print { display: none !important; }
         }
       `}</style>
-      <div className="max-w-7xl mx-auto">
-        {/* Header - Je continue dans le prochain message car limite de tokens */}
-        <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 md:p-6 mb-4 md:mb-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-            <div>
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 flex items-center gap-2">
-                <Activity className="text-blue-600" size={24} />
-                <span className="hidden sm:inline">Gestion Maintenance & Vidanges</span>
-                <span className="sm:hidden">Maintenance & Vidanges</span>
-              </h1>
-              <p className="text-xs sm:text-sm text-gray-600 mt-1">Version {APP_VERSION} - Suivi H24/7j avec Fiches</p>
-            </div>
-            <div className="text-left sm:text-right flex flex-col gap-2">
-              <div>
-                <p className="text-xs text-gray-500">Aujourd'hui</p>
-                <p className="text-sm sm:text-lg font-semibold text-gray-800">{formatDate(new Date().toISOString())}</p>
-                <p className="text-xs text-gray-500 mt-1 flex flex-wrap items-center gap-2">
-                  <span>
-                    {authUser.email} ({authUser.role})
-                  </span>
-                  {isViewer && (
-                    <span className="bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full font-semibold">
-                      Lecture seule
-                    </span>
-                  )}
-                </p>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
-                <button
-                  onClick={() => {
-                    setAccountForm({ password: '', confirm: '' });
-                    setAccountError('');
-                    setShowAccountModal(true);
-                  }}
-                  className="bg-slate-800 text-white px-3 py-2 rounded-lg hover:bg-slate-900 text-sm font-semibold"
-                >
-                  Mon compte
-                </button>
-                <button
-                  onClick={handleLogout}
-                  className="bg-gray-200 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-300 text-sm font-semibold"
-                >
-                  Déconnexion
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-3 mb-4">
-            {canWriteSites && (
+      <div className="flex min-h-screen">
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/40 z-40 md:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+        <div
+          className={`w-64 bg-white border-r border-gray-200 flex flex-col p-3 gap-2 fixed md:sticky top-0 left-0 h-screen overflow-y-auto z-50 md:z-auto transform transition-transform md:translate-x-0 ${
+            sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+        >
+          <div className="flex items-center gap-2 px-2 py-2">
+            <img
+              src={STHIC_LOGO_SRC}
+              alt="STHIC"
+              className="h-8 w-auto object-contain"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+            <div className="text-sm font-bold text-gray-800 leading-tight">Menu</div>
+            <div className="ml-auto md:hidden">
               <button
-                onClick={() => setShowAddForm(!showAddForm)}
-                className="bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 text-sm sm:text-base"
-              >
-                <Plus size={18} />
-                <span className="hidden sm:inline">Nouveau Site</span>
-                <span className="sm:hidden">Nouveau</span>
-              </button>
-            )}
-            
-            {canImportExport && (
-              <div className="flex flex-col gap-2">
-                <label
-                  className={`bg-green-600 text-white px-3 sm:px-4 py-2 rounded-lg flex items-center justify-center gap-2 text-sm sm:text-base ${
-                    importBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-green-700 cursor-pointer'
-                  }`}
-                >
-                  <Upload size={18} />
-                  <span className="hidden sm:inline">{importBusy ? 'Import en cours…' : 'Importer Excel'}</span>
-                  <span className="sm:hidden">{importBusy ? '…' : 'Import'}</span>
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls"
-                    onChange={handleImportExcel}
-                    className="hidden"
-                    disabled={importBusy}
-                  />
-                </label>
-
-                {importBusy && (
-                  <div className="w-full max-w-xs">
-                    <div className="text-[11px] text-gray-600 mb-1">{importStep || 'Import…'} ({importProgress}%)</div>
-                    <div className="w-full h-2 bg-gray-200 rounded">
-                      <div
-                        className="h-2 bg-green-600 rounded"
-                        style={{ width: `${Math.max(0, Math.min(100, Number(importProgress) || 0))}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {canImportExport && (
-              <button
-                onClick={handleExportExcel}
-                disabled={sites.length === 0 || exportBusy || importBusy}
-                className="bg-purple-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-purple-700 flex items-center justify-center gap-2 disabled:bg-gray-400 text-sm sm:text-base"
-              >
-                <Download size={18} />
-                <span className="hidden sm:inline">Exporter Excel</span>
-                <span className="sm:hidden">Export</span>
-              </button>
-            )}
-
-            {!isTechnician ? (
-              <button
-                onClick={() => setShowCalendar(true)}
-                className="bg-cyan-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-cyan-700 flex items-center justify-center gap-2 text-sm sm:text-base"
-              >
-                <Calendar size={18} />
-                <span className="hidden sm:inline">Calendrier</span>
-                <span className="sm:hidden">Cal.</span>
-              </button>
-            ) : (
-              <button
-                onClick={async () => {
-                  const m = interventionsMonth || new Date().toISOString().slice(0, 7);
-                  setTechCalendarMonth(m);
-                  setShowTechCalendar(true);
-                  await loadInterventions(m, 'all', 'all');
-                }}
-                className="bg-cyan-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-cyan-700 flex items-center justify-center gap-2 text-sm sm:text-base"
-              >
-                <Calendar size={18} />
-                <span className="hidden sm:inline">Calendrier</span>
-                <span className="sm:hidden">Cal.</span>
-              </button>
-            )}
-
-            {canUseInterventions && (
-              <button
-                onClick={async () => {
-                  setInterventionsStatus('all');
-                  setInterventionsTechnicianUserId('all');
-                  if (isTechnician) {
-                    setTechnicianInterventionsTab('tomorrow');
-                    setShowTechnicianInterventionsFilters(false);
-                  }
-                  setShowInterventions(true);
-                  if (authUser?.role === 'admin') {
-                    try {
-                      await refreshUsers();
-                    } catch (e) {
-                      // ignore
-                    }
-                  }
-                  await loadInterventions();
-                }}
-                className="relative bg-emerald-700 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-emerald-800 flex items-center justify-center gap-2 text-sm sm:text-base"
-              >
-                <CheckCircle size={18} />
-                {isTechnician && technicianUnseenSentCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none">
-                    {technicianUnseenSentCount}
-                  </span>
-                )}
-                <span className="hidden sm:inline flex items-center gap-2">
-                  {isTechnician ? 'Mes interventions' : 'Interventions'}
-                </span>
-                <span className="sm:hidden">{isTechnician ? 'Mes' : 'Int.'}</span>
-              </button>
-            )}
-
-            {!isTechnician && (
-              <button
-                onClick={async () => {
-                  const nextMonth = scoringMonth || new Date().toISOString().slice(0, 7);
-                  setScoringMonth(nextMonth);
-                  setScoringDetails({ open: false, title: '', kind: '', items: [] });
-                  setShowScoring(true);
-                  await loadInterventions(nextMonth, 'all', 'all');
-                }}
-                className="bg-slate-800 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-slate-900 flex items-center justify-center gap-2 text-sm sm:text-base"
-              >
-                <TrendingUp size={18} />
-                <span className="hidden sm:inline">Scoring</span>
-                <span className="sm:hidden">Score</span>
-              </button>
-            )}
-
-            {canUsePm && (
-              <button
-                onClick={async () => {
-                  setShowAddForm(false);
-                  setShowUpdateForm(false);
-                  setShowEditForm(false);
-                  setShowResetConfirm(false);
-                  setShowDeleteConfirm(false);
-                  setShowCalendar(false);
-                  setShowHistory(false);
-                  setShowFicheModal(false);
-                  setShowBannerUpload(false);
-                  setShowDayDetailsModal(false);
-                  setShowInterventions(false);
-                  setShowScoring(false);
-                  setScoringDetails({ open: false, title: '', kind: '', items: [] });
-
-                  setShowPm(true);
-                  const m = pmMonth || new Date().toISOString().slice(0, 7);
-                  await refreshPmAll(m);
-                }}
-                className="bg-teal-700 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-teal-800 flex items-center justify-center gap-2 text-sm sm:text-base"
-              >
-                <TrendingUp size={18} />
-                <span className="hidden sm:inline">Maintenances (PM)</span>
-                <span className="sm:hidden">PM</span>
-              </button>
-            )}
-
-            <button
-              onClick={() => setShowHistory(true)}
-              className="bg-amber-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-amber-700 flex items-center justify-center gap-2 text-sm sm:text-base"
-            >
-              <Activity size={18} />
-              <span className="hidden sm:inline">Historique</span>
-              <span className="sm:hidden">Hist.</span>
-            </button>
-
-            {canReset && (
-              <button
-                onClick={() => setShowResetConfirm(true)}
-                className="bg-red-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-red-700 flex items-center justify-center gap-2 text-sm sm:text-base"
+                type="button"
+                onClick={() => setSidebarOpen(false)}
+                className="p-2 rounded hover:bg-gray-100"
               >
                 <X size={18} />
-                <span className="hidden sm:inline">Réinitialiser</span>
-                <span className="sm:hidden">Reset</span>
               </button>
-            )}
-
-            {canManageUsers && (
-              <button
-                onClick={() => setShowUsersModal(true)}
-                className="bg-slate-700 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-slate-800 flex items-center justify-center gap-2 text-sm sm:text-base"
-              >
-                <Users size={18} />
-                <span className="hidden sm:inline">Utilisateurs</span>
-                <span className="sm:hidden">Users</span>
-              </button>
-            )}
-
-            {canManageUsers && (
-              <button
-                onClick={() => setShowPresenceModal(true)}
-                className="bg-indigo-700 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-indigo-800 flex items-center justify-center gap-2 text-sm sm:text-base"
-              >
-                <Activity size={18} />
-                <span className="hidden sm:inline">Présence</span>
-                <span className="sm:hidden">Prés.</span>
-              </button>
-            )}
+            </div>
           </div>
 
-          {!isTechnician && (
-            <div className="flex items-center gap-2">
-              <Filter size={18} className="text-gray-600" />
-              <select
-                value={filterTechnician}
-                onChange={(e) => setFilterTechnician(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1 sm:flex-initial"
+          {canWriteSites && (
+            <button
+              onClick={() => {
+                setSidebarOpen(false);
+                setShowAddForm(!showAddForm);
+              }}
+              className="w-full bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 flex items-center justify-start gap-2 text-sm font-semibold"
+            >
+              <Plus size={18} />
+              Nouveau Site
+            </button>
+          )}
+
+          {canImportExport && (
+            <div className="flex flex-col gap-2">
+              <label
+                onClick={() => setSidebarOpen(false)}
+                className={`w-full bg-green-600 text-white px-3 py-2 rounded-lg flex items-center justify-start gap-2 text-sm font-semibold ${
+                  importBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-green-700 cursor-pointer'
+                }`}
               >
-                <option value="all">Tous les techniciens</option>
-                {technicians.filter(t => t !== 'all').map(tech => (
-                  <option key={tech} value={tech}>{tech}</option>
-                ))}
-              </select>
+                <Upload size={18} />
+                {importBusy ? 'Import en cours…' : 'Importer Excel'}
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleImportExcel}
+                  className="hidden"
+                  disabled={importBusy}
+                />
+              </label>
+
+              {importBusy && (
+                <div className="w-full">
+                  <div className="text-[11px] text-gray-600 mb-1">{importStep || 'Import…'} ({importProgress}%)</div>
+                  <div className="w-full h-2 bg-gray-200 rounded">
+                    <div
+                      className="h-2 bg-green-600 rounded"
+                      style={{ width: `${Math.max(0, Math.min(100, Number(importProgress) || 0))}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
+          )}
+
+          {canImportExport && (
+            <button
+              onClick={() => {
+                setSidebarOpen(false);
+                handleExportExcel();
+              }}
+              disabled={sites.length === 0 || exportBusy || importBusy}
+              className="w-full bg-purple-600 text-white px-3 py-2 rounded-lg hover:bg-purple-700 flex items-center justify-start gap-2 disabled:bg-gray-400 text-sm font-semibold"
+            >
+              <Download size={18} />
+              Exporter Excel
+            </button>
+          )}
+
+          {!isTechnician ? (
+            <button
+              onClick={() => {
+                setSidebarOpen(false);
+                setShowCalendar(true);
+              }}
+              className="w-full bg-cyan-600 text-white px-3 py-2 rounded-lg hover:bg-cyan-700 flex items-center justify-start gap-2 text-sm font-semibold"
+            >
+              <Calendar size={18} />
+              Calendrier
+            </button>
+          ) : (
+            <button
+              onClick={async () => {
+                setSidebarOpen(false);
+                const m = interventionsMonth || new Date().toISOString().slice(0, 7);
+                setTechCalendarMonth(m);
+                setShowTechCalendar(true);
+                await loadInterventions(m, 'all', 'all');
+              }}
+              className="w-full bg-cyan-600 text-white px-3 py-2 rounded-lg hover:bg-cyan-700 flex items-center justify-start gap-2 text-sm font-semibold"
+            >
+              <Calendar size={18} />
+              Calendrier
+            </button>
+          )}
+
+          {canUseInterventions && (
+            <button
+              onClick={async () => {
+                setSidebarOpen(false);
+                setInterventionsStatus('all');
+                setInterventionsTechnicianUserId('all');
+                if (isTechnician) {
+                  setTechnicianInterventionsTab('tomorrow');
+                  setShowTechnicianInterventionsFilters(false);
+                }
+                setShowInterventions(true);
+                if (authUser?.role === 'admin') {
+                  try {
+                    await refreshUsers();
+                  } catch (e) {
+                    // ignore
+                  }
+                }
+                await loadInterventions();
+              }}
+              className="relative w-full bg-emerald-700 text-white px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center justify-start gap-2 text-sm font-semibold"
+            >
+              <CheckCircle size={18} />
+              {isTechnician && technicianUnseenSentCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                  {technicianUnseenSentCount}
+                </span>
+              )}
+              {isTechnician ? 'Mes interventions' : 'Interventions'}
+            </button>
+          )}
+
+          {!isTechnician && (
+            <button
+              onClick={async () => {
+                setSidebarOpen(false);
+                const nextMonth = scoringMonth || new Date().toISOString().slice(0, 7);
+                setScoringMonth(nextMonth);
+                setScoringDetails({ open: false, title: '', kind: '', items: [] });
+                setShowScoring(true);
+                await loadInterventions(nextMonth, 'all', 'all');
+              }}
+              className="w-full bg-slate-800 text-white px-3 py-2 rounded-lg hover:bg-slate-900 flex items-center justify-start gap-2 text-sm font-semibold"
+            >
+              <TrendingUp size={18} />
+              Scoring
+            </button>
+          )}
+
+          {canUsePm && (
+            <button
+              onClick={async () => {
+                setSidebarOpen(false);
+                setShowAddForm(false);
+                setShowUpdateForm(false);
+                setShowEditForm(false);
+                setShowResetConfirm(false);
+                setShowDeleteConfirm(false);
+                setShowCalendar(false);
+                setShowHistory(false);
+                setShowFicheModal(false);
+                setShowBannerUpload(false);
+                setShowDayDetailsModal(false);
+                setShowInterventions(false);
+                setShowScoring(false);
+                setScoringDetails({ open: false, title: '', kind: '', items: [] });
+
+                setShowPm(true);
+                const m = pmMonth || new Date().toISOString().slice(0, 7);
+                await refreshPmAll(m);
+              }}
+              className="w-full bg-teal-700 text-white px-3 py-2 rounded-lg hover:bg-teal-800 flex items-center justify-start gap-2 text-sm font-semibold"
+            >
+              <TrendingUp size={18} />
+              Maintenances (PM)
+            </button>
+          )}
+
+          <button
+            onClick={() => {
+              setSidebarOpen(false);
+              setShowHistory(true);
+            }}
+            className="w-full bg-amber-600 text-white px-3 py-2 rounded-lg hover:bg-amber-700 flex items-center justify-start gap-2 text-sm font-semibold"
+          >
+            <Activity size={18} />
+            Historique
+          </button>
+
+          {canReset && (
+            <button
+              onClick={() => {
+                setSidebarOpen(false);
+                setShowResetConfirm(true);
+              }}
+              className="w-full bg-red-600 text-white px-3 py-2 rounded-lg hover:bg-red-700 flex items-center justify-start gap-2 text-sm font-semibold"
+            >
+              <X size={18} />
+              Réinitialiser
+            </button>
+          )}
+
+          {canManageUsers && (
+            <button
+              onClick={() => {
+                setSidebarOpen(false);
+                setShowUsersModal(true);
+              }}
+              className="w-full bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center justify-start gap-2 text-sm font-semibold"
+            >
+              <Users size={18} />
+              Utilisateurs
+            </button>
+          )}
+
+          {canManageUsers && (
+            <button
+              onClick={() => {
+                setSidebarOpen(false);
+                setShowPresenceModal(true);
+              }}
+              className="w-full bg-indigo-700 text-white px-3 py-2 rounded-lg hover:bg-indigo-800 flex items-center justify-start gap-2 text-sm font-semibold"
+            >
+              <Activity size={18} />
+              Présence
+            </button>
           )}
         </div>
 
-        <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 md:mb-6">
+        <div className="flex-1 min-w-0 flex flex-col">
+          <div className="bg-white border-b border-gray-200 shadow-sm px-3 sm:px-4 md:px-6 py-3 sticky top-0 z-40">
+            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setSidebarOpen(true)}
+                  className="md:hidden p-2 rounded hover:bg-gray-100"
+                >
+                  <Menu size={20} />
+                </button>
+                <Activity className="text-blue-600" size={24} />
+                <div className="min-w-0">
+                  <div className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800 truncate">Gestion Maintenance & Vidanges</div>
+                  <div className="text-xs sm:text-sm text-gray-600">Version {APP_VERSION} - Suivi H24/7j avec Fiches</div>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
+                <div className="text-left sm:text-right">
+                  <div className="text-xs text-gray-500">Aujourd'hui</div>
+                  <div className="text-sm sm:text-lg font-semibold text-gray-800">{formatDate(new Date().toISOString())}</div>
+                  <div className="text-xs text-gray-500 mt-1 flex flex-wrap items-center gap-2 sm:justify-end">
+                    <span>
+                      {authUser.email} ({authUser.role})
+                    </span>
+                    {isViewer && (
+                      <span className="bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full font-semibold">
+                        Lecture seule
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
+                  <button
+                    onClick={() => {
+                      setAccountForm({ password: '', confirm: '' });
+                      setAccountError('');
+                      setShowAccountModal(true);
+                    }}
+                    className="bg-slate-800 text-white px-3 py-2 rounded-lg hover:bg-slate-900 text-sm font-semibold"
+                  >
+                    Mon compte
+                  </button>
+                  <button
+                    onClick={handleLogout}
+                    className="bg-gray-200 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-300 text-sm font-semibold"
+                  >
+                    Déconnexion
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-2 sm:p-4 md:p-6">
+            <div className="max-w-7xl mx-auto">
+              {!isTechnician && (
+                <div className="flex items-center gap-2 mb-4">
+                  <Filter size={18} className="text-gray-600" />
+                  <select
+                    value={filterTechnician}
+                    onChange={(e) => setFilterTechnician(e.target.value)}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1 sm:flex-initial"
+                  >
+                    <option value="all">Tous les techniciens</option>
+                    {technicians.filter(t => t !== 'all').map(tech => (
+                      <option key={tech} value={tech}>{tech}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 md:mb-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
             <div>
               <h2 className="text-lg sm:text-xl font-bold text-gray-800">Dashboard</h2>
@@ -5427,22 +5498,6 @@ const GeneratorMaintenanceApp = () => {
                           }`}
                         >
                           <Upload size={16} />
-                          Import planning
-                          <input
-                            type="file"
-                            accept=".xlsx,.xls"
-                            onChange={handlePmPlanningImport}
-                            className="hidden"
-                            disabled={pmBusy}
-                          />
-                        </label>
-
-                        <label
-                          className={`bg-purple-700 text-white px-3 py-2 rounded-lg flex items-center justify-center gap-2 text-sm font-semibold ${
-                            pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-purple-800 cursor-pointer'
-                          }`}
-                        >
-                          <Upload size={16} />
                           Import NOC
                           <input
                             type="file"
@@ -5514,24 +5569,6 @@ const GeneratorMaintenanceApp = () => {
                 {pmNotice && !pmError && (
                   <div className="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 rounded-lg text-sm">
                     {pmNotice}
-                  </div>
-                )}
-
-                {pmPlanningProgress > 0 && (
-                  <div className="mb-4">
-                    <div className="text-xs text-gray-700 mb-1">Import planning: {pmPlanningStep || '…'}</div>
-                    <div className="w-full bg-gray-200 rounded h-2 overflow-hidden">
-                      <div className="bg-emerald-600 h-2" style={{ width: `${pmPlanningProgress}%` }} />
-                    </div>
-                  </div>
-                )}
-
-                {pmNocProgress > 0 && (
-                  <div className="mb-4">
-                    <div className="text-xs text-gray-700 mb-1">Import NOC: {pmNocStep || '…'}</div>
-                    <div className="w-full bg-gray-200 rounded h-2 overflow-hidden">
-                      <div className="bg-purple-700 h-2" style={{ width: `${pmNocProgress}%` }} />
-                    </div>
                   </div>
                 )}
 
@@ -6195,7 +6232,7 @@ const GeneratorMaintenanceApp = () => {
                                 imports.map((imp) => {
                                   const kind = String(imp?.kind || '').toLowerCase();
                                   const kindBadge =
-                                    kind === 'planning'
+                                    kind === 'planning' || kind === 'client'
                                       ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                                       : kind === 'noc'
                                         ? 'bg-purple-50 text-purple-800 border-purple-200'
@@ -7364,33 +7401,166 @@ const GeneratorMaintenanceApp = () => {
               </div>
 
               <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-                <div className="text-xs text-gray-600 mb-3">
-                  Sessions actives (tous rôles, multi-appareils). Actualisation automatique.
-                </div>
-                {presenceSessions.length === 0 ? (
-                  <div className="text-gray-600">Aucun utilisateur actif détecté.</div>
-                ) : (
-                  <div className="space-y-2">
-                    {presenceSessions.map((s) => {
-                      const lastSeenMs = Number(s.lastSeenMs);
-                      const secondsAgo = Number.isFinite(lastSeenMs) ? Math.max(0, Math.round((Date.now() - lastSeenMs) / 1000)) : null;
-                      const isActive = secondsAgo !== null && secondsAgo <= 8;
-                      return (
-                        <div key={s.id || `${s.userId || ''}|${s.tabId || ''}|${s.email || ''}`} className="border border-gray-200 rounded-lg p-3 flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="font-semibold text-gray-800 truncate">{s.email || 'Utilisateur'}</div>
-                            <div className="text-xs text-gray-600">Rôle: {s.role || '-'}</div>
-                            <div className="text-xs text-gray-600 mt-1">Activité: <span className="font-semibold text-gray-800">{s.activity || '-'}</span></div>
-                          </div>
-                          <div className="text-right">
-                            <div className={`text-xs px-2 py-1 rounded inline-block ${isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>
-                              {isActive ? 'Actif' : 'Inactif'}
+                {isAdmin && (
+                  <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                    <button
+                      type="button"
+                      onClick={() => setPresenceTab('sessions')}
+                      className={`px-3 py-2 rounded-lg text-sm font-semibold ${presenceTab === 'sessions' ? 'bg-indigo-700 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
+                    >
+                      Sessions
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setPresenceTab('history');
+                        try {
+                          await refreshUsers();
+                        } catch {
+                          // ignore
+                        }
+                        await loadAuditLogs();
+                      }}
+                      className={`px-3 py-2 rounded-lg text-sm font-semibold ${presenceTab === 'history' ? 'bg-indigo-700 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
+                    >
+                      Historique
+                    </button>
+                  </div>
+                )}
+
+                {presenceTab === 'history' && isAdmin ? (
+                  <div>
+                    <div className="text-xs text-gray-600 mb-3">
+                      Historique des connexions et actions (audit). Filtre par date/utilisateur/recherche.
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Utilisateur</label>
+                        <select
+                          value={auditUserId}
+                          onChange={(e) => setAuditUserId(e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                        >
+                          <option value="">Tous</option>
+                          {users.map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.email}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Du</label>
+                        <input
+                          type="date"
+                          value={auditFrom}
+                          onChange={(e) => setAuditFrom(e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Au</label>
+                        <input
+                          type="date"
+                          value={auditTo}
+                          onChange={(e) => setAuditTo(e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Recherche</label>
+                        <input
+                          type="text"
+                          value={auditQuery}
+                          onChange={(e) => setAuditQuery(e.target.value)}
+                          placeholder="email, action, path…"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                        />
+                      </div>
+                    </div>
+
+                    {auditError && <div className="text-sm text-red-600 mb-3">{auditError}</div>}
+
+                    <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                      <button
+                        type="button"
+                        onClick={loadAuditLogs}
+                        disabled={auditBusy}
+                        className="bg-indigo-700 text-white px-4 py-2 rounded-lg hover:bg-indigo-800 font-semibold disabled:bg-gray-400"
+                      >
+                        {auditBusy ? 'Chargement…' : 'Rechercher'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleExportAuditExcel}
+                        disabled={auditBusy || (Array.isArray(auditLogs) ? auditLogs.length === 0 : true) || exportBusy}
+                        className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 font-semibold disabled:bg-gray-400"
+                      >
+                        Export Excel
+                      </button>
+                    </div>
+
+                    {auditLogs.length === 0 ? (
+                      <div className="text-gray-600">Aucun log.</div>
+                    ) : (
+                      <div className="space-y-2">
+                        {auditLogs.slice(0, 500).map((l) => (
+                          <div key={l.id} className="border border-gray-200 rounded-lg p-3">
+                            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="font-semibold text-gray-800 truncate">{l.email || '—'}</div>
+                                <div className="text-xs text-gray-600">{l.role || '-'} | {l.action || '-'}</div>
+                                <div className="text-xs text-gray-600 mt-1 truncate">{l.method || ''} {l.path || ''}</div>
+                                {l.query ? <div className="text-xs text-gray-500 mt-1 truncate">{l.query}</div> : null}
+                              </div>
+                              <div className="text-right">
+                                <div className="text-xs text-gray-700">{l.createdAt || ''}</div>
+                                <div className="text-xs text-gray-500 mt-1">{l.status ?? ''}</div>
+                              </div>
                             </div>
-                            <div className="text-xs text-gray-500 mt-2">{secondsAgo === null ? '-' : `Vu il y a ${secondsAgo}s`}</div>
+                            {l.metadata ? (
+                              <pre className="mt-2 text-[11px] bg-gray-50 border border-gray-200 rounded p-2 overflow-x-auto">{JSON.stringify(l.metadata, null, 2)}</pre>
+                            ) : null}
                           </div>
-                        </div>
-                      );
-                    })}
+                        ))}
+                        {auditLogs.length > 500 ? (
+                          <div className="text-xs text-gray-500">Affichage limité à 500 lignes (export disponible sur l’ensemble chargé).</div>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <div className="text-xs text-gray-600 mb-3">
+                      Sessions actives (tous rôles, multi-appareils). Actualisation automatique.
+                    </div>
+                    {presenceSessions.length === 0 ? (
+                      <div className="text-gray-600">Aucun utilisateur actif détecté.</div>
+                    ) : (
+                      <div className="space-y-2">
+                        {presenceSessions.map((s) => {
+                          const lastSeenMs = Number(s.lastSeenMs);
+                          const secondsAgo = Number.isFinite(lastSeenMs) ? Math.max(0, Math.round((Date.now() - lastSeenMs) / 1000)) : null;
+                          const isActive = secondsAgo !== null && secondsAgo <= 8;
+                          return (
+                            <div key={s.id || `${s.userId || ''}|${s.tabId || ''}|${s.email || ''}`} className="border border-gray-200 rounded-lg p-3 flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="font-semibold text-gray-800 truncate">{s.email || 'Utilisateur'}</div>
+                                <div className="text-xs text-gray-600">Rôle: {s.role || '-'}</div>
+                                <div className="text-xs text-gray-600 mt-1">Activité: <span className="font-semibold text-gray-800">{s.activity || '-'}</span></div>
+                              </div>
+                              <div className="text-right">
+                                <div className={`text-xs px-2 py-1 rounded inline-block ${isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>
+                                  {isActive ? 'Actif' : 'Inactif'}
+                                </div>
+                                <div className="text-xs text-gray-500 mt-2">{secondsAgo === null ? '-' : `Vu il y a ${secondsAgo}s`}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

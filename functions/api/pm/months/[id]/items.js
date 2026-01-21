@@ -32,7 +32,7 @@ function mapItemRow(r) {
   };
 }
 
-export async function onRequestGet({ env, data, params }) {
+export async function onRequestGet({ request, env, data, params }) {
   try {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
@@ -41,9 +41,73 @@ export async function onRequestGet({ env, data, params }) {
     const monthId = String(params?.id || '').trim();
     if (!monthId) return json({ error: 'Mois requis.' }, { status: 400 });
 
-    const res = await env.DB.prepare('SELECT * FROM pm_items WHERE month_id = ? ORDER BY scheduled_wo_date ASC, number ASC')
-      .bind(monthId)
-      .all();
+    const url = new URL(request.url);
+    const sp = url.searchParams;
+    const q = String(sp.get('q') || '').trim();
+    const state = String(sp.get('state') || '').trim();
+    const date = String(sp.get('date') || '').trim();
+    const from = String(sp.get('from') || '').trim();
+    const to = String(sp.get('to') || '').trim();
+    const reprog = String(sp.get('reprog') || '').trim();
+    const reprogStatus = String(sp.get('reprogStatus') || '').trim();
+
+    const where = ['month_id = ?'];
+    const bind = [monthId];
+
+    if (date) {
+      where.push("substr(scheduled_wo_date, 1, 10) = ?");
+      bind.push(date.slice(0, 10));
+    } else {
+      if (from) {
+        where.push("substr(scheduled_wo_date, 1, 10) >= ?");
+        bind.push(from.slice(0, 10));
+      }
+      if (to) {
+        where.push("substr(scheduled_wo_date, 1, 10) <= ?");
+        bind.push(to.slice(0, 10));
+      }
+    }
+
+    if (state && state !== 'all') {
+      where.push('state = ?');
+      bind.push(state);
+    }
+
+    if (reprog === 'only') {
+      where.push('(reprogrammation_date IS NOT NULL OR reprogrammation_status IS NOT NULL OR reprogrammation_reason IS NOT NULL)');
+    } else if (reprog === 'none') {
+      where.push('(reprogrammation_date IS NULL AND reprogrammation_status IS NULL AND reprogrammation_reason IS NULL)');
+    }
+
+    if (reprogStatus) {
+      where.push('reprogrammation_status = ?');
+      bind.push(reprogStatus);
+    }
+
+    if (q) {
+      where.push(
+        '(' +
+          [
+            'number',
+            'site_code',
+            'site_name',
+            'region',
+            'zone',
+            'short_description',
+            'maintenance_type',
+            'assigned_to',
+            'state'
+          ]
+            .map((c) => `${c} LIKE ?`)
+            .join(' OR ') +
+          ')'
+      );
+      const like = `%${q}%`;
+      bind.push(like, like, like, like, like, like, like, like, like);
+    }
+
+    const sql = `SELECT * FROM pm_items WHERE ${where.join(' AND ')} ORDER BY scheduled_wo_date ASC, number ASC`;
+    const res = await env.DB.prepare(sql).bind(...bind).all();
     const rows = Array.isArray(res?.results) ? res.results : [];
     return json({ items: rows.map(mapItemRow) }, { status: 200 });
   } catch (e) {

@@ -13,13 +13,6 @@ export async function onRequestPost({ request, env, data, params }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
     if (!requireAdmin(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
 
-    return json(
-      {
-        error: "Endpoint obsolète. Utilise 'Import retour client' (POST /api/pm/months/{id}/client-import)."
-      },
-      { status: 410 }
-    );
-
     const monthId = String(params?.id || '').trim();
     if (!monthId) return json({ error: 'Mois requis.' }, { status: 400 });
 
@@ -31,6 +24,18 @@ export async function onRequestPost({ request, env, data, params }) {
     const filename = normStr(body?.filename);
 
     const now = isoNow();
+
+    const seen = new Set();
+    for (const it of items) {
+      const number = String(it?.number || '').trim();
+      if (!number) {
+        return json({ error: 'Le fichier retour client doit contenir la colonne Number (ticket) pour chaque ligne.' }, { status: 400 });
+      }
+      if (seen.has(number)) {
+        return json({ error: `Numéro de ticket en doublon dans le fichier: '${number}'. Vérifie les paires (2 sites doivent avoir 2 tickets).` }, { status: 400 });
+      }
+      seen.add(number);
+    }
 
     await env.DB.prepare('DELETE FROM pm_items WHERE month_id = ?').bind(monthId).run();
 
@@ -75,7 +80,7 @@ export async function onRequestPost({ request, env, data, params }) {
       .bind(
         importId,
         monthId,
-        'planning',
+        'client',
         now,
         filename,
         inserted,
@@ -85,7 +90,6 @@ export async function onRequestPost({ request, env, data, params }) {
       .run();
 
     await env.DB.prepare('UPDATE pm_months SET updated_at = ? WHERE id = ?').bind(now, monthId).run();
-
     await touchLastUpdatedAt(env);
 
     return json({ ok: true, inserted }, { status: 200 });
