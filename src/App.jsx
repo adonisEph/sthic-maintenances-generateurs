@@ -9433,6 +9433,7 @@ const GeneratorMaintenanceApp = () => {
 
       </div>
     </div>
+    </div>
   );
 };
 
