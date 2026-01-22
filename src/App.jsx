@@ -14,10 +14,10 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '2.0.5';
+const APP_VERSION = '2.0.6';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
-const SPLASH_MIN_MS = 4300;
+const SPLASH_MIN_MS = 4350;
 
 const GeneratorMaintenanceApp = () => {
   const storage = useStorage();
