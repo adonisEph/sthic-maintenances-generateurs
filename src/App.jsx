@@ -4591,7 +4591,7 @@ const GeneratorMaintenanceApp = () => {
             <img
               src={STHIC_LOGO_SRC}
               alt="STHIC"
-              className="h-12 mt-3 w-auto max-w-[240px] object-contain"
+              className="h-14 mt-3 w-auto max-w-[260px] object-contain"
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
               }}
@@ -4669,7 +4669,7 @@ const GeneratorMaintenanceApp = () => {
             <img
               src={STHIC_LOGO_SRC}
               alt="STHIC"
-              className="h-14 mt-4 w-auto max-w-[260px] object-contain mx-auto"
+              className="h-16 mt-4 w-auto max-w-[300px] object-contain mx-auto"
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
               }}
@@ -4737,20 +4737,20 @@ const GeneratorMaintenanceApp = () => {
           />
         )}
         <div
-          className={`w-64 bg-emerald-700 text-white border-r border-emerald-800 flex flex-col p-3 pt-3 md:pt-20 gap-1 fixed md:sticky top-0 left-0 h-screen overflow-y-auto z-50 md:z-auto transform transition-transform md:translate-x-0 md:transition-[width,padding,transform] ${
+          className={`w-64 bg-slate-900 text-slate-100 border-r border-slate-800 flex flex-col p-4 pt-4 md:pt-20 gap-1 fixed md:sticky top-0 left-0 h-screen overflow-y-auto z-50 md:z-auto transform transition-transform md:translate-x-0 md:transition-[width,padding,transform] ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           } ${
-            sidebarDockedOpen ? 'md:w-64 md:p-3 md:border-r md:border-emerald-800' : 'md:w-0 md:p-0 md:border-r-0 md:overflow-hidden'
+            sidebarDockedOpen ? 'md:w-64 md:p-4 md:border-r md:border-slate-800' : 'md:w-0 md:p-0 md:border-r-0 md:overflow-hidden'
           }`}
         >
           <div className="flex items-center gap-2 px-2 py-2">
-            <Activity size={18} className="text-white/90" />
-            <div className="text-base font-bold text-white leading-tight">Navigation</div>
+            <Activity size={20} className="text-slate-100/90" />
+            <div className="text-lg font-bold text-slate-100 leading-tight">Navigation</div>
             <div className="ml-auto flex items-center">
               <button
                 type="button"
                 onClick={() => setSidebarDockedOpen(false)}
-                className="hidden md:inline-flex p-2 rounded hover:bg-emerald-800"
+                className="hidden md:inline-flex p-2 rounded hover:bg-slate-800"
                 title="Réduire le menu"
               >
                 <ChevronLeft size={18} />
@@ -4758,14 +4758,14 @@ const GeneratorMaintenanceApp = () => {
               <button
                 type="button"
                 onClick={() => setSidebarOpen(false)}
-                className="md:hidden p-2 rounded hover:bg-emerald-800"
+                className="md:hidden p-2 rounded hover:bg-slate-800"
               >
                 <X size={18} />
               </button>
             </div>
           </div>
 
-          <div className="h-px bg-emerald-600/60 my-1" />
+          <div className="h-px bg-slate-700/60 my-1" />
 
           {canWriteSites && (
             <button
@@ -4773,7 +4773,7 @@ const GeneratorMaintenanceApp = () => {
                 setSidebarOpen(false);
                 setShowAddForm(!showAddForm);
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-base font-semibold"
             >
               <Plus size={18} />
               Nouveau Site
@@ -4785,11 +4785,12 @@ const GeneratorMaintenanceApp = () => {
               <label
                 onClick={() => setSidebarOpen(false)}
                 className={`w-full px-3 py-2 rounded-lg flex items-center gap-2 text-base font-semibold ${
-                  importBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-emerald-800 cursor-pointer'
+                  importBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-800 cursor-pointer'
                 }`}
               >
                 <Upload size={18} />
                 {importBusy ? 'Import en cours…' : 'Importer Excel'}
+
                 <input
                   type="file"
                   accept=".xlsx,.xls"
@@ -4820,7 +4821,7 @@ const GeneratorMaintenanceApp = () => {
                 handleExportExcel();
               }}
               disabled={sites.length === 0 || exportBusy || importBusy}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 disabled:opacity-60 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 disabled:opacity-60 text-base font-semibold"
             >
               <Download size={18} />
               Exporter Excel
@@ -4829,11 +4830,18 @@ const GeneratorMaintenanceApp = () => {
 
           {!isTechnician ? (
             <button
-              onClick={() => {
+              onClick={async () => {
                 setSidebarOpen(false);
                 setShowCalendar(true);
+                if (authUser?.role === 'admin') {
+                  try {
+                    await refreshUsers();
+                  } catch {
+                    // ignore
+                  }
+                }
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-base font-semibold"
             >
               <Calendar size={18} />
               Calendrier
@@ -4847,7 +4855,7 @@ const GeneratorMaintenanceApp = () => {
                 setShowTechCalendar(true);
                 await loadInterventions(m, 'all', 'all');
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-base font-semibold"
             >
               <Calendar size={18} />
               Calendrier
@@ -4874,7 +4882,7 @@ const GeneratorMaintenanceApp = () => {
                 }
                 await loadInterventions();
               }}
-              className="relative w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 text-base font-semibold"
+              className="relative w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-base font-semibold"
             >
               <CheckCircle size={18} />
               {isTechnician && technicianUnseenSentCount > 0 && (
@@ -4896,7 +4904,7 @@ const GeneratorMaintenanceApp = () => {
                 setShowScoring(true);
                 await loadInterventions(nextMonth, 'all', 'all');
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-base font-semibold"
             >
               <TrendingUp size={18} />
               Scoring
@@ -4925,7 +4933,7 @@ const GeneratorMaintenanceApp = () => {
                 const m = pmMonth || new Date().toISOString().slice(0, 7);
                 await refreshPmAll(m);
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-base font-semibold"
             >
               <TrendingUp size={18} />
               Maintenances (PM)
@@ -4937,7 +4945,7 @@ const GeneratorMaintenanceApp = () => {
               setSidebarOpen(false);
               setShowHistory(true);
             }}
-            className="w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 text-base font-semibold"
+            className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-base font-semibold"
           >
             <Activity size={18} />
             Historique
@@ -4949,7 +4957,7 @@ const GeneratorMaintenanceApp = () => {
                 setSidebarOpen(false);
                 setShowResetConfirm(true);
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-base font-semibold"
             >
               <X size={18} />
               Réinitialiser
@@ -4962,7 +4970,7 @@ const GeneratorMaintenanceApp = () => {
                 setSidebarOpen(false);
                 setShowUsersModal(true);
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-base font-semibold"
             >
               <Users size={18} />
               Utilisateurs
@@ -4975,7 +4983,7 @@ const GeneratorMaintenanceApp = () => {
                 setSidebarOpen(false);
                 setShowPresenceModal(true);
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-base font-semibold"
             >
               <Activity size={18} />
               Présence
@@ -4986,7 +4994,7 @@ const GeneratorMaintenanceApp = () => {
             <img
               src={STHIC_LOGO_SRC}
               alt="STHIC"
-              className="h-10 w-auto object-contain"
+              className="h-16 w-auto object-contain"
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
               }}
@@ -4995,7 +5003,7 @@ const GeneratorMaintenanceApp = () => {
         </div>
 
         <div className="flex-1 min-w-0 flex flex-col">
-          <div className="bg-white border-b border-gray-200 shadow-sm px-3 sm:px-4 md:px-6 py-3 sticky top-0 z-40">
+          <div className="bg-white border-b border-gray-200 shadow-sm px-6 sm:px-8 md:px-10 py-3 sticky top-0 z-40">
             <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
                 <button
@@ -7600,7 +7608,7 @@ const GeneratorMaintenanceApp = () => {
 
         {showPresenceModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[92vh] overflow-hidden flex flex-col">
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-indigo-700 text-white">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <Activity size={22} />
@@ -7734,12 +7742,19 @@ const GeneratorMaintenanceApp = () => {
                           <tbody>
                             {auditLogs.slice(0, 500).map((l) => (
                               <tr key={l.id} className="odd:bg-white even:bg-gray-50">
-                                <td className="p-2 border-b whitespace-nowrap">{l.createdAt || ''}</td>
+                                <td className="p-2 border-b whitespace-nowrap">{l.createdAtMs ? new Date(Number(l.createdAtMs)).toLocaleString('fr-FR') : (l.createdAt || '')}</td>
                                 <td className="p-2 border-b">{l.email || '—'}</td>
                                 <td className="p-2 border-b whitespace-nowrap">{l.role || '-'}</td>
                                 <td className="p-2 border-b whitespace-nowrap">{l.action || '-'}</td>
                                 <td className="p-2 border-b whitespace-nowrap">{l.method || ''}</td>
-                                <td className="p-2 border-b">{l.path || ''}</td>
+                                <td className="p-2 border-b">{(() => {
+                                  const p = String(l.path || '');
+                                  if (!p) return '';
+                                  if (p === '/api/meta/version') return 'Vérification version (heartbeat)';
+                                  const method = String(l.method || '').trim();
+                                  const query = String(l.query || '');
+                                  return `${method ? `${method} ` : ''}${p}${query || ''}`;
+                                })()}</td>
                                 <td className="p-2 border-b whitespace-nowrap">{l.status ?? ''}</td>
                                 <td className="p-2 border-b">{l.metadata ? JSON.stringify(l.metadata) : ''}</td>
                               </tr>
