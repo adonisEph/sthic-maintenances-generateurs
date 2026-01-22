@@ -4994,7 +4994,7 @@ const GeneratorMaintenanceApp = () => {
             <img
               src={STHIC_LOGO_SRC}
               alt="STHIC"
-              className="h-16 w-auto object-contain"
+              className="h-24 w-auto object-contain"
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
               }}
