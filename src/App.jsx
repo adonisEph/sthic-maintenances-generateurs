@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AlertCircle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users, Menu } from 'lucide-react';
+import { AlertCircle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users, Menu, ChevronLeft, Trash2, RotateCcw } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { useStorage } from './hooks/useStorage';
+
 import {
   calculateRegime,
   calculateDiffNHs,
@@ -22,6 +23,7 @@ const SPLASH_MIN_MS = 4350;
 const GeneratorMaintenanceApp = () => {
   const storage = useStorage();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarDockedOpen, setSidebarDockedOpen] = useState(true);
   const [sites, setSites] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showUpdateForm, setShowUpdateForm] = useState(false);
@@ -132,6 +134,10 @@ const GeneratorMaintenanceApp = () => {
   const [pmFilterDate, setPmFilterDate] = useState('');
   const [pmFilterReprog, setPmFilterReprog] = useState('all');
   const [pmSearch, setPmSearch] = useState('');
+  const [pmReprogExportDate, setPmReprogExportDate] = useState('');
+  const [pmDetails, setPmDetails] = useState({ open: false, title: '', items: [] });
+  const [pmRejectedModalOpen, setPmRejectedModalOpen] = useState(false);
+  const [pmRejectedDateFilter, setPmRejectedDateFilter] = useState('');
   const [pmReprogOpen, setPmReprogOpen] = useState(false);
   const [pmReprogItem, setPmReprogItem] = useState(null);
   const [pmReprogForm, setPmReprogForm] = useState({ date: '', status: '', reason: '' });
@@ -2389,6 +2395,8 @@ const GeneratorMaintenanceApp = () => {
     const ok = window.confirm(`Exporter les maintenances reprogrammées (${pmMonth}) en Excel ?`);
     if (!ok) return;
 
+    const exportDayYmd = String(pmReprogExportDate || '').trim().slice(0, 10);
+
     const norm = (s) => String(s || '').trim().toLowerCase();
     const normStatus = (s) => {
       const v = String(s || '').trim().toLowerCase();
@@ -2414,7 +2422,15 @@ const GeneratorMaintenanceApp = () => {
     };
 
     const reprogItems = (Array.isArray(pmItems) ? pmItems : [])
-      .filter((it) => it && effectiveReprogStatus(it))
+      .filter((it) => {
+        if (!it) return false;
+        if (!effectiveReprogStatus(it)) return false;
+        if (exportDayYmd) {
+          const d = it?.reprogrammationDate ? String(it.reprogrammationDate).slice(0, 10) : '';
+          return d === exportDayYmd;
+        }
+        return true;
+      })
       .slice()
       .sort((a, b) => {
         const da = String(a?.scheduledWoDate || '').slice(0, 10);
@@ -5441,6 +5457,26 @@ const GeneratorMaintenanceApp = () => {
                         <Download size={16} />
                         Exporter Excel
                       </button>
+
+                      <div className="flex flex-col sm:col-span-2">
+                        <label className="text-xs font-semibold text-gray-700 mb-1">Reprogrammations (jour)</label>
+                        <input
+                          type="date"
+                          value={pmReprogExportDate}
+                          onChange={(e) => setPmReprogExportDate(String(e.target.value || ''))}
+                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                          disabled={pmBusy}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handlePmExportReprogExcel}
+                        className="sm:col-span-2 bg-slate-800 text-white px-3 py-2 rounded-lg hover:bg-slate-900 text-sm font-semibold flex items-center justify-center gap-2"
+                        disabled={pmBusy || exportBusy}
+                      >
+                        <Download size={16} />
+                        Export reprogrammées
+                      </button>
                     </div>
                   </div>
 
@@ -5474,6 +5510,18 @@ const GeneratorMaintenanceApp = () => {
                           disabled={!pmSendTechUserId || pmBusy || pmSendBusy}
                         >
                           Envoyer planning PM
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPmRejectedDateFilter('');
+                            setPmRejectedModalOpen(true);
+                          }}
+                          className="sm:col-span-2 bg-white border border-emerald-200 text-emerald-900 px-3 py-2 rounded-lg hover:bg-emerald-100 text-sm font-semibold"
+                          disabled={pmBusy}
+                        >
+                          Voir reprog rejetées
                         </button>
                       </div>
                       {(Array.isArray(users) ? users : []).filter((u) => u && u.role === 'technician').length === 0 && (
@@ -5523,38 +5571,26 @@ const GeneratorMaintenanceApp = () => {
                         <button
                           type="button"
                           onClick={() => handlePmReset('imports')}
-                          className="text-left px-3 py-2 rounded-lg hover:bg-teal-900 font-semibold text-sm disabled:opacity-60"
+                          className="text-left px-3 py-2 rounded-lg hover:bg-teal-900 font-semibold text-sm disabled:opacity-60 flex items-center gap-2"
                           disabled={pmBusy || pmResetBusy}
                         >
+                          <Trash2 size={16} />
                           Suppr. imports
                         </button>
 
                         <button
                           type="button"
                           onClick={() => handlePmReset('all')}
-                          className="text-left px-3 py-2 rounded-lg hover:bg-teal-900 font-semibold text-sm disabled:opacity-60"
+                          className="text-left px-3 py-2 rounded-lg hover:bg-teal-900 font-semibold text-sm disabled:opacity-60 flex items-center gap-2"
                           disabled={pmBusy || pmResetBusy}
                         >
+                          <RotateCcw size={16} />
                           Reset mois
                         </button>
                       </div>
                     </div>
                   )}
                 </div>
-
-                {isAdmin && (
-                  <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 mb-4">
-                    <button
-                      type="button"
-                      onClick={handlePmExportReprogExcel}
-                      className="bg-slate-800 text-white px-3 py-2 rounded-lg hover:bg-slate-900 text-sm font-semibold flex items-center justify-center gap-2"
-                      disabled={pmBusy || exportBusy}
-                    >
-                      <Download size={16} />
-                      Export reprogrammées
-                    </button>
-                  </div>
-                )}
 
                 {pmError && (
                   <div className="mb-4 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">
@@ -5827,6 +5863,7 @@ const GeneratorMaintenanceApp = () => {
                       onClick: () => {
                         setPmFilterState('all');
                         setPmFilterReprog('all');
+                        setPmDetails({ open: true, title: 'Total', items: baseFiltered.slice() });
                       }
                     },
                     {
@@ -5839,6 +5876,7 @@ const GeneratorMaintenanceApp = () => {
                       onClick: () => {
                         setPmFilterState('closed');
                         setPmFilterReprog('all');
+                        setPmDetails({ open: true, title: 'Closed Complete', items: baseFiltered.filter((it) => bucketForState(it?.state) === 'closed') });
                       }
                     },
                     {
@@ -5851,6 +5889,7 @@ const GeneratorMaintenanceApp = () => {
                       onClick: () => {
                         setPmFilterState('wip');
                         setPmFilterReprog('all');
+                        setPmDetails({ open: true, title: 'Work in progress', items: baseFiltered.filter((it) => bucketForState(it?.state) === 'wip') });
                       }
                     },
                     {
@@ -5863,6 +5902,7 @@ const GeneratorMaintenanceApp = () => {
                       onClick: () => {
                         setPmFilterState('awaiting');
                         setPmFilterReprog('all');
+                        setPmDetails({ open: true, title: 'Awaiting Closure', items: baseFiltered.filter((it) => bucketForState(it?.state) === 'awaiting') });
                       }
                     },
                     {
@@ -5875,6 +5915,7 @@ const GeneratorMaintenanceApp = () => {
                       onClick: () => {
                         setPmFilterState('assigned');
                         setPmFilterReprog('all');
+                        setPmDetails({ open: true, title: 'Assigned', items: baseFiltered.filter((it) => bucketForState(it?.state) === 'assigned') });
                       }
                     },
                     {
@@ -5887,6 +5928,7 @@ const GeneratorMaintenanceApp = () => {
                       onClick: () => {
                         setPmFilterState('all');
                         setPmFilterReprog('any');
+                        setPmDetails({ open: true, title: 'Reprogrammation', items: baseFiltered.filter((it) => effectiveReprogStatus(it)) });
                       }
                     }
                   ];
@@ -5907,6 +5949,161 @@ const GeneratorMaintenanceApp = () => {
                           </button>
                         ))}
                       </div>
+
+                      {pmDetails?.open && (
+                        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+                          <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[90vh]">
+                            <div className="flex justify-between items-center p-4 border-b bg-teal-800 text-white">
+                              <div className="font-bold">Détails PM — {pmDetails?.title || ''}</div>
+                              <button
+                                type="button"
+                                onClick={() => setPmDetails({ open: false, title: '', items: [] })}
+                                className="hover:bg-teal-900 p-2 rounded"
+                              >
+                                <X size={18} />
+                              </button>
+                            </div>
+                            <div className="p-4 overflow-auto">
+                              <table className="min-w-[1100px] w-full text-sm">
+                                <thead className="bg-slate-100 sticky top-0 z-10">
+                                  <tr className="text-left text-xs text-slate-800 border-b border-slate-300">
+                                    <th className="px-3 py-2 font-semibold whitespace-nowrap">Ticket</th>
+                                    <th className="px-3 py-2 font-semibold whitespace-nowrap">État</th>
+                                    <th className="px-3 py-2 font-semibold whitespace-nowrap">Date planifiée</th>
+                                    <th className="px-3 py-2 font-semibold whitespace-nowrap">Site</th>
+                                    <th className="px-3 py-2 font-semibold whitespace-nowrap">Zone</th>
+                                    <th className="px-3 py-2 font-semibold whitespace-nowrap">Type</th>
+                                    <th className="px-3 py-2 font-semibold whitespace-nowrap">Assigné à</th>
+                                    <th className="px-3 py-2 font-semibold whitespace-nowrap">Statut reprog.</th>
+                                    <th className="px-3 py-2 font-semibold whitespace-nowrap">Date reprog.</th>
+                                    <th className="px-3 py-2 font-semibold whitespace-nowrap">Raison</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {(Array.isArray(pmDetails?.items) ? pmDetails.items : []).length === 0 ? (
+                                    <tr>
+                                      <td className="px-4 py-4 text-gray-600" colSpan={10}>
+                                        Aucun élément.
+                                      </td>
+                                    </tr>
+                                  ) : (
+                                    (Array.isArray(pmDetails?.items) ? pmDetails.items : []).map((it, idx) => {
+                                      const sched = it?.scheduledWoDate ? String(it.scheduledWoDate).slice(0, 10) : '';
+                                      const reprogStatus = effectiveReprogStatus(it);
+                                      const reprog = it?.reprogrammationDate ? String(it.reprogrammationDate).slice(0, 10) : '';
+                                      const reason = String(it?.reprogrammationReason || '').trim();
+                                      const siteLabel = [it?.siteName, it?.siteCode].filter(Boolean).join('\n');
+                                      const st = stateLabel(it?.state);
+                                      return (
+                                        <tr key={it?.id || it?.number || idx} className={`border-b border-slate-200 hover:bg-slate-100/60 ${idx % 2 === 1 ? 'bg-white' : 'bg-slate-50'}`}>
+                                          <td className="px-3 py-2 font-semibold text-slate-900 whitespace-nowrap">{it?.number || '-'}</td>
+                                          <td className="px-3 py-2 whitespace-nowrap">{st || '-'}</td>
+                                          <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{sched || '-'}</td>
+                                          <td className="px-3 py-2 text-slate-900 max-w-[260px] whitespace-pre-line leading-tight break-words" title={siteLabel || ''}>{siteLabel || '-'}</td>
+                                          <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.zone || '-'}</td>
+                                          <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.maintenanceType || '-'}</td>
+                                          <td className="px-3 py-2 text-slate-900 max-w-[200px] truncate" title={String(it?.assignedTo || '')}>{it?.assignedTo || '-'}</td>
+                                          <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{reprogStatus || '-'}</td>
+                                          <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{reprog || '-'}</td>
+                                          <td className="px-3 py-2 text-slate-900 max-w-[260px] truncate" title={reason || ''}>{reason || '-'}</td>
+                                        </tr>
+                                      );
+                                    })
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {pmRejectedModalOpen && (
+                        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+                          <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[90vh]">
+                            <div className="flex justify-between items-center p-4 border-b bg-teal-800 text-white">
+                              <div className="font-bold">Reprogrammations rejetées</div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPmRejectedModalOpen(false);
+                                  setPmRejectedDateFilter('');
+                                }}
+                                className="hover:bg-teal-900 p-2 rounded"
+                              >
+                                <X size={18} />
+                              </button>
+                            </div>
+                            <div className="p-4 overflow-auto">
+                              <div className="mb-3 flex flex-col sm:flex-row sm:items-end gap-3">
+                                <div className="flex flex-col">
+                                  <label className="text-xs font-semibold text-gray-700 mb-1">Filtrer par jour (date reprog.)</label>
+                                  <input
+                                    type="date"
+                                    value={pmRejectedDateFilter}
+                                    onChange={(e) => setPmRejectedDateFilter(String(e.target.value || ''))}
+                                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                                  />
+                                </div>
+                              </div>
+                              {(() => {
+                                const day = normalizeYmd(pmRejectedDateFilter);
+                                const rejected = (Array.isArray(pmItems) ? pmItems : [])
+                                  .filter((it) => {
+                                    if (!it) return false;
+                                    if (effectiveReprogStatus(it) !== 'REJECTED') return false;
+                                    if (day) return normalizeYmd(it?.reprogrammationDate) === day;
+                                    return true;
+                                  })
+                                  .slice()
+                                  .sort((a, b) => {
+                                    const da = String(a?.reprogrammationDate || '').slice(0, 10);
+                                    const db = String(b?.reprogrammationDate || '').slice(0, 10);
+                                    const d = da.localeCompare(db);
+                                    if (d !== 0) return d;
+                                    return String(a?.number || '').localeCompare(String(b?.number || ''));
+                                  });
+                                if (rejected.length === 0) {
+                                  return <div className="text-gray-600">Aucune reprogrammation rejetée.</div>;
+                                }
+                                return (
+                                  <table className="min-w-[1100px] w-full text-sm">
+                                    <thead className="bg-slate-100 sticky top-0 z-10">
+                                      <tr className="text-left text-xs text-slate-800 border-b border-slate-300">
+                                        <th className="px-3 py-2 font-semibold whitespace-nowrap">Ticket</th>
+                                        <th className="px-3 py-2 font-semibold whitespace-nowrap">Date planifiée</th>
+                                        <th className="px-3 py-2 font-semibold whitespace-nowrap">Date reprog.</th>
+                                        <th className="px-3 py-2 font-semibold whitespace-nowrap">Site</th>
+                                        <th className="px-3 py-2 font-semibold whitespace-nowrap">Type</th>
+                                        <th className="px-3 py-2 font-semibold whitespace-nowrap">Assigné à</th>
+                                        <th className="px-3 py-2 font-semibold whitespace-nowrap">Raison</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {rejected.map((it, idx) => {
+                                        const sched = it?.scheduledWoDate ? String(it.scheduledWoDate).slice(0, 10) : '';
+                                        const reprog = it?.reprogrammationDate ? String(it.reprogrammationDate).slice(0, 10) : '';
+                                        const reason = String(it?.reprogrammationReason || '').trim();
+                                        const siteLabel = [it?.siteName, it?.siteCode].filter(Boolean).join('\n');
+                                        return (
+                                          <tr key={it?.id || it?.number || idx} className={`border-b border-slate-200 ${idx % 2 === 1 ? 'bg-white' : 'bg-slate-50'}`}>
+                                            <td className="px-3 py-2 font-semibold text-slate-900 whitespace-nowrap">{it?.number || '-'}</td>
+                                            <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{sched || '-'}</td>
+                                            <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{reprog || '-'}</td>
+                                            <td className="px-3 py-2 text-slate-900 max-w-[320px] whitespace-pre-line leading-tight break-words" title={siteLabel || ''}>{siteLabel || '-'}</td>
+                                            <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.maintenanceType || '-'}</td>
+                                            <td className="px-3 py-2 text-slate-900 max-w-[200px] truncate" title={String(it?.assignedTo || '')}>{it?.assignedTo || '-'}</td>
+                                            <td className="px-3 py-2 text-slate-900 max-w-[320px] truncate" title={reason || ''}>{reason || '-'}</td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                );
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       <div className="border border-gray-200 rounded-xl p-4 mb-5">
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
