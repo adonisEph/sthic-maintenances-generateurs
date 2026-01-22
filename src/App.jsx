@@ -19,17 +19,6 @@ const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
 const SPLASH_MIN_MS = 4300;
 
-const ModalWatermark = ({ className = '' }) => (
-  <img
-    src={STHIC_LOGO_SRC}
-    alt="STHIC"
-    className={`pointer-events-none select-none absolute bottom-4 left-1/2 -translate-x-1/2 h-24 w-auto max-w-[80%] object-contain opacity-[0.26] ${className}`}
-    onError={(e) => {
-      e.currentTarget.style.display = 'none';
-    }}
-  />
-);
-
 const GeneratorMaintenanceApp = () => {
   const storage = useStorage();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -4732,30 +4721,25 @@ const GeneratorMaintenanceApp = () => {
           />
         )}
         <div
-          className={`w-64 bg-white border-r border-gray-200 flex flex-col p-3 gap-2 fixed md:sticky top-0 left-0 h-screen overflow-y-auto z-50 md:z-auto transform transition-transform md:translate-x-0 ${
+          className={`w-64 bg-emerald-700 text-white border-r border-emerald-800 flex flex-col p-3 gap-1 fixed md:sticky top-0 left-0 h-screen overflow-y-auto z-50 md:z-auto transform transition-transform md:translate-x-0 ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
           <div className="flex items-center gap-2 px-2 py-2">
-            <img
-              src={STHIC_LOGO_SRC}
-              alt="STHIC"
-              className="h-8 w-auto object-contain"
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-              }}
-            />
-            <div className="text-sm font-bold text-gray-800 leading-tight">Menu</div>
+            <Activity size={18} className="text-white/90" />
+            <div className="text-sm font-bold text-white leading-tight">Navigation</div>
             <div className="ml-auto md:hidden">
               <button
                 type="button"
                 onClick={() => setSidebarOpen(false)}
-                className="p-2 rounded hover:bg-gray-100"
+                className="p-2 rounded hover:bg-emerald-800"
               >
                 <X size={18} />
               </button>
             </div>
           </div>
+
+          <div className="h-px bg-emerald-600/60 my-1" />
 
           {canWriteSites && (
             <button
@@ -4763,7 +4747,7 @@ const GeneratorMaintenanceApp = () => {
                 setSidebarOpen(false);
                 setShowAddForm(!showAddForm);
               }}
-              className="w-full bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 flex items-center justify-start gap-2 text-sm font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 text-sm font-semibold"
             >
               <Plus size={18} />
               Nouveau Site
@@ -4774,8 +4758,8 @@ const GeneratorMaintenanceApp = () => {
             <div className="flex flex-col gap-2">
               <label
                 onClick={() => setSidebarOpen(false)}
-                className={`w-full bg-green-600 text-white px-3 py-2 rounded-lg flex items-center justify-start gap-2 text-sm font-semibold ${
-                  importBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-green-700 cursor-pointer'
+                className={`w-full px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold ${
+                  importBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-emerald-800 cursor-pointer'
                 }`}
               >
                 <Upload size={18} />
@@ -4810,7 +4794,7 @@ const GeneratorMaintenanceApp = () => {
                 handleExportExcel();
               }}
               disabled={sites.length === 0 || exportBusy || importBusy}
-              className="w-full bg-purple-600 text-white px-3 py-2 rounded-lg hover:bg-purple-700 flex items-center justify-start gap-2 disabled:bg-gray-400 text-sm font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 disabled:opacity-60 text-sm font-semibold"
             >
               <Download size={18} />
               Exporter Excel
@@ -4823,7 +4807,7 @@ const GeneratorMaintenanceApp = () => {
                 setSidebarOpen(false);
                 setShowCalendar(true);
               }}
-              className="w-full bg-cyan-600 text-white px-3 py-2 rounded-lg hover:bg-cyan-700 flex items-center justify-start gap-2 text-sm font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 text-sm font-semibold"
             >
               <Calendar size={18} />
               Calendrier
@@ -4837,7 +4821,7 @@ const GeneratorMaintenanceApp = () => {
                 setShowTechCalendar(true);
                 await loadInterventions(m, 'all', 'all');
               }}
-              className="w-full bg-cyan-600 text-white px-3 py-2 rounded-lg hover:bg-cyan-700 flex items-center justify-start gap-2 text-sm font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 text-sm font-semibold"
             >
               <Calendar size={18} />
               Calendrier
@@ -4864,7 +4848,7 @@ const GeneratorMaintenanceApp = () => {
                 }
                 await loadInterventions();
               }}
-              className="relative w-full bg-emerald-700 text-white px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center justify-start gap-2 text-sm font-semibold"
+              className="relative w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 text-sm font-semibold"
             >
               <CheckCircle size={18} />
               {isTechnician && technicianUnseenSentCount > 0 && (
@@ -4886,7 +4870,7 @@ const GeneratorMaintenanceApp = () => {
                 setShowScoring(true);
                 await loadInterventions(nextMonth, 'all', 'all');
               }}
-              className="w-full bg-slate-800 text-white px-3 py-2 rounded-lg hover:bg-slate-900 flex items-center justify-start gap-2 text-sm font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 text-sm font-semibold"
             >
               <TrendingUp size={18} />
               Scoring
@@ -4915,7 +4899,7 @@ const GeneratorMaintenanceApp = () => {
                 const m = pmMonth || new Date().toISOString().slice(0, 7);
                 await refreshPmAll(m);
               }}
-              className="w-full bg-teal-700 text-white px-3 py-2 rounded-lg hover:bg-teal-800 flex items-center justify-start gap-2 text-sm font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 text-sm font-semibold"
             >
               <TrendingUp size={18} />
               Maintenances (PM)
@@ -4927,7 +4911,7 @@ const GeneratorMaintenanceApp = () => {
               setSidebarOpen(false);
               setShowHistory(true);
             }}
-            className="w-full bg-amber-600 text-white px-3 py-2 rounded-lg hover:bg-amber-700 flex items-center justify-start gap-2 text-sm font-semibold"
+            className="w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 text-sm font-semibold"
           >
             <Activity size={18} />
             Historique
@@ -4939,7 +4923,7 @@ const GeneratorMaintenanceApp = () => {
                 setSidebarOpen(false);
                 setShowResetConfirm(true);
               }}
-              className="w-full bg-red-600 text-white px-3 py-2 rounded-lg hover:bg-red-700 flex items-center justify-start gap-2 text-sm font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 text-sm font-semibold"
             >
               <X size={18} />
               Réinitialiser
@@ -4952,7 +4936,7 @@ const GeneratorMaintenanceApp = () => {
                 setSidebarOpen(false);
                 setShowUsersModal(true);
               }}
-              className="w-full bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center justify-start gap-2 text-sm font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 text-sm font-semibold"
             >
               <Users size={18} />
               Utilisateurs
@@ -4965,12 +4949,23 @@ const GeneratorMaintenanceApp = () => {
                 setSidebarOpen(false);
                 setShowPresenceModal(true);
               }}
-              className="w-full bg-indigo-700 text-white px-3 py-2 rounded-lg hover:bg-indigo-800 flex items-center justify-start gap-2 text-sm font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-800 flex items-center gap-2 text-sm font-semibold"
             >
               <Activity size={18} />
               Présence
             </button>
           )}
+
+          <div className="mt-auto pt-4 pb-3 flex justify-center">
+            <img
+              src={STHIC_LOGO_SRC}
+              alt="STHIC"
+              className="h-10 w-auto object-contain"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          </div>
         </div>
 
         <div className="flex-1 min-w-0 flex flex-col">
@@ -5490,11 +5485,12 @@ const GeneratorMaintenanceApp = () => {
                   )}
 
                   {isAdmin && (
-                    <div className="xl:col-span-4 bg-white border border-gray-200 rounded-xl p-3">
-                      <div className="grid grid-cols-2 gap-2">
+                    <div className="xl:col-span-4 bg-teal-800 text-white rounded-xl p-3">
+                      <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Actions</div>
+                      <div className="flex flex-col">
                         <label
-                          className={`bg-emerald-700 text-white px-3 py-2 rounded-lg flex items-center justify-center gap-2 text-sm font-semibold ${
-                            pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-emerald-800 cursor-pointer'
+                          className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 ${
+                            pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-teal-900 cursor-pointer'
                           }`}
                         >
                           <Upload size={16} />
@@ -5509,8 +5505,8 @@ const GeneratorMaintenanceApp = () => {
                         </label>
 
                         <label
-                          className={`bg-slate-700 text-white px-3 py-2 rounded-lg flex items-center justify-center gap-2 text-sm font-semibold ${
-                            pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-800 cursor-pointer'
+                          className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 ${
+                            pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-teal-900 cursor-pointer'
                           }`}
                         >
                           <Upload size={16} />
@@ -5527,7 +5523,7 @@ const GeneratorMaintenanceApp = () => {
                         <button
                           type="button"
                           onClick={() => handlePmReset('imports')}
-                          className="bg-amber-600 text-white px-3 py-2 rounded-lg hover:bg-amber-700 text-sm font-semibold"
+                          className="text-left px-3 py-2 rounded-lg hover:bg-teal-900 font-semibold text-sm disabled:opacity-60"
                           disabled={pmBusy || pmResetBusy}
                         >
                           Suppr. imports
@@ -5536,7 +5532,7 @@ const GeneratorMaintenanceApp = () => {
                         <button
                           type="button"
                           onClick={() => handlePmReset('all')}
-                          className="bg-red-700 text-white px-3 py-2 rounded-lg hover:bg-red-800 text-sm font-semibold"
+                          className="text-left px-3 py-2 rounded-lg hover:bg-teal-900 font-semibold text-sm disabled:opacity-60"
                           disabled={pmBusy || pmResetBusy}
                         >
                           Reset mois
@@ -7504,28 +7500,37 @@ const GeneratorMaintenanceApp = () => {
                     {auditLogs.length === 0 ? (
                       <div className="text-gray-600">Aucun log.</div>
                     ) : (
-                      <div className="space-y-2">
-                        {auditLogs.slice(0, 500).map((l) => (
-                          <div key={l.id} className="border border-gray-200 rounded-lg p-3">
-                            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                              <div className="min-w-0">
-                                <div className="font-semibold text-gray-800 truncate">{l.email || '—'}</div>
-                                <div className="text-xs text-gray-600">{l.role || '-'} | {l.action || '-'}</div>
-                                <div className="text-xs text-gray-600 mt-1 truncate">{l.method || ''} {l.path || ''}</div>
-                                {l.query ? <div className="text-xs text-gray-500 mt-1 truncate">{l.query}</div> : null}
-                              </div>
-                              <div className="text-right">
-                                <div className="text-xs text-gray-700">{l.createdAt || ''}</div>
-                                <div className="text-xs text-gray-500 mt-1">{l.status ?? ''}</div>
-                              </div>
-                            </div>
-                            {l.metadata ? (
-                              <pre className="mt-2 text-[11px] bg-gray-50 border border-gray-200 rounded p-2 overflow-x-auto">{JSON.stringify(l.metadata, null, 2)}</pre>
-                            ) : null}
-                          </div>
-                        ))}
+                      <div className="border border-gray-200 rounded-lg overflow-auto max-h-[55vh]">
+                        <table className="min-w-full text-xs">
+                          <thead className="sticky top-0 bg-gray-50">
+                            <tr className="text-left">
+                              <th className="p-2 border-b">Date</th>
+                              <th className="p-2 border-b">Email</th>
+                              <th className="p-2 border-b">Rôle</th>
+                              <th className="p-2 border-b">Action</th>
+                              <th className="p-2 border-b">Méthode</th>
+                              <th className="p-2 border-b">Chemin</th>
+                              <th className="p-2 border-b">Status</th>
+                              <th className="p-2 border-b">Metadata</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {auditLogs.slice(0, 500).map((l) => (
+                              <tr key={l.id} className="odd:bg-white even:bg-gray-50">
+                                <td className="p-2 border-b whitespace-nowrap">{l.createdAt || ''}</td>
+                                <td className="p-2 border-b">{l.email || '—'}</td>
+                                <td className="p-2 border-b whitespace-nowrap">{l.role || '-'}</td>
+                                <td className="p-2 border-b whitespace-nowrap">{l.action || '-'}</td>
+                                <td className="p-2 border-b whitespace-nowrap">{l.method || ''}</td>
+                                <td className="p-2 border-b">{l.path || ''}</td>
+                                <td className="p-2 border-b whitespace-nowrap">{l.status ?? ''}</td>
+                                <td className="p-2 border-b">{l.metadata ? JSON.stringify(l.metadata) : ''}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                         {auditLogs.length > 500 ? (
-                          <div className="text-xs text-gray-500">Affichage limité à 500 lignes (export disponible sur l’ensemble chargé).</div>
+                          <div className="text-xs text-gray-500 p-2">Affichage limité à 500 lignes (export disponible sur l’ensemble chargé).</div>
                         ) : null}
                       </div>
                     )}
@@ -7572,7 +7577,6 @@ const GeneratorMaintenanceApp = () => {
                 >
                   Fermer
                 </button>
-                <ModalWatermark />
               </div>
             </div>
           </div>
@@ -8667,175 +8671,181 @@ const GeneratorMaintenanceApp = () => {
                     ) : (
                       <div />
                     )}
-
-                    {isAdmin ? (
-                      <button
-                        type="button"
-                        onClick={handleSendCalendarMonthPlanning}
-                        className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold text-sm w-full"
-                        disabled={!calendarSendTechUserId}
-                      >
-                        Envoyer planning du mois
-                      </button>
-                    ) : (
-                      <div />
-                    )}
-
-                    {canExportExcel && (
-                      <button
-                        type="button"
-                        onClick={handleExportCalendarMonthExcel}
-                        className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold flex items-center justify-center gap-2 w-full"
-                        disabled={exportBusy}
-                      >
-                        <Download size={18} />
-                        Exporter Excel
-                      </button>
-                    )}
+                    <div />
+                    <div />
                   </div>
 
-                  {isAdmin && (
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
-                      <label className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold flex items-center justify-center gap-2 w-full cursor-pointer whitespace-nowrap text-sm">
-                        <Upload size={18} />
-                        Importer base (Excel)
-                        <input
-                          type="file"
-                          accept=".xlsx,.xls"
-                          onChange={handleImportBasePlanExcel}
-                          className="hidden"
-                          disabled={basePlanBusy}
-                        />
-                      </label>
-
-                      <button
-                        type="button"
-                        onClick={generateBasePlanPreview}
-                        className="bg-indigo-700 text-white px-4 py-2 rounded-lg hover:bg-indigo-800 font-semibold w-full disabled:bg-gray-400 whitespace-nowrap text-sm"
-                        disabled={basePlanBusy || basePlanBaseRows.length === 0}
-                      >
-                        Générer planning mois suivant
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={exportBasePlanPreviewExcel}
-                        className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold w-full disabled:bg-gray-400 whitespace-nowrap text-sm"
-                        disabled={basePlanBusy || basePlanPreview.length === 0}
-                      >
-                        Exporter planning base
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={saveBasePlanToDb}
-                        className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold w-full disabled:bg-gray-400 whitespace-nowrap text-sm"
-                        disabled={basePlanBusy || basePlanPreview.length === 0}
-                      >
-                        Enregistrer (DB)
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={deleteBasePlanFromDb}
-                        className="bg-red-700 text-white px-4 py-2 rounded-lg hover:bg-red-800 font-semibold w-full disabled:bg-gray-400 whitespace-nowrap text-sm"
-                        disabled={basePlanBusy}
-                      >
-                        Supprimer (DB)
-                      </button>
+                  <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-3">
+                    <div className="bg-cyan-600 text-white rounded-xl p-3">
+                      <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Actions</div>
+                      <div className="flex flex-col">
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={handleSendCalendarMonthPlanning}
+                            className="text-left px-3 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm disabled:opacity-60"
+                            disabled={!calendarSendTechUserId}
+                          >
+                            Envoyer planning du mois
+                          </button>
+                        )}
+                        {canExportExcel && (
+                          <button
+                            type="button"
+                            onClick={handleExportCalendarMonthExcel}
+                            className="text-left px-3 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm disabled:opacity-60"
+                            disabled={exportBusy}
+                          >
+                            Exporter Excel
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <label className={`text-left px-3 py-2 rounded-lg font-semibold text-sm ${basePlanBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-cyan-700 cursor-pointer'}`}>
+                            Importer base (Excel)
+                            <input
+                              type="file"
+                              accept=".xlsx,.xls"
+                              onChange={handleImportBasePlanExcel}
+                              className="hidden"
+                              disabled={basePlanBusy}
+                            />
+                          </label>
+                        )}
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={generateBasePlanPreview}
+                            className="text-left px-3 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm disabled:opacity-60"
+                            disabled={basePlanBusy || basePlanBaseRows.length === 0}
+                          >
+                            Générer planning mois suivant
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={exportBasePlanPreviewExcel}
+                            className="text-left px-3 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm disabled:opacity-60"
+                            disabled={basePlanBusy || basePlanPreview.length === 0}
+                          >
+                            Exporter planning base
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={saveBasePlanToDb}
+                            className="text-left px-3 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm disabled:opacity-60"
+                            disabled={basePlanBusy || basePlanPreview.length === 0}
+                          >
+                            Enregistrer (DB)
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={deleteBasePlanFromDb}
+                            className="text-left px-3 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm disabled:opacity-60"
+                            disabled={basePlanBusy}
+                          >
+                            Supprimer (DB)
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  )}
 
-                  {isAdmin && (basePlanBusy || basePlanErrors.length > 0 || basePlanPreview.length > 0) && (
-                    <div className="mt-3 space-y-2">
-                      {basePlanBusy && (
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div className="bg-indigo-600 h-2 rounded-full" style={{ width: `${basePlanProgress}%` }} />
-                        </div>
-                      )}
-                      {basePlanTargetMonth && (
-                        <div className="text-xs text-gray-700">
-                          Mois cible: <strong>{basePlanTargetMonth}</strong> | Base: <strong>{basePlanBaseRows.length}</strong> | Planning: <strong>{basePlanPreview.length}</strong>
-                        </div>
-                      )}
-                      {basePlanErrors.length > 0 && (
-                        <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2 max-h-32 overflow-auto">
-                          {basePlanErrors.slice(0, 20).map((m, idx) => (
-                            <div key={idx}>{m}</div>
-                          ))}
-                          {basePlanErrors.length > 20 && <div>… ({basePlanErrors.length - 20} autres)</div>}
-                        </div>
-                      )}
-
-                      {basePlanPreview.length > 0 && (
-                        <div className="border rounded-lg overflow-auto max-h-64">
-                          <table className="min-w-full text-xs">
-                            <thead className="sticky top-0 bg-gray-50">
-                              <tr className="text-left">
-                                <th className="p-2 border-b">Date</th>
-                                <th className="p-2 border-b">Technicien</th>
-                                <th className="p-2 border-b">Site</th>
-                                <th className="p-2 border-b">Type</th>
-                                <th className="p-2 border-b">EPV</th>
-                                <th className="p-2 border-b">PairGroup</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {(() => {
-                                const items = Array.isArray(basePlanPreview) ? basePlanPreview.slice(0, 80) : [];
-                                const groups = new Map();
-                                for (const it of items) {
-                                  const g = String(it?.pairGroup || '').trim();
-                                  const key = `${it.plannedDate}||${it.technician}||${g || it.siteCode || it.siteName || ''}`;
-                                  if (!groups.has(key)) groups.set(key, []);
-                                  groups.get(key).push(it);
-                                }
-                                const out = [];
-                                for (const arr of groups.values()) {
-                                  const sorted = arr
-                                    .slice()
-                                    .sort((a, b) => Number(a?.importOrder ?? 0) - Number(b?.importOrder ?? 0));
-                                  const first = sorted[0] || {};
-                                  const second = sorted[1] || null;
-                                  const hasTwo = sorted.length === 2;
-                                  out.push({
-                                    plannedDate: first.plannedDate,
-                                    technician: first.technician,
-                                    siteCode: hasTwo ? `${first.siteCode || ''}\n${second?.siteCode || ''}`.trim() : first.siteCode || '',
-                                    siteName: hasTwo ? `${first.siteName || ''}\n${second?.siteName || ''}`.trim() : first.siteName || '',
-                                    maintenanceType:
-                                      hasTwo && first.recommendedMaintenanceType !== second?.recommendedMaintenanceType
-                                        ? `${first.recommendedMaintenanceType || ''} + ${second?.recommendedMaintenanceType || ''}`.trim()
-                                        : first.recommendedMaintenanceType || '',
-                                    epvSlot: first.epvSlot,
-                                    pairGroup: first.pairGroup || ''
-                                  });
-                                }
-                                out.sort((a, b) => {
-                                  const d = String(a.plannedDate || '').localeCompare(String(b.plannedDate || ''));
-                                  if (d !== 0) return d;
-                                  return String(a.technician || '').localeCompare(String(b.technician || ''));
-                                });
-                                return out.map((it, idx) => (
-                                  <tr key={`${it.siteCode}-${it.plannedDate}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-gray-50'}>
-                                    <td className="p-2 border-b whitespace-nowrap">{it.plannedDate}</td>
-                                    <td className="p-2 border-b">{it.technician}</td>
-                                    <td className="p-2 border-b whitespace-pre-line leading-tight break-words">{it.siteName || it.siteCode}</td>
-                                    <td className="p-2 border-b">{it.maintenanceType}</td>
-                                    <td className="p-2 border-b">{it.epvSlot}</td>
-                                    <td className="p-2 border-b">{it.pairGroup || ''}</td>
+                    <div className="space-y-3">
+                      {isAdmin && (basePlanBusy || basePlanErrors.length > 0 || basePlanPreview.length > 0) && (
+                        <div className="mt-0 space-y-2">
+                          {basePlanBusy && (
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                              <div className="bg-indigo-600 h-2 rounded-full" style={{ width: `${basePlanProgress}%` }} />
+                            </div>
+                          )}
+                          {basePlanTargetMonth && (
+                            <div className="text-xs text-gray-700">
+                              Mois cible: <strong>{basePlanTargetMonth}</strong> | Base: <strong>{basePlanBaseRows.length}</strong> | Planning: <strong>{basePlanPreview.length}</strong>
+                            </div>
+                          )}
+                          {basePlanErrors.length > 0 && (
+                            <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2 max-h-32 overflow-auto">
+                              {basePlanErrors.slice(0, 20).map((m, idx) => (
+                                <div key={idx}>{m}</div>
+                              ))}
+                              {basePlanErrors.length > 20 && <div>… ({basePlanErrors.length - 20} autres)</div>}
+                            </div>
+                          )}
+                          {basePlanPreview.length > 0 && (
+                            <div className="border rounded-lg overflow-auto max-h-64">
+                              <table className="min-w-full text-xs">
+                                <thead className="sticky top-0 bg-gray-50">
+                                  <tr className="text-left">
+                                    <th className="p-2 border-b">Date</th>
+                                    <th className="p-2 border-b">Technicien</th>
+                                    <th className="p-2 border-b">Site</th>
+                                    <th className="p-2 border-b">Type</th>
+                                    <th className="p-2 border-b">EPV</th>
+                                    <th className="p-2 border-b">PairGroup</th>
                                   </tr>
-                                ));
-                              })()}
-                            </tbody>
-                          </table>
-                          {basePlanPreview.length > 80 && (
-                            <div className="text-xs text-gray-600 p-2">Affichage limité aux 80 premières lignes (total: {basePlanPreview.length}).</div>
+                                </thead>
+                                <tbody>
+                                  {(() => {
+                                    const items = Array.isArray(basePlanPreview) ? basePlanPreview.slice(0, 80) : [];
+                                    const groups = new Map();
+                                    for (const it of items) {
+                                      const g = String(it?.pairGroup || '').trim();
+                                      const key = `${it.plannedDate}||${it.technician}||${g || it.siteCode || it.siteName || ''}`;
+                                      if (!groups.has(key)) groups.set(key, []);
+                                      groups.get(key).push(it);
+                                    }
+                                    const out = [];
+                                    for (const arr of groups.values()) {
+                                      const sorted = arr
+                                        .slice()
+                                        .sort((a, b) => Number(a?.importOrder ?? 0) - Number(b?.importOrder ?? 0));
+                                      const first = sorted[0] || {};
+                                      const second = sorted[1] || null;
+                                      const hasTwo = sorted.length === 2;
+                                      out.push({
+                                        plannedDate: first.plannedDate,
+                                        technician: first.technician,
+                                        siteCode: hasTwo ? `${first.siteCode || ''}\n${second?.siteCode || ''}`.trim() : first.siteCode || '',
+                                        siteName: hasTwo ? `${first.siteName || ''}\n${second?.siteName || ''}`.trim() : first.siteName || '',
+                                        maintenanceType:
+                                          hasTwo && first.recommendedMaintenanceType !== second?.recommendedMaintenanceType
+                                            ? `${first.recommendedMaintenanceType || ''} + ${second?.recommendedMaintenanceType || ''}`.trim()
+                                            : first.recommendedMaintenanceType || '',
+                                        epvSlot: first.epvSlot,
+                                        pairGroup: first.pairGroup || ''
+                                      });
+                                    }
+                                    out.sort((a, b) => {
+                                      const d = String(a.plannedDate || '').localeCompare(String(b.plannedDate || ''));
+                                      if (d !== 0) return d;
+                                      return String(a.technician || '').localeCompare(String(b.technician || ''));
+                                    });
+                                    return out.map((it, idx) => (
+                                      <tr key={`${it.siteCode}-${it.plannedDate}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-gray-50'}>
+                                        <td className="p-2 border-b whitespace-nowrap">{it.plannedDate}</td>
+                                        <td className="p-2 border-b">{it.technician}</td>
+                                        <td className="p-2 border-b whitespace-pre-line leading-tight break-words">{it.siteName || it.siteCode}</td>
+                                        <td className="p-2 border-b">{it.maintenanceType}</td>
+                                        <td className="p-2 border-b">{it.epvSlot}</td>
+                                        <td className="p-2 border-b">{it.pairGroup || ''}</td>
+                                      </tr>
+                                    ));
+                                  })()}
+                                </tbody>
+                              </table>
+                              {basePlanPreview.length > 80 && (
+                                <div className="text-xs text-gray-600 p-2">Affichage limité aux 80 premières lignes (total: {basePlanPreview.length}).</div>
+                              )}
+                            </div>
                           )}
                         </div>
                       )}
                     </div>
-                  )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-7 gap-2 mb-2">
