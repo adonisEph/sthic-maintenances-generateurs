@@ -78,6 +78,8 @@ const GeneratorMaintenanceApp = () => {
   const [authUser, setAuthUser] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [users, setUsers] = useState([]);
+  const [usersBusy, setUsersBusy] = useState(false);
+  const [usersError, setUsersError] = useState('');
   const [showUsersModal, setShowUsersModal] = useState(false);
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [showPresenceModal, setShowPresenceModal] = useState(false);
@@ -565,8 +567,18 @@ const GeneratorMaintenanceApp = () => {
   };
 
   const refreshUsers = async () => {
-    const data = await apiFetchJson('/api/users', { method: 'GET' });
-    setUsers(Array.isArray(data?.users) ? data.users : []);
+    setUsersBusy(true);
+    setUsersError('');
+    try {
+      const data = await apiFetchJson('/api/users', { method: 'GET' });
+      setUsers(Array.isArray(data?.users) ? data.users : []);
+      return data;
+    } catch (e) {
+      setUsersError(e?.message || 'Erreur lors du chargement des techniciens.');
+      throw e;
+    } finally {
+      setUsersBusy(false);
+    }
   };
 
   useEffect(() => {
@@ -8888,8 +8900,9 @@ const GeneratorMaintenanceApp = () => {
                           value={calendarSendTechUserId}
                           onChange={(e) => setCalendarSendTechUserId(e.target.value)}
                           className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white w-full"
+                          disabled={usersBusy}
                         >
-                          <option value="">Tous</option>
+                          <option value="">-- Technicien --</option>
                           {(Array.isArray(users) ? users : [])
                             .filter((u) => u && u.role === 'technician')
                             .slice()
@@ -8901,11 +8914,33 @@ const GeneratorMaintenanceApp = () => {
                             ))}
                         </select>
 
+                        {usersBusy && <div className="mt-1 text-xs text-gray-500">Chargement des techniciens…</div>}
+                        {!usersBusy && usersError && <div className="mt-1 text-xs text-rose-700">{usersError}</div>}
+                        {!usersBusy && !usersError && (Array.isArray(users) ? users : []).filter((u) => u && u.role === 'technician').length === 0 && (
+                          <div className="mt-1 text-xs text-gray-500">Aucun technicien chargé.</div>
+                        )}
+
+                        {!usersBusy && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await refreshUsers();
+                              } catch {
+                                // ignore
+                              }
+                            }}
+                            className="mt-2 w-full bg-white border border-gray-300 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-50 text-sm font-semibold"
+                          >
+                            Recharger les techniciens
+                          </button>
+                        )}
+
                         <button
                           type="button"
                           onClick={handleSendCalendarMonthPlanning}
                           className="mt-2 w-full bg-cyan-700 text-white px-3 py-2 rounded-lg hover:bg-cyan-800 text-sm font-semibold disabled:opacity-60"
-                          disabled={!calendarSendTechUserId}
+                          disabled={!calendarSendTechUserId || usersBusy}
                         >
                           Envoyer planning du mois
                         </button>
