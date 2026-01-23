@@ -5,6 +5,7 @@ import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { useStorage } from './hooks/useStorage';
 import PmModal from './components/PmModal';
+import CalendarModal from './components/CalendarModal';
 
 import {
   calculateRegime,
@@ -16,7 +17,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '2.0.6';
+const APP_VERSION = '2.0.7';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
 const SPLASH_MIN_MS = 4350;
@@ -8929,7 +8930,44 @@ const GeneratorMaintenanceApp = () => {
         )}
 
         {/* Modal Calendrier */}
-        {showCalendar && !isTechnician && (
+        
+                <CalendarModal
+          showCalendar={showCalendar}
+          isTechnician={isTechnician}
+          setShowCalendar={setShowCalendar}
+          currentMonth={currentMonth}
+          setCurrentMonth={setCurrentMonth}
+          isAdmin={isAdmin}
+          calendarSendTechUserId={calendarSendTechUserId}
+          setCalendarSendTechUserId={setCalendarSendTechUserId}
+          users={users}
+          usersBusy={usersBusy}
+          usersError={usersError}
+          refreshUsers={refreshUsers}
+          handleSendCalendarMonthPlanning={handleSendCalendarMonthPlanning}
+          canExportExcel={canExportExcel}
+          handleExportCalendarMonthExcel={handleExportCalendarMonthExcel}
+          exportBusy={exportBusy}
+          basePlanBusy={basePlanBusy}
+          basePlanErrors={basePlanErrors}
+          basePlanPreview={basePlanPreview}
+          basePlanTargetMonth={basePlanTargetMonth}
+          basePlanBaseRows={basePlanBaseRows}
+          basePlanProgress={basePlanProgress}
+          handleImportBasePlanExcel={handleImportBasePlanExcel}
+          generateBasePlanPreview={generateBasePlanPreview}
+          exportBasePlanPreviewExcel={exportBasePlanPreviewExcel}
+          saveBasePlanToDb={saveBasePlanToDb}
+          deleteBasePlanFromDb={deleteBasePlanFromDb}
+          getEventsForDay={getEventsForDay}
+          getDaysUntil={getDaysUntil}
+          selectedDate={selectedDate}
+          setSelectedDate={setSelectedDate}
+          setSelectedDayEvents={setSelectedDayEvents}
+          setShowDayDetailsModal={setShowDayDetailsModal}
+        />
+
+        {false && showCalendar && !isTechnician && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
             <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-7xl sm:max-h-[95vh]">
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-cyan-600 text-white">
@@ -8972,7 +9010,7 @@ const GeneratorMaintenanceApp = () => {
                         <select
                           value={calendarSendTechUserId}
                           onChange={(e) => setCalendarSendTechUserId(e.target.value)}
-                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white w-full"
+                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 w-full"
                           disabled={usersBusy}
                         >
                           <option value="">-- Technicien --</option>

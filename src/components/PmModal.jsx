@@ -100,8 +100,8 @@ const PmModal = (props) => {
 
         <div className="p-4 sm:p-6 overflow-y-auto flex-1">
           <div className="flex flex-col lg:flex-row gap-4 mb-4">
-            <div className="lg:w-72 bg-teal-900 text-white rounded-none sm:rounded-xl overflow-hidden">
-              <div className="p-4 border-b border-white/10 flex flex-col items-center gap-3">
+            <div className="lg:w-72 bg-white border border-teal-200 text-gray-900 rounded-none sm:rounded-xl overflow-hidden">
+              <div className="p-4 border-b border-teal-900/15 bg-teal-800 text-white flex flex-col items-center gap-3">
                 <img
                   src={STHIC_LOGO_SRC}
                   alt="STHIC"
@@ -112,10 +112,10 @@ const PmModal = (props) => {
 
               <div className="p-4 space-y-4">
                 <div>
-                  <div className="text-xs font-bold uppercase tracking-wide text-white/80 mb-2">Période</div>
+                  <div className="text-xs font-bold uppercase tracking-wide text-teal-800 mb-2">Période</div>
                   <div className="space-y-2">
                     <div className="flex flex-col">
-                      <label className="text-xs font-semibold text-white/90 mb-1">Mois</label>
+                      <label className="text-xs font-semibold text-gray-700 mb-1">Mois</label>
                       <input
                         type="month"
                         value={pmMonth}
@@ -124,7 +124,7 @@ const PmModal = (props) => {
                           setPmMonth(next);
                           await refreshPmAll(next);
                         }}
-                        className="border border-white/20 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
                         disabled={pmBusy}
                       />
                     </div>
@@ -134,7 +134,7 @@ const PmModal = (props) => {
                       onClick={async () => {
                         await refreshPmAll(pmMonth);
                       }}
-                      className="w-full bg-white/10 text-white px-3 py-2 rounded-lg hover:bg-white/15 text-sm font-semibold"
+                      className="w-full bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700 text-sm font-semibold"
                       disabled={pmBusy}
                     >
                       Rafraîchir
@@ -153,15 +153,15 @@ const PmModal = (props) => {
                 </div>
 
                 <div>
-                  <div className="text-xs font-bold uppercase tracking-wide text-white/80 mb-2">Exports</div>
+                  <div className="text-xs font-bold uppercase tracking-wide text-teal-800 mb-2">Exports</div>
                   <div className="space-y-2">
                     <div className="flex flex-col">
-                      <label className="text-xs font-semibold text-white/90 mb-1">Reprogrammations (jour)</label>
+                      <label className="text-xs font-semibold text-gray-700 mb-1">Reprogrammations (jour)</label>
                       <input
                         type="date"
                         value={pmReprogExportDate}
                         onChange={(e) => setPmReprogExportDate(String(e.target.value || ''))}
-                        className="border border-white/20 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
                         disabled={pmBusy}
                       />
                     </div>
@@ -179,14 +179,14 @@ const PmModal = (props) => {
 
                 {isAdmin && (
                   <div>
-                    <div className="text-xs font-bold uppercase tracking-wide text-white/80 mb-2">Technicien</div>
+                    <div className="text-xs font-bold uppercase tracking-wide text-teal-800 mb-2">Technicien</div>
                     <div className="space-y-2">
                       <div className="flex flex-col">
-                        <label className="text-xs font-semibold text-white/90 mb-1">Destinataire</label>
+                        <label className="text-xs font-semibold text-gray-700 mb-1">Destinataire</label>
                         <select
                           value={pmSendTechUserId}
                           onChange={(e) => setPmSendTechUserId(e.target.value)}
-                          className="border border-white/20 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
+                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
                           disabled={pmBusy || pmSendBusy}
                         >
                           <option value="">-- Technicien --</option>
@@ -205,7 +205,7 @@ const PmModal = (props) => {
                       <button
                         type="button"
                         onClick={handleSendPmMonthPlanning}
-                        className="w-full bg-emerald-600 text-white px-3 py-2 rounded-lg hover:bg-emerald-700 text-sm font-semibold disabled:bg-white/10 disabled:text-white/60"
+                        className="w-full bg-emerald-600 text-white px-3 py-2 rounded-lg hover:bg-emerald-700 text-sm font-semibold disabled:bg-gray-100 disabled:text-gray-400"
                         disabled={!pmSendTechUserId || pmBusy || pmSendBusy}
                       >
                         Envoyer planning PM
@@ -217,14 +217,14 @@ const PmModal = (props) => {
                           setPmRejectedDateFilter('');
                           setPmRejectedModalOpen(true);
                         }}
-                        className="w-full bg-white/10 border border-white/15 text-white px-3 py-2 rounded-lg hover:bg-white/15 text-sm font-semibold"
+                        className="w-full bg-white border border-teal-200 text-teal-800 px-3 py-2 rounded-lg hover:bg-teal-50 text-sm font-semibold"
                         disabled={pmBusy}
                       >
                         Voir reprog rejetées
                       </button>
 
                       {(Array.isArray(users) ? users : []).filter((u) => u && u.role === 'technician').length === 0 && (
-                        <div className="text-xs text-white/80">
+                        <div className="text-xs text-gray-600">
                           Aucun technicien trouvé.
                         </div>
                       )}
@@ -234,11 +234,11 @@ const PmModal = (props) => {
 
                 {isAdmin && (
                   <div>
-                    <div className="text-xs font-bold uppercase tracking-wide text-white/80 mb-2">Actions</div>
+                    <div className="text-xs font-bold uppercase tracking-wide text-teal-800 mb-2">Actions</div>
                     <div className="flex flex-col">
                       <label
                         className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 ${
-                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
+                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-teal-50 cursor-pointer'
                         }`}
                       >
                         <Upload size={16} />
@@ -254,7 +254,7 @@ const PmModal = (props) => {
 
                       <label
                         className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 ${
-                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
+                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-teal-50 cursor-pointer'
                         }`}
                       >
                         <Upload size={16} />
@@ -271,7 +271,7 @@ const PmModal = (props) => {
                       <button
                         type="button"
                         onClick={() => handlePmReset('imports')}
-                        className="text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 flex items-center gap-2"
+                        className="text-left px-3 py-2 rounded-lg hover:bg-teal-50 font-semibold text-sm disabled:opacity-60 flex items-center gap-2"
                         disabled={pmBusy || pmResetBusy}
                       >
                         <Trash2 size={16} />
@@ -281,7 +281,7 @@ const PmModal = (props) => {
                       <button
                         type="button"
                         onClick={() => handlePmReset('all')}
-                        className="text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 flex items-center gap-2"
+                        className="text-left px-3 py-2 rounded-lg hover:bg-teal-50 font-semibold text-sm disabled:opacity-60 flex items-center gap-2"
                         disabled={pmBusy || pmResetBusy}
                       >
                         <RotateCcw size={16} />
