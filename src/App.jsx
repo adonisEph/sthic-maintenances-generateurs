@@ -4702,7 +4702,7 @@ const GeneratorMaintenanceApp = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-[100svh] bg-gray-50 md:min-h-screen">
       {renderPwaUpdateBanner()}
       {exportBusy && (
         <div className="fixed inset-0 z-[60] bg-black/30 flex items-center justify-center p-4">
@@ -4750,7 +4750,7 @@ const GeneratorMaintenanceApp = () => {
           .no-print { display: none !important; }
         }
       `}</style>
-      <div className="flex min-h-screen">
+      <div className="flex min-h-[100svh] md:min-h-screen">
         {sidebarOpen && (
           <div
             className="fixed inset-0 bg-black/40 z-40 md:hidden"
@@ -4758,7 +4758,7 @@ const GeneratorMaintenanceApp = () => {
           />
         )}
         <div
-          className={`w-64 bg-slate-900 text-slate-100 border-r border-slate-800 flex flex-col p-4 pt-4 md:pt-20 gap-1 fixed md:sticky top-0 left-0 h-screen overflow-y-auto z-50 md:z-auto transform transition-transform md:translate-x-0 md:transition-[width,padding,transform] ${
+          className={`w-64 bg-slate-900 text-slate-100 border-r border-slate-800 flex flex-col p-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:pt-20 gap-1 fixed md:sticky top-0 left-0 h-[100svh] md:h-screen overflow-y-auto z-50 md:z-auto transform transition-transform md:translate-x-0 md:transition-[width,padding,transform] ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           } ${
             sidebarDockedOpen ? 'md:w-64 md:p-4 md:border-r md:border-slate-800' : 'md:w-0 md:p-0 md:border-r-0 md:overflow-hidden'
@@ -5013,7 +5013,7 @@ const GeneratorMaintenanceApp = () => {
 
           <div className="mt-auto pt-4 pb-3 flex justify-center">
             <img
-              src={STHIC_LOGO_SRC}
+              src={`${STHIC_LOGO_SRC}?v=${APP_VERSION}`}
               alt="STHIC"
               className="h-24 w-auto object-contain"
               onError={(e) => {
@@ -5024,7 +5024,7 @@ const GeneratorMaintenanceApp = () => {
         </div>
 
         <div className="flex-1 min-w-0 flex flex-col">
-          <div className="bg-white border-b border-gray-200 shadow-sm px-6 sm:px-8 md:px-10 py-3 sticky top-0 z-40">
+          <div className="bg-white border-b border-gray-200 shadow-sm px-3 sm:px-6 md:px-10 py-3 sticky top-0 z-40">
             <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
                 <button
@@ -5046,16 +5046,16 @@ const GeneratorMaintenanceApp = () => {
                 )}
                 <Activity className="text-blue-600" size={24} />
                 <div className="min-w-0">
-                  <div className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800 truncate">Gestion Maintenance & Vidanges</div>
-                  <div className="text-xs sm:text-sm text-gray-600">Version {APP_VERSION} - Suivi H24/7j avec Fiches</div>
+                  <div className="text-lg sm:text-xl font-bold text-gray-800">Gestion Maintenance & Vidanges</div>
+                  <div className="text-xs text-gray-600">Version {APP_VERSION} - Suivi H24/7j avec Fiches</div>
                 </div>
               </div>
               <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto">
                 <div className="text-left sm:text-right">
                   <div className="text-xs text-gray-500">Aujourd'hui</div>
                   <div className="text-sm sm:text-lg font-semibold text-gray-800">{formatDate(new Date().toISOString())}</div>
-                  <div className="text-xs text-gray-500 mt-1 flex flex-wrap items-center gap-2 sm:justify-end">
-                    <span>
+                  <div className="text-xs text-gray-500 mt-1 flex flex-col gap-1 min-w-0 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2 sm:justify-end">
+                    <span className="min-w-0 truncate">
                       {authUser.email} ({authUser.role})
                     </span>
                     {isViewer && (
@@ -6836,22 +6836,28 @@ const GeneratorMaintenanceApp = () => {
                   : 'h-[100svh] max-w-none max-h-[100svh] rounded-none sm:h-auto sm:max-w-5xl sm:max-h-[90vh] sm:rounded-lg'
               }`}
             >
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-emerald-700 text-white">
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                  <CheckCircle size={24} />
-                  {isTechnician ? 'Mes interventions' : 'Interventions'}
-                  {isTechnician && technicianUnseenSentCount > 0 && (
-                    <span className="bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                      {technicianUnseenSentCount}
-                    </span>
-                  )}
-                  {isViewer && (
-                    <span className="ml-2 bg-white/15 text-white border border-white/20 px-2 py-0.5 rounded-full text-xs font-semibold">
-                      Lecture seule
-                    </span>
-                  )}
-                </h2>
-                <div className="flex items-center gap-3">
+              <div className="flex items-start justify-between gap-3 px-3 py-3 sm:p-4 border-b bg-emerald-700 text-white">
+                <div className="min-w-0 flex items-center gap-2">
+                  <CheckCircle size={24} className="flex-shrink-0" />
+                  <div className="min-w-0">
+                    <h2 className="text-base sm:text-xl font-bold flex items-center gap-2 min-w-0">
+                      <span className="min-w-0 truncate">
+                        {isTechnician ? 'Mes interventions' : 'Interventions'}
+                      </span>
+                      {isTechnician && technicianUnseenSentCount > 0 && (
+                        <span className="bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0">
+                          {technicianUnseenSentCount}
+                        </span>
+                      )}
+                      {isViewer && (
+                        <span className="bg-white/15 text-white border border-white/20 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
+                          Lecture seule
+                        </span>
+                      )}
+                    </h2>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
                   <button
                     onClick={() => {
                       if (isTechnician && authUser?.id) {
@@ -8089,12 +8095,14 @@ const GeneratorMaintenanceApp = () => {
         {showTechCalendar && isTechnician && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
             <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-6xl sm:max-h-[90vh]">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-cyan-600 text-white">
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                  <Calendar size={24} />
-                  Calendrier
-                </h2>
-                <div className="flex items-center gap-3">
+              <div className="flex items-start justify-between gap-3 px-3 py-3 sm:p-4 border-b bg-cyan-600 text-white">
+                <div className="min-w-0 flex items-center gap-2">
+                  <Calendar size={24} className="flex-shrink-0" />
+                  <h2 className="text-base sm:text-xl font-bold min-w-0">
+                    <span className="min-w-0 truncate">Calendrier</span>
+                  </h2>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
                   <button
                     onClick={() => {
                       setShowTechCalendar(false);
@@ -8224,8 +8232,8 @@ const GeneratorMaintenanceApp = () => {
         )}
 
         {showTechDayDetailsModal && showTechCalendar && isTechnician && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
+            <div className="bg-white rounded-none sm:rounded-lg shadow-xl sm:max-w-3xl sm:max-h-[90vh] w-full h-[100svh] max-h-[100svh] max-w-none overflow-hidden flex flex-col">
               <div className="flex justify-between items-center p-4 border-b bg-cyan-600 text-white">
                 <div className="font-bold">Détails du {techSelectedDate ? formatDate(techSelectedDate) : ''}</div>
                 <button
