@@ -1148,18 +1148,6 @@ const PmModal = (props) => {
           </div>
         </div>
 
-        <div className={`relative p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:justify-end gap-2' : 'flex justify-end'}`}>
-          <button
-            onClick={() => {
-              setShowPm(false);
-              setPmError('');
-              setPmNotice('');
-            }}
-            className={`bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold ${isAdmin ? 'w-full sm:w-auto' : ''}`}
-          >
-            Fermer
-          </button>
-        </div>
       </div>
     </div>
   );
