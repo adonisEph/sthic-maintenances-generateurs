@@ -98,18 +98,9 @@ const PmModal = (props) => {
           </div>
         </div>
 
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-          <div className="flex flex-col lg:flex-row gap-4 mb-4">
-            <div className="lg:w-72 bg-white border border-teal-200 text-gray-900 rounded-none sm:rounded-xl overflow-hidden">
-              <div className="p-4 border-b border-teal-900/15 bg-teal-800 text-white flex flex-col items-center gap-3">
-                <img
-                  src={STHIC_LOGO_SRC}
-                  alt="STHIC"
-                  className="h-16 sm:h-20 w-auto object-contain"
-                />
-                <div className="text-xs font-semibold tracking-wide text-white/90 uppercase">Menu PM</div>
-              </div>
-
+        <div className="overflow-y-auto flex-1">
+          <div className="flex flex-col lg:flex-row lg:items-stretch min-h-full">
+            <div className="lg:w-72 w-full flex-shrink-0 bg-white border-b border-teal-200 lg:border-b-0 lg:border-r overflow-hidden">
               <div className="p-4 space-y-4">
                 <div>
                   <div className="text-xs font-bold uppercase tracking-wide text-teal-800 mb-2">Période</div>
@@ -292,133 +283,130 @@ const PmModal = (props) => {
                 )}
               </div>
             </div>
-
-            <div className="flex-1 min-w-0">
-              <div className="text-sm text-gray-700">
+            <div className="flex-1 min-w-0 p-4 sm:p-6">
+              <div className="text-sm text-gray-700 mb-4">
                 Tickets du mois: <span className="font-semibold">{Array.isArray(pmItems) ? pmItems.length : 0}</span>
               </div>
-            </div>
-          </div>
 
-          {pmError && (
-            <div className="mb-4 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">
-              {pmError}
-            </div>
-          )}
-
-          {pmNotice && !pmError && (
-            <div className="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 rounded-lg text-sm">
-              {pmNotice}
-            </div>
-          )}
-
-          {pmClientProgress > 0 && (
-            <div className="mb-4">
-              <div className="text-xs text-gray-700 mb-1">Import retour client: {pmClientStep || '…'}</div>
-              <div className="w-full bg-gray-200 rounded h-2 overflow-hidden">
-                <div className="bg-slate-700 h-2" style={{ width: `${pmClientProgress}%` }} />
-              </div>
-            </div>
-          )}
-
-          {pmClientCompare && (
-            <div className="mb-4 bg-slate-50 border border-slate-200 rounded-lg p-3">
-              <div className="text-sm font-semibold text-slate-900 mb-2">
-                Retour client vs planning de base ({pmClientCompare.month})
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs text-slate-800">
-                <div className="bg-white border border-slate-200 rounded p-2">Base: <span className="font-semibold">{pmClientCompare.baseCount}</span></div>
-                <div className="bg-white border border-slate-200 rounded p-2">Client: <span className="font-semibold">{pmClientCompare.clientCount}</span></div>
-                <div className="bg-emerald-50 border border-emerald-200 rounded p-2">Retenus: <span className="font-semibold">{pmClientCompare.retained.length}</span></div>
-                <div className="bg-red-50 border border-red-200 rounded p-2">Retirés: <span className="font-semibold">{pmClientCompare.removed.length}</span></div>
-                <div className="bg-amber-50 border border-amber-200 rounded p-2 sm:col-span-2">Ajouts: <span className="font-semibold">{pmClientCompare.added.length}</span></div>
-                <div className="bg-white border border-slate-200 rounded p-2 sm:col-span-2">Plan ID: <span className="font-mono">{pmClientCompare.basePlanId}</span></div>
-              </div>
-
-              <div className="mt-3 grid grid-cols-1 lg:grid-cols-3 gap-3">
-                <div className="bg-white border border-slate-200 rounded-lg overflow-auto max-h-64">
-                  <div className="text-xs font-semibold px-3 py-2 border-b">Retenus</div>
-                  <table className="min-w-full text-xs">
-                    <thead className="sticky top-0 bg-gray-50">
-                      <tr>
-                        <th className="p-2 border-b">Date</th>
-                        <th className="p-2 border-b">Site</th>
-                        <th className="p-2 border-b">Type</th>
-                        <th className="p-2 border-b">Ticket</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pmClientCompare.retained.slice(0, 50).map((r, idx) => (
-                        <tr key={`ret-${r.siteCode}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-gray-50'}>
-                          <td className="p-2 border-b whitespace-nowrap">{r.plannedDate}</td>
-                          <td className="p-2 border-b whitespace-pre-line leading-tight break-words">{r.siteName || r.siteCode}</td>
-                          <td className="p-2 border-b">{r.maintenanceType}</td>
-                          <td className="p-2 border-b">{r.number || ''}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {pmClientCompare.retained.length > 50 && (
-                    <div className="text-xs text-gray-600 p-2">Affichage limité (50) — total: {pmClientCompare.retained.length}</div>
-                  )}
+              {pmError && (
+                <div className="mb-4 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">
+                  {pmError}
                 </div>
+              )}
 
-                <div className="bg-white border border-red-200 rounded-lg overflow-auto max-h-64">
-                  <div className="text-xs font-semibold px-3 py-2 border-b text-red-800">Retirés</div>
-                  <table className="min-w-full text-xs">
-                    <thead className="sticky top-0 bg-red-50">
-                      <tr>
-                        <th className="p-2 border-b">Date</th>
-                        <th className="p-2 border-b">Site</th>
-                        <th className="p-2 border-b">Type</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pmClientCompare.removed.slice(0, 50).map((r, idx) => (
-                        <tr key={`rem-${r.siteCode}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-red-50'}>
-                          <td className="p-2 border-b whitespace-nowrap">{r.plannedDate}</td>
-                          <td className="p-2 border-b whitespace-pre-line leading-tight break-words">{r.siteName || r.siteCode}</td>
-                          <td className="p-2 border-b">{r.maintenanceType}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {pmClientCompare.removed.length > 50 && (
-                    <div className="text-xs text-gray-600 p-2">Affichage limité (50) — total: {pmClientCompare.removed.length}</div>
-                  )}
+              {pmNotice && !pmError && (
+                <div className="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 rounded-lg text-sm">
+                  {pmNotice}
                 </div>
+              )}
 
-                <div className="bg-white border border-amber-200 rounded-lg overflow-auto max-h-64">
-                  <div className="text-xs font-semibold px-3 py-2 border-b text-amber-900">Ajouts</div>
-                  <table className="min-w-full text-xs">
-                    <thead className="sticky top-0 bg-amber-50">
-                      <tr>
-                        <th className="p-2 border-b">Date</th>
-                        <th className="p-2 border-b">Site</th>
-                        <th className="p-2 border-b">Type</th>
-                        <th className="p-2 border-b">Ticket</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pmClientCompare.added.slice(0, 50).map((r, idx) => (
-                        <tr key={`add-${r.siteCode}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-amber-50'}>
-                          <td className="p-2 border-b whitespace-nowrap">{r.plannedDate}</td>
-                          <td className="p-2 border-b whitespace-pre-line leading-tight break-words">{r.siteName || r.siteCode}</td>
-                          <td className="p-2 border-b">{r.maintenanceType}</td>
-                          <td className="p-2 border-b">{r.number || ''}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {pmClientCompare.added.length > 50 && (
-                    <div className="text-xs text-gray-600 p-2">Affichage limité (50) — total: {pmClientCompare.added.length}</div>
-                  )}
+              {pmClientProgress > 0 && (
+                <div className="mb-4">
+                  <div className="text-xs text-gray-700 mb-1">Import retour client: {pmClientStep || '…'}</div>
+                  <div className="w-full bg-gray-200 rounded h-2 overflow-hidden">
+                    <div className="bg-slate-700 h-2" style={{ width: `${pmClientProgress}%` }} />
+                  </div>
                 </div>
-              </div>
-            </div>
-          )}
+              )}
 
-          {(() => {
+              {pmClientCompare && (
+                <div className="mb-4 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                  <div className="text-sm font-semibold text-slate-900 mb-2">
+                    Retour client vs planning de base ({pmClientCompare.month})
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs text-slate-800">
+                    <div className="bg-white border border-slate-200 rounded p-2">Base: <span className="font-semibold">{pmClientCompare.baseCount}</span></div>
+                    <div className="bg-white border border-slate-200 rounded p-2">Client: <span className="font-semibold">{pmClientCompare.clientCount}</span></div>
+                    <div className="bg-emerald-50 border border-emerald-200 rounded p-2">Retenus: <span className="font-semibold">{pmClientCompare.retained.length}</span></div>
+                    <div className="bg-red-50 border border-red-200 rounded p-2">Retirés: <span className="font-semibold">{pmClientCompare.removed.length}</span></div>
+                    <div className="bg-amber-50 border border-amber-200 rounded p-2 sm:col-span-2">Ajouts: <span className="font-semibold">{pmClientCompare.added.length}</span></div>
+                    <div className="bg-white border border-slate-200 rounded p-2 sm:col-span-2">Plan ID: <span className="font-mono">{pmClientCompare.basePlanId}</span></div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 lg:grid-cols-3 gap-3">
+                    <div className="bg-white border border-slate-200 rounded-lg overflow-auto max-h-64">
+                      <div className="text-xs font-semibold px-3 py-2 border-b">Retenus</div>
+                      <table className="min-w-full text-xs">
+                        <thead className="sticky top-0 bg-gray-50">
+                          <tr>
+                            <th className="p-2 border-b">Date</th>
+                            <th className="p-2 border-b">Site</th>
+                            <th className="p-2 border-b">Type</th>
+                            <th className="p-2 border-b">Ticket</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pmClientCompare.retained.slice(0, 50).map((r, idx) => (
+                            <tr key={`ret-${r.siteCode}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-gray-50'}>
+                              <td className="p-2 border-b whitespace-nowrap">{r.plannedDate}</td>
+                              <td className="p-2 border-b whitespace-pre-line leading-tight break-words">{r.siteName || r.siteCode}</td>
+                              <td className="p-2 border-b">{r.maintenanceType}</td>
+                              <td className="p-2 border-b">{r.number || ''}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {pmClientCompare.retained.length > 50 && (
+                        <div className="text-xs text-gray-600 p-2">Affichage limité (50) — total: {pmClientCompare.retained.length}</div>
+                      )}
+                    </div>
+
+                    <div className="bg-white border border-red-200 rounded-lg overflow-auto max-h-64">
+                      <div className="text-xs font-semibold px-3 py-2 border-b text-red-800">Retirés</div>
+                      <table className="min-w-full text-xs">
+                        <thead className="sticky top-0 bg-red-50">
+                          <tr>
+                            <th className="p-2 border-b">Date</th>
+                            <th className="p-2 border-b">Site</th>
+                            <th className="p-2 border-b">Type</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pmClientCompare.removed.slice(0, 50).map((r, idx) => (
+                            <tr key={`rem-${r.siteCode}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-red-50'}>
+                              <td className="p-2 border-b whitespace-nowrap">{r.plannedDate}</td>
+                              <td className="p-2 border-b whitespace-pre-line leading-tight break-words">{r.siteName || r.siteCode}</td>
+                              <td className="p-2 border-b">{r.maintenanceType}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {pmClientCompare.removed.length > 50 && (
+                        <div className="text-xs text-gray-600 p-2">Affichage limité (50) — total: {pmClientCompare.removed.length}</div>
+                      )}
+                    </div>
+
+                    <div className="bg-white border border-amber-200 rounded-lg overflow-auto max-h-64">
+                      <div className="text-xs font-semibold px-3 py-2 border-b text-amber-900">Ajouts</div>
+                      <table className="min-w-full text-xs">
+                        <thead className="sticky top-0 bg-amber-50">
+                          <tr>
+                            <th className="p-2 border-b">Date</th>
+                            <th className="p-2 border-b">Site</th>
+                            <th className="p-2 border-b">Type</th>
+                            <th className="p-2 border-b">Ticket</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pmClientCompare.added.slice(0, 50).map((r, idx) => (
+                            <tr key={`add-${r.siteCode}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-amber-50'}>
+                              <td className="p-2 border-b whitespace-nowrap">{r.plannedDate}</td>
+                              <td className="p-2 border-b whitespace-pre-line leading-tight break-words">{r.siteName || r.siteCode}</td>
+                              <td className="p-2 border-b">{r.maintenanceType}</td>
+                              <td className="p-2 border-b">{r.number || ''}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {pmClientCompare.added.length > 50 && (
+                        <div className="text-xs text-gray-600 p-2">Affichage limité (50) — total: {pmClientCompare.added.length}</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {(() => {
             const items = Array.isArray(pmItems) ? pmItems : [];
             const imports = Array.isArray(pmImports) ? pmImports : [];
 
@@ -1156,6 +1144,8 @@ const PmModal = (props) => {
               </>
             );
           })()}
+            </div>
+          </div>
         </div>
 
         <div className={`relative p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:justify-end gap-2' : 'flex justify-end'}`}>
