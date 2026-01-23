@@ -72,14 +72,14 @@ const PmModal = (props) => {
   if (!showPm || !canUsePm) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
-      <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-7xl sm:max-h-[95vh]">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-teal-800 text-white">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-2">
+      <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-7xl sm:max-h-[98vh] sm:h-[98vh]">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b border-gray-200 bg-white text-gray-900 shadow-sm">
           <h2 className="text-xl font-bold flex items-center gap-2">
-            <TrendingUp size={22} />
+            <TrendingUp size={22} className="text-blue-600" />
             Maintenances planifiées (PM)
             {isViewer && (
-              <span className="ml-2 bg-white/15 text-white border border-white/20 px-2 py-0.5 rounded-full text-xs font-semibold">
+              <span className="ml-2 bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full text-xs font-semibold">
                 Lecture seule
               </span>
             )}
@@ -91,22 +91,22 @@ const PmModal = (props) => {
                 setPmError('');
                 setPmNotice('');
               }}
-              className="hover:bg-teal-900 p-2 rounded"
+              className="hover:bg-gray-100 p-2 rounded"
             >
               <X size={20} />
             </button>
           </div>
         </div>
 
-        <div className="overflow-y-auto flex-1">
-          <div className="flex flex-col lg:flex-row lg:items-stretch min-h-full">
-            <div className="lg:w-72 w-full flex-shrink-0 bg-white border-b border-teal-200 lg:border-b-0 lg:border-r overflow-hidden">
+        <div className="flex-1 overflow-hidden">
+          <div className="flex flex-col lg:flex-row h-full min-h-0">
+            <div className="lg:w-72 w-full flex-shrink-0 bg-slate-900 text-slate-100 border-b border-slate-800 lg:border-b-0 lg:border-r lg:border-slate-800 overflow-y-auto">
               <div className="p-4 space-y-4">
                 <div>
-                  <div className="text-xs font-bold uppercase tracking-wide text-teal-800 mb-2">Période</div>
+                  <div className="text-xs font-bold uppercase tracking-wide text-slate-200/90 mb-2">Période</div>
                   <div className="space-y-2">
                     <div className="flex flex-col">
-                      <label className="text-xs font-semibold text-gray-700 mb-1">Mois</label>
+                      <label className="text-xs font-semibold text-slate-200/90 mb-1">Mois</label>
                       <input
                         type="month"
                         value={pmMonth}
@@ -144,10 +144,10 @@ const PmModal = (props) => {
                 </div>
 
                 <div>
-                  <div className="text-xs font-bold uppercase tracking-wide text-teal-800 mb-2">Exports</div>
+                  <div className="text-xs font-bold uppercase tracking-wide text-slate-200/90 mb-2">Exports</div>
                   <div className="space-y-2">
                     <div className="flex flex-col">
-                      <label className="text-xs font-semibold text-gray-700 mb-1">Reprogrammations (jour)</label>
+                      <label className="text-xs font-semibold text-slate-200/90 mb-1">Reprogrammations (jour)</label>
                       <input
                         type="date"
                         value={pmReprogExportDate}
@@ -170,10 +170,10 @@ const PmModal = (props) => {
 
                 {isAdmin && (
                   <div>
-                    <div className="text-xs font-bold uppercase tracking-wide text-teal-800 mb-2">Technicien</div>
+                    <div className="text-xs font-bold uppercase tracking-wide text-slate-200/90 mb-2">Technicien</div>
                     <div className="space-y-2">
                       <div className="flex flex-col">
-                        <label className="text-xs font-semibold text-gray-700 mb-1">Destinataire</label>
+                        <label className="text-xs font-semibold text-slate-200/90 mb-1">Destinataire</label>
                         <select
                           value={pmSendTechUserId}
                           onChange={(e) => setPmSendTechUserId(e.target.value)}
@@ -215,7 +215,7 @@ const PmModal = (props) => {
                       </button>
 
                       {(Array.isArray(users) ? users : []).filter((u) => u && u.role === 'technician').length === 0 && (
-                        <div className="text-xs text-gray-600">
+                        <div className="text-xs text-slate-200/80">
                           Aucun technicien trouvé.
                         </div>
                       )}
@@ -225,11 +225,11 @@ const PmModal = (props) => {
 
                 {isAdmin && (
                   <div>
-                    <div className="text-xs font-bold uppercase tracking-wide text-teal-800 mb-2">Actions</div>
+                    <div className="text-xs font-bold uppercase tracking-wide text-slate-200/90 mb-2">Actions</div>
                     <div className="flex flex-col">
                       <label
                         className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 ${
-                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-teal-50 cursor-pointer'
+                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-800 cursor-pointer'
                         }`}
                       >
                         <Upload size={16} />
@@ -245,7 +245,7 @@ const PmModal = (props) => {
 
                       <label
                         className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 ${
-                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-teal-50 cursor-pointer'
+                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-800 cursor-pointer'
                         }`}
                       >
                         <Upload size={16} />
@@ -262,7 +262,7 @@ const PmModal = (props) => {
                       <button
                         type="button"
                         onClick={() => handlePmReset('imports')}
-                        className="text-left px-3 py-2 rounded-lg hover:bg-teal-50 font-semibold text-sm disabled:opacity-60 flex items-center gap-2"
+                        className="text-left px-3 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm disabled:opacity-60 flex items-center gap-2"
                         disabled={pmBusy || pmResetBusy}
                       >
                         <Trash2 size={16} />
@@ -272,7 +272,7 @@ const PmModal = (props) => {
                       <button
                         type="button"
                         onClick={() => handlePmReset('all')}
-                        className="text-left px-3 py-2 rounded-lg hover:bg-teal-50 font-semibold text-sm disabled:opacity-60 flex items-center gap-2"
+                        className="text-left px-3 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm disabled:opacity-60 flex items-center gap-2"
                         disabled={pmBusy || pmResetBusy}
                       >
                         <RotateCcw size={16} />
@@ -283,7 +283,7 @@ const PmModal = (props) => {
                 )}
               </div>
             </div>
-            <div className="flex-1 min-w-0 p-4 sm:p-6">
+            <div className="flex-1 min-w-0 overflow-y-auto p-4 sm:p-6">
               <div className="text-sm text-gray-700 mb-4">
                 Tickets du mois: <span className="font-semibold">{Array.isArray(pmItems) ? pmItems.length : 0}</span>
               </div>

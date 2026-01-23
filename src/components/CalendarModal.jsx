@@ -41,28 +41,29 @@ const CalendarModal = (props) => {
   if (!showCalendar || isTechnician) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
-      <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-7xl sm:max-h-[95vh]">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-cyan-600 text-white">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-2">
+      <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-7xl sm:max-h-[98vh] sm:h-[98vh]">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b border-gray-200 bg-white text-gray-900 shadow-sm">
           <h2 className="text-xl font-bold flex items-center gap-2">
-            <Calendar size={24} />
+            <Calendar size={24} className="text-blue-600" />
             Calendrier des Vidanges
           </h2>
           <div className="flex items-center gap-3">
-            <button onClick={() => setShowCalendar(false)} className="hover:bg-cyan-700 p-2 rounded">
+            <button onClick={() => setShowCalendar(false)} className="hover:bg-gray-100 p-2 rounded">
               <X size={20} />
             </button>
           </div>
         </div>
 
-        <div className="overflow-y-auto flex-1">
-          <div className="flex flex-col lg:flex-row lg:items-stretch min-h-full">
-            <div className="bg-cyan-600 text-white p-3 lg:w-[280px] w-full">
+        <div className="flex-1 overflow-hidden">
+          <div className="flex flex-col lg:flex-row h-full min-h-0">
+            <div className="lg:w-[280px] w-full flex-shrink-0 bg-slate-900 text-slate-100 border-b border-slate-800 lg:border-b-0 lg:border-r lg:border-slate-800 overflow-y-auto">
+              <div className="p-3">
               <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Mois</div>
               <div className="grid grid-cols-3 gap-2 items-center mb-3">
                 <button
                   onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
-                  className="bg-cyan-700 text-white px-2 py-2 rounded-lg hover:bg-cyan-800 w-full text-sm font-semibold"
+                  className="bg-slate-800 text-white px-2 py-2 rounded-lg hover:bg-slate-700 w-full text-sm font-semibold"
                 >
                   ←
                 </button>
@@ -71,15 +72,15 @@ const CalendarModal = (props) => {
                 </div>
                 <button
                   onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
-                  className="bg-cyan-700 text-white px-2 py-2 rounded-lg hover:bg-cyan-800 w-full text-sm font-semibold"
+                  className="bg-slate-800 text-white px-2 py-2 rounded-lg hover:bg-slate-700 w-full text-sm font-semibold"
                 >
                   →
                 </button>
               </div>
 
               {isAdmin && (
-                <div className="bg-white rounded-lg p-3 mb-3">
-                  <div className="text-xs font-semibold text-gray-700 mb-1">Technicien</div>
+                <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 mb-3">
+                  <div className="text-xs font-semibold text-slate-200 mb-1">Technicien</div>
                   <select
                     value={calendarSendTechUserId}
                     onChange={(e) => setCalendarSendTechUserId(e.target.value)}
@@ -98,12 +99,12 @@ const CalendarModal = (props) => {
                       ))}
                   </select>
 
-                  {usersBusy && <div className="mt-1 text-xs text-gray-500">Chargement des techniciens…</div>}
-                  {!usersBusy && usersError && <div className="mt-1 text-xs text-rose-700">{usersError}</div>}
+                  {usersBusy && <div className="mt-1 text-xs text-slate-200/80">Chargement des techniciens…</div>}
+                  {!usersBusy && usersError && <div className="mt-1 text-xs text-rose-300">{usersError}</div>}
                   {!usersBusy &&
                     !usersError &&
                     (Array.isArray(users) ? users : []).filter((u) => u && u.role === 'technician').length === 0 && (
-                      <div className="mt-1 text-xs text-gray-500">Aucun technicien chargé.</div>
+                      <div className="mt-1 text-xs text-slate-200/80">Aucun technicien chargé.</div>
                     )}
 
                   {!usersBusy && (
@@ -116,7 +117,7 @@ const CalendarModal = (props) => {
                           // ignore
                         }
                       }}
-                      className="mt-2 w-full bg-white border border-gray-300 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-50 text-sm font-semibold"
+                      className="mt-2 w-full bg-slate-700 border border-slate-600 text-white px-3 py-2 rounded-lg hover:bg-slate-600 text-sm font-semibold"
                     >
                       Recharger les techniciens
                     </button>
@@ -125,7 +126,7 @@ const CalendarModal = (props) => {
                   <button
                     type="button"
                     onClick={handleSendCalendarMonthPlanning}
-                    className="mt-2 w-full bg-cyan-700 text-white px-3 py-2 rounded-lg hover:bg-cyan-800 text-sm font-semibold disabled:opacity-60"
+                    className="mt-2 w-full bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-600 text-sm font-semibold disabled:opacity-60"
                     disabled={!calendarSendTechUserId || usersBusy}
                   >
                     Envoyer planning du mois
@@ -133,7 +134,7 @@ const CalendarModal = (props) => {
                 </div>
               )}
 
-              <div className="h-px bg-white/25 my-2" />
+              <div className="h-px bg-slate-700/60 my-2" />
 
               <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Actions</div>
               <div className="flex flex-col">
@@ -141,7 +142,7 @@ const CalendarModal = (props) => {
                   <button
                     type="button"
                     onClick={handleExportCalendarMonthExcel}
-                    className="text-left px-3 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm disabled:opacity-60"
+                    className="text-left px-3 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm disabled:opacity-60"
                     disabled={exportBusy}
                   >
                     Exporter Excel
@@ -150,7 +151,7 @@ const CalendarModal = (props) => {
                 {isAdmin && (
                   <label
                     className={`text-left px-3 py-2 rounded-lg font-semibold text-sm ${
-                      basePlanBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-cyan-700 cursor-pointer'
+                      basePlanBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-800 cursor-pointer'
                     }`}
                   >
                     Importer base (Excel)
@@ -167,7 +168,7 @@ const CalendarModal = (props) => {
                   <button
                     type="button"
                     onClick={generateBasePlanPreview}
-                    className="text-left px-3 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm disabled:opacity-60"
+                    className="text-left px-3 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm disabled:opacity-60"
                     disabled={basePlanBusy || basePlanBaseRows.length === 0}
                   >
                     Générer planning mois suivant
@@ -177,7 +178,7 @@ const CalendarModal = (props) => {
                   <button
                     type="button"
                     onClick={exportBasePlanPreviewExcel}
-                    className="text-left px-3 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm disabled:opacity-60"
+                    className="text-left px-3 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm disabled:opacity-60"
                     disabled={basePlanBusy || basePlanPreview.length === 0}
                   >
                     Exporter planning base
@@ -187,7 +188,7 @@ const CalendarModal = (props) => {
                   <button
                     type="button"
                     onClick={saveBasePlanToDb}
-                    className="text-left px-3 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm disabled:opacity-60"
+                    className="text-left px-3 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm disabled:opacity-60"
                     disabled={basePlanBusy || basePlanPreview.length === 0}
                   >
                     Enregistrer (DB)
@@ -197,16 +198,17 @@ const CalendarModal = (props) => {
                   <button
                     type="button"
                     onClick={deleteBasePlanFromDb}
-                    className="text-left px-3 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm disabled:opacity-60"
+                    className="text-left px-3 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm disabled:opacity-60"
                     disabled={basePlanBusy}
                   >
                     Supprimer (DB)
                   </button>
                 )}
               </div>
+              </div>
             </div>
 
-            <div className="flex-1 p-3 sm:p-6 space-y-3">
+            <div className="flex-1 min-w-0 overflow-y-auto p-3 sm:p-6 space-y-3">
               {isAdmin && (basePlanBusy || basePlanErrors.length > 0 || basePlanPreview.length > 0) && (
                 <div className="mt-0 space-y-2">
                   {basePlanBusy && (
