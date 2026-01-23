@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { useStorage } from './hooks/useStorage';
+import PmModal from './components/PmModal';
 
 import {
   calculateRegime,
@@ -4200,6 +4201,13 @@ const GeneratorMaintenanceApp = () => {
       } catch (e) {
         // ignore
       }
+    })();
+  }, [showCalendar, authUser?.role]);
+
+  useEffect(() => {
+    if (!showCalendar) return;
+    if (authUser?.role !== 'admin') return;
+    (async () => {
       try {
         const m = yyyyMmFromDate(currentMonth);
         await loadInterventions(m, 'all', 'all');
@@ -5433,7 +5441,72 @@ const GeneratorMaintenanceApp = () => {
           </div>
         )}
 
-        {showPm && canUsePm && (
+                <PmModal
+          showPm={showPm}
+          canUsePm={canUsePm}
+          isViewer={isViewer}
+          isAdmin={isAdmin}
+          setShowPm={setShowPm}
+          setPmError={setPmError}
+          setPmNotice={setPmNotice}
+          pmMonth={pmMonth}
+          setPmMonth={setPmMonth}
+          refreshPmAll={refreshPmAll}
+          pmBusy={pmBusy}
+          handlePmExportExcel={handlePmExportExcel}
+          pmReprogExportDate={pmReprogExportDate}
+          setPmReprogExportDate={setPmReprogExportDate}
+          handlePmExportReprogExcel={handlePmExportReprogExcel}
+          exportBusy={exportBusy}
+          users={users}
+          pmSendTechUserId={pmSendTechUserId}
+          setPmSendTechUserId={setPmSendTechUserId}
+          pmSendBusy={pmSendBusy}
+          handleSendPmMonthPlanning={handleSendPmMonthPlanning}
+          setPmRejectedDateFilter={setPmRejectedDateFilter}
+          setPmRejectedModalOpen={setPmRejectedModalOpen}
+          pmResetBusy={pmResetBusy}
+          handlePmReset={handlePmReset}
+          handlePmNocImport={handlePmNocImport}
+          handlePmClientImport={handlePmClientImport}
+          pmError={pmError}
+          pmNotice={pmNotice}
+          pmClientProgress={pmClientProgress}
+          pmClientStep={pmClientStep}
+          pmClientCompare={pmClientCompare}
+          pmItems={pmItems}
+          pmImports={pmImports}
+          pmSearch={pmSearch}
+          setPmSearch={setPmSearch}
+          pmFilterDate={pmFilterDate}
+          setPmFilterDate={setPmFilterDate}
+          pmFilterState={pmFilterState}
+          setPmFilterState={setPmFilterState}
+          pmFilterType={pmFilterType}
+          setPmFilterType={setPmFilterType}
+          pmFilterZone={pmFilterZone}
+          setPmFilterZone={setPmFilterZone}
+          pmFilterReprog={pmFilterReprog}
+          setPmFilterReprog={setPmFilterReprog}
+          pmDetails={pmDetails}
+          setPmDetails={setPmDetails}
+          pmRejectedModalOpen={pmRejectedModalOpen}
+          pmRejectedDateFilter={pmRejectedDateFilter}
+          pmReprogOpen={pmReprogOpen}
+          setPmReprogOpen={setPmReprogOpen}
+          pmReprogItem={pmReprogItem}
+          setPmReprogItem={setPmReprogItem}
+          pmReprogForm={pmReprogForm}
+          setPmReprogForm={setPmReprogForm}
+          pmReprogError={pmReprogError}
+          setPmReprogError={setPmReprogError}
+          pmReprogSaving={pmReprogSaving}
+          handlePmOpenReprog={handlePmOpenReprog}
+          handlePmSaveReprog={handlePmSaveReprog}
+          formatDate={formatDate}
+        />
+
+        {false && showPm && canUsePm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
             <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-7xl sm:max-h-[95vh]">
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-teal-800 text-white">
