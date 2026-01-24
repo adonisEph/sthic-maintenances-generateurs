@@ -1300,12 +1300,14 @@ const GeneratorMaintenanceApp = () => {
         const rows = [];
         const errors = [];
         const arr = Array.isArray(jsonData) ? jsonData : [];
+
         const importPairGroupStats = {
           headerUsed: '',
           nonEmptyCount: 0,
           possibleHeaders: [],
           hasAnyPairGroupHeader: false
         };
+
         try {
           const firstRow = arr?.[0];
           if (firstRow && typeof firstRow === 'object') {
@@ -1322,6 +1324,7 @@ const GeneratorMaintenanceApp = () => {
         } catch {
           // ignore
         }
+
         for (let idx = 0; idx < arr.length; idx += 1) {
           const row = arr[idx];
           const rawSiteCode = String(pmGet(row, 'Site (id)', 'Site', 'Site id', 'Site Code') || '').trim();
@@ -1329,7 +1332,11 @@ const GeneratorMaintenanceApp = () => {
           const region = String(pmGet(row, 'Region', 'REGION', 'Région') || '').trim();
           const zone = String(pmGet(row, 'Zone', 'ZONE') || '').trim();
           const shortDescription = String(pmGet(row, 'Short description', 'Short Description') || '').trim();
+          const number = String(pmGet(row, 'Number') || '').trim();
           const assignedTo = String(pmGet(row, 'Assigned to', 'Assigned To') || '').trim();
+          const dateOfClosing = basePlanNormalizeYmd(pmGet(row, 'Date of closing', 'Date of Closing', 'Closing date', 'Date closing'));
+          const state = String(pmGet(row, 'State') || '').trim();
+
           let pairGroupRaw = String(pmGet(row, 'PairGroup', 'Pair Group', 'Pair group') || '').trim();
           if (!pairGroupRaw) {
             try {
@@ -1358,6 +1365,7 @@ const GeneratorMaintenanceApp = () => {
           }
 
           if (pairGroupRaw) importPairGroupStats.nonEmptyCount += 1;
+
           const scheduledWoDate = basePlanNormalizeYmd(
             pmGet(row, 'Scheduled WO Date', 'Scheduled Wo Date', 'Scheduled date', 'Scheduled Date')
           );
@@ -1387,9 +1395,12 @@ const GeneratorMaintenanceApp = () => {
               region,
               zone: zone || region,
               shortDescription,
+              number,
               assignedTo,
               pairGroup: pairGroupRaw || autoPairGroup,
               scheduledWoDate,
+              dateOfClosing,
+              state,
               maintenanceType,
               epv1,
               epv2,
@@ -2021,7 +2032,11 @@ const GeneratorMaintenanceApp = () => {
 
           // CAS 2 : EPV1 dans le mois cible => on conserve la logique normale
           if (inMonth(epv1)) {
-            return [{ slot: 'EPV1', date: epv1, type: 'FullPMWO', epv1, epv2, epv3, keepPairGroup: true }];
+            const out = [];
+            out.push({ slot: 'EPV1', date: epv1, type: 'FullPMWO', epv1, epv2, epv3, keepPairGroup: true });
+            if (inMonth(epv2)) out.push({ slot: 'EPV2', date: epv2, type: 'DG Service', epv1, epv2, epv3, keepPairGroup: true });
+            if (inMonth(epv3)) out.push({ slot: 'EPV3', date: epv3, type: 'DG Service', epv1, epv2, epv3, keepPairGroup: true });
+            return out;
           }
 
           // CAS 1 : EPV1 est dans un mois précédent ET EPV2 dans le mois cible => transition
@@ -2039,11 +2054,12 @@ const GeneratorMaintenanceApp = () => {
           // Sinon: logique fallback (DG sur EPV2/EPV3 dans le mois)
           const c2 = inMonth(epv2) ? { slot: 'EPV2', date: epv2, type: 'DG Service', epv1, epv2, epv3, keepPairGroup: true } : null;
           const c3 = inMonth(epv3) ? { slot: 'EPV3', date: epv3, type: 'DG Service', epv1, epv2, epv3, keepPairGroup: true } : null;
-          if (c2 && c3) return [c2.date <= c3.date ? c2 : c3];
+          if (c2 && c3) return [c2, c3];
 
           const fallbackType = String(r?.maintenanceType || '').trim() || pmInferType(r) || '';
           const best = c2 || c3;
           if (best) return [best];
+
           if (fallbackType && (inMonth(epv1) || epv1)) return [{ slot: 'EPV1', date: epv1, type: fallbackType, epv1, epv2, epv3, keepPairGroup: true }];
 
           // Option A : aucune EPV dans le mois cible => PM Simple (PM sans vidange)
@@ -2071,20 +2087,33 @@ const GeneratorMaintenanceApp = () => {
           const baseShort = String(r?.shortDescription || '').trim();
           const isManual = String(pick?.slot || '').toLowerCase() === 'manual';
 
+          const slotKey = String(pick?.slot || '').trim().toUpperCase();
+          const typeKey = String(pick?.type || '').trim();
+          const plannedShortDescription = (() => {
+            if (isManual) return baseShort || typeKey;
+            if (slotKey === 'EPV1') return typeKey === 'FullPMWO' ? 'PM+Vidange' : 'PM Simple';
+            if (slotKey === 'PM') return 'PM Simple';
+            return baseShort;
+          })();
+
           items.push({
             technician: tech,
             capacityPerDay,
             importOrder: Number(r?.importOrder ?? 0),
+
             siteId: resolvedSiteId,
             siteCode: resolvedSiteCode,
             siteName: resolvedSiteName,
             region: String(r?.region || '').trim(),
             zone,
+            number: String(r?.number || '').trim(),
             assignedTo: tech === 'Non assigné' ? '' : tech,
+            dateOfClosing: String(r?.dateOfClosing || '').trim(),
+            state: String(r?.state || '').trim(),
             pairGroup: pick?.keepPairGroup ? String(r?.pairGroup || '').trim() : '',
             epvSlot: pick.slot,
             recommendedMaintenanceType: pick.type,
-            shortDescription: isManual ? (baseShort || pick.type) : pick.type,
+            shortDescription: plannedShortDescription,
             epv1: String(pick?.epv1 || (computed?.epv1 || r?.epv1) || '').slice(0, 10),
             epv2: String(pick?.epv2 || (computed?.epv2 || r?.epv2) || '').slice(0, 10),
             epv3: String(pick?.epv3 || (computed?.epv3 || r?.epv3) || '').slice(0, 10),
@@ -2110,6 +2139,16 @@ const GeneratorMaintenanceApp = () => {
       }
     }
 
+    const slotRank = (it) => {
+      const s = String(it?.epvSlot || '').trim().toUpperCase();
+      if (s === 'MANUAL') return 0;
+      if (s === 'EPV1') return 1;
+      if (s === 'EPV2') return 2;
+      if (s === 'EPV3') return 3;
+      if (s === 'PM') return 4;
+      return 9;
+    };
+
     const monthStart = `${month}-01`;
     const monthEndD = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1));
     monthEndD.setUTCMonth(monthEndD.getUTCMonth() + 1);
@@ -2129,13 +2168,13 @@ const GeneratorMaintenanceApp = () => {
     const isInMonth = (d) => String(d).slice(0, 7) === month;
 
     const scheduledAll = [];
-    for (const [tech, items] of candidatesByTech.entries()) {
-      const capacityPerDay = Number(items?.[0]?.capacityPerDay || 1);
+    for (const [tech, techItems] of candidatesByTech.entries()) {
+      const capacityPerDay = Number(techItems?.[0]?.capacityPerDay || 1);
       const used = new Map();
 
       const fixed = [];
       const floating = [];
-      for (const it of items) {
+      for (const it of techItems) {
         if (String(it?.epvSlot || '').toLowerCase() === 'manual') {
           fixed.push(it);
         } else {
@@ -2150,12 +2189,11 @@ const GeneratorMaintenanceApp = () => {
           continue;
         }
         const curUsed = Number(used.get(d0) || 0);
-        const need = String(it?.pairGroup || '').trim() ? 1 : 1;
-        if (curUsed + need > capacityPerDay) {
+        if (curUsed + 1 > capacityPerDay) {
           errors.push(`Capacité dépassée le ${d0} pour '${tech}' (sites manuels).`);
           continue;
         }
-        used.set(d0, curUsed + need);
+        used.set(d0, curUsed + 1);
         scheduledAll.push({ ...it, plannedDate: d0 });
       }
 
@@ -2172,29 +2210,29 @@ const GeneratorMaintenanceApp = () => {
             singles.push(it);
           }
         }
+
         for (const [g, arr] of grouped.entries()) {
           if (arr.length !== 2) {
-            errors.push(`PairGroup '${g}' pour '${tech}' doit contenir 2 sites (trouvé ${arr.length}).`);
             for (const it of arr) {
               units.push({ kind: 'single', size: 1, group: '', items: [{ ...it, pairGroup: '' }] });
             }
             continue;
           }
+
           const sortedArr = arr
             .slice()
             .sort((a, b) => {
-              const aIsPmSimple = String(a?.recommendedMaintenanceType || '').trim() === 'PM Simple' || String(a?.epvSlot || '').trim() === 'PM';
-              const bIsPmSimple = String(b?.recommendedMaintenanceType || '').trim() === 'PM Simple' || String(b?.epvSlot || '').trim() === 'PM';
-              // Mettre PM Simple en second si l'autre item n'est pas PM Simple
-              if (aIsPmSimple !== bIsPmSimple) return aIsPmSimple ? 1 : -1;
-              // Sinon, garder l'ordre du fichier Excel autant que possible
+              const ra = slotRank(a);
+              const rb = slotRank(b);
+              if (ra !== rb) return ra - rb;
               const oa = Number(a?.importOrder ?? 0);
               const ob = Number(b?.importOrder ?? 0);
               if (oa !== ob) return oa - ob;
-              return String(a?.targetDate || '').localeCompare(String(b?.targetDate || ''));
+              return String(a.siteCode || '').localeCompare(String(b.siteCode || ''));
             });
-          units.push({ kind: 'pair', size: sortedArr.length, group: g, items: sortedArr });
+          units.push({ kind: 'pair', size: 2, group: g, items: sortedArr });
         }
+
         for (const it of singles) {
           units.push({ kind: 'single', size: 1, group: '', items: [it] });
         }
@@ -2207,64 +2245,40 @@ const GeneratorMaintenanceApp = () => {
         const db = String(b?.items?.[0]?.targetDate || '');
         const c = da.localeCompare(db);
         if (c !== 0) return c;
+        const ra = slotRank(a?.items?.[0]);
+        const rb = slotRank(b?.items?.[0]);
+        if (ra !== rb) return ra - rb;
+        const oa = Number(a?.items?.[0]?.importOrder ?? 0);
+        const ob = Number(b?.items?.[0]?.importOrder ?? 0);
+        if (oa !== ob) return oa - ob;
         return String(a?.group || '').localeCompare(String(b?.group || ''));
       });
 
       for (const u of units) {
         const need = u.kind === 'pair' ? 2 : 1;
         const target = String(u?.items?.[0]?.targetDate || '').slice(0, 10);
-        let d = target;
-        if (!/^(\d{4}-\d{2}-\d{2})$/.test(d)) d = monthStart;
-        if (!isInMonth(d)) d = monthStart;
+        let dd = target && isInMonth(target) ? target : monthStart;
+        if (dd < monthStart) dd = monthStart;
+        if (dd > monthEnd) dd = monthStart;
 
-        let scheduledDate = '';
-        const tryScheduleFrom = (startYmd) => {
-          let dd = startYmd;
-          let best = '';
-          let bestCurUsed = 0;
-          for (let step = 0; step < 80; step += 1) {
-            const shifted = ymdShiftForWorkdays(dd);
-            const cur = shifted || dd;
-            if (!isInMonth(cur) || cur < monthStart || cur > monthEnd) {
-              dd = addDaysYmd(dd, 1);
-              continue;
-            }
-            const curUsed = Number(used.get(cur) || 0);
-            if (curUsed + need <= capacityPerDay) {
-              if (need === 1 && capacityPerDay === 2) {
-                // Préférer compléter une journée déjà entamée (1/2) plutôt que d'ouvrir une nouvelle journée.
-                if (curUsed === 1) {
-                  best = cur;
-                  bestCurUsed = curUsed;
-                  break;
-                }
-                if (!best) {
-                  best = cur;
-                  bestCurUsed = curUsed;
-                }
-              } else {
-                best = cur;
-                bestCurUsed = curUsed;
-                break;
-              }
-            }
+        let planned = '';
+        for (let step = 0; step < 80; step += 1) {
+          const shifted = ymdShiftForWorkdays(dd);
+          const cur = shifted || dd;
+          if (!isInMonth(cur) || cur < monthStart || cur > monthEnd) {
             dd = addDaysYmd(dd, 1);
+            continue;
           }
-
-          if (best) {
-            scheduledDate = best;
-            used.set(best, bestCurUsed + need);
+          const curUsed = Number(used.get(cur) || 0);
+          if (curUsed + need <= capacityPerDay) {
+            planned = cur;
+            used.set(cur, curUsed + need);
+            break;
           }
-        };
-
-        // 1) Essai "naturel": depuis la date cible (EPV / targetDate) vers l'avant
-        tryScheduleFrom(d);
-        // 2) Fallback: si fin de mois saturée, on réessaie depuis le début du mois
-        if (!scheduledDate && d !== monthStart) {
-          tryScheduleFrom(monthStart);
+          dd = addDaysYmd(dd, 1);
         }
 
-        if (!scheduledDate) {
+        if (!planned) {
           const sitesLabel = u.items
             .map((it) => String(it?.siteCode || it?.siteName || '').trim())
             .filter(Boolean)
@@ -2274,7 +2288,7 @@ const GeneratorMaintenanceApp = () => {
         }
 
         for (const it of u.items) {
-          scheduledAll.push({ ...it, plannedDate: scheduledDate });
+          scheduledAll.push({ ...it, plannedDate: planned });
         }
       }
     }
@@ -2288,6 +2302,9 @@ const GeneratorMaintenanceApp = () => {
           if (d !== 0) return d;
           const t = String(a.technician || '').localeCompare(String(b.technician || ''));
           if (t !== 0) return t;
+          const ra = slotRank(a);
+          const rb = slotRank(b);
+          if (ra !== rb) return ra - rb;
           const oa = Number(a?.importOrder ?? 0);
           const ob = Number(b?.importOrder ?? 0);
           if (oa !== ob) return oa - ob;
@@ -2354,47 +2371,94 @@ const GeneratorMaintenanceApp = () => {
     const done = await runExport({
       label: 'Export Excel (planning base)…',
       fn: async () => {
-        const groups = new Map();
-        for (const it of items) {
-          const g = String(it?.pairGroup || '').trim();
-          const key = `${it.plannedDate}||${it.assignedTo || ''}||${g || it.siteCode || it.siteName || ''}`;
-          if (!groups.has(key)) groups.set(key, []);
-          groups.get(key).push(it);
-        }
-        const rows = [];
-        for (const arr of groups.values()) {
-          const sorted = arr
-            .slice()
-            .sort((a, b) => {
-              const oa = Number(a?.importOrder ?? 0);
-              const ob = Number(b?.importOrder ?? 0);
-              if (oa !== ob) return oa - ob;
-              return String(a.siteCode || '').localeCompare(String(b.siteCode || ''));
-            });
-          const first = sorted[0] || {};
-          const second = sorted[1] || null;
-          const hasTwo = sorted.length === 2;
+        const normYmd = (v) => {
+          const s = v == null ? '' : String(v).trim();
+          const head = s.slice(0, 10);
+          return /^\d{4}-\d{2}-\d{2}$/.test(head) ? head : '';
+        };
 
-          const siteCode = hasTwo ? `${first.siteCode || ''}\r\n${second?.siteCode || ''}`.trim() : first.siteCode || '';
-          const siteName = hasTwo ? `${first.siteName || ''}\r\n${second?.siteName || ''}`.trim() : first.siteName || '';
-          const mt = hasTwo && first.recommendedMaintenanceType !== second?.recommendedMaintenanceType
-            ? `${first.recommendedMaintenanceType || ''} + ${second?.recommendedMaintenanceType || ''}`.trim()
-            : first.recommendedMaintenanceType || '';
-
-          rows.push({
-            Zone: first.zone || '',
-            Region: first.region || '',
-            'Site (id)': siteCode,
-            'Site Name': siteName,
-            'Short description': first.shortDescription || '',
-            'Assigned to': first.assignedTo || '',
-            'Scheduled WO Date': first.plannedDate || '',
-            PairGroup: first.pairGroup || '',
-            'Date EPV 1': first.epv1 || '',
-            'Date EPV 2': first.epv2 || '',
-            'Date EPV 3': first.epv3 || ''
+        const bySite = new Map();
+        const sortedItems = items
+          .slice()
+          .sort((a, b) => {
+            const oa = Number(a?.importOrder ?? 0);
+            const ob = Number(b?.importOrder ?? 0);
+            if (oa !== ob) return oa - ob;
+            const da = String(a?.plannedDate || '').localeCompare(String(b?.plannedDate || ''));
+            if (da !== 0) return da;
+            return String(a?.siteCode || '').localeCompare(String(b?.siteCode || ''));
           });
+
+        for (const it of sortedItems) {
+          const siteCode = String(it?.siteCode || '').trim();
+          const siteName = String(it?.siteName || '').trim();
+          const key = siteCode || siteName;
+          if (!key) continue;
+
+          if (!bySite.has(key)) {
+            bySite.set(key, {
+              siteCode,
+              siteName,
+              zone: String(it?.zone || '').trim(),
+              region: String(it?.region || '').trim(),
+              assignedTo: String(it?.assignedTo || '').trim(),
+              number: String(it?.number || '').trim(),
+              dateOfClosing: String(it?.dateOfClosing || '').trim(),
+              state: String(it?.state || '').trim(),
+              pairGroup: String(it?.pairGroup || '').trim(),
+              shortDescription: '',
+              scheduledWoDate: '',
+              epv2: '',
+              epv3: '',
+              _order: Number(it?.importOrder ?? 0)
+            });
+          }
+
+          const row = bySite.get(key);
+          row._order = Math.min(row._order, Number(it?.importOrder ?? 0));
+          if (!row.siteCode) row.siteCode = siteCode;
+          if (!row.siteName) row.siteName = siteName;
+          if (!row.zone) row.zone = String(it?.zone || '').trim();
+          if (!row.region) row.region = String(it?.region || '').trim();
+          if (!row.assignedTo) row.assignedTo = String(it?.assignedTo || '').trim();
+          if (!row.number) row.number = String(it?.number || '').trim();
+          if (!row.dateOfClosing) row.dateOfClosing = String(it?.dateOfClosing || '').trim();
+          if (!row.state) row.state = String(it?.state || '').trim();
+          if (!row.pairGroup) row.pairGroup = String(it?.pairGroup || '').trim();
+
+          const slot = String(it?.epvSlot || '').trim().toUpperCase();
+          const plannedDate = normYmd(it?.plannedDate);
+          if (slot === 'EPV1' || slot === 'PM' || slot === 'MANUAL') {
+            if (!row.scheduledWoDate && plannedDate) row.scheduledWoDate = plannedDate;
+            if (!row.shortDescription) row.shortDescription = String(it?.shortDescription || '').trim();
+          }
+          if (slot === 'EPV2' && plannedDate) row.epv2 = plannedDate;
+          if (slot === 'EPV3' && plannedDate) row.epv3 = plannedDate;
         }
+
+        const rows = Array.from(bySite.values())
+          .sort((a, b) => {
+            const oa = Number(a?._order ?? 0);
+            const ob = Number(b?._order ?? 0);
+            if (oa !== ob) return oa - ob;
+            return String(a.siteCode || a.siteName || '').localeCompare(String(b.siteCode || b.siteName || ''));
+          })
+          .map((r) => ({
+            Zone: r.zone || '',
+            Region: r.region || '',
+            'Site (id)': r.siteCode || '',
+            'Site Name': r.siteName || '',
+            'Short description': r.shortDescription || '',
+            Number: r.number || '',
+            'Assigned to': r.assignedTo || '',
+            'Scheduled WO Date': r.scheduledWoDate || '',
+            'Date of closing': r.dateOfClosing || '',
+            State: r.state || '',
+            PairGroup: r.pairGroup || '',
+            EPV2: r.epv2 || '',
+            EPV3: r.epv3 || ''
+          }));
+
         exportXlsx({
           fileBaseName: `Planning_Base_${month}_${new Date().toISOString().slice(0, 10)}`,
           sheets: [{ name: `BASE-${month}`, rows }]
@@ -2411,7 +2475,6 @@ const GeneratorMaintenanceApp = () => {
 
     const exportDayYmd = String(pmReprogExportDate || '').trim().slice(0, 10);
 
-    const norm = (s) => String(s || '').trim().toLowerCase();
     const normStatus = (s) => {
       const v = String(s || '').trim().toLowerCase();
       if (!v) return '';
@@ -2455,18 +2518,18 @@ const GeneratorMaintenanceApp = () => {
       });
 
     const rows = reprogItems.map((it) => ({
-      'Zone': it.zone || '',
-      'Region': it.region || '',
-      'Site': it.siteCode || '',
+      Zone: it.zone || '',
+      Region: it.region || '',
+      Site: it.siteCode || '',
       'Site Name': it.siteName || '',
       'Maintenance Type': it.maintenanceType || '',
-      'Number': it.number || '',
+      Number: it.number || '',
       'Assigned to': it.assignedTo || '',
       'Scheduled WO Date': it.scheduledWoDate || '',
       'Statut reprogrammation': effectiveReprogStatus(it) || '',
-      'Reprogrammation': it.reprogrammationDate || '',
-      'Raisons': it.reprogrammationReason || '',
-      'State': it.state || ''
+      Reprogrammation: it.reprogrammationDate || '',
+      Raisons: it.reprogrammationReason || '',
+      State: it.state || ''
     }));
 
     const done = await runExport({
@@ -3887,11 +3950,13 @@ const GeneratorMaintenanceApp = () => {
       const easterSunday = getEasterSunday(year);
       const easterMonday = new Date(easterSunday.getTime());
       easterMonday.setUTCDate(easterMonday.getUTCDate() + 1);
+      const ascension = new Date(easterSunday.getTime());
+      ascension.setUTCDate(ascension.getUTCDate() + 39);
       const pentecostMonday = new Date(easterSunday.getTime());
       pentecostMonday.setUTCDate(pentecostMonday.getUTCDate() + 50);
 
       const s = String(ymdStr);
-      return s === ymdFromUtcDate(easterMonday) || s === ymdFromUtcDate(pentecostMonday);
+      return s === ymdFromUtcDate(easterMonday) || s === ymdFromUtcDate(ascension) || s === ymdFromUtcDate(pentecostMonday);
     };
 
     const ymdAddDaysUtc = (ymdStr, days) => {
@@ -3903,19 +3968,6 @@ const GeneratorMaintenanceApp = () => {
       d.setUTCDate(d.getUTCDate() + Number(days || 0));
       return d.toISOString().slice(0, 10);
     };
-
-    const ymdDiffDaysUtc = (aYmd, bYmd) => {
-      const a = new Date(`${String(aYmd).slice(0, 10)}T00:00:00Z`).getTime();
-      const b = new Date(`${String(bYmd).slice(0, 10)}T00:00:00Z`).getTime();
-      if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-      return Math.round((a - b) / (1000 * 60 * 60 * 24));
-    };
-
-    const todayLocalYmd = (() => {
-      const d = new Date();
-      const pad2 = (n) => String(n).padStart(2, '0');
-      return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-    })();
 
     const isNonWorkingYmd = (ymdStr) => {
       const d = new Date(`${String(ymdStr).slice(0, 10)}T00:00:00Z`);
@@ -3955,26 +4007,16 @@ const GeneratorMaintenanceApp = () => {
       return next && next !== v ? next : '';
     }
 
-    // Jour férié sur jour ouvré: choisir le plus proche; tie-break selon urgence
+    // Jour férié sur jour ouvré: choisir le plus proche
     const prev = findPrevWorkday(v);
     const next = findNextWorkday(v);
     if (!prev && !next) return '';
     if (!prev) return next !== v ? next : '';
     if (!next) return prev !== v ? prev : '';
 
-    const prevDist = Math.abs(Number(ymdDiffDaysUtc(v, prev) ?? 9999));
-    const nextDist = Math.abs(Number(ymdDiffDaysUtc(next, v) ?? 9999));
-    if (prevDist < nextDist) return prev !== v ? prev : '';
-    if (nextDist < prevDist) return next !== v ? next : '';
-
-    const prefer = String(opts?.prefer || 'auto').toLowerCase();
-    if (prefer === 'before' || prefer === 'prev') return prev !== v ? prev : '';
+    const prefer = String(opts?.prefer || 'before').toLowerCase();
     if (prefer === 'after' || prefer === 'next') return next !== v ? next : '';
-
-    const daysUntil = ymdDiffDaysUtc(v, todayLocalYmd);
-    const urgent = Number.isFinite(daysUntil) && daysUntil <= 3;
-    const pick = urgent ? prev : next;
-    return pick && pick !== v ? pick : '';
+    return prev !== v ? prev : '';
   };
 
   const techCalendarItemsInMonth = (() => {
