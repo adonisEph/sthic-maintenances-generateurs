@@ -2399,8 +2399,7 @@ const GeneratorMaintenanceApp = () => {
             bySite.set(key, {
               siteCode,
               siteName,
-              zone: String(it?.zone || '').trim(),
-              region: String(it?.region || '').trim(),
+              region: String(it?.region || it?.zone || '').trim(),
               assignedTo: String(it?.assignedTo || '').trim(),
               number: String(it?.number || '').trim(),
               dateOfClosing: String(it?.dateOfClosing || '').trim(),
@@ -2418,8 +2417,7 @@ const GeneratorMaintenanceApp = () => {
           row._order = Math.min(row._order, Number(it?.importOrder ?? 0));
           if (!row.siteCode) row.siteCode = siteCode;
           if (!row.siteName) row.siteName = siteName;
-          if (!row.zone) row.zone = String(it?.zone || '').trim();
-          if (!row.region) row.region = String(it?.region || '').trim();
+          if (!row.region) row.region = String(it?.region || it?.zone || '').trim();
           if (!row.assignedTo) row.assignedTo = String(it?.assignedTo || '').trim();
           if (!row.number) row.number = String(it?.number || '').trim();
           if (!row.dateOfClosing) row.dateOfClosing = String(it?.dateOfClosing || '').trim();
@@ -2444,10 +2442,9 @@ const GeneratorMaintenanceApp = () => {
             return String(a.siteCode || a.siteName || '').localeCompare(String(b.siteCode || b.siteName || ''));
           })
           .map((r) => ({
-            Zone: r.zone || '',
-            Region: r.region || '',
-            'Site (id)': r.siteCode || '',
+            Site: r.siteCode || '',
             'Site Name': r.siteName || '',
+            Region: r.region || '',
             'Short description': r.shortDescription || '',
             Number: r.number || '',
             'Assigned to': r.assignedTo || '',

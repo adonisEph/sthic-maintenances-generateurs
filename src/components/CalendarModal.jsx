@@ -235,58 +235,98 @@ const CalendarModal = (props) => {
                       <table className="min-w-full text-xs">
                         <thead className="sticky top-0 bg-gray-50">
                           <tr className="text-left">
-                            <th className="p-2 border-b">Date</th>
-                            <th className="p-2 border-b">Technicien</th>
                             <th className="p-2 border-b">Site</th>
-                            <th className="p-2 border-b">Type</th>
-                            <th className="p-2 border-b">EPV</th>
+                            <th className="p-2 border-b">Site Name</th>
+                            <th className="p-2 border-b">Region</th>
+                            <th className="p-2 border-b">Short description</th>
+                            <th className="p-2 border-b">Number</th>
+                            <th className="p-2 border-b">Assigned to</th>
+                            <th className="p-2 border-b">Scheduled WO Date</th>
+                            <th className="p-2 border-b">Date of closing</th>
+                            <th className="p-2 border-b">State</th>
                             <th className="p-2 border-b">PairGroup</th>
+                            <th className="p-2 border-b">EPV2</th>
+                            <th className="p-2 border-b">EPV3</th>
                           </tr>
                         </thead>
                         <tbody>
                           {(() => {
-                            const items = Array.isArray(basePlanPreview) ? basePlanPreview.slice(0, 80) : [];
-                            const groups = new Map();
+                            const normYmd = (v) => {
+                              const s = v == null ? '' : String(v).trim();
+                              const head = s.slice(0, 10);
+                              return /^\d{4}-\d{2}-\d{2}$/.test(head) ? head : '';
+                            };
+
+                            const items = Array.isArray(basePlanPreview) ? basePlanPreview : [];
+                            const bySite = new Map();
                             for (const it of items) {
-                              const g = String(it?.pairGroup || '').trim();
-                              const key = `${it.plannedDate}||${it.technician}||${g || it.siteCode || it.siteName || ''}`;
-                              if (!groups.has(key)) groups.set(key, []);
-                              groups.get(key).push(it);
+                              const siteCode = String(it?.siteCode || '').trim();
+                              const siteName = String(it?.siteName || '').trim();
+                              const key = siteCode || siteName;
+                              if (!key) continue;
+
+                              if (!bySite.has(key)) {
+                                bySite.set(key, {
+                                  siteCode,
+                                  siteName,
+                                  region: String(it?.region || it?.zone || '').trim(),
+                                  shortDescription: '',
+                                  number: String(it?.number || '').trim(),
+                                  assignedTo: String(it?.assignedTo || '').trim(),
+                                  scheduledWoDate: '',
+                                  dateOfClosing: String(it?.dateOfClosing || '').trim(),
+                                  state: String(it?.state || '').trim(),
+                                  pairGroup: String(it?.pairGroup || '').trim(),
+                                  epv2: '',
+                                  epv3: '',
+                                  _order: Number(it?.importOrder ?? 0)
+                                });
+                              }
+
+                              const row = bySite.get(key);
+                              row._order = Math.min(row._order, Number(it?.importOrder ?? 0));
+                              if (!row.siteCode) row.siteCode = siteCode;
+                              if (!row.siteName) row.siteName = siteName;
+                              if (!row.region) row.region = String(it?.region || it?.zone || '').trim();
+                              if (!row.number) row.number = String(it?.number || '').trim();
+                              if (!row.assignedTo) row.assignedTo = String(it?.assignedTo || '').trim();
+                              if (!row.dateOfClosing) row.dateOfClosing = String(it?.dateOfClosing || '').trim();
+                              if (!row.state) row.state = String(it?.state || '').trim();
+                              if (!row.pairGroup) row.pairGroup = String(it?.pairGroup || '').trim();
+
+                              const slot = String(it?.epvSlot || '').trim().toUpperCase();
+                              const plannedDate = normYmd(it?.plannedDate);
+                              if (slot === 'EPV1' || slot === 'PM' || slot === 'MANUAL') {
+                                if (!row.scheduledWoDate && plannedDate) row.scheduledWoDate = plannedDate;
+                                if (!row.shortDescription) row.shortDescription = String(it?.shortDescription || '').trim();
+                              }
+                              if (slot === 'EPV2' && plannedDate) row.epv2 = plannedDate;
+                              if (slot === 'EPV3' && plannedDate) row.epv3 = plannedDate;
                             }
-                            const out = [];
-                            for (const arr of groups.values()) {
-                              const sorted = arr
-                                .slice()
-                                .sort((a, b) => Number(a?.importOrder ?? 0) - Number(b?.importOrder ?? 0));
-                              const first = sorted[0] || {};
-                              const second = sorted[1] || null;
-                              const hasTwo = sorted.length === 2;
-                              out.push({
-                                plannedDate: first.plannedDate,
-                                technician: first.technician,
-                                siteCode: hasTwo ? `${first.siteCode || ''}\n${second?.siteCode || ''}`.trim() : first.siteCode || '',
-                                siteName: hasTwo ? `${first.siteName || ''}\n${second?.siteName || ''}`.trim() : first.siteName || '',
-                                maintenanceType:
-                                  hasTwo && first.recommendedMaintenanceType !== second?.recommendedMaintenanceType
-                                    ? `${first.recommendedMaintenanceType || ''} + ${second?.recommendedMaintenanceType || ''}`.trim()
-                                    : first.recommendedMaintenanceType || '',
-                                epvSlot: first.epvSlot,
-                                pairGroup: first.pairGroup || ''
-                              });
-                            }
-                            out.sort((a, b) => {
-                              const d = String(a.plannedDate || '').localeCompare(String(b.plannedDate || ''));
-                              if (d !== 0) return d;
-                              return String(a.technician || '').localeCompare(String(b.technician || ''));
-                            });
+
+                            const out = Array.from(bySite.values())
+                              .sort((a, b) => {
+                                const oa = Number(a?._order ?? 0);
+                                const ob = Number(b?._order ?? 0);
+                                if (oa !== ob) return oa - ob;
+                                return String(a.siteCode || a.siteName || '').localeCompare(String(b.siteCode || b.siteName || ''));
+                              })
+                              .slice(0, 80);
+
                             return out.map((it, idx) => (
-                              <tr key={`${it.siteCode}-${it.plannedDate}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-gray-50'}>
-                                <td className="p-2 border-b whitespace-nowrap">{it.plannedDate}</td>
-                                <td className="p-2 border-b">{it.technician}</td>
-                                <td className="p-2 border-b whitespace-pre-line leading-tight break-words">{it.siteName || it.siteCode}</td>
-                                <td className="p-2 border-b">{it.maintenanceType}</td>
-                                <td className="p-2 border-b">{it.epvSlot}</td>
-                                <td className="p-2 border-b">{it.pairGroup || ''}</td>
+                              <tr key={`${it.siteCode || it.siteName}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-gray-50'}>
+                                <td className="p-2 border-b whitespace-nowrap">{it.siteCode}</td>
+                                <td className="p-2 border-b whitespace-nowrap">{it.siteName}</td>
+                                <td className="p-2 border-b whitespace-nowrap">{it.region}</td>
+                                <td className="p-2 border-b whitespace-nowrap">{it.shortDescription}</td>
+                                <td className="p-2 border-b whitespace-nowrap">{it.number}</td>
+                                <td className="p-2 border-b whitespace-nowrap">{it.assignedTo}</td>
+                                <td className="p-2 border-b whitespace-nowrap">{it.scheduledWoDate}</td>
+                                <td className="p-2 border-b whitespace-nowrap">{it.dateOfClosing}</td>
+                                <td className="p-2 border-b whitespace-nowrap">{it.state}</td>
+                                <td className="p-2 border-b whitespace-nowrap">{it.pairGroup}</td>
+                                <td className="p-2 border-b whitespace-nowrap">{it.epv2}</td>
+                                <td className="p-2 border-b whitespace-nowrap">{it.epv3}</td>
                               </tr>
                             ));
                           })()}
