@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Calendar, X, Users, MapPin, Clock, AlertCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { calculateEPVDates, calculateEstimatedNH } from '../utils/calculations';
 
 const CalendarModal = (props) => {
   const {
@@ -45,6 +46,7 @@ const CalendarModal = (props) => {
   const [clusteringData, setClusteringData] = useState([]);
   const [clusteringBusy, setClusteringBusy] = useState(false);
   const [selectedPairs, setSelectedPairs] = useState(new Map());
+  const [pairingFirstSiteId, setPairingFirstSiteId] = useState('');
   const [clusteringErrors, setClusteringErrors] = useState([]);
 
   // State for intelligent planning
@@ -91,13 +93,11 @@ const CalendarModal = (props) => {
       const easterSunday = getEasterSunday(year);
       const easterMonday = new Date(easterSunday.getTime());
       easterMonday.setUTCDate(easterMonday.getUTCDate() + 1);
-      const ascension = new Date(easterSunday.getTime());
-      ascension.setUTCDate(ascension.getUTCDate() + 39);
       const pentecostMonday = new Date(easterSunday.getTime());
       pentecostMonday.setUTCDate(pentecostMonday.getUTCDate() + 50);
 
       const s = String(ymdStr);
-      return s === ymdFromUtcDate(easterMonday) || s === ymdFromUtcDate(ascension) || s === ymdFromUtcDate(pentecostMonday);
+      return s === ymdFromUtcDate(easterMonday) || s === ymdFromUtcDate(pentecostMonday);
     };
 
     const ymdAddDaysUtc = (ymdStr, days) => {
@@ -116,7 +116,7 @@ const CalendarModal = (props) => {
       return dow === 0 || dow === 6 || isHolidayYmd(String(ymdStr).slice(0, 10));
     };
 
-    if (!isNonWorkingYmd(v)) return '';
+    if (!isNonWorkingYmd(v)) return v;
 
     const originDow = new Date(`${v}T00:00:00Z`).getUTCDay();
 
@@ -147,15 +147,25 @@ const CalendarModal = (props) => {
       return next && next !== v ? next : '';
     }
 
-    const prev = findPrevWorkday(v);
-    const next = findNextWorkday(v);
-    if (!prev && !next) return '';
-    if (!prev) return next !== v ? next : '';
-    if (!next) return prev !== v ? prev : '';
+    const isHoliday = isHolidayYmd(v);
+    if (!isHoliday) return '';
 
-    const prefer = String(opts?.prefer || 'before').toLowerCase();
-    if (prefer === 'after' || prefer === 'next') return next !== v ? next : '';
-    return prev !== v ? prev : '';
+    const nextDay = ymdAddDaysUtc(v, 1);
+    const nextDow = new Date(`${nextDay}T00:00:00Z`).getUTCDay();
+    const weekendNext = nextDow === 0 || nextDow === 6;
+
+    if (weekendNext) {
+      const prev = findPrevWorkday(v);
+      return prev && prev !== v ? prev : '';
+    }
+
+    const prefer = String(opts?.prefer || 'after').toLowerCase();
+    if (prefer === 'before' || prefer === 'prev') {
+      const prev = findPrevWorkday(v);
+      return prev && prev !== v ? prev : '';
+    }
+    const next = findNextWorkday(v);
+    return next && next !== v ? next : '';
   };
 
   const exportIntelligentPlanningExcel = () => {
@@ -165,9 +175,8 @@ const CalendarModal = (props) => {
       return;
     }
 
-    const nextMonth = new Date();
-    nextMonth.setMonth(nextMonth.getMonth() + 1);
-    const month = nextMonth.toISOString().slice(0, 7);
+    const target = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+    const month = target.toISOString().slice(0, 7);
     const safeBase = `planning_intelligent_${month}`.replace(/[\\/:*?"<>|]+/g, '_');
 
     const rows = items.map((it) => ({
@@ -189,40 +198,77 @@ const CalendarModal = (props) => {
   };
 
   const calculateUrgencyScore = (site) => {
-    // Priority by regime: H24 > H20 > H18 > H16 > H15 > H14 > H12 > H9
+    const rawRegime = site?.regime;
+    const regimeLabel = (() => {
+      if (rawRegime == null) return '';
+      const s = String(rawRegime).trim();
+      if (!s) return '';
+      if (/^H\d+$/i.test(s)) return s.toUpperCase();
+      const n = Number(s);
+      if (Number.isFinite(n) && n > 0) return `H${Math.round(n)}`;
+      return s.toUpperCase();
+    })();
+
     const regimePriority = {
-      'H24': 100, 'H20': 90, 'H18': 80, 'H16': 70,
-      'H15': 60, 'H14': 50, 'H12': 40, 'H9': 30
+      H24: 100,
+      H20: 90,
+      H18: 80,
+      H16: 70,
+      H15: 60,
+      H14: 50,
+      H12: 40,
+      H9: 30
     };
-    
-    const regimeScore = regimePriority[site.regime] || 0;
-    
-    // Days since last vidange (older = more urgent)
-    const lastVidange = new Date(site.lastVidange);
+
+    const regimeScore = regimePriority[regimeLabel] || 0;
+
+    const lastVidangeRaw = site?.lastVidange || site?.dateDV || site?.date_dv || '';
+    const lastVidange = new Date(String(lastVidangeRaw).slice(0, 10));
     const today = new Date();
-    const daysSinceVidange = Math.floor((today - lastVidange) / (1000 * 60 * 60 * 24));
-    const vidangeScore = Math.min(daysSinceVidange * 2, 100); // Cap at 100
-    
+    const daysSinceVidange = Number.isNaN(lastVidange.getTime())
+      ? 0
+      : Math.max(0, Math.floor((today - lastVidange) / (1000 * 60 * 60 * 24)));
+    const vidangeScore = Math.min(daysSinceVidange * 2, 100);
+
     return regimeScore + vidangeScore;
   };
 
-  const getEPVPriority = (site) => {
-    // Dynamic EPV priority based on current month and last maintenance
-    const today = new Date();
-    const currentMonth = today.getMonth();
-    const currentYear = today.getFullYear();
-    
-    // Check if EPV1 is still pending from current month
-    const hasPendingEPV1 = site.dateA && new Date(site.dateA).getMonth() === currentMonth && 
-                         new Date(site.dateA).getFullYear() === currentYear;
-    
-    if (hasPendingEPV1) {
-      // EPV2 becomes first priority, EPV3 becomes second
-      return { first: 'EPV2', second: 'EPV3' };
-    }
-    
-    // Normal priority: EPV1 -> EPV2 -> EPV3
-    return { first: 'EPV1', second: 'EPV2' };
+  const pickEpvForTargetMonth = (site, targetMonthYyyyMm) => {
+    const rawRegime = site?.regime;
+    const regimeNumber = (() => {
+      if (rawRegime == null) return 0;
+      const s = String(rawRegime).trim();
+      if (!s) return 0;
+      if (/^H\d+$/i.test(s)) return Number(s.slice(1));
+      const n = Number(s);
+      return Number.isFinite(n) ? n : 0;
+    })();
+
+    const nh1 = Number(site?.nh1DV ?? site?.nh1_dv ?? 0);
+    const nh2 = Number(site?.nh2A ?? site?.nh2_a ?? 0);
+    const dateA = String(site?.dateA ?? site?.date_a ?? '').slice(0, 10);
+    const nhEstimated = site?.nhEstimated != null ? Number(site.nhEstimated) : calculateEstimatedNH(nh2, dateA, regimeNumber);
+    const epv = calculateEPVDates(regimeNumber, dateA, nh1, nhEstimated);
+
+    const candidates = [
+      { type: 'EPV1', date: String(epv?.epv1 || '').slice(0, 10) },
+      { type: 'EPV2', date: String(epv?.epv2 || '').slice(0, 10) },
+      { type: 'EPV3', date: String(epv?.epv3 || '').slice(0, 10) }
+    ].filter((c) => /^\d{4}-\d{2}-\d{2}$/.test(c.date));
+
+    const inTarget = candidates
+      .map((c) => ({ ...c, date: ymdShiftForWorkdays(c.date) || c.date }))
+      .filter((c) => c.date.slice(0, 7) === targetMonthYyyyMm)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const chosen = (inTarget[0] || null);
+    return {
+      epv1: String(epv?.epv1 || '').slice(0, 10),
+      epv2: String(epv?.epv2 || '').slice(0, 10),
+      epv3: String(epv?.epv3 || '').slice(0, 10),
+      epvType: chosen?.type || '',
+      targetDate: chosen?.date || ''
+    };
   };
 
   const getTechnicianCapacity = (technicianId, siteCount) => {
@@ -250,9 +296,38 @@ const CalendarModal = (props) => {
       });
       
       const planning = [];
-      const targetMonth = new Date();
-      targetMonth.setMonth(targetMonth.getMonth() + 1); // Next month
+      const localErrors = [];
+
+      const targetMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+      const targetMonthYyyyMm = targetMonth.toISOString().slice(0, 7);
+      const monthStartYmd = `${targetMonthYyyyMm}-01`;
       
+      const ymdAddDays = (ymd, days) => {
+        const src = String(ymd || '').slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(src)) return '';
+        const yy = Number(src.slice(0, 4));
+        const mm = Number(src.slice(5, 7));
+        const dd = Number(src.slice(8, 10));
+        const d = new Date(Date.UTC(yy, mm - 1, dd));
+        d.setUTCDate(d.getUTCDate() + Number(days || 0));
+        return d.toISOString().slice(0, 10);
+      };
+
+      const asWorkday = (ymd) => {
+        const shifted = ymdShiftForWorkdays(ymd);
+        return shifted || String(ymd || '').slice(0, 10);
+      };
+
+      const nextWorkdayForward = (ymd) => {
+        let cur = String(ymd || '').slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(cur)) return '';
+        for (let i = 0; i < 40; i += 1) {
+          if (asWorkday(cur) === cur) return cur;
+          cur = ymdAddDays(cur, 1);
+        }
+        return '';
+      };
+
       // Process each technician
       for (const [techId, sites] of sitesByTech.entries()) {
         const capacity = getTechnicianCapacity(techId, sites.length);
@@ -268,57 +343,111 @@ const CalendarModal = (props) => {
           pairMap.set(pair.siteId2, pair.siteId1);
         });
         
+        const enrichedSites = sites
+          .map((s) => {
+            const picked = pickEpvForTargetMonth(s, targetMonthYyyyMm);
+            const targetDate = picked?.targetDate ? asWorkday(picked.targetDate) : '';
+            return {
+              ...s,
+              _epvType: picked?.epvType || '',
+              _epvTargetDate: targetDate,
+              _urgency: calculateUrgencyScore({ ...s, lastVidange: s?.lastVidange || s?.dateDV || s?.date_dv })
+            };
+          })
+          .filter((s) => s && String(s._epvType || '') && String(s._epvTargetDate || ''));
+
+        if (capacity === 2) {
+          const pairedIds = new Set();
+          for (const [k, v] of pairMap.entries()) {
+            const a = String(k || '');
+            const b = String(v || '');
+            if (!a || !b) continue;
+            pairedIds.add(a);
+            pairedIds.add(b);
+          }
+
+          const activeIds = new Set(enrichedSites.map((s) => String(s.id)));
+          let pairedActive = 0;
+          activeIds.forEach((id) => {
+            if (pairedIds.has(id)) pairedActive += 1;
+          });
+
+          const missing = Math.max(0, activeIds.size - pairedActive);
+          if (missing > 1) {
+            localErrors.push(
+              `Technicien ${techName}: il manque des paires (au moins ${missing} site(s) non jumelé(s)). ` +
+                `Veuillez configurer les paires avant de générer le planning.`
+            );
+          }
+        }
+
         // Group sites into pairs (for capacity=2) or single (for capacity=1)
         const groups = [];
         const processed = new Set();
         
-        sites.forEach(site => {
-          if (!processed.has(site.id)) {
-            if (capacity === 2 && pairMap.has(site.id)) {
+        enrichedSites.forEach(site => {
+          const siteId = String(site.id);
+          if (!processed.has(siteId)) {
+            if (capacity === 2 && pairMap.has(siteId)) {
               // Create pair
-              const pairedSite = sites.find(s => s.id === pairMap.get(site.id));
-              if (pairedSite && !processed.has(pairedSite.id)) {
-                // Calculate urgency for the pair (most urgent wins)
-                const urgency1 = calculateUrgencyScore(site);
-                const urgency2 = calculateUrgencyScore(pairedSite);
-                const mostUrgent = urgency1 >= urgency2 ? site : pairedSite;
+              const pairedSiteId = String(pairMap.get(siteId) || '');
+              const pairedSite = enrichedSites.find(s => String(s.id) === pairedSiteId);
+              if (pairedSite && !processed.has(String(pairedSite.id))) {
+                const driver = (() => {
+                  const aDate = String(site._epvTargetDate || '');
+                  const bDate = String(pairedSite._epvTargetDate || '');
+                  const aUrg = Number(site._urgency || 0);
+                  const bUrg = Number(pairedSite._urgency || 0);
+                  if (aUrg !== bUrg) return aUrg > bUrg ? site : pairedSite;
+                  if (aDate && bDate && aDate !== bDate) return aDate < bDate ? site : pairedSite;
+                  return site;
+                })();
                 
                 groups.push({
                   type: 'pair',
                   sites: [site, pairedSite],
-                  urgency: Math.max(urgency1, urgency2),
-                  mostUrgent
+                  urgency: Math.max(Number(site._urgency || 0), Number(pairedSite._urgency || 0)),
+                  targetDate: String(driver._epvTargetDate || ''),
+                  driver
                 });
-                processed.add(site.id);
-                processed.add(pairedSite.id);
+                processed.add(siteId);
+                processed.add(String(pairedSite.id));
               }
             } else {
               // Single site
               groups.push({
                 type: 'single',
                 sites: [site],
-                urgency: calculateUrgencyScore(site),
-                mostUrgent: site
+                urgency: Number(site._urgency || 0),
+                targetDate: String(site._epvTargetDate || ''),
+                driver: site
               });
-              processed.add(site.id);
+              processed.add(siteId);
             }
           }
         });
         
-        // Sort groups by urgency (most urgent first)
-        groups.sort((a, b) => b.urgency - a.urgency);
+        // Sort groups by EPV date then urgency (the schedule date is assigned sequentially from month start)
+        groups.sort((a, b) => {
+          const d1 = String(a.targetDate || '').localeCompare(String(b.targetDate || ''));
+          if (d1 !== 0) return d1;
+          return Number(b.urgency || 0) - Number(a.urgency || 0);
+        });
         
-        // Schedule groups
-        let currentDate = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), 1);
+        // Schedule groups (sequentially from month start)
         const usedCapacity = new Map(); // date -> used slots
+        let cursorYmd = nextWorkdayForward(monthStartYmd);
         
         groups.forEach(group => {
-          let plannedDate = null;
+          let plannedDate = '';
           let attempts = 0;
           const maxAttempts = 60; // Max 2 months of attempts
+          const groupMin = String(group?.targetDate || '');
+          let currentYmd = groupMin && cursorYmd < groupMin ? groupMin : cursorYmd;
+          currentYmd = nextWorkdayForward(currentYmd) || currentYmd;
           
           while (!plannedDate && attempts < maxAttempts) {
-            const dateStr = currentDate.toISOString().split('T')[0];
+            const dateStr = nextWorkdayForward(currentYmd);
             const used = usedCapacity.get(dateStr) || 0;
             const needed = group.type === 'pair' ? 2 : 1;
             
@@ -326,36 +455,54 @@ const CalendarModal = (props) => {
               plannedDate = dateStr;
               usedCapacity.set(dateStr, used + needed);
             } else {
-              currentDate.setDate(currentDate.getDate() + 1);
+              currentYmd = ymdAddDays(dateStr, 1);
               attempts++;
+            }
+          }
+
+          if (plannedDate) {
+            cursorYmd = plannedDate;
+            if ((usedCapacity.get(plannedDate) || 0) >= capacity) {
+              cursorYmd = nextWorkdayForward(ymdAddDays(cursorYmd, 1));
             }
           }
           
           if (plannedDate) {
-            const finalDate = ymdShiftForWorkdays(plannedDate) || plannedDate;
-            
-            // Get EPV priorities for each site
             group.sites.forEach(site => {
-              const epvPriority = getEPVPriority(site);
-              const epvType = site === group.mostUrgent ? epvPriority.first : epvPriority.second;
-              
+              const siteId = String(site.id);
               planning.push({
-                siteId: site.id,
+                siteId: siteId,
                 siteCode: site.idSite,
                 siteName: site.nameSite,
                 region: site.region,
                 technician: techName,
                 technicianId: techId,
-                plannedDate: finalDate,
-                epvType: epvType,
+                plannedDate: plannedDate,
+                epvType: String(site._epvType || ''),
                 regime: site.regime,
-                lastVidange: site.lastVidange,
-                urgency: calculateUrgencyScore(site),
-                pairId: group.type === 'pair' ? `${site.id}-${pairMap.get(site.id)}` : null
+                lastVidange: site.lastVidange || site.dateDV || site.date_dv,
+                urgency: Number(site._urgency || 0),
+                pairId: group.type === 'pair' ? `${siteId}-${String(pairMap.get(siteId) || '')}` : null
               });
             });
           }
         });
+
+        if (sites.length > 20) {
+          const techLast = planning
+            .filter((p) => String(p.technicianId) === String(techId))
+            .map((p) => String(p.plannedDate || '').slice(0, 10))
+            .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+            .sort()
+            .slice(-1)[0];
+
+          if (techLast) {
+            const day = Number(techLast.slice(8, 10));
+            if (Number.isFinite(day) && day > 27) {
+              localErrors.push(`Technicien ${techName}: planning finit le ${techLast} (après le 27).`);
+            }
+          }
+        }
       }
       
       // Sort final planning by date, technician, urgency
@@ -369,6 +516,10 @@ const CalendarModal = (props) => {
       
       setPlanningData(planning);
       setShowPlanning(true);
+
+      if (localErrors.length > 0) {
+        setPlanningErrors(localErrors);
+      }
       
     } catch (error) {
       setPlanningErrors([error.message || 'Erreur lors de la génération du planning']);
@@ -385,7 +536,20 @@ const CalendarModal = (props) => {
       // Load sites assigned to this technician
       const response = await fetch(`/api/sites/by-technician/${techUserId}`);
       if (!response.ok) throw new Error('Erreur chargement sites');
-      const sites = await response.json();
+      const raw = await response.text();
+      let parsed;
+      try {
+        parsed = raw ? JSON.parse(raw) : null;
+      } catch {
+        const head = String(raw || '').slice(0, 120);
+        throw new Error(
+          `Réponse non-JSON depuis /api/sites/by-technician (status ${response.status}). ` +
+            `Tu es probablement en mode Vite/Netlify (redirect vers index.html) au lieu des Pages Functions. ` +
+            `Début réponse: ${head}`
+        );
+      }
+
+      const sites = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.sites) ? parsed.sites : [];
       
       // Load existing pairs for this technician
       const pairsResponse = await fetch(`/api/clustering/by-technician/${techUserId}`);
@@ -427,21 +591,27 @@ const CalendarModal = (props) => {
 
   const togglePair = (siteId) => {
     const newPairs = new Map(selectedPairs);
-    if (newPairs.has(siteId)) {
+    const sid = String(siteId);
+    if (newPairs.has(sid)) {
       // Remove pair
-      const pairedId = newPairs.get(siteId);
-      newPairs.delete(siteId);
-      newPairs.delete(pairedId);
+      const pairedId = String(newPairs.get(sid) || '');
+      newPairs.delete(sid);
+      if (pairedId) newPairs.delete(pairedId);
+      if (pairingFirstSiteId === sid || pairingFirstSiteId === pairedId) setPairingFirstSiteId('');
     } else {
-      // Find first unpaired site to pair with
-      const unpairedSite = clusteringData.find(site => 
-        site.id !== siteId && !newPairs.has(site.id)
-      );
-      if (unpairedSite) {
-        newPairs.set(siteId, unpairedSite.id);
-        newPairs.set(unpairedSite.id, siteId);
+      if (!pairingFirstSiteId) {
+        setPairingFirstSiteId(sid);
+      } else if (pairingFirstSiteId === sid) {
+        setPairingFirstSiteId('');
       } else {
-        setClusteringErrors(['Aucun autre site disponible pour former une paire']);
+        if (newPairs.has(pairingFirstSiteId) || newPairs.has(sid)) {
+          setClusteringErrors(['Un des sites sélectionnés est déjà jumelé']);
+          setPairingFirstSiteId('');
+        } else {
+          newPairs.set(pairingFirstSiteId, sid);
+          newPairs.set(sid, pairingFirstSiteId);
+          setPairingFirstSiteId('');
+        }
       }
     }
     setSelectedPairs(newPairs);
@@ -750,19 +920,20 @@ const CalendarModal = (props) => {
                           {clusteringData.map((site) => {
                             const isPaired = selectedPairs.has(site.id);
                             const pairedWith = isPaired ? clusteringData.find(s => s.id === selectedPairs.get(site.id)) : null;
+                            const isFirst = pairingFirstSiteId && String(pairingFirstSiteId) === String(site.id);
                             
                             return (
                               <div
                                 key={site.id}
                                 onClick={() => togglePair(site.id)}
                                 className={`bg-slate-700 rounded p-2 text-xs cursor-pointer transition-colors ${
-                                  isPaired ? 'bg-blue-800 border border-blue-600' : 'hover:bg-slate-600'
+                                  isPaired ? 'bg-blue-800 border border-blue-600' : isFirst ? 'bg-amber-900/40 border border-amber-500' : 'hover:bg-slate-600'
                                 }`}
                               >
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-2">
                                     <div className={`w-2 h-2 rounded-full ${
-                                      isPaired ? 'bg-blue-400' : 'bg-slate-400'
+                                      isPaired ? 'bg-blue-400' : isFirst ? 'bg-amber-400' : 'bg-slate-400'
                                     }`} />
                                     <span className="font-semibold">{site.code}</span> - {site.name}
                                   </div>
