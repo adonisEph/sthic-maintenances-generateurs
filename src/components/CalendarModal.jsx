@@ -811,6 +811,10 @@ const CalendarModal = (props) => {
                 </div>
               )}
 
+              </div>
+            </div>
+
+            <div className="flex-1 min-w-0 overflow-y-auto p-3 sm:p-6 space-y-3">
               {/* Planning Results */}
               {showPlanning && (
                 <div className="bg-white border rounded-lg p-4">
@@ -1159,7 +1163,6 @@ const CalendarModal = (props) => {
                   <span>OK (&gt;7j)</span>
                 </div>
               </div>
-            </div>
             </div>
           </div>
         </div>
