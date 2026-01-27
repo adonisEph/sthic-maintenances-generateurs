@@ -180,15 +180,22 @@ const CalendarModal = (props) => {
     const safeBase = `planning_intelligent_${month}`.replace(/[\\/:*?"<>|]+/g, '_');
 
     const rows = items.map((it) => ({
-      Date: String(it?.plannedDate || '').slice(0, 10),
-      Technicien: String(it?.technician || ''),
+      Number: '',
       Site: String(it?.siteCode || ''),
       'Site Name': String(it?.siteName || ''),
       Region: String(it?.region || ''),
+      'Assigned to': String(it?.technician || ''),
+      'Scheduled WO Date': String(it?.plannedDate || '').slice(0, 10),
+      'Date of closing': '',
+      State: String(it?.state || 'Planned'),
       Regime: String(it?.regime || ''),
-      EPV: String(it?.epvType || ''),
+      EPV: String(it?.maintenanceType || ''),
+      'DG Service 2': String(it?.maintenanceType) === 'PM+Vidange' ? 'DG Service 2' : '',
+      EPV2: String(it?.maintenanceType) === 'PM+Vidange' ? String(it?.epv2Date || '') : '',
+      'DG Service 3': String(it?.maintenanceType) === 'PM+Vidange' ? 'DG Service 3' : '',
+      EPV3: String(it?.maintenanceType) === 'PM+Vidange' ? String(it?.epv3Date || '') : '',
       Urgence: Number(it?.urgency || 0),
-      Pair: String(it?.pairId ? String(it.pairId).split('-')[1] : '')
+      Pair: String(it?.pairSiteCode || '')
     }));
 
     const wb = XLSX.utils.book_new();
@@ -233,7 +240,7 @@ const CalendarModal = (props) => {
     return regimeScore + vidangeScore;
   };
 
-  const pickEpvForTargetMonth = (site, targetMonthYyyyMm) => {
+  const pickEpvForPlanning = (site, targetMonthYyyyMm) => {
     const rawRegime = site?.regime;
     const regimeNumber = (() => {
       if (rawRegime == null) return 0;
@@ -256,18 +263,34 @@ const CalendarModal = (props) => {
       { type: 'EPV3', date: String(epv?.epv3 || '').slice(0, 10) }
     ].filter((c) => /^\d{4}-\d{2}-\d{2}$/.test(c.date));
 
-    const inTarget = candidates
+    const shifted = candidates
       .map((c) => ({ ...c, date: ymdShiftForWorkdays(c.date) || c.date }))
-      .filter((c) => c.date.slice(0, 7) === targetMonthYyyyMm)
       .sort((a, b) => a.date.localeCompare(b.date));
 
+    const inTarget = shifted.filter((c) => c.date.slice(0, 7) === targetMonthYyyyMm);
     const chosen = (inTarget[0] || null);
+    const fallback = shifted[0] || null;
+
+    const epv1Shifted = (shifted.find((c) => c.type === 'EPV1')?.date || '');
+    const epv2Shifted = (shifted.find((c) => c.type === 'EPV2')?.date || '');
+    const epv3Shifted = (shifted.find((c) => c.type === 'EPV3')?.date || '');
+    const hasEpv1InTargetMonth = epv1Shifted ? epv1Shifted.slice(0, 7) === targetMonthYyyyMm : false;
+
+    const maintenanceType = hasEpv1InTargetMonth ? 'PM+Vidange' : 'PM Simple';
+
     return {
       epv1: String(epv?.epv1 || '').slice(0, 10),
       epv2: String(epv?.epv2 || '').slice(0, 10),
       epv3: String(epv?.epv3 || '').slice(0, 10),
-      epvType: chosen?.type || '',
-      targetDate: chosen?.date || ''
+      epv1Shifted,
+      epv2Shifted,
+      epv3Shifted,
+      epvType: chosen?.type || 'EPV1',
+      targetDate: chosen?.date || '',
+      orderDate: (chosen?.date || fallback?.date || ''),
+      hasEpvInTargetMonth: inTarget.length > 0,
+      hasEpv1InTargetMonth,
+      maintenanceType
     };
   };
 
@@ -345,16 +368,22 @@ const CalendarModal = (props) => {
         
         const enrichedSites = sites
           .map((s) => {
-            const picked = pickEpvForTargetMonth(s, targetMonthYyyyMm);
-            const targetDate = picked?.targetDate ? asWorkday(picked.targetDate) : '';
+            const picked = pickEpvForPlanning(s, targetMonthYyyyMm);
+            const orderDate = picked?.orderDate ? asWorkday(picked.orderDate) : '';
             return {
               ...s,
-              _epvType: picked?.epvType || '',
-              _epvTargetDate: targetDate,
+              _epvType: picked?.epvType || 'EPV1',
+              _epvOrderDate: orderDate,
+              _hasEpvInTargetMonth: !!picked?.hasEpvInTargetMonth,
+              _hasEpv1InTargetMonth: !!picked?.hasEpv1InTargetMonth,
+              _maintenanceType: picked?.maintenanceType || 'PM Simple',
+              _epv1Shifted: String(picked?.epv1Shifted || ''),
+              _epv2Shifted: String(picked?.epv2Shifted || ''),
+              _epv3Shifted: String(picked?.epv3Shifted || ''),
               _urgency: calculateUrgencyScore({ ...s, lastVidange: s?.lastVidange || s?.dateDV || s?.date_dv })
             };
           })
-          .filter((s) => s && String(s._epvType || '') && String(s._epvTargetDate || ''));
+          .filter((s) => s);
 
         if (capacity === 2) {
           const pairedIds = new Set();
@@ -394,8 +423,8 @@ const CalendarModal = (props) => {
               const pairedSite = enrichedSites.find(s => String(s.id) === pairedSiteId);
               if (pairedSite && !processed.has(String(pairedSite.id))) {
                 const driver = (() => {
-                  const aDate = String(site._epvTargetDate || '');
-                  const bDate = String(pairedSite._epvTargetDate || '');
+                  const aDate = String(site._epvOrderDate || '');
+                  const bDate = String(pairedSite._epvOrderDate || '');
                   const aUrg = Number(site._urgency || 0);
                   const bUrg = Number(pairedSite._urgency || 0);
                   if (aUrg !== bUrg) return aUrg > bUrg ? site : pairedSite;
@@ -407,7 +436,7 @@ const CalendarModal = (props) => {
                   type: 'pair',
                   sites: [site, pairedSite],
                   urgency: Math.max(Number(site._urgency || 0), Number(pairedSite._urgency || 0)),
-                  targetDate: String(driver._epvTargetDate || ''),
+                  targetDate: String(driver._epvOrderDate || ''),
                   driver
                 });
                 processed.add(siteId);
@@ -419,7 +448,7 @@ const CalendarModal = (props) => {
                 type: 'single',
                 sites: [site],
                 urgency: Number(site._urgency || 0),
-                targetDate: String(site._epvTargetDate || ''),
+                targetDate: String(site._epvOrderDate || ''),
                 driver: site
               });
               processed.add(siteId);
@@ -427,7 +456,7 @@ const CalendarModal = (props) => {
           }
         });
         
-        // Sort groups by EPV date then urgency (the schedule date is assigned sequentially from month start)
+        // Sort groups by EPV order date then urgency (the schedule date is assigned sequentially from month start)
         groups.sort((a, b) => {
           const d1 = String(a.targetDate || '').localeCompare(String(b.targetDate || ''));
           if (d1 !== 0) return d1;
@@ -442,8 +471,7 @@ const CalendarModal = (props) => {
           let plannedDate = '';
           let attempts = 0;
           const maxAttempts = 60; // Max 2 months of attempts
-          const groupMin = String(group?.targetDate || '');
-          let currentYmd = groupMin && cursorYmd < groupMin ? groupMin : cursorYmd;
+          let currentYmd = cursorYmd;
           currentYmd = nextWorkdayForward(currentYmd) || currentYmd;
           
           while (!plannedDate && attempts < maxAttempts) {
@@ -470,6 +498,9 @@ const CalendarModal = (props) => {
           if (plannedDate) {
             group.sites.forEach(site => {
               const siteId = String(site.id);
+              const pairSite = group.type === 'pair'
+                ? group.sites.find((s) => String(s?.id) !== siteId) || null
+                : null;
               planning.push({
                 siteId: siteId,
                 siteCode: site.idSite,
@@ -479,10 +510,15 @@ const CalendarModal = (props) => {
                 technicianId: techId,
                 plannedDate: plannedDate,
                 epvType: String(site._epvType || ''),
+                maintenanceType: String(site._maintenanceType || ''),
                 regime: site.regime,
                 lastVidange: site.lastVidange || site.dateDV || site.date_dv,
+                epv1Date: String(site._epv1Shifted || ''),
+                epv2Date: String(site._epv2Shifted || ''),
+                epv3Date: String(site._epv3Shifted || ''),
                 urgency: Number(site._urgency || 0),
-                pairId: group.type === 'pair' ? `${siteId}-${String(pairMap.get(siteId) || '')}` : null
+                pairId: group.type === 'pair' ? `${siteId}-${String(pairMap.get(siteId) || '')}` : null,
+                pairSiteCode: pairSite?.idSite || ''
               });
             });
           }
@@ -513,8 +549,14 @@ const CalendarModal = (props) => {
         if (techCompare !== 0) return techCompare;
         return b.urgency - a.urgency;
       });
+
+      const withNumbers = planning.map((it) => ({
+        ...it,
+        number: '',
+        state: 'Planned'
+      }));
       
-      setPlanningData(planning);
+      setPlanningData(withNumbers);
       setShowPlanning(true);
 
       if (localErrors.length > 0) {
@@ -1010,7 +1052,10 @@ const CalendarModal = (props) => {
                   {planningData.length > 0 && (
                     <div className="space-y-4">
                       <div className="text-sm text-gray-600">
-                        {planningData.length} sites planifiés • {new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                        {(() => {
+                          const target = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+                          return `${planningData.length} sites planifiés • ${target.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}`;
+                        })()}
                       </div>
                       
 
@@ -1018,13 +1063,17 @@ const CalendarModal = (props) => {
                         <table className="min-w-full text-sm">
                           <thead className="sticky top-0 bg-gray-50">
                             <tr className="text-left">
-                              <th className="p-2 border-b">Date</th>
-                              <th className="p-2 border-b">Technicien</th>
+                              <th className="p-2 border-b">Scheduled WO Date</th>
+                              <th className="p-2 border-b">Assigned to</th>
                               <th className="p-2 border-b">Site</th>
                               <th className="p-2 border-b">Nom</th>
                               <th className="p-2 border-b">Région</th>
                               <th className="p-2 border-b">Régime</th>
-                              <th className="p-2 border-b">EPV</th>
+                              <th className="p-2 border-b">Type</th>
+                              <th className="p-2 border-b">DG Service 2</th>
+                              <th className="p-2 border-b">EPV2</th>
+                              <th className="p-2 border-b">DG Service 3</th>
+                              <th className="p-2 border-b">EPV3</th>
                               <th className="p-2 border-b">Urgence</th>
                               <th className="p-2 border-b">Paire</th>
                             </tr>
@@ -1044,12 +1093,23 @@ const CalendarModal = (props) => {
                                 </td>
                                 <td className="p-2 border-b">
                                   <span className={`px-2 py-1 rounded text-xs ${
-                                    item.epvType === 'EPV1' ? 'bg-green-100 text-green-800' :
-                                    item.epvType === 'EPV2' ? 'bg-yellow-100 text-yellow-800' :
-                                    'bg-orange-100 text-orange-800'
+                                    item.maintenanceType === 'PM+Vidange' ? 'bg-green-100 text-green-800' :
+                                    'bg-slate-100 text-slate-800'
                                   }`}>
-                                    {item.epvType}
+                                    {item.maintenanceType}
                                   </span>
+                                </td>
+                                <td className="p-2 border-b">
+                                  {item.maintenanceType === 'PM+Vidange' ? 'DG Service 2' : '—'}
+                                </td>
+                                <td className="p-2 border-b">
+                                  {item.maintenanceType === 'PM+Vidange' ? (item.epv2Date || '—') : '—'}
+                                </td>
+                                <td className="p-2 border-b">
+                                  {item.maintenanceType === 'PM+Vidange' ? 'DG Service 3' : '—'}
+                                </td>
+                                <td className="p-2 border-b">
+                                  {item.maintenanceType === 'PM+Vidange' ? (item.epv3Date || '—') : '—'}
                                 </td>
                                 <td className="p-2 border-b">
                                   <div className="flex items-center gap-1">
@@ -1063,7 +1123,7 @@ const CalendarModal = (props) => {
                                 </td>
                                 <td className="p-2 border-b">
                                   {item.pairId ? (
-                                    <span className="text-xs text-purple-600">⚭ {item.pairId.split('-')[1]}</span>
+                                    <span className="text-xs text-purple-600">⚭ {item.pairSiteCode || '—'}</span>
                                   ) : (
                                     <span className="text-xs text-gray-400">—</span>
                                   )}
@@ -1091,6 +1151,12 @@ const CalendarModal = (props) => {
                           Exporter Excel
                         </button>
                       </div>
+                    </div>
+                  )}
+
+                  {planningData.length === 0 && planningErrors.length === 0 && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded text-sm text-amber-900">
+                      Aucun site planifié.
                     </div>
                   )}
                 </div>
