@@ -1,5 +1,27 @@
 // Toutes les fonctions de calcul - LOGIQUE MÉTIER PRÉSERVÉE
 
+const APP_TIME_ZONE = 'Africa/Brazzaville';
+
+const ymdInTimeZone = (d, timeZone = APP_TIME_ZONE) => {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(d);
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+};
+
+const ymdToUtcMs = (ymd) => {
+  const src = String(ymd || '').slice(0, 10);
+  const m = src.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return NaN;
+  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+};
+
 export const calculateRegime = (nh1, nh2, date1, date2) => {
   const diffNH = nh2 - nh1;
   const diffDays = Math.abs(Math.ceil((new Date(date2) - new Date(date1)) / (1000 * 60 * 60 * 24)));
@@ -18,21 +40,15 @@ export const calculateEstimatedNH = (nh2A, dateA, regime) => {
   if (!Number.isFinite(base)) return 0;
   if (!Number.isFinite(r) || r === 0) return base;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const lastUpdate = new Date(dateA);
-  if (Number.isNaN(lastUpdate.getTime())) return base;
-  lastUpdate.setHours(0, 0, 0, 0);
+  const todayYmd = ymdInTimeZone(new Date(), APP_TIME_ZONE);
+  const todayMs = ymdToUtcMs(todayYmd);
+  const lastUpdateMs = ymdToUtcMs(dateA);
+  if (!Number.isFinite(todayMs) || !Number.isFinite(lastUpdateMs)) return base;
 
-  const daysSinceUpdate = Math.floor((today - lastUpdate) / (1000 * 60 * 60 * 24));
+  const daysSinceUpdate = Math.floor((todayMs - lastUpdateMs) / (1000 * 60 * 60 * 24));
   if (!Number.isFinite(daysSinceUpdate) || daysSinceUpdate <= 0) return base;
 
   return base + (r * daysSinceUpdate);
-};
-
-const ymdLocal = (d) => {
-  const pad2 = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 };
 
 export const addDays = (date, days) => {
@@ -64,9 +80,7 @@ export const calculateEPVDates = (regime, dateA, nh1DV, nhEstimated) => {
     return { epv1: 'N/A', epv2: 'N/A', epv3: 'N/A' };
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayYmd = ymdLocal(today);
+  const todayYmd = ymdInTimeZone(new Date(), APP_TIME_ZONE);
   
   const diffEstimated = nhEstimated - nh1DV;
   const remainingHours = SEUIL - diffEstimated;

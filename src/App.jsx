@@ -19,6 +19,7 @@ import {
 
 const APP_VERSION = '2.0.7';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
+const DAILY_NH_UPDATE_STORAGE_KEY = 'gma_daily_nh_update_ymd';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
 const SPLASH_MIN_MS = 4350;
 
@@ -568,6 +569,33 @@ const GeneratorMaintenanceApp = () => {
     }
   };
 
+  const ymdInTimeZone = (d, timeZone) => {
+    try {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(d);
+    } catch {
+      return new Date().toISOString().slice(0, 10);
+    }
+  };
+
+  const runDailyNhUpdate = async () => {
+    const todayYmd = ymdInTimeZone(new Date(), 'Africa/Brazzaville');
+    const stored = await storage.get(DAILY_NH_UPDATE_STORAGE_KEY);
+    const already = stored?.value ? String(stored.value).slice(0, 10) === todayYmd : false;
+    if (already) return { ok: true, skipped: true, today: todayYmd };
+
+    const res = await apiFetchJson('/api/sites/daily-update', {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+    await storage.set(DAILY_NH_UPDATE_STORAGE_KEY, todayYmd);
+    return res;
+  };
+
   const refreshUsers = async () => {
     setUsersBusy(true);
     setUsersError('');
@@ -590,6 +618,11 @@ const GeneratorMaintenanceApp = () => {
         const data = await apiFetchJson('/api/auth/me', { method: 'GET' });
         if (data?.user?.email) {
           setAuthUser(data.user);
+          try {
+            await runDailyNhUpdate();
+          } catch (e) {
+            // ignore
+          }
           await loadData();
           await loadFicheHistory();
           if (data?.user?.role === 'admin') {
@@ -3047,9 +3080,10 @@ const GeneratorMaintenanceApp = () => {
             'Date DV': formatDate(updatedSite.dateDV),
             'NH2 A': updatedSite.nh2A,
             'Date A': formatDate(updatedSite.dateA),
-            'NH Estimé': updatedSite.nhEstimated,
+            'Date updatée': formatDate(updatedSite.dateA),
+            'NH updaté': updatedSite.nhEstimated,
             'Diff NHs': updatedSite.diffNHs,
-            'Diff Estimée': updatedSite.diffEstimated,
+            'Diff updatée': updatedSite.diffEstimated,
             'Seuil': updatedSite.seuil,
             'Date EPV 1': formatDate(updatedSite.epv1),
             'Jours EPV 1': getDaysUntil(updatedSite.epv1),
@@ -8021,7 +8055,7 @@ const GeneratorMaintenanceApp = () => {
                           <span className="text-xs bg-gray-200 px-2 py-1 rounded">{site.idSite}</span>
                         </div>
                         <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                          Technicien: {site.technician} | Régime: {site.regime}H/j | NH Estimé: {site.nhEstimated}H | Diff: {site.diffEstimated}H
+                          Technicien: {site.technician} | Régime: {site.regime}H/j | NH updaté: {site.nhEstimated}H | Diff updatée: {site.diffEstimated}H
                         </p>
                       </div>
                       <div className="text-left sm:text-right">
@@ -9407,9 +9441,9 @@ const GeneratorMaintenanceApp = () => {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3 mt-4">
+                      <div className="grid grid-cols-3 gap-3 mt-4">
                         <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                          <div className="text-xs text-gray-600">NH estimé</div>
+                          <div className="text-xs text-gray-600">NH updaté</div>
                           <div className="flex items-center gap-2">
                             <span className="text-lg font-bold text-blue-600">{Number.isFinite(Number(site.nhEstimated)) ? `${site.nhEstimated}H` : '-'}</span>
                             {daysUntil < 0 && !site.retired && (
@@ -9421,7 +9455,7 @@ const GeneratorMaintenanceApp = () => {
                           </div>
                         </div>
                         <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                          <div className="text-xs text-gray-600">Diff estimée</div>
+                          <div className="text-xs text-gray-600">Diff updatée</div>
                           <div className="text-lg font-bold text-blue-600">{site.diffEstimated}H</div>
                         </div>
                       </div>
