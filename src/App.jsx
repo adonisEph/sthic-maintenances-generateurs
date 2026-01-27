@@ -9458,6 +9458,10 @@ const GeneratorMaintenanceApp = () => {
                           <div className="text-xs text-gray-600">Diff updatée</div>
                           <div className="text-lg font-bold text-blue-600">{site.diffEstimated}H</div>
                         </div>
+                        <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                          <div className="text-xs text-gray-600">Date updatée</div>
+                          <div className="text-lg font-bold text-blue-600">{formatDate(site.dateA)}</div>
+                        </div>
                       </div>
 
                       <div className="mt-4 grid grid-cols-3 gap-2">
