@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { AlertCircle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users, Menu, ChevronLeft, Trash2, RotateCcw } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
@@ -6,6 +6,27 @@ import html2canvas from 'html2canvas';
 import { useStorage } from './hooks/useStorage';
 import PmModal from './components/PmModal';
 import CalendarModal from './components/CalendarModal';
+import AddSiteForm from './components/sites/AddSiteForm';
+import UpdateSiteForm from './components/sites/UpdateSiteForm';
+import EditSiteForm from './components/sites/EditSiteForm';
+import DeleteSiteConfirmModal from './components/sites/DeleteSiteConfirmModal';
+import SitesStats from './components/sites/SitesStats';
+import SitesTechnicianFilter from './components/sites/SitesTechnicianFilter';
+import SidebarSitesActions from './components/sites/SidebarSitesActions';
+import DashboardHeader from './components/dashboard/DashboardHeader';
+import DashboardKpiGrid from './components/dashboard/DashboardKpiGrid';
+import DashboardDetailsModal from './components/dashboard/DashboardDetailsModal';
+import AccountModal from './components/account/AccountModal';
+import UsersModal from './components/users/UsersModal';
+import PresenceModal from './components/presence/PresenceModal';
+import ResetConfirmModal from './components/reset/ResetConfirmModal';
+import InterventionsModal from './components/interventions/InterventionsModal';
+import ScoringModal from './components/scoring/ScoringModal';
+import HistoryModal from './components/history/HistoryModal';
+import UploadBannerModal from './components/fiche/UploadBannerModal';
+import FicheModal from './components/fiche/FicheModal';
+import TechnicianCalendarModal from './components/calendar/TechnicianCalendarModal';
+import DayDetailsModal from './components/calendar/DayDetailsModal';
 
 import {
   calculateRegime,
@@ -17,7 +38,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '2.0.7';
+const APP_VERSION = '2.0.8';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const DAILY_NH_UPDATE_STORAGE_KEY = 'gma_daily_nh_update_ymd';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
@@ -4527,66 +4548,19 @@ const GeneratorMaintenanceApp = () => {
 
           <div className="h-px bg-slate-700/60 my-1" />
 
-          {canWriteSites && (
-            <button
-              onClick={() => {
-                setSidebarOpen(false);
-                setShowAddForm(!showAddForm);
-              }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-base font-semibold"
-            >
-              <Plus size={18} />
-              Nouveau Site
-            </button>
-          )}
-
-          {canImportExport && (
-            <div className="flex flex-col gap-2">
-              <label
-                onClick={() => setSidebarOpen(false)}
-                className={`w-full px-3 py-2 rounded-lg flex items-center gap-2 text-base font-semibold ${
-                  importBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-800 cursor-pointer'
-                }`}
-              >
-                <Upload size={18} />
-                {importBusy ? 'Import en cours…' : 'Importer Excel'}
-
-                <input
-                  type="file"
-                  accept=".xlsx,.xls"
-                  onChange={handleImportExcel}
-                  className="hidden"
-                  disabled={importBusy}
-                />
-              </label>
-
-              {importBusy && (
-                <div className="w-full">
-                  <div className="text-[11px] text-gray-600 mb-1">{importStep || 'Import…'} ({importProgress}%)</div>
-                  <div className="w-full h-2 bg-gray-200 rounded">
-                    <div
-                      className="h-2 bg-green-600 rounded"
-                      style={{ width: `${Math.max(0, Math.min(100, Number(importProgress) || 0))}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {canImportExport && (
-            <button
-              onClick={() => {
-                setSidebarOpen(false);
-                handleExportExcel();
-              }}
-              disabled={sites.length === 0 || exportBusy || importBusy}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 disabled:opacity-60 text-base font-semibold"
-            >
-              <Download size={18} />
-              Exporter Excel
-            </button>
-          )}
+          <SidebarSitesActions
+            canWriteSites={canWriteSites}
+            canImportExport={canImportExport}
+            onCloseSidebar={() => setSidebarOpen(false)}
+            onToggleAddForm={() => setShowAddForm(!showAddForm)}
+            importBusy={importBusy}
+            importStep={importStep}
+            importProgress={importProgress}
+            onImportExcelChange={handleImportExcel}
+            sitesCount={sites.length}
+            exportBusy={exportBusy}
+            onExportExcel={handleExportExcel}
+          />
 
           {!isTechnician ? (
             <button
@@ -4828,359 +4802,115 @@ const GeneratorMaintenanceApp = () => {
 
           <div className="p-2 sm:p-4 md:p-6">
             <div className="max-w-7xl mx-auto">
-              {!isTechnician && (
-                <div className="flex items-center gap-2 mb-4">
-                  <Filter size={18} className="text-gray-600" />
-                  <select
-                    value={filterTechnician}
-                    onChange={(e) => setFilterTechnician(e.target.value)}
-                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1 sm:flex-initial"
-                  >
-                    <option value="all">Tous les techniciens</option>
-                    {technicians.filter(t => t !== 'all').map(tech => (
-                      <option key={tech} value={tech}>{tech}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
+            <SitesTechnicianFilter
+              isTechnician={isTechnician}
+              filterTechnician={filterTechnician}
+              onChange={setFilterTechnician}
+              technicians={technicians}
+            />
               <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 md:mb-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-            <div>
-              <h2 className="text-lg sm:text-xl font-bold text-gray-800">Dashboard</h2>
-              <p className="text-xs text-gray-600">Résumé mensuel (seuil contractuel: 250H)</p>
-            </div>
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
-              <label className="text-xs text-gray-600">Mois</label>
-              <input
-                type="month"
-                value={dashboardMonth}
-                onChange={(e) => setDashboardMonth(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-              />
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    await loadData();
-                  } catch {
-                    // ignore
-                  }
-                  try {
-                    await loadFicheHistory();
-                  } catch {
-                    // ignore
-                  }
-                }}
-                className="bg-gray-200 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-300 flex items-center gap-2 text-sm font-semibold w-full sm:w-auto"
-                disabled={exportBusy}
-              >
-                Rafraîchir
-              </button>
-              {canExportExcel && (
-                <button
-                  type="button"
-                  onClick={handleExportDashboardSummaryExcel}
-                  className="bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center justify-center gap-2 text-sm font-semibold w-full sm:w-auto"
-                  disabled={exportBusy}
-                >
-                  <Download size={16} />
-                  Exporter Excel
-                </button>
-              )}
-            </div>
-          </div>
+          <DashboardHeader
+              dashboardMonth={dashboardMonth}
+              onDashboardMonthChange={setDashboardMonth}
+              onRefresh={async () => {
+                try {
+                  await loadData();
+                } catch {
+                  // ignore
+                }
+                try {
+                  await loadFicheHistory();
+                } catch {
+                  // ignore
+                }
+              }}
+              canExportExcel={canExportExcel}
+              onExportExcel={handleExportDashboardSummaryExcel}
+              exportBusy={exportBusy}
+          />
 
           {(() => {
             const { plannedEvents, remainingEvents, doneByPlannedDate, contractOk, contractOver } = computeDashboardData(dashboardMonth);
 
             return (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
-                <button
-                  type="button"
-                  onClick={() => setDashboardDetails({ open: true, title: 'Vidanges effectuées dans le délai contractuel', kind: 'contract_ok', items: contractOk })}
-                  className="bg-green-50 border border-green-200 rounded-xl p-4 text-left hover:bg-green-100"
-                >
-                  <div className="text-xs text-green-800 font-semibold">Dans délai contractuel</div>
-                  <div className="text-2xl font-bold text-green-700 mt-1">{contractOk.length}</div>
-                  <div className="text-xs text-green-700 mt-2">Clique pour voir les sites</div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setDashboardDetails({ open: true, title: 'Vidanges effectuées en dépassement du délai contractuel', kind: 'contract_over', items: contractOver })}
-                  className="bg-red-50 border border-red-200 rounded-xl p-4 text-left hover:bg-red-100"
-                >
-                  <div className="text-xs text-red-800 font-semibold">Hors délai contractuel</div>
-                  <div className="text-2xl font-bold text-red-700 mt-1">{contractOver.length}</div>
-                  <div className="text-xs text-red-700 mt-2">Clique pour voir les sites</div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setDashboardDetails({ open: true, title: 'Vidanges planifiées du mois', kind: 'planned', items: plannedEvents })}
-                  className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-left hover:bg-blue-100"
-                >
-                  <div className="text-xs text-blue-800 font-semibold">Planifiées du mois</div>
-                  <div className="text-2xl font-bold text-blue-700 mt-1">{plannedEvents.length}</div>
-                  <div className="text-xs text-blue-700 mt-2">Clique pour voir les sites</div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setDashboardDetails({ open: true, title: 'Vidanges restantes du mois', kind: 'remaining', items: remainingEvents })}
-                  className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-left hover:bg-amber-100"
-                >
-                  <div className="text-xs text-amber-800 font-semibold">Restantes du mois</div>
-                  <div className="text-2xl font-bold text-amber-700 mt-1">{remainingEvents.length}</div>
-                  <div className="text-xs text-amber-700 mt-2">Clique pour voir les sites</div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setDashboardDetails({ open: true, title: 'Vidanges effectuées du mois', kind: 'done', items: doneByPlannedDate })}
-                  className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-left hover:bg-emerald-100"
-                >
-                  <div className="text-xs text-emerald-800 font-semibold">Effectuées du mois</div>
-                  <div className="text-2xl font-bold text-emerald-700 mt-1">{doneByPlannedDate.length}</div>
-                  <div className="text-xs text-emerald-700 mt-2">Clique pour voir les sites</div>
-                </button>
-              </div>
+              <DashboardKpiGrid
+                contractOk={contractOk}
+                contractOver={contractOver}
+                plannedEvents={plannedEvents}
+                remainingEvents={remainingEvents}
+                doneByPlannedDate={doneByPlannedDate}
+                onOpenDetails={(title, kind, items) =>
+                  setDashboardDetails({ open: true, title, kind, items })
+                }
+              />
             );
           })()}
         </div>
 
-        {dashboardDetails.open && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gray-100">
-                <h3 className="text-lg font-bold text-gray-800">{dashboardDetails.title}</h3>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setDashboardDetails({ open: false, title: '', kind: '', items: [] })}
-                    className="bg-gray-400 text-white px-3 py-2 rounded-lg hover:bg-gray-500"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-              </div>
-              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-                {dashboardDetails.items.length === 0 ? (
-                  <div className="text-gray-600">Aucun élément pour ce mois.</div>
-                ) : dashboardDetails.kind === 'contract_ok' || dashboardDetails.kind === 'contract_over' || dashboardDetails.kind === 'done' ? (
-                  <div className="space-y-3">
-                    {dashboardDetails.items.map((f) => (
-                      <div key={f.id} className="border border-gray-200 rounded-lg p-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="font-semibold text-gray-800">{f.siteName}</div>
-                            <div className="text-xs text-gray-600">Ticket: {f.ticketNumber} | Technicien: {f.technician}</div>
-                            {f.dateCompleted && (
-                              <div className="text-xs text-gray-600">Réalisée: {formatDate(f.dateCompleted)}</div>
-                            )}
-                          </div>
-                          <div className="text-right">
-                            <div className="text-xs text-gray-600">Intervalle</div>
-                            <div className="font-bold text-gray-800">{Number.isFinite(f.intervalHours) ? `${f.intervalHours}H` : '-'}</div>
-                            <div className="text-xs text-gray-500">Seuil: {f.contractSeuil || 250}H</div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {dashboardDetails.items.map((ev) => (
-                      <div key={ev.key} className="border border-gray-200 rounded-lg p-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="font-semibold text-gray-800">{ev.siteName}</div>
-                            <div className="text-xs text-gray-600">{ev.technician}</div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-xs bg-gray-100 px-2 py-1 rounded inline-block">{ev.epvType}</div>
-                            <div className="text-sm text-gray-800 mt-1">{formatDate(ev.plannedDate)}</div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {isAdmin ? (
-                <div className="relative p-4 border-t bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                  <button
-                    onClick={() => setDashboardDetails({ open: false, title: '', kind: '', items: [] })}
-                    className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold w-full sm:w-auto"
-                  >
-                    Fermer
-                  </button>
-                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                    {canExportExcel && dashboardDetails.items.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={handleExportDashboardDetailsExcel}
-                        className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold flex items-center justify-center gap-2 w-full sm:w-auto"
-                        disabled={exportBusy}
-                      >
-                        <Download size={18} />
-                        Exporter Excel
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="relative p-4 border-t bg-white flex flex-col sm:flex-row gap-3 sm:justify-end">
-                  {canExportExcel && dashboardDetails.items.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleExportDashboardDetailsExcel}
-                      className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold flex items-center justify-center gap-2 w-full sm:w-auto"
-                      disabled={exportBusy}
-                    >
-                      <Download size={18} />
-                      Exporter Excel
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setDashboardDetails({ open: false, title: '', kind: '', items: [] })}
-                    className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold w-full sm:w-auto"
-                  >
-                    Fermer
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        <DashboardDetailsModal
+          open={dashboardDetails.open}
+          title={dashboardDetails.title}
+          kind={dashboardDetails.kind}
+          items={dashboardDetails.items}
+          isAdmin={isAdmin}
+          canExportExcel={canExportExcel}
+          exportBusy={exportBusy}
+          onClose={() => setDashboardDetails({ open: false, title: '', kind: '', items: [] })}
+          onExportExcel={handleExportDashboardDetailsExcel}
+          formatDate={formatDate}
+        />  
 
-        {showAccountModal && authUser?.email && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-md w-full overflow-hidden flex flex-col">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-slate-800 text-white">
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                  <Edit size={22} />
-                  Mon compte
-                </h2>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => {
-                      setShowAccountModal(false);
-                      setAccountForm({ password: '', confirm: '' });
-                      setAccountError('');
-                    }}
-                    className="hover:bg-slate-900 p-2 rounded"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-4 sm:p-6">
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">Email</label>
-                    <input
-                      type="email"
-                      value={authUser.email}
-                      readOnly
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-700"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">Nouveau mot de passe</label>
-                    <input
-                      type="password"
-                      value={accountForm.password}
-                      onChange={(e) => {
-                        setAccountForm((prev) => ({ ...(prev || {}), password: e.target.value }));
-                        setAccountError('');
-                      }}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      placeholder="Minimum 6 caractères"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">Confirmer le mot de passe</label>
-                    <input
-                      type="password"
-                      value={accountForm.confirm}
-                      onChange={(e) => {
-                        setAccountForm((prev) => ({ ...(prev || {}), confirm: e.target.value }));
-                        setAccountError('');
-                      }}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                    />
-                  </div>
-
-                  {accountError && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">
-                      {accountError}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="p-4 border-t bg-white flex flex-col sm:flex-row sm:justify-end gap-2">
-                <button
-                  onClick={() => {
-                    setShowAccountModal(false);
-                    setAccountForm({ password: '', confirm: '' });
-                    setAccountError('');
-                  }}
-                  className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
-                  disabled={accountSaving}
-                >
-                  Annuler
-                </button>
-                <button
-                  onClick={() => {
-                    (async () => {
-                      try {
-                        if (accountSaving) return;
-                        const password = String(accountForm.password || '');
-                        const confirm = String(accountForm.confirm || '');
-                        if (!password) {
-                          setAccountError('Veuillez saisir un mot de passe.');
-                          return;
-                        }
-                        if (password.length < 6) {
-                          setAccountError('Mot de passe trop court (min 6 caractères).');
-                          return;
-                        }
-                        if (password !== confirm) {
-                          setAccountError('Les mots de passe ne correspondent pas.');
-                          return;
-                        }
-                        setAccountSaving(true);
-                        setAccountError('');
-                        await apiFetchJson('/api/auth/change-password', {
-                          method: 'POST',
-                          body: JSON.stringify({ password })
-                        });
-                        setShowAccountModal(false);
-                        setAccountForm({ password: '', confirm: '' });
-                        setAccountError('');
-                        alert('✅ Mot de passe mis à jour.');
-                      } catch (e) {
-                        setAccountError(e?.message || 'Erreur serveur.');
-                      } finally {
-                        setAccountSaving(false);
-                      }
-                    })();
-                  }}
-                  className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold"
-                  disabled={accountSaving}
-                >
-                  Enregistrer
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
+        <AccountModal
+  open={showAccountModal}
+  email={authUser?.email || ''}
+  accountForm={accountForm}
+  onChange={(next) => {
+    setAccountForm(next);
+    setAccountError('');
+  }}
+  accountError={accountError}
+  accountSaving={accountSaving}
+  onClose={() => {
+    setShowAccountModal(false);
+    setAccountForm({ password: '', confirm: '' });
+    setAccountError('');
+  }}
+  onSave={() => {
+    (async () => {
+      try {
+        if (accountSaving) return;
+        const password = String(accountForm.password || '');
+        const confirm = String(accountForm.confirm || '');
+        if (!password) {
+          setAccountError('Veuillez saisir un mot de passe.');
+          return;
+        }
+        if (password.length < 6) {
+          setAccountError('Mot de passe trop court (min 6 caractères).');
+          return;
+        }
+        if (password !== confirm) {
+          setAccountError('Les mots de passe ne correspondent pas.');
+          return;
+        }
+        setAccountSaving(true);
+        setAccountError('');
+        await apiFetchJson('/api/auth/change-password', {
+          method: 'POST',
+          body: JSON.stringify({ password })
+        });
+        setShowAccountModal(false);
+        setAccountForm({ password: '', confirm: '' });
+        setAccountError('');
+        alert('✅ Mot de passe mis à jour.');
+      } catch (e) {
+        setAccountError(e?.message || 'Erreur serveur.');
+      } finally {
+        setAccountSaving(false);
+      }
+    })();
+  }}
+/>
                 <PmModal
           showPm={showPm}
           canUsePm={canUsePm}
@@ -5246,2795 +4976,230 @@ const GeneratorMaintenanceApp = () => {
           formatDate={formatDate}
         />
 
-        {false && showPm && canUsePm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
-            <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-7xl sm:max-h-[95vh]">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-teal-800 text-white">
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                  <TrendingUp size={22} />
-                  Maintenances planifiées (PM)
-                  {isViewer && (
-                    <span className="ml-2 bg-white/15 text-white border border-white/20 px-2 py-0.5 rounded-full text-xs font-semibold">
-                      Lecture seule
-                    </span>
-                  )}
-                </h2>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => {
-                      setShowPm(false);
-                      setPmError('');
-                      setPmNotice('');
-                    }}
-                    className="hover:bg-teal-900 p-2 rounded"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-                <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 mb-4">
-                  <div className="xl:col-span-4 bg-gray-50 border border-gray-200 rounded-xl p-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-end">
-                      <div className="flex flex-col">
-                        <label className="text-xs font-semibold text-gray-700 mb-1">Mois</label>
-                        <input
-                          type="month"
-                          value={pmMonth}
-                          onChange={async (e) => {
-                            const next = String(e.target.value || '').trim();
-                            setPmMonth(next);
-                            await refreshPmAll(next);
-                          }}
-                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
-                          disabled={pmBusy}
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          await refreshPmAll(pmMonth);
-                        }}
-                        className="bg-gray-200 text-gray-900 px-3 py-2 rounded-lg hover:bg-gray-300 text-sm font-semibold"
-                        disabled={pmBusy}
-                      >
-                        Rafraîchir
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handlePmExportExcel}
-                        className="sm:col-span-2 bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-800 text-sm font-semibold flex items-center justify-center gap-2"
-                        disabled={pmBusy}
-                      >
-                        <Download size={16} />
-                        Exporter Excel
-                      </button>
-
-                      <div className="flex flex-col sm:col-span-2">
-                        <label className="text-xs font-semibold text-gray-700 mb-1">Reprogrammations (jour)</label>
-                        <input
-                          type="date"
-                          value={pmReprogExportDate}
-                          onChange={(e) => setPmReprogExportDate(String(e.target.value || ''))}
-                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
-                          disabled={pmBusy}
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handlePmExportReprogExcel}
-                        className="sm:col-span-2 bg-slate-800 text-white px-3 py-2 rounded-lg hover:bg-slate-900 text-sm font-semibold flex items-center justify-center gap-2"
-                        disabled={pmBusy || exportBusy}
-                      >
-                        <Download size={16} />
-                        Export reprogrammées
-                      </button>
-                    </div>
-                  </div>
-
-                  {isAdmin && (
-                    <div className="xl:col-span-4 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-end">
-                        <div className="flex flex-col">
-                          <label className="text-xs font-semibold text-emerald-900 mb-1">Technicien</label>
-                          <select
-                            value={pmSendTechUserId}
-                            onChange={(e) => setPmSendTechUserId(e.target.value)}
-                            className="border border-emerald-200 rounded-lg px-3 py-2 text-sm bg-white"
-                            disabled={pmBusy || pmSendBusy}
-                          >
-                            <option value="">-- Technicien --</option>
-                            {(Array.isArray(users) ? users : [])
-                              .filter((u) => u && u.role === 'technician')
-                              .slice()
-                              .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')))
-                              .map((u) => (
-                                <option key={u.id} value={u.id}>
-                                  {u.technicianName || u.email}
-                                </option>
-                              ))}
-                          </select>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleSendPmMonthPlanning}
-                          className="bg-emerald-700 text-white px-3 py-2 rounded-lg hover:bg-emerald-800 text-sm font-semibold disabled:bg-gray-400"
-                          disabled={!pmSendTechUserId || pmBusy || pmSendBusy}
-                        >
-                          Envoyer planning PM
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPmRejectedDateFilter('');
-                            setPmRejectedModalOpen(true);
-                          }}
-                          className="sm:col-span-2 bg-white border border-emerald-200 text-emerald-900 px-3 py-2 rounded-lg hover:bg-emerald-100 text-sm font-semibold"
-                          disabled={pmBusy}
-                        >
-                          Voir reprog rejetées
-                        </button>
-                      </div>
-                      {(Array.isArray(users) ? users : []).filter((u) => u && u.role === 'technician').length === 0 && (
-                        <div className="mt-2 text-xs text-emerald-900/80">
-                          Aucun technicien trouvé. Vérifie que des utilisateurs "technician" existent dans le module Utilisateurs.
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {isAdmin && (
-                    <div className="xl:col-span-4 bg-teal-800 text-white rounded-xl p-3">
-                      <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Actions</div>
-                      <div className="flex flex-col">
-                        <label
-                          className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 ${
-                            pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-teal-900 cursor-pointer'
-                          }`}
-                        >
-                          <Upload size={16} />
-                          Import NOC
-                          <input
-                            type="file"
-                            accept=".xlsx,.xls"
-                            onChange={handlePmNocImport}
-                            className="hidden"
-                            disabled={pmBusy}
-                          />
-                        </label>
-
-                        <label
-                          className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 ${
-                            pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-teal-900 cursor-pointer'
-                          }`}
-                        >
-                          <Upload size={16} />
-                          Import retour client
-                          <input
-                            type="file"
-                            accept=".xlsx,.xls"
-                            onChange={handlePmClientImport}
-                            className="hidden"
-                            disabled={pmBusy}
-                          />
-                        </label>
-
-                        <button
-                          type="button"
-                          onClick={() => handlePmReset('imports')}
-                          className="text-left px-3 py-2 rounded-lg hover:bg-teal-900 font-semibold text-sm disabled:opacity-60 flex items-center gap-2"
-                          disabled={pmBusy || pmResetBusy}
-                        >
-                          <Trash2 size={16} />
-                          Suppr. imports
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handlePmReset('all')}
-                          className="text-left px-3 py-2 rounded-lg hover:bg-teal-900 font-semibold text-sm disabled:opacity-60 flex items-center gap-2"
-                          disabled={pmBusy || pmResetBusy}
-                        >
-                          <RotateCcw size={16} />
-                          Reset mois
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {pmError && (
-                  <div className="mb-4 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">
-                    {pmError}
-                  </div>
-                )}
-
-                {pmNotice && !pmError && (
-                  <div className="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 rounded-lg text-sm">
-                    {pmNotice}
-                  </div>
-                )}
-
-                {pmClientProgress > 0 && (
-                  <div className="mb-4">
-                    <div className="text-xs text-gray-700 mb-1">Import retour client: {pmClientStep || '…'}</div>
-                    <div className="w-full bg-gray-200 rounded h-2 overflow-hidden">
-                      <div className="bg-slate-700 h-2" style={{ width: `${pmClientProgress}%` }} />
-                    </div>
-                  </div>
-                )}
-
-                {pmClientCompare && (
-                  <div className="mb-4 bg-slate-50 border border-slate-200 rounded-lg p-3">
-                    <div className="text-sm font-semibold text-slate-900 mb-2">
-                      Retour client vs planning de base ({pmClientCompare.month})
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs text-slate-800">
-                      <div className="bg-white border border-slate-200 rounded p-2">Base: <span className="font-semibold">{pmClientCompare.baseCount}</span></div>
-                      <div className="bg-white border border-slate-200 rounded p-2">Client: <span className="font-semibold">{pmClientCompare.clientCount}</span></div>
-                      <div className="bg-emerald-50 border border-emerald-200 rounded p-2">Retenus: <span className="font-semibold">{pmClientCompare.retained.length}</span></div>
-                      <div className="bg-red-50 border border-red-200 rounded p-2">Retirés: <span className="font-semibold">{pmClientCompare.removed.length}</span></div>
-                      <div className="bg-amber-50 border border-amber-200 rounded p-2 sm:col-span-2">Ajouts: <span className="font-semibold">{pmClientCompare.added.length}</span></div>
-                      <div className="bg-white border border-slate-200 rounded p-2 sm:col-span-2">Plan ID: <span className="font-mono">{pmClientCompare.basePlanId}</span></div>
-                    </div>
-
-                    <div className="mt-3 grid grid-cols-1 lg:grid-cols-3 gap-3">
-                      <div className="bg-white border border-slate-200 rounded-lg overflow-auto max-h-64">
-                        <div className="text-xs font-semibold px-3 py-2 border-b">Retenus</div>
-                        <table className="min-w-full text-xs">
-                          <thead className="sticky top-0 bg-gray-50">
-                            <tr>
-                              <th className="p-2 border-b">Date</th>
-                              <th className="p-2 border-b">Site</th>
-                              <th className="p-2 border-b">Type</th>
-                              <th className="p-2 border-b">Ticket</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {pmClientCompare.retained.slice(0, 50).map((r, idx) => (
-                              <tr key={`ret-${r.siteCode}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-gray-50'}>
-                                <td className="p-2 border-b whitespace-nowrap">{r.plannedDate}</td>
-                                <td className="p-2 border-b whitespace-pre-line leading-tight break-words">{r.siteName || r.siteCode}</td>
-                                <td className="p-2 border-b">{r.maintenanceType}</td>
-                                <td className="p-2 border-b">{r.number || ''}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        {pmClientCompare.retained.length > 50 && (
-                          <div className="text-xs text-gray-600 p-2">Affichage limité (50) — total: {pmClientCompare.retained.length}</div>
-                        )}
-                      </div>
-
-                      <div className="bg-white border border-red-200 rounded-lg overflow-auto max-h-64">
-                        <div className="text-xs font-semibold px-3 py-2 border-b text-red-800">Retirés</div>
-                        <table className="min-w-full text-xs">
-                          <thead className="sticky top-0 bg-red-50">
-                            <tr>
-                              <th className="p-2 border-b">Date</th>
-                              <th className="p-2 border-b">Site</th>
-                              <th className="p-2 border-b">Type</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {pmClientCompare.removed.slice(0, 50).map((r, idx) => (
-                              <tr key={`rem-${r.siteCode}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-red-50'}>
-                                <td className="p-2 border-b whitespace-nowrap">{r.plannedDate}</td>
-                                <td className="p-2 border-b whitespace-pre-line leading-tight break-words">{r.siteName || r.siteCode}</td>
-                                <td className="p-2 border-b">{r.maintenanceType}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        {pmClientCompare.removed.length > 50 && (
-                          <div className="text-xs text-gray-600 p-2">Affichage limité (50) — total: {pmClientCompare.removed.length}</div>
-                        )}
-                      </div>
-
-                      <div className="bg-white border border-amber-200 rounded-lg overflow-auto max-h-64">
-                        <div className="text-xs font-semibold px-3 py-2 border-b text-amber-900">Ajouts</div>
-                        <table className="min-w-full text-xs">
-                          <thead className="sticky top-0 bg-amber-50">
-                            <tr>
-                              <th className="p-2 border-b">Date</th>
-                              <th className="p-2 border-b">Site</th>
-                              <th className="p-2 border-b">Type</th>
-                              <th className="p-2 border-b">Ticket</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {pmClientCompare.added.slice(0, 50).map((r, idx) => (
-                              <tr key={`add-${r.siteCode}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-amber-50'}>
-                                <td className="p-2 border-b whitespace-nowrap">{r.plannedDate}</td>
-                                <td className="p-2 border-b whitespace-pre-line leading-tight break-words">{r.siteName || r.siteCode}</td>
-                                <td className="p-2 border-b">{r.maintenanceType}</td>
-                                <td className="p-2 border-b">{r.number || ''}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        {pmClientCompare.added.length > 50 && (
-                          <div className="text-xs text-gray-600 p-2">Affichage limité (50) — total: {pmClientCompare.added.length}</div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="text-sm text-gray-700 mb-4">
-                  Tickets du mois: <span className="font-semibold">{Array.isArray(pmItems) ? pmItems.length : 0}</span>
-                </div>
-
-                {(() => {
-                  const items = Array.isArray(pmItems) ? pmItems : [];
-                  const imports = Array.isArray(pmImports) ? pmImports : [];
-
-                  const norm = (s) => String(s || '').trim().toLowerCase();
-                  const bucketForState = (state) => {
-                    const v = norm(state);
-                    if (v === 'closed complete' || v === 'closed') return 'closed';
-                    if (v === 'awaiting closure' || v === 'awaiting') return 'awaiting';
-                    if (v === 'work in progress' || v === 'wip') return 'wip';
-                    if (v === 'assigned') return 'assigned';
-                    return 'assigned';
-                  };
-
-                  const normalizeYmd = (ymd) => {
-                    if (!ymd) return '';
-                    return String(ymd).slice(0, 10);
-                  };
-
-                  const stateLabel = (state) => {
-                    const raw = String(state || '').trim();
-                    const v = norm(raw);
-                    if (v === 'closed complete' || v === 'closed') return 'Closed Complete';
-                    if (v === 'work in progress' || v === 'wip') return 'Work in progress';
-                    if (v === 'awaiting closure' || v === 'awaiting') return 'Awaiting Closure';
-                    if (v === 'assigned') return 'Assigned';
-                    return raw || 'Assigned';
-                  };
-
-                  const uniqueSorted = (vals) => {
-                    const set = new Set(vals.map((v) => String(v || '').trim()).filter(Boolean));
-                    return Array.from(set).sort((a, b) => String(a).localeCompare(String(b)));
-                  };
-
-                  const typeOptions = uniqueSorted(items.map((it) => it?.maintenanceType));
-                  const zoneOptions = uniqueSorted(items.map((it) => it?.zone));
-
-                  const search = String(pmSearch || '').trim().toLowerCase();
-                  const dateFilter = normalizeYmd(pmFilterDate);
-                  const reprogFilter = String(pmFilterReprog || 'all');
-
-                  const normReprogStatus = (s) => {
-                    const v = String(s || '').trim().toLowerCase();
-                    if (!v) return '';
-                    if (v === 'approved') return 'APPROVED';
-                    if (v === 'rejected') return 'REJECTED';
-                    if (v === 'pending') return 'PENDING';
-                    if (v === 'approved' || v === 'ok' || v === 'yes' || v === 'oui' || v === 'validee' || v === 'validée' || v === 'approuvee' || v === 'approuvée') {
-                      return 'APPROVED';
-                    }
-                    if (v === 'rejected' || v === 'ko' || v === 'no' || v === 'non' || v === 'rejete' || v === 'rejeté' || v === 'rejetee' || v === 'rejetée' || v === 'refusee' || v === 'refusée') {
-                      return 'REJECTED';
-                    }
-                    if (v === 'pending' || v === 'attente' || v === 'en attente' || v === 'waiting') return 'PENDING';
-                    return '';
-                  };
-
-                  const effectiveReprogStatus = (it) => {
-                    const explicit = normReprogStatus(it?.reprogrammationStatus);
-                    if (explicit) return explicit;
-                    const hasDate = !!String(it?.reprogrammationDate || '').trim();
-                    const hasReason = !!String(it?.reprogrammationReason || '').trim();
-                    if (hasDate) return 'APPROVED';
-                    if (hasReason) return 'PENDING';
-                    return '';
-                  };
-
-                  const baseFiltered = items.filter((it) => {
-                    if (pmFilterType && pmFilterType !== 'all') {
-                      if (String(it?.maintenanceType || '').trim() !== String(pmFilterType)) return false;
-                    }
-                    if (pmFilterZone && pmFilterZone !== 'all') {
-                      if (String(it?.zone || '').trim() !== String(pmFilterZone)) return false;
-                    }
-                    if (dateFilter) {
-                      const sched = normalizeYmd(it?.scheduledWoDate);
-                      if (sched !== dateFilter) return false;
-                    }
-                    if (reprogFilter && reprogFilter !== 'all') {
-                      const st = effectiveReprogStatus(it);
-                      if (reprogFilter === 'any' && !st) return false;
-                      if (reprogFilter === 'approved' && st !== 'APPROVED') return false;
-                      if (reprogFilter === 'rejected' && st !== 'REJECTED') return false;
-                      if (reprogFilter === 'pending' && st !== 'PENDING') return false;
-                    }
-                    if (search) {
-                      const hay = [
-                        it?.number,
-                        it?.siteName,
-                        it?.siteCode,
-                        it?.region,
-                        it?.zone,
-                        it?.maintenanceType,
-                        it?.assignedTo,
-                        it?.shortDescription,
-                        it?.reprogrammationReason,
-                        it?.reprogrammationStatus
-                      ]
-                        .filter(Boolean)
-                        .join(' ')
-                        .toLowerCase();
-                      if (!hay.includes(search)) return false;
-                    }
-                    return true;
-                  });
-
-                  const tableFiltered = baseFiltered.filter((it) => {
-                    if (pmFilterState && pmFilterState !== 'all') {
-                      if (bucketForState(it?.state) !== pmFilterState) return false;
-                    }
-                    return true;
-                  });
-
-                  const badgeForBucket = (bucket) => {
-                    if (bucket === 'closed') return { cls: 'bg-emerald-50 text-emerald-800 border-emerald-200' };
-                    if (bucket === 'wip') return { cls: 'bg-blue-50 text-blue-800 border-blue-200' };
-                    if (bucket === 'awaiting') return { cls: 'bg-amber-50 text-amber-800 border-amber-200' };
-                    return { cls: 'bg-slate-50 text-slate-800 border-slate-200' };
-                  };
-
-                  const counts = {
-                    total: baseFiltered.length,
-                    closed: 0,
-                    wip: 0,
-                    awaiting: 0,
-                    assigned: 0,
-                    reprog: 0
-                  };
-                  for (const it of baseFiltered) {
-                    const b = bucketForState(it?.state);
-                    if (b === 'closed') counts.closed += 1;
-                    else if (b === 'wip') counts.wip += 1;
-                    else if (b === 'awaiting') counts.awaiting += 1;
-                    else counts.assigned += 1;
-
-                    if (effectiveReprogStatus(it)) counts.reprog += 1;
-                  }
-
-                  const cards = [
-                    {
-                      key: 'total',
-                      title: 'Total',
-                      value: Number(counts.total || 0),
-                      className: 'bg-red-700 border-red-800 hover:bg-red-800',
-                      titleClassName: 'text-white/90',
-                      valueClassName: 'text-white',
-                      onClick: () => {
-                        setPmFilterState('all');
-                        setPmFilterReprog('all');
-                        setPmDetails({ open: true, title: 'Total', items: baseFiltered.slice() });
-                      }
-                    },
-                    {
-                      key: 'closed',
-                      title: 'Closed Complete',
-                      value: Number(counts.closed || 0),
-                      className: 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100',
-                      titleClassName: 'text-gray-700',
-                      valueClassName: 'text-gray-900',
-                      onClick: () => {
-                        setPmFilterState('closed');
-                        setPmFilterReprog('all');
-                        setPmDetails({ open: true, title: 'Closed Complete', items: baseFiltered.filter((it) => bucketForState(it?.state) === 'closed') });
-                      }
-                    },
-                    {
-                      key: 'wip',
-                      title: 'Work in progress',
-                      value: Number(counts.wip || 0),
-                      className: 'bg-rose-100 border-rose-200 hover:bg-rose-200',
-                      titleClassName: 'text-gray-700',
-                      valueClassName: 'text-gray-900',
-                      onClick: () => {
-                        setPmFilterState('wip');
-                        setPmFilterReprog('all');
-                        setPmDetails({ open: true, title: 'Work in progress', items: baseFiltered.filter((it) => bucketForState(it?.state) === 'wip') });
-                      }
-                    },
-                    {
-                      key: 'awaiting',
-                      title: 'Awaiting Closure',
-                      value: Number(counts.awaiting || 0),
-                      className: 'bg-white border-gray-200 hover:bg-gray-50',
-                      titleClassName: 'text-gray-700',
-                      valueClassName: 'text-gray-900',
-                      onClick: () => {
-                        setPmFilterState('awaiting');
-                        setPmFilterReprog('all');
-                        setPmDetails({ open: true, title: 'Awaiting Closure', items: baseFiltered.filter((it) => bucketForState(it?.state) === 'awaiting') });
-                      }
-                    },
-                    {
-                      key: 'assigned',
-                      title: 'Assigned',
-                      value: Number(counts.assigned || 0),
-                      className: 'bg-amber-200 border-amber-300 hover:bg-amber-300',
-                      titleClassName: 'text-gray-700',
-                      valueClassName: 'text-gray-900',
-                      onClick: () => {
-                        setPmFilterState('assigned');
-                        setPmFilterReprog('all');
-                        setPmDetails({ open: true, title: 'Assigned', items: baseFiltered.filter((it) => bucketForState(it?.state) === 'assigned') });
-                      }
-                    },
-                    {
-                      key: 'reprog',
-                      title: 'Reprogrammation',
-                      value: Number(counts.reprog || 0),
-                      className: 'bg-slate-50 border-slate-200 hover:bg-slate-100',
-                      titleClassName: 'text-gray-700',
-                      valueClassName: 'text-gray-900',
-                      onClick: () => {
-                        setPmFilterState('all');
-                        setPmFilterReprog('any');
-                        setPmDetails({ open: true, title: 'Reprogrammation', items: baseFiltered.filter((it) => effectiveReprogStatus(it)) });
-                      }
-                    }
-                  ];
-
-                  return (
-                    <>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
-                        {cards.map((c) => (
-                          <button
-                            key={c.key}
-                            type="button"
-                            onClick={c.onClick}
-                            className={`${c.className} border rounded-xl p-3 text-left`}
-                            disabled={pmBusy}
-                          >
-                            <div className={`text-[11px] font-semibold ${c.titleClassName || 'text-gray-700'}`}>{c.title}</div>
-                            <div className={`text-2xl font-bold mt-1 ${c.valueClassName || 'text-gray-900'}`}>{c.value}</div>
-                          </button>
-                        ))}
-                      </div>
-
-                      {pmDetails?.open && (
-                        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
-                          <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[90vh]">
-                            <div className="flex justify-between items-center p-4 border-b bg-teal-800 text-white">
-                              <div className="font-bold">Détails PM — {pmDetails?.title || ''}</div>
-                              <button
-                                type="button"
-                                onClick={() => setPmDetails({ open: false, title: '', items: [] })}
-                                className="hover:bg-teal-900 p-2 rounded"
-                              >
-                                <X size={18} />
-                              </button>
-                            </div>
-                            <div className="p-4 overflow-auto">
-                              <table className="min-w-[1100px] w-full text-sm">
-                                <thead className="bg-slate-100 sticky top-0 z-10">
-                                  <tr className="text-left text-xs text-slate-800 border-b border-slate-300">
-                                    <th className="px-3 py-2 font-semibold whitespace-nowrap">Ticket</th>
-                                    <th className="px-3 py-2 font-semibold whitespace-nowrap">État</th>
-                                    <th className="px-3 py-2 font-semibold whitespace-nowrap">Date planifiée</th>
-                                    <th className="px-3 py-2 font-semibold whitespace-nowrap">Site</th>
-                                    <th className="px-3 py-2 font-semibold whitespace-nowrap">Zone</th>
-                                    <th className="px-3 py-2 font-semibold whitespace-nowrap">Type</th>
-                                    <th className="px-3 py-2 font-semibold whitespace-nowrap">Assigné à</th>
-                                    <th className="px-3 py-2 font-semibold whitespace-nowrap">Statut reprog.</th>
-                                    <th className="px-3 py-2 font-semibold whitespace-nowrap">Date reprog.</th>
-                                    <th className="px-3 py-2 font-semibold whitespace-nowrap">Raison</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {(Array.isArray(pmDetails?.items) ? pmDetails.items : []).length === 0 ? (
-                                    <tr>
-                                      <td className="px-4 py-4 text-gray-600" colSpan={10}>
-                                        Aucun élément.
-                                      </td>
-                                    </tr>
-                                  ) : (
-                                    (Array.isArray(pmDetails?.items) ? pmDetails.items : []).map((it, idx) => {
-                                      const sched = it?.scheduledWoDate ? String(it.scheduledWoDate).slice(0, 10) : '';
-                                      const reprogStatus = effectiveReprogStatus(it);
-                                      const reprog = it?.reprogrammationDate ? String(it.reprogrammationDate).slice(0, 10) : '';
-                                      const reason = String(it?.reprogrammationReason || '').trim();
-                                      const siteLabel = [it?.siteName, it?.siteCode].filter(Boolean).join('\n');
-                                      const st = stateLabel(it?.state);
-                                      return (
-                                        <tr key={it?.id || it?.number || idx} className={`border-b border-slate-200 hover:bg-slate-100/60 ${idx % 2 === 1 ? 'bg-white' : 'bg-slate-50'}`}>
-                                          <td className="px-3 py-2 font-semibold text-slate-900 whitespace-nowrap">{it?.number || '-'}</td>
-                                          <td className="px-3 py-2 whitespace-nowrap">{st || '-'}</td>
-                                          <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{sched || '-'}</td>
-                                          <td className="px-3 py-2 text-slate-900 max-w-[260px] whitespace-pre-line leading-tight break-words" title={siteLabel || ''}>{siteLabel || '-'}</td>
-                                          <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.zone || '-'}</td>
-                                          <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.maintenanceType || '-'}</td>
-                                          <td className="px-3 py-2 text-slate-900 max-w-[200px] truncate" title={String(it?.assignedTo || '')}>{it?.assignedTo || '-'}</td>
-                                          <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{reprogStatus || '-'}</td>
-                                          <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{reprog || '-'}</td>
-                                          <td className="px-3 py-2 text-slate-900 max-w-[260px] truncate" title={reason || ''}>{reason || '-'}</td>
-                                        </tr>
-                                      );
-                                    })
-                                  )}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {pmRejectedModalOpen && (
-                        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
-                          <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[90vh]">
-                            <div className="flex justify-between items-center p-4 border-b bg-teal-800 text-white">
-                              <div className="font-bold">Reprogrammations rejetées</div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setPmRejectedModalOpen(false);
-                                  setPmRejectedDateFilter('');
-                                }}
-                                className="hover:bg-teal-900 p-2 rounded"
-                              >
-                                <X size={18} />
-                              </button>
-                            </div>
-                            <div className="p-4 overflow-auto">
-                              <div className="mb-3 flex flex-col sm:flex-row sm:items-end gap-3">
-                                <div className="flex flex-col">
-                                  <label className="text-xs font-semibold text-gray-700 mb-1">Filtrer par jour (date reprog.)</label>
-                                  <input
-                                    type="date"
-                                    value={pmRejectedDateFilter}
-                                    onChange={(e) => setPmRejectedDateFilter(String(e.target.value || ''))}
-                                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                                  />
-                                </div>
-                              </div>
-                              {(() => {
-                                const day = normalizeYmd(pmRejectedDateFilter);
-                                const rejected = (Array.isArray(pmItems) ? pmItems : [])
-                                  .filter((it) => {
-                                    if (!it) return false;
-                                    if (effectiveReprogStatus(it) !== 'REJECTED') return false;
-                                    if (day) return normalizeYmd(it?.reprogrammationDate) === day;
-                                    return true;
-                                  })
-                                  .slice()
-                                  .sort((a, b) => {
-                                    const da = String(a?.reprogrammationDate || '').slice(0, 10);
-                                    const db = String(b?.reprogrammationDate || '').slice(0, 10);
-                                    const d = da.localeCompare(db);
-                                    if (d !== 0) return d;
-                                    return String(a?.number || '').localeCompare(String(b?.number || ''));
-                                  });
-                                if (rejected.length === 0) {
-                                  return <div className="text-gray-600">Aucune reprogrammation rejetée.</div>;
-                                }
-                                return (
-                                  <table className="min-w-[1100px] w-full text-sm">
-                                    <thead className="bg-slate-100 sticky top-0 z-10">
-                                      <tr className="text-left text-xs text-slate-800 border-b border-slate-300">
-                                        <th className="px-3 py-2 font-semibold whitespace-nowrap">Ticket</th>
-                                        <th className="px-3 py-2 font-semibold whitespace-nowrap">Date planifiée</th>
-                                        <th className="px-3 py-2 font-semibold whitespace-nowrap">Date reprog.</th>
-                                        <th className="px-3 py-2 font-semibold whitespace-nowrap">Site</th>
-                                        <th className="px-3 py-2 font-semibold whitespace-nowrap">Type</th>
-                                        <th className="px-3 py-2 font-semibold whitespace-nowrap">Assigné à</th>
-                                        <th className="px-3 py-2 font-semibold whitespace-nowrap">Raison</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {rejected.map((it, idx) => {
-                                        const sched = it?.scheduledWoDate ? String(it.scheduledWoDate).slice(0, 10) : '';
-                                        const reprog = it?.reprogrammationDate ? String(it.reprogrammationDate).slice(0, 10) : '';
-                                        const reason = String(it?.reprogrammationReason || '').trim();
-                                        const siteLabel = [it?.siteName, it?.siteCode].filter(Boolean).join('\n');
-                                        return (
-                                          <tr key={it?.id || it?.number || idx} className={`border-b border-slate-200 ${idx % 2 === 1 ? 'bg-white' : 'bg-slate-50'}`}>
-                                            <td className="px-3 py-2 font-semibold text-slate-900 whitespace-nowrap">{it?.number || '-'}</td>
-                                            <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{sched || '-'}</td>
-                                            <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{reprog || '-'}</td>
-                                            <td className="px-3 py-2 text-slate-900 max-w-[320px] whitespace-pre-line leading-tight break-words" title={siteLabel || ''}>{siteLabel || '-'}</td>
-                                            <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.maintenanceType || '-'}</td>
-                                            <td className="px-3 py-2 text-slate-900 max-w-[200px] truncate" title={String(it?.assignedTo || '')}>{it?.assignedTo || '-'}</td>
-                                            <td className="px-3 py-2 text-slate-900 max-w-[320px] truncate" title={reason || ''}>{reason || '-'}</td>
-                                          </tr>
-                                        );
-                                      })}
-                                    </tbody>
-                                  </table>
-                                );
-                              })()}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="border border-gray-200 rounded-xl p-4 mb-5">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-700 mb-1">État</label>
-                            <select
-                              value={pmFilterState}
-                              onChange={(e) => setPmFilterState(String(e.target.value || 'all'))}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                              disabled={pmBusy}
-                            >
-                              <option value="all">Tous</option>
-                              <option value="closed">Closed Complete</option>
-                              <option value="wip">Work in progress</option>
-                              <option value="awaiting">Awaiting Closure</option>
-                              <option value="assigned">Assigned</option>
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-700 mb-1">Type</label>
-                            <select
-                              value={pmFilterType}
-                              onChange={(e) => setPmFilterType(String(e.target.value || 'all'))}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                              disabled={pmBusy}
-                            >
-                              <option value="all">Tous</option>
-                              {typeOptions.map((t) => (
-                                <option key={t} value={t}>
-                                  {t}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-700 mb-1">Zone</label>
-                            <select
-                              value={pmFilterZone}
-                              onChange={(e) => setPmFilterZone(String(e.target.value || 'all'))}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                              disabled={pmBusy}
-                            >
-                              <option value="all">Toutes</option>
-                              {zoneOptions.map((z) => (
-                                <option key={z} value={z}>
-                                  {z}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-700 mb-1">Recherche</label>
-                            <input
-                              value={pmSearch}
-                              onChange={(e) => setPmSearch(e.target.value)}
-                              placeholder="Ticket, site, zone, technicien…"
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                              disabled={pmBusy}
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-700 mb-1">Date planifiée (jour)</label>
-                            <input
-                              type="date"
-                              value={pmFilterDate}
-                              onChange={(e) => setPmFilterDate(String(e.target.value || ''))}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                              disabled={pmBusy}
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-700 mb-1">Reprogrammation</label>
-                            <select
-                              value={pmFilterReprog}
-                              onChange={(e) => setPmFilterReprog(String(e.target.value || 'all'))}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                              disabled={pmBusy}
-                            >
-                              <option value="all">Toutes</option>
-                              <option value="any">Toute reprogrammation</option>
-                              <option value="pending">En attente</option>
-                              <option value="approved">Approuvée</option>
-                              <option value="rejected">Rejetée</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-3">
-                          <div className="text-xs text-gray-600">
-                            Affichés: <span className="font-semibold text-gray-900">{tableFiltered.length}</span> / {items.length}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPmFilterState('all');
-                              setPmFilterType('all');
-                              setPmFilterZone('all');
-                              setPmSearch('');
-                              setPmFilterDate('');
-                              setPmFilterReprog('all');
-                            }}
-                            className="bg-gray-200 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-300 text-sm font-semibold"
-                            disabled={pmBusy}
-                          >
-                            Réinitialiser filtres
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="border border-slate-300 rounded-xl overflow-hidden mb-6">
-                        <div className="px-4 py-3 bg-slate-100 border-b border-slate-300 flex items-center justify-between gap-3">
-                          <div className="font-semibold text-gray-800">Tickets</div>
-                          <div className="text-xs text-gray-600">Tri: date planifiée puis ticket</div>
-                        </div>
-                        <div className="overflow-auto">
-                          <table className="min-w-[1100px] w-full text-sm">
-                            <thead className="bg-slate-100 sticky top-0 z-10">
-                              <tr className="text-left text-xs text-slate-800 border-b border-slate-300">
-                                <th className="px-3 py-2 font-semibold whitespace-nowrap">Ticket</th>
-                                <th className="px-3 py-2 font-semibold whitespace-nowrap">État</th>
-                                <th className="px-3 py-2 font-semibold whitespace-nowrap">Date planifiée</th>
-                                <th className="px-3 py-2 font-semibold whitespace-nowrap">Site</th>
-                                <th className="px-3 py-2 font-semibold whitespace-nowrap">Zone</th>
-                                <th className="px-3 py-2 font-semibold whitespace-nowrap">Type</th>
-                                <th className="px-3 py-2 font-semibold whitespace-nowrap">Assigné à</th>
-                                <th className="px-3 py-2 font-semibold whitespace-nowrap">Clôture</th>
-                                <th className="px-3 py-2 font-semibold whitespace-nowrap">Statut reprog.</th>
-                                <th className="px-3 py-2 font-semibold whitespace-nowrap">Date reprog.</th>
-                                <th className="px-3 py-2 font-semibold whitespace-nowrap">Raison</th>
-                                {isAdmin && <th className="px-3 py-2 font-semibold whitespace-nowrap">Action</th>}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {tableFiltered.length === 0 ? (
-                                <tr>
-                                  <td className="px-4 py-4 text-gray-600" colSpan={isAdmin ? 12 : 11}>
-                                    Aucun ticket pour ces filtres.
-                                  </td>
-                                </tr>
-                              ) : (
-                                tableFiltered.map((it, idx) => {
-                                  const bucket = bucketForState(it?.state);
-                                  const badge = badgeForBucket(bucket);
-                                  const sched = it?.scheduledWoDate ? String(it.scheduledWoDate).slice(0, 10) : '';
-                                  const closed = it?.closedAt ? String(it.closedAt).slice(0, 10) : '';
-                                  const reprogStatus = effectiveReprogStatus(it);
-                                  const reprog = it?.reprogrammationDate ? String(it.reprogrammationDate).slice(0, 10) : '';
-                                  const reason = String(it?.reprogrammationReason || '').trim();
-                                  const siteLabel = [it?.siteName, it?.siteCode].filter(Boolean).join('\n');
-                                  const st = stateLabel(it?.state);
-                                  return (
-                                    <tr key={it?.id || it?.number} className={`border-b border-slate-200 hover:bg-slate-100/60 ${idx % 2 === 1 ? 'bg-white' : 'bg-slate-50'}`}>
-                                      <td className="px-3 py-2 font-semibold text-slate-900 whitespace-nowrap">{it?.number || '-'}</td>
-                                      <td className="px-3 py-2 whitespace-nowrap">
-                                        <span className={`inline-flex items-center border px-2 py-0.5 rounded-full text-xs font-semibold ${badge.cls}`}>
-                                          {st}
-                                        </span>
-                                      </td>
-                                      <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{sched || '-'}</td>
-                                      <td className="px-3 py-2 text-slate-900 max-w-[260px] whitespace-pre-line leading-tight break-words" title={siteLabel || ''}>{siteLabel || '-'}</td>
-                                      <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.zone || '-'}</td>
-                                      <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.maintenanceType || '-'}</td>
-                                      <td className="px-3 py-2 text-slate-900 max-w-[200px] truncate" title={String(it?.assignedTo || '')}>{it?.assignedTo || '-'}</td>
-                                      <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{closed || '-'}</td>
-                                      <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{reprogStatus || '-'}</td>
-                                      <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{reprog || '-'}</td>
-                                      <td className="px-3 py-2 text-slate-900 max-w-[260px] truncate" title={reason || ''}>{reason || '-'}</td>
-                                      {isAdmin && (
-                                        <td className="px-3 py-2 text-gray-800 whitespace-nowrap">
-                                          <button
-                                            type="button"
-                                            onClick={() => handlePmOpenReprog(it)}
-                                            className="bg-teal-700 text-white px-3 py-1.5 rounded-lg hover:bg-teal-800 text-xs font-semibold"
-                                            disabled={pmBusy}
-                                          >
-                                            Reprogrammer
-                                          </button>
-                                        </td>
-                                      )}
-                                    </tr>
-                                  );
-                                })
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-
-                      {pmReprogOpen && pmReprogItem && (
-                        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
-                          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full overflow-hidden">
-                            <div className="flex justify-between items-center p-4 border-b bg-teal-800 text-white">
-                              <div className="font-bold">Reprogrammation (PM)</div>
-                              <button
-                                onClick={() => {
-                                  setPmReprogOpen(false);
-                                  setPmReprogItem(null);
-                                  setPmReprogForm({ date: '', status: '', reason: '' });
-                                  setPmReprogError('');
-                                }}
-                                className="hover:bg-teal-900 p-2 rounded"
-                              >
-                                <X size={18} />
-                              </button>
-                            </div>
-
-                            <div className="p-4 space-y-3">
-                              <div className="text-sm text-gray-700">
-                                <div className="font-semibold text-gray-900">Ticket: {pmReprogItem?.number || '-'}</div>
-                                <div className="text-xs text-gray-600">Site: {pmReprogItem?.siteName || '-'} {pmReprogItem?.siteCode ? `(${pmReprogItem.siteCode})` : ''}</div>
-                              </div>
-
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div className="flex flex-col">
-                                  <label className="text-xs text-gray-600 mb-1">Date de reprogrammation</label>
-                                  <input
-                                    type="date"
-                                    value={pmReprogForm.date}
-                                    onChange={(e) => {
-                                      setPmReprogForm((prev) => ({ ...(prev || {}), date: e.target.value }));
-                                      setPmReprogError('');
-                                    }}
-                                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                                  />
-                                </div>
-                                <div className="flex flex-col">
-                                  <label className="text-xs text-gray-600 mb-1">Statut</label>
-                                  <select
-                                    value={pmReprogForm.status}
-                                    onChange={(e) => {
-                                      setPmReprogForm((prev) => ({ ...(prev || {}), status: e.target.value }));
-                                      setPmReprogError('');
-                                    }}
-                                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
-                                  >
-                                    <option value="">(auto)</option>
-                                    <option value="PENDING">En attente</option>
-                                    <option value="APPROVED">Approuvée</option>
-                                    <option value="REJECTED">Rejetée</option>
-                                  </select>
-                                </div>
-                              </div>
-
-                              <div className="flex flex-col">
-                                <label className="text-xs text-gray-600 mb-1">Raison / commentaires</label>
-                                <textarea
-                                  value={pmReprogForm.reason}
-                                  onChange={(e) => {
-                                    setPmReprogForm((prev) => ({ ...(prev || {}), reason: e.target.value }));
-                                    setPmReprogError('');
-                                  }}
-                                  rows={3}
-                                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                                  placeholder="Ex: demande client / indisponibilité site / pièces…"
-                                />
-                              </div>
-
-                              {pmReprogError && (
-                                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">
-                                  {pmReprogError}
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="p-4 border-t bg-white flex flex-col sm:flex-row sm:justify-end gap-2">
-                              <button
-                                onClick={() => {
-                                  setPmReprogOpen(false);
-                                  setPmReprogItem(null);
-                                  setPmReprogForm({ date: '', status: '', reason: '' });
-                                  setPmReprogError('');
-                                }}
-                                className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
-                                disabled={pmReprogSaving}
-                              >
-                                Annuler
-                              </button>
-                              <button
-                                onClick={handlePmSaveReprog}
-                                className="bg-teal-800 text-white px-4 py-2 rounded-lg hover:bg-teal-900 font-semibold"
-                                disabled={pmReprogSaving}
-                              >
-                                Enregistrer
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="border border-gray-200 rounded-xl overflow-hidden">
-                        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-3">
-                          <div className="font-semibold text-gray-800">Historique des imports</div>
-                          <div className="text-xs text-gray-600">{imports.length} import(s)</div>
-                        </div>
-                        <div className="overflow-auto">
-                          <table className="min-w-[820px] w-full text-sm">
-                            <thead className="bg-white sticky top-0">
-                              <tr className="text-left text-xs text-gray-600 border-b border-gray-200">
-                                <th className="px-4 py-2">Date</th>
-                                <th className="px-4 py-2">Type</th>
-                                <th className="px-4 py-2">Fichier</th>
-                                <th className="px-4 py-2">Lignes</th>
-                                <th className="px-4 py-2">Par</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {imports.length === 0 ? (
-                                <tr>
-                                  <td className="px-4 py-4 text-gray-600" colSpan={5}>
-                                    Aucun import enregistré pour ce mois.
-                                  </td>
-                                </tr>
-                              ) : (
-                                imports.map((imp) => {
-                                  const kind = String(imp?.kind || '').toLowerCase();
-                                  const kindBadge =
-                                    kind === 'planning' || kind === 'client'
-                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                      : kind === 'noc'
-                                        ? 'bg-purple-50 text-purple-800 border-purple-200'
-                                        : 'bg-gray-50 text-gray-800 border-gray-200';
-                                  return (
-                                    <tr key={imp?.id} className="border-b border-gray-100 hover:bg-gray-50">
-                                      <td className="px-4 py-2 text-gray-800">{imp?.importedAt ? String(imp.importedAt).replace('T', ' ').slice(0, 19) : '-'}</td>
-                                      <td className="px-4 py-2">
-                                        <span className={`inline-flex items-center border px-2 py-0.5 rounded-full text-xs font-semibold ${kindBadge}`}>
-                                          {kind || '-'}
-                                        </span>
-                                      </td>
-                                      <td className="px-4 py-2 text-gray-800">{imp?.filename || '-'}</td>
-                                      <td className="px-4 py-2 text-gray-800">{Number(imp?.rowCount || 0)}</td>
-                                      <td className="px-4 py-2 text-gray-800">{imp?.createdByEmail || '-'}</td>
-                                    </tr>
-                                  );
-                                })
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-
-              <div className={`relative p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:justify-end gap-2' : 'flex justify-end'}`}>
-                <button
-                  onClick={() => {
-                    setShowPm(false);
-                    setPmError('');
-                    setPmNotice('');
-                  }}
-                  className={`bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold ${isAdmin ? 'w-full sm:w-auto' : ''}`}
-                >
-                  Fermer
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showScoring && !isTechnician && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-slate-800 text-white">
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                  <TrendingUp size={22} />
-                  Scoring
-                  {isViewer && (
-                    <span className="ml-2 bg-white/15 text-white border border-white/20 px-2 py-0.5 rounded-full text-xs font-semibold">
-                      Lecture seule
-                    </span>
-                  )}
-                </h2>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => {
-                      setShowScoring(false);
-                      setScoringDetails({ open: false, title: '', kind: '', items: [] });
-                    }}
-                    className="hover:bg-slate-900 p-2 rounded"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-                  <div className="text-sm text-slate-700">
-                    Synthèse mensuelle (basée sur l'historique des fiches + interventions planifiées)
-                  </div>
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                    <label className="text-xs text-gray-600">Mois</label>
-                    <input
-                      type="month"
-                      value={scoringMonth}
-                      onChange={async (e) => {
-                        const next = String(e.target.value || '').trim();
-                        setScoringMonth(next);
-                        setScoringDetails({ open: false, title: '', kind: '', items: [] });
-                        await loadInterventions(next, 'all', 'all');
-                      }}
-                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                    />
-                  </div>
-                </div>
-
-                {(() => {
-                  const isInMonth = (ymd, yyyymm) => {
-                    if (!ymd || !yyyymm) return false;
-                    return String(ymd).slice(0, 7) === String(yyyymm);
-                  };
-
-                  const siteById = new Map(
-                    (Array.isArray(sites) ? sites : [])
-                      .filter((s) => s && s.id)
-                      .map((s) => [String(s.id), s])
-                  );
-
-                  const doneInMonth = ficheHistory.filter(
-                    (f) => f && f.status === 'Effectuée' && f.dateCompleted && isInMonth(f.dateCompleted, scoringMonth)
-                  );
-                  const doneWithin = doneInMonth.filter((f) => f.isWithinContract === true);
-                  const doneOver = doneInMonth.filter((f) => f.isWithinContract === false);
-
-                  const remainingInMonth = interventions
-                    .filter(
-                      (i) =>
-                        i &&
-                        i.plannedDate &&
-                        isInMonth(i.plannedDate, scoringMonth) &&
-                        (i.status === 'planned' || i.status === 'sent')
-                    )
-                    .slice()
-                    .sort((a, b) => {
-                      const statusRank = (s) => (s === 'sent' ? 0 : s === 'planned' ? 1 : 2);
-                      const sr = statusRank(a.status) - statusRank(b.status);
-                      if (sr !== 0) return sr;
-                      const d = String(a.plannedDate || '').localeCompare(String(b.plannedDate || ''));
-                      if (d !== 0) return d;
-                      const sa = siteById.get(String(a.siteId))?.nameSite || '';
-                      const sb = siteById.get(String(b.siteId))?.nameSite || '';
-                      return String(sa).localeCompare(String(sb));
-                    });
-
-                  const cards = [
-                    {
-                      key: 'done',
-                      title: 'Effectuées',
-                      value: doneInMonth.length,
-                      className: 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100',
-                      onClick: () => setScoringDetails({ open: true, title: 'Vidanges effectuées', kind: 'done', items: doneInMonth })
-                    },
-                    {
-                      key: 'remaining',
-                      title: 'Restantes',
-                      value: remainingInMonth.length,
-                      className: 'bg-amber-50 border-amber-200 hover:bg-amber-100',
-                      onClick: () => setScoringDetails({ open: true, title: 'Interventions restantes (planifiées/envoyées)', kind: 'remaining', items: remainingInMonth })
-                    },
-                    {
-                      key: 'within',
-                      title: 'Dans délai',
-                      value: doneWithin.length,
-                      className: 'bg-blue-50 border-blue-200 hover:bg-blue-100',
-                      onClick: () => setScoringDetails({ open: true, title: 'Vidanges dans le délai contractuel', kind: 'within', items: doneWithin })
-                    },
-                    {
-                      key: 'over',
-                      title: 'Hors délai',
-                      value: doneOver.length,
-                      className: 'bg-red-50 border-red-200 hover:bg-red-100',
-                      onClick: () => setScoringDetails({ open: true, title: 'Vidanges hors délai contractuel', kind: 'over', items: doneOver })
-                    }
-                  ];
-
-                  return (
-                    <>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
-                        {cards.map((c) => (
-                          <button
-                            key={c.key}
-                            type="button"
-                            onClick={c.onClick}
-                            className={`${c.className} border rounded-xl p-4 text-left`}
-                          >
-                            <div className="text-xs font-semibold text-gray-700">{c.title}</div>
-                            <div className="text-2xl font-bold text-gray-900 mt-1">{c.value}</div>
-                            <div className="text-xs text-gray-600 mt-1">Clique pour détails</div>
-                          </button>
-                        ))}
-                      </div>
-
-                      {scoringDetails.open && (
-                        <div className="border border-gray-200 rounded-lg overflow-hidden">
-                          <div className="flex items-center justify-between gap-3 p-3 bg-gray-50 border-b border-gray-200">
-                            <div className="font-semibold text-gray-800">{scoringDetails.title}</div>
-                            <div className="flex items-center gap-2">
-                              {canExportExcel && scoringDetails.items.length > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={handleExportScoringDetailsExcel}
-                                  className="bg-slate-700 text-white px-3 py-1.5 rounded-lg hover:bg-slate-800 text-sm font-semibold flex items-center gap-2"
-                                  disabled={exportBusy}
-                                >
-                                  <Download size={16} />
-                                  Exporter Excel
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => setScoringDetails({ open: false, title: '', kind: '', items: [] })}
-                                className="bg-gray-200 text-gray-800 px-3 py-1.5 rounded-lg hover:bg-gray-300 text-sm font-semibold"
-                              >
-                                Fermer
-                              </button>
-                            </div>
-                          </div>
-                          <div className="p-3 sm:p-4">
-                            {scoringDetails.items.length === 0 ? (
-                              <div className="text-gray-600">Aucun élément.</div>
-                            ) : scoringDetails.kind === 'remaining' ? (
-                              <div className="space-y-2">
-                                {scoringDetails.items.map((it) => (
-                                  <div key={it.id} className="border border-gray-200 rounded-lg p-3">
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div className="min-w-0">
-                                        {(() => {
-                                          const site = siteById.get(String(it.siteId)) || null;
-                                          const title = site?.nameSite || it.siteId;
-                                          const sub = site?.idSite ? `ID: ${site.idSite}` : null;
-                                          return (
-                                            <>
-                                              <div className="font-semibold text-gray-800 truncate">{title}</div>
-                                              {sub && <div className="text-xs text-gray-600">{sub}</div>}
-                                            </>
-                                          );
-                                        })()}
-                                        <div className="text-xs text-gray-600">{it.epvType} • {formatDate(it.plannedDate)} • {it.technicianName}</div>
-                                      </div>
-                                      <div className="text-right">
-                                        <div
-                                          className={`text-xs px-2 py-1 rounded inline-block ${
-                                            it.status === 'sent'
-                                              ? 'bg-blue-100 text-blue-800'
-                                              : it.status === 'planned'
-                                                ? 'bg-amber-100 text-amber-800'
-                                                : 'bg-gray-100 text-gray-700'
-                                          }`}
-                                        >
-                                          {it.status === 'sent' ? 'Envoyée' : it.status === 'planned' ? 'Planifiée' : String(it.status || '-')}
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <div className="text-xs text-gray-600 mt-1">Statut: <span className="font-semibold">{it.status}</span></div>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="space-y-2">
-                                {scoringDetails.items.map((f) => (
-                                  <div key={f.id} className="border border-gray-200 rounded-lg p-3">
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div className="min-w-0">
-                                        <div className="font-semibold text-gray-800 truncate">{f.siteName}</div>
-                                        <div className="text-xs text-gray-600">Ticket: {f.ticketNumber} • Technicien: {f.technician}</div>
-                                        {f.dateCompleted && (
-                                          <div className="text-xs text-gray-600">Réalisée: {formatDate(f.dateCompleted)}</div>
-                                        )}
-                                      </div>
-                                      <div className="text-right">
-                                        <div className={`text-xs px-2 py-1 rounded inline-block ${f.isWithinContract === true ? 'bg-green-100 text-green-800' : f.isWithinContract === false ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-700'}`}>
-                                          {f.isWithinContract === true ? 'Dans délai' : f.isWithinContract === false ? 'Hors délai' : 'N/A'}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-
-              <div className={`relative p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:justify-end gap-2' : 'flex justify-end'}`}>
-                <button
-                  onClick={() => {
-                    setShowScoring(false);
-                    setScoringDetails({ open: false, title: '', kind: '', items: [] });
-                  }}
-                  className={`bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold ${isAdmin ? 'w-full sm:w-auto' : ''}`}
-                >
-                  Fermer
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showInterventions && (
-          <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${isTechnician ? 'p-0' : 'p-0 sm:p-4'}`}>
-            <div
-              className={`bg-white shadow-xl overflow-hidden flex flex-col w-full ${
-                isTechnician
-                  ? 'h-[100svh] max-w-none max-h-none rounded-none'
-                  : 'h-[100svh] max-w-none max-h-[100svh] rounded-none sm:h-auto sm:max-w-5xl sm:max-h-[90vh] sm:rounded-lg'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-3 px-3 py-3 sm:p-4 border-b bg-emerald-700 text-white">
-                <div className="min-w-0 flex items-center gap-2">
-                  <CheckCircle size={24} className="flex-shrink-0" />
-                  <div className="min-w-0">
-                    <h2 className="text-base sm:text-xl font-bold flex items-center gap-2 min-w-0">
-                      <span className="min-w-0 truncate">
-                        {isTechnician ? 'Mes interventions' : 'Interventions'}
-                      </span>
-                      {isTechnician && technicianUnseenSentCount > 0 && (
-                        <span className="bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0">
-                          {technicianUnseenSentCount}
-                        </span>
-                      )}
-                      {isViewer && (
-                        <span className="bg-white/15 text-white border border-white/20 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
-                          Lecture seule
-                        </span>
-                      )}
-                    </h2>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    onClick={() => {
-                      if (isTechnician && authUser?.id) {
-                        const maxSentAt = (Array.isArray(interventions) ? interventions : [])
-                          .filter((i) => i && i.status === 'sent' && i.sentAt)
-                          .map((i) => String(i.sentAt))
-                          .sort()
-                          .slice(-1)[0];
-                        if (maxSentAt && String(maxSentAt) > String(technicianSeenSentAt || '')) {
-                          setTechnicianSeenSentAt(String(maxSentAt));
-                          try {
-                            const k = `tech_seen_sent_at:${String(authUser.id)}`;
-                            localStorage.setItem(k, String(maxSentAt));
-                          } catch {
-                            // ignore
-                          }
-                        }
-                      }
-                      setShowInterventions(false);
-                      setInterventionsError('');
-                      setPlanningAssignments({});
-                      setCompleteModalOpen(false);
-                      setCompleteModalIntervention(null);
-                      setCompleteModalSite(null);
-                      setCompleteForm({ nhNow: '', doneDate: '' });
-                      setCompleteFormError('');
-                      setNhModalOpen(false);
-                      setNhModalIntervention(null);
-                      setNhModalSite(null);
-                      setNhForm({ nhValue: '', readingDate: '' });
-                      setNhFormError('');
-                    }}
-                    className="hover:bg-emerald-800 p-2 rounded"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-                {isViewer && (
-                  <div className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg px-3 py-2 text-sm mb-4">
-                    Mode lecture seule : vous pouvez consulter les interventions, sans planifier ni valider.
-                  </div>
-                )}
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-                  {isTechnician && (
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
-                      {(() => {
-                        const pad2 = (n) => String(n).padStart(2, '0');
-                        const ymdLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-                        const today = ymdLocal(new Date());
-                        const tomorrowD = new Date();
-                        tomorrowD.setDate(tomorrowD.getDate() + 1);
-                        const tomorrow = ymdLocal(tomorrowD);
-                        const month = String(interventionsMonth || '').trim();
-
-                        const todayCount = interventions.filter((i) => i.plannedDate === today && i.status !== 'done').length;
-                        const tomorrowRaw = interventions.filter((i) => i.plannedDate === tomorrow && i.status !== 'done');
-                        const tomorrowCount = tomorrowRaw.length;
-                        const tomorrowSentCount = tomorrowRaw.filter((i) => i.status === 'sent').length;
-                        const monthCount = month ? interventions.filter((i) => String(i?.plannedDate || '').slice(0, 7) === month && i.status !== 'done').length : interventions.filter((i) => i.status !== 'done').length;
-
-                        return (
-                      <div className="grid grid-cols-3 gap-2 w-full">
-                        <button
-                          type="button"
-                          onClick={() => setTechnicianInterventionsTab('today')}
-                          className={`${technicianInterventionsTab === 'today' ? 'bg-emerald-700 text-white' : 'bg-white text-gray-800 border border-gray-300'} px-3 py-2 rounded-lg font-semibold text-xs sm:text-sm w-full whitespace-nowrap`}
-                        >
-                          Aujourd'hui ({todayCount})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setTechnicianInterventionsTab('tomorrow')}
-                          className={`${technicianInterventionsTab === 'tomorrow' ? 'bg-emerald-700 text-white' : 'bg-white text-gray-800 border border-gray-300'} px-3 py-2 rounded-lg font-semibold text-xs sm:text-sm w-full whitespace-nowrap`}
-                        >
-                          Demain ({tomorrowCount}{tomorrowSentCount ? `/${tomorrowSentCount} envoyée(s)` : ''})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setTechnicianInterventionsTab('month')}
-                          className={`${technicianInterventionsTab === 'month' ? 'bg-emerald-700 text-white' : 'bg-white text-gray-800 border border-gray-300'} px-3 py-2 rounded-lg font-semibold text-xs sm:text-sm w-full whitespace-nowrap`}
-                        >
-                          Mois ({monthCount})
-                        </button>
-                      </div>
-                        );
-                      })()}
-                      <button
-                        type="button"
-                        onClick={() => setShowTechnicianInterventionsFilters((v) => !v)}
-                        className="bg-white text-gray-800 border border-gray-300 px-3 py-2 rounded-lg hover:bg-gray-50 font-semibold text-sm w-full sm:w-auto"
-                      >
-                        Filtres
-                      </button>
-                    </div>
-                  )}
-
-                  {(!isTechnician || showTechnicianInterventionsFilters) && (
-                    <div className={`grid grid-cols-1 ${isAdmin ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-3 items-end`}>
-                    <div className="flex flex-col">
-                      <span className="text-xs text-gray-600 mb-1">Mois</span>
-                      <input
-                        type="month"
-                        value={interventionsMonth}
-                        onChange={(e) => {
-                          setInterventionsMonth(e.target.value);
-                          const nextMonth = String(e.target.value || '').trim();
-                          loadInterventions(nextMonth, interventionsStatus, interventionsTechnicianUserId);
-                        }}
-                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      />
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-xs text-gray-600 mb-1">Statut</span>
-                      <select
-                        value={interventionsStatus}
-                        onChange={(e) => {
-                          const nextStatus = e.target.value;
-                          setInterventionsStatus(nextStatus);
-                          loadInterventions(interventionsMonth, nextStatus, interventionsTechnicianUserId);
-                        }}
-                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      >
-                        <option value="all">Tous</option>
-                        <option value="planned">Planifiées</option>
-                        <option value="sent">Envoyées</option>
-                        <option value="done">Effectuées</option>
-                      </select>
-                    </div>
-
-                    {isAdmin && (
-                      <div className="flex flex-col">
-                        <span className="text-xs text-gray-600 mb-1">Technicien</span>
-                        <select
-                          value={interventionsTechnicianUserId}
-                          onChange={(e) => {
-                            const nextTechId = e.target.value;
-                            setInterventionsTechnicianUserId(nextTechId);
-                            loadInterventions(interventionsMonth, interventionsStatus, nextTechId);
-                          }}
-                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                        >
-                          <option value="all">Tous</option>
-                          {(Array.isArray(users) ? users : [])
-                            .filter((u) => u && u.role === 'technician')
-                            .slice()
-                            .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')))
-                            .map((u) => (
-                              <option key={u.id} value={u.id}>
-                                {u.technicianName || u.email}
-                              </option>
-                            ))}
-                        </select>
-                      </div>
-                    )}
-
-                    {canExportExcel && (
-                      <div className="flex flex-col w-full">
-                        <span className="text-xs text-gray-600 mb-1 invisible">Actions</span>
-                        <button
-                          type="button"
-                          onClick={handleExportInterventionsExcel}
-                          className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm flex items-center justify-center gap-2 w-full"
-                          disabled={exportBusy || interventionsBusy || interventions.length === 0}
-                        >
-                          <Download size={18} />
-                          Exporter Excel
-                        </button>
-                      </div>
-                    )}
-                    </div>
-                  )}
-
-                  {interventionsError && (
-                    <div className="mt-3 bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">
-                      {interventionsError}
-                    </div>
-                  )}
-                </div>
-
-                {isAdmin && (
-                  <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
-                      <div>
-                        <div className="font-semibold text-gray-800">Planification (à partir des EPV du mois)</div>
-                        <div className="text-xs text-gray-600">Clique "Planifier" pour créer l'intervention en base.</div>
-                      </div>
-                    </div>
-
-                    {(() => {
-                      const techUsers = (Array.isArray(users) ? users : [])
-                        .filter((u) => u && u.role === 'technician')
-                        .slice()
-                        .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')));
-
-                      const findTechUserIdByName = (name) => {
-                        const needle = String(name || '').trim();
-                        if (!needle) return '';
-                        const found = techUsers.find((u) => String(u.technicianName || '').trim() === needle);
-                        return found?.id ? String(found.id) : '';
-                      };
-
-                      const plannedEvents = filteredSites
-                        .filter((s) => s && !s.retired)
-                        .flatMap((site) => {
-                          return [
-                            { type: 'EPV1', date: site.epv1 },
-                            { type: 'EPV2', date: site.epv2 },
-                            { type: 'EPV3', date: site.epv3 }
-                          ]
-                            .filter((ev) => ev.date && String(ev.date).slice(0, 7) === interventionsMonth)
-                            .map((ev) => ({
-                              plannedDate: ymdShiftForWorkdays(String(ev.date).slice(0, 10)) || String(ev.date).slice(0, 10),
-                              originalDate: String(ev.date).slice(0, 10),
-                              siteId: site.id,
-                              siteName: site.nameSite,
-                              technicianName: site.technician,
-                              wasRetiredPrevMonth: interventionsPrevMonthRetiredSiteIds.has(String(site.id)),
-                              epvType: ev.type
-                            }));
-                        })
-                        .sort((a, b) => String(a.plannedDate).localeCompare(String(b.plannedDate)));
-
-                      plannedEvents.forEach((ev) => {
-                        ev.key = getInterventionKey(ev.siteId, ev.plannedDate, ev.epvType);
-                      });
-
-                      const already = new Set(
-                        interventions.map((i) => getInterventionKey(i.siteId, i.plannedDate, i.epvType))
-                      );
-
-                      if (plannedEvents.length === 0) {
-                        return <div className="text-sm text-gray-600">Aucun EPV trouvé sur ce mois.</div>;
-                      }
-
-                      return (
-                        <div className="space-y-2">
-                          {plannedEvents.map((ev) => (
-                            <div key={ev.key} className="border border-gray-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                              <div className="min-w-0">
-                                <div className="font-semibold text-gray-800 truncate">{ev.siteName}</div>
-                                <div className="text-xs text-gray-600">
-                                  {ev.epvType} • {formatDate(ev.plannedDate)} • {ev.technicianName}
-                                  {ev.originalDate && String(ev.originalDate) !== String(ev.plannedDate) && (
-                                    <span className="ml-2 text-[11px] bg-slate-50 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full font-semibold">
-                                      Déplacée (origine: {formatDate(ev.originalDate)})
-                                    </span>
-                                  )}
-                                  {ev.wasRetiredPrevMonth && (
-                                    <span className="ml-2 text-[11px] bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">
-                                      Justif hors délais (retiré {interventionsPrevMonthKey || 'le mois passé'})
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                {already.has(ev.key) ? (
-                                  <span className="text-xs bg-green-100 text-green-800 border border-green-200 px-2 py-1 rounded font-semibold">Déjà planifiée</span>
-                                ) : (
-                                  (() => {
-                                    const selectedTechId =
-                                      planningAssignments?.[ev.key] ||
-                                      findTechUserIdByName(ev.technicianName) ||
-                                      '';
-
-                                    return (
-                                      <>
-                                        <select
-                                          value={selectedTechId}
-                                          onChange={(e) => {
-                                            const v = String(e.target.value || '');
-                                            setPlanningAssignments((prev) => ({
-                                              ...(prev || {}),
-                                              [ev.key]: v
-                                            }));
-                                          }}
-                                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
-                                        >
-                                          <option value="">-- Technicien --</option>
-                                          {techUsers.map((u) => (
-                                            <option key={u.id} value={u.id}>
-                                              {u.technicianName || u.email}
-                                            </option>
-                                          ))}
-                                        </select>
-                                        <button
-                                          onClick={() => handlePlanIntervention({ ...ev, technicianUserId: selectedTechId })}
-                                          className="bg-emerald-700 text-white px-3 py-2 rounded-lg hover:bg-emerald-800 font-semibold text-sm disabled:bg-gray-400 disabled:hover:bg-gray-400"
-                                          disabled={!selectedTechId}
-                                          title={!selectedTechId ? 'Sélectionner un technicien' : ''}
-                                        >
-                                          Planifier
-                                        </button>
-                                      </>
-                                    );
-                                  })()
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
-
-                {(() => {
-                  const siteById = new Map(sites.map((s) => [String(s.id), s]));
-                  const list = interventions
-                    .slice()
-                    .sort((a, b) => String(a.plannedDate || '').localeCompare(String(b.plannedDate || '')));
-
-                  if (isAdmin) {
-                    const filtered = interventionsTechnicianUserId && interventionsTechnicianUserId !== 'all'
-                      ? list.filter((i) => String(i.technicianUserId || '') === String(interventionsTechnicianUserId))
-                      : list;
-
-                    const groupMap = new Map();
-                    filtered.forEach((it) => {
-                      const key = String(it.technicianName || 'Sans technicien');
-                      if (!groupMap.has(key)) groupMap.set(key, []);
-                      groupMap.get(key).push(it);
-                    });
-
-                    const groups = Array.from(groupMap.entries())
-                      .map(([title, items]) => ({ title, items }))
-                      .sort((a, b) => String(a.title).localeCompare(String(b.title)));
-
-                    return (
-                      <div className="space-y-6">
-                        {groups.length === 0 ? (
-                          <div className="text-sm text-gray-600">Aucune intervention.</div>
-                        ) : (
-                          groups.map((g) => (
-                            <div key={g.title}>
-                              <div className="font-semibold text-gray-800 mb-2">{g.title} ({g.items.length})</div>
-                              {g.items.length === 0 ? (
-                                <div className="text-sm text-gray-600">Aucune intervention.</div>
-                              ) : (
-                                <div className="space-y-2">
-                                  {g.items.map((it) => {
-                                    const site = siteById.get(String(it.siteId)) || null;
-                                    const statusColor = it.status === 'done' ? 'bg-green-100 text-green-800 border-green-200' : it.status === 'sent' ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-amber-100 text-amber-800 border-amber-200';
-                                    const wasRetiredPrevMonth = Boolean(
-                                      interventionsPrevMonthRetiredSiteIds.has(String(it.siteId)) &&
-                                      String(interventionsMonth || '').trim() &&
-                                      String(it?.plannedDate || '').slice(0, 7) === String(interventionsMonth || '').trim()
-                                    );
-                                    return (
-                                      <div key={it.id} className="border border-gray-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                        <div className="min-w-0">
-                                          <div className="font-semibold text-gray-800 truncate">{site?.nameSite || it.siteId}</div>
-                                          {site?.idSite && <div className="text-xs text-gray-600">ID: {site.idSite}</div>}
-                                          <div className="text-xs text-gray-600">{it.epvType} • {formatDate(it.plannedDate)} • {it.technicianName}</div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                          <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{it.status}</span>
-                                          {wasRetiredPrevMonth && (
-                                            <span className="text-xs px-2 py-1 rounded border font-semibold bg-amber-50 text-amber-900 border-amber-200">
-                                              Justif hors délais (retiré {interventionsPrevMonthKey || 'mois-1'})
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    );
-                  }
-
-                  const pad2 = (n) => String(n).padStart(2, '0');
-                  const ymdLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-                  const today = ymdLocal(new Date());
-                  const tomorrowD = new Date();
-                  tomorrowD.setDate(tomorrowD.getDate() + 1);
-                  const tomorrow = ymdLocal(tomorrowD);
-                  const month = String(interventionsMonth || '').trim();
-
-                  const statusRank = (st) => {
-                    if (st === 'sent') return 0;
-                    if (st === 'planned') return 1;
-                    return 2;
-                  };
-
-                  const todayItems = list
-                    .filter((i) => i.plannedDate === today && i.status !== 'done')
-                    .slice()
-                    .sort((a, b) => statusRank(a.status) - statusRank(b.status));
-
-                  const tomorrowRaw = list.filter((i) => i.plannedDate === tomorrow && i.status !== 'done');
-                  const tomorrowSentCount = tomorrowRaw.filter((i) => i.status === 'sent').length;
-                  const tomorrowItems = tomorrowRaw
-                    .slice()
-                    .sort((a, b) => statusRank(a.status) - statusRank(b.status));
-
-                  const renderItem = (it) => {
-                    const site = siteById.get(String(it.siteId)) || null;
-                    const statusColor = it.status === 'done' ? 'bg-green-100 text-green-800 border-green-200' : it.status === 'sent' ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-amber-100 text-amber-800 border-amber-200';
-                    const wasRetiredPrevMonth = Boolean(
-                      interventionsPrevMonthRetiredSiteIds.has(String(it.siteId)) &&
-                      String(interventionsMonth || '').trim() &&
-                      String(it?.plannedDate || '').slice(0, 7) === String(interventionsMonth || '').trim()
-                    );
-
-                    const canCatchUpInMonth = Boolean(
-                      isTechnician &&
-                      technicianInterventionsTab === 'month' &&
-                      String(it?.plannedDate || '')
-                    );
-                    const isOverdueInMonth = Boolean(
-                      isTechnician &&
-                      technicianInterventionsTab === 'month' &&
-                      String(it?.plannedDate || '') &&
-                      String(it.plannedDate) < String(today)
-                    );
-                    return (
-                      <div key={it.id} className="border border-gray-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="font-semibold text-gray-800 truncate">{site?.nameSite || it.siteId}</div>
-                          {site?.idSite && <div className="text-xs text-gray-600">ID: {site.idSite}</div>}
-                          <div className="text-xs text-gray-600">{it.epvType} • {formatDate(it.plannedDate)} • {it.technicianName}</div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{it.status}</span>
-                          {wasRetiredPrevMonth && (
-                            <span className="text-xs px-2 py-1 rounded border font-semibold bg-amber-50 text-amber-900 border-amber-200">
-                              Justif hors délais (retiré {interventionsPrevMonthKey || 'mois-1'})
-                            </span>
-                          )}
-                          {isOverdueInMonth && (
-                            <span className="text-xs px-2 py-1 rounded border font-semibold bg-red-100 text-red-800 border-red-200">
-                              RETARD
-                            </span>
-                          )}
-                          {isTechnician && site && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const offset = Number(site?.nhOffset || 0);
-                                const raw = Math.max(0, Number(site?.nh2A || 0) - offset);
-                                setNhModalIntervention(it);
-                                setNhModalSite(site);
-                                setNhForm({ nhValue: String(Math.trunc(raw)), readingDate: today });
-                                setNhFormError('');
-                                setNhModalOpen(true);
-                              }}
-                              className="bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm"
-                            >
-                              Mettre à jour NH
-                            </button>
-                          )}
-                          {it.status !== 'done' && (isAdmin || (isTechnician && (technicianInterventionsTab !== 'month' || canCatchUpInMonth))) && (
-                            <button
-                              onClick={() => {
-                                if (isTechnician) {
-                                  setCompleteModalIntervention(it);
-                                  setCompleteModalSite(site);
-                                  setCompleteForm({ nhNow: String(site?.nhEstimated ?? ''), doneDate: today });
-                                  setCompleteFormError('');
-                                  setCompleteModalOpen(true);
-                                  return;
-                                }
-                                handleCompleteIntervention(it.id);
-                              }}
-                              className="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 font-semibold text-sm"
-                            >
-                              Marquer effectuée
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  };
-
-                  if (isTechnician) {
-                    if (technicianInterventionsTab === 'month') {
-                      const prevMonth = (() => {
-                        const raw = String(month || '').trim();
-                        const m = raw.match(/^(\d{4})-(\d{2})$/);
-                        if (!m) return '';
-                        const y = Number(m[1]);
-                        const mm = Number(m[2]);
-                        if (!Number.isFinite(y) || !Number.isFinite(mm) || mm < 1 || mm > 12) return '';
-                        const py = mm === 1 ? y - 1 : y;
-                        const pm = mm === 1 ? 12 : mm - 1;
-                        return `${py}-${String(pm).padStart(2, '0')}`;
-                      })();
-
-                      const catchUpPrevMonthItems = list
-                        .filter((i) => i && i.status !== 'done')
-                        .filter((i) => {
-                          if (!prevMonth) return false;
-                          return String(i.plannedDate || '').slice(0, 7) === prevMonth;
-                        });
-
-                      const monthItems = list
-                        .filter((i) => i && i.status !== 'done')
-                        .filter((i) => {
-                          if (!month) return true;
-                          return String(i.plannedDate || '').slice(0, 7) === month;
-                        });
-
-                      const merged = [...catchUpPrevMonthItems, ...monthItems].filter(Boolean);
-
-                      const byDate = new Map();
-                      merged.forEach((it) => {
-                        const k = String(it.plannedDate || '');
-                        if (!byDate.has(k)) byDate.set(k, []);
-                        byDate.get(k).push(it);
-                      });
-
-                      const dates = Array.from(byDate.keys()).sort((a, b) => String(a).localeCompare(String(b)));
-                      return (
-                        <div className="space-y-6">
-                          {catchUpPrevMonthItems.length > 0 && (
-                            <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2 text-sm">
-                              Rattrapage: <span className="font-semibold">{catchUpPrevMonthItems.length}</span> vidange(s) en retard du mois précédent affichée(s) dans ce mois.
-                            </div>
-                          )}
-                          {dates.length === 0 ? (
-                            <div className="text-sm text-gray-600">Aucune intervention.</div>
-                          ) : (
-                            dates.map((d) => (
-                              <div key={d}>
-                                <div className="font-semibold text-gray-800 mb-2">{formatDate(d)} ({byDate.get(d).length})</div>
-                                <div className="space-y-2">
-                                  {byDate.get(d).map((it) => renderItem(it))}
-                                </div>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      );
-                    }
-
-                    const selectedKey = technicianInterventionsTab === 'today' ? 'today' : 'tomorrow';
-                    const selected = selectedKey === 'today' ? todayItems : tomorrowItems;
-                    const title = selectedKey === 'today' ? "Aujourd'hui" : `Demain (${tomorrowItems.length} dont ${tomorrowSentCount} envoyée(s))`;
-                    return (
-                      <div className="space-y-6">
-                        <div>
-                          <div className="font-semibold text-gray-800 mb-2">{title}</div>
-                          {selected.length === 0 ? (
-                            <div className="text-sm text-gray-600">Aucune intervention.</div>
-                          ) : (
-                            <div className="space-y-2">{selected.map((it) => renderItem(it))}</div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  const groups = [
-                    { key: 'today', title: "Aujourd'hui", items: todayItems },
-                    { key: 'tomorrow', title: `Demain (${tomorrowItems.length} dont ${tomorrowSentCount} envoyée(s))`, items: tomorrowItems },
-                    { key: 'all', title: 'Toutes', items: list }
-                  ];
-
-                  return (
-                    <div className="space-y-6">
-                      {groups.map((g) => (
-                        <div key={g.key}>
-                          <div className="font-semibold text-gray-800 mb-2">{g.title}</div>
-                          {g.items.length === 0 ? (
-                            <div className="text-sm text-gray-600">Aucune intervention.</div>
-                          ) : (
-                            <div className="space-y-2">{g.items.map((it) => renderItem(it))}</div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })()}
-
-                {completeModalOpen && (
-                  <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full overflow-hidden">
-                      <div className="flex justify-between items-center p-4 border-b bg-green-700 text-white">
-                        <div className="font-bold">Valider l'intervention</div>
-                        <div className="flex items-center gap-3">
-                          <button
-                            onClick={() => {
-                              setCompleteModalOpen(false);
-                              setCompleteModalIntervention(null);
-                              setCompleteModalSite(null);
-                              setCompleteForm({ nhNow: '', doneDate: '' });
-                              setCompleteFormError('');
-                            }}
-                            className="hover:bg-green-800 p-2 rounded"
-                          >
-                            <X size={18} />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="p-4 space-y-3">
-                        <div className="text-sm text-gray-700">
-                          <div className="font-semibold text-gray-900">{completeModalSite?.nameSite || completeModalIntervention?.siteId || ''}</div>
-                          {completeModalSite?.idSite && (
-                            <div className="text-xs text-gray-600">ID: {completeModalSite.idSite}</div>
-                          )}
-                          <div className="text-xs text-gray-600">{completeModalIntervention?.epvType} • {formatDate(completeModalIntervention?.plannedDate)}</div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div className="flex flex-col">
-                            <label className="text-xs text-gray-600 mb-1">Date de vidange</label>
-                            <input
-                              type="date"
-                              value={completeForm.doneDate}
-                              onChange={(e) => {
-                                setCompleteForm((prev) => ({ ...(prev || {}), doneDate: e.target.value }));
-                                setCompleteFormError('');
-                              }}
-                              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                            />
-                          </div>
-                          <div className="flex flex-col">
-                            <label className="text-xs text-gray-600 mb-1">Compteur (NH) relevé</label>
-                            <input
-                              type="number"
-                              value={completeForm.nhNow}
-                              onChange={(e) => {
-                                setCompleteForm((prev) => ({ ...(prev || {}), nhNow: e.target.value }));
-                                setCompleteFormError('');
-                              }}
-                              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                            />
-                          </div>
-                        </div>
-
-                        {completeFormError && (
-                          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">
-                            {completeFormError}
-                          </div>
-                        )}
-                      </div>
-                      <div className={`p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2' : 'flex justify-end gap-2'}`}>
-                        <button
-                          onClick={() => {
-                            setCompleteModalOpen(false);
-                            setCompleteModalIntervention(null);
-                            setCompleteModalSite(null);
-                            setCompleteForm({ nhNow: '', doneDate: '' });
-                            setCompleteFormError('');
-                          }}
-                          className={`bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold ${isAdmin ? 'w-full sm:w-auto' : ''}`}
-                        >
-                          Annuler
-                        </button>
-                        <button
-                          onClick={async () => {
-                            const interventionId = completeModalIntervention?.id;
-                            if (!interventionId) {
-                              setCompleteFormError('Intervention introuvable.');
-                              return;
-                            }
-                            const doneDate = String(completeForm?.doneDate || '').trim();
-                            const nhNow = Number(String(completeForm?.nhNow || '').trim());
-                            if (!/^\d{4}-\d{2}-\d{2}$/.test(doneDate)) {
-                              setCompleteFormError('Date invalide.');
-                              return;
-                            }
-                            if (!Number.isFinite(nhNow)) {
-                              setCompleteFormError('Veuillez saisir un compteur (NH) valide.');
-                              return;
-                            }
-                            try {
-                              await handleCompleteIntervention(interventionId, { nhNow, doneDate });
-                              setCompleteModalOpen(false);
-                              setCompleteModalIntervention(null);
-                              setCompleteModalSite(null);
-                              setCompleteForm({ nhNow: '', doneDate: '' });
-                              setCompleteFormError('');
-                            } catch (e) {
-                              // handled in handler
-                            }
-                          }}
-                          className={`bg-green-700 text-white px-4 py-2 rounded-lg hover:bg-green-800 font-semibold ${isAdmin ? 'w-full sm:w-auto' : ''}`}
-                        >
-                          Confirmer
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {nhModalOpen && (
-                  <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full overflow-hidden">
-                      <div className="flex justify-between items-center p-4 border-b bg-slate-800 text-white">
-                        <div className="font-bold">Mettre à jour le NH</div>
-                        <div className="flex items-center gap-3">
-                          <button
-                            onClick={() => {
-                              setNhModalOpen(false);
-                              setNhModalIntervention(null);
-                              setNhModalSite(null);
-                              setNhForm({ nhValue: '', readingDate: '' });
-                              setNhFormError('');
-                            }}
-                            className="hover:bg-slate-900 p-2 rounded"
-                          >
-                            <X size={18} />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="p-4 space-y-3">
-                        <div className="text-sm text-gray-700">
-                          <div className="font-semibold text-gray-900">{nhModalSite?.nameSite || nhModalIntervention?.siteId || ''}</div>
-                          {nhModalSite?.idSite && <div className="text-xs text-gray-600">ID: {nhModalSite.idSite}</div>}
-                          <div className="text-xs text-gray-600">Saisir le compteur tel qu'affiché sur le générateur (DEEPSEA).</div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div className="flex flex-col">
-                            <label className="text-xs text-gray-600 mb-1">Date du relevé</label>
-                            <input
-                              type="date"
-                              value={nhForm.readingDate}
-                              onChange={(e) => {
-                                setNhForm((prev) => ({ ...(prev || {}), readingDate: e.target.value }));
-                                setNhFormError('');
-                              }}
-                              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                            />
-                          </div>
-                          <div className="flex flex-col">
-                            <label className="text-xs text-gray-600 mb-1">NH actuel</label>
-                            <input
-                              type="number"
-                              value={nhForm.nhValue}
-                              onChange={(e) => {
-                                setNhForm((prev) => ({ ...(prev || {}), nhValue: e.target.value }));
-                                setNhFormError('');
-                              }}
-                              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                            />
-                          </div>
-                        </div>
-
-                        {nhFormError && (
-                          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">
-                            {nhFormError}
-                          </div>
-                        )}
-                      </div>
-                      <div className={`p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2' : 'flex justify-end gap-2'}`}>
-                        <button
-                          onClick={() => {
-                            setNhModalOpen(false);
-                            setNhModalIntervention(null);
-                            setNhModalSite(null);
-                            setNhForm({ nhValue: '', readingDate: '' });
-                            setNhFormError('');
-                          }}
-                          className={`bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold ${isAdmin ? 'w-full sm:w-auto' : ''}`}
-                        >
-                          Annuler
-                        </button>
-                        <button
-                          onClick={async () => {
-                            const siteId = nhModalSite?.id;
-                            if (!siteId) {
-                              setNhFormError('Site introuvable.');
-                              return;
-                            }
-                            const readingDate = String(nhForm?.readingDate || '').trim();
-                            const nhValue = Number(String(nhForm?.nhValue || '').trim());
-                            if (!/^\d{4}-\d{2}-\d{2}$/.test(readingDate)) {
-                              setNhFormError('Date invalide.');
-                              return;
-                            }
-                            if (!Number.isFinite(nhValue) || nhValue < 0) {
-                              setNhFormError('Veuillez saisir un NH valide.');
-                              return;
-                            }
-                            try {
-                              const data = await apiFetchJson(`/api/sites/${siteId}/nh`, {
-                                method: 'POST',
-                                body: JSON.stringify({ readingDate, nhValue })
-                              });
-                              await loadData();
-                              await loadInterventions();
-                              if (data?.isReset) {
-                                alert('⚠️ Reset détecté (compteur revenu à 0 ou inférieur). Historique enregistré et calculs recalculés.');
-                              } else {
-                                alert('✅ NH mis à jour.');
-                              }
-                              setNhModalOpen(false);
-                              setNhModalIntervention(null);
-                              setNhModalSite(null);
-                              setNhForm({ nhValue: '', readingDate: '' });
-                              setNhFormError('');
-                            } catch (e) {
-                              setNhFormError(e?.message || 'Erreur serveur.');
-                            }
-                          }}
-                          className={`bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold ${isAdmin ? 'w-full sm:w-auto' : ''}`}
-                        >
-                          Confirmer
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className={`p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:justify-end gap-2' : 'flex justify-end'}`}>
-                <button
-                  onClick={() => {
-                    setShowInterventions(false);
-                    setInterventionsError('');
-                    setPlanningAssignments({});
-                    setCompleteModalOpen(false);
-                    setCompleteModalIntervention(null);
-                    setCompleteModalSite(null);
-                    setCompleteForm({ nhNow: '', doneDate: '' });
-                    setCompleteFormError('');
-                    setNhModalOpen(false);
-                    setNhModalIntervention(null);
-                    setNhModalSite(null);
-                    setNhForm({ nhValue: '', readingDate: '' });
-                    setNhFormError('');
-                  }}
-                  className={`bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold ${isAdmin ? 'w-full sm:w-auto' : ''}`}
-                >
-                  Fermer
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showPresenceModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[92vh] overflow-hidden flex flex-col">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-indigo-700 text-white">
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                  <Activity size={22} />
-                  Présence & activité
-                </h2>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => setShowPresenceModal(false)} className="hover:bg-indigo-800 p-2 rounded">
-                    <X size={20} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-                {isAdmin && (
-                  <div className="flex flex-col sm:flex-row gap-2 mb-4">
-                    <button
-                      type="button"
-                      onClick={() => setPresenceTab('sessions')}
-                      className={`px-3 py-2 rounded-lg text-sm font-semibold ${presenceTab === 'sessions' ? 'bg-indigo-700 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
-                    >
-                      Sessions
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setPresenceTab('history');
-                        try {
-                          await refreshUsers();
-                        } catch {
-                          // ignore
-                        }
-                        await loadAuditLogs();
-                      }}
-                      className={`px-3 py-2 rounded-lg text-sm font-semibold ${presenceTab === 'history' ? 'bg-indigo-700 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'}`}
-                    >
-                      Historique
-                    </button>
-                  </div>
-                )}
-
-                {presenceTab === 'history' && isAdmin ? (
-                  <div>
-                    <div className="text-xs text-gray-600 mb-3">
-                      Historique des connexions et actions (audit). Filtre par date/utilisateur/recherche.
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Utilisateur</label>
-                        <select
-                          value={auditUserId}
-                          onChange={(e) => setAuditUserId(e.target.value)}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                        >
-                          <option value="">Tous</option>
-                          {users.map((u) => (
-                            <option key={u.id} value={u.id}>
-                              {u.email}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Du</label>
-                        <input
-                          type="date"
-                          value={auditFrom}
-                          onChange={(e) => setAuditFrom(e.target.value)}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Au</label>
-                        <input
-                          type="date"
-                          value={auditTo}
-                          onChange={(e) => setAuditTo(e.target.value)}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Recherche</label>
-                        <input
-                          type="text"
-                          value={auditQuery}
-                          onChange={(e) => setAuditQuery(e.target.value)}
-                          placeholder="email, action, path…"
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                        />
-                      </div>
-                    </div>
-
-                    {auditError && <div className="text-sm text-red-600 mb-3">{auditError}</div>}
-
-                    <div className="flex flex-col sm:flex-row gap-2 mb-4">
-                      <button
-                        type="button"
-                        onClick={loadAuditLogs}
-                        disabled={auditBusy}
-                        className="bg-indigo-700 text-white px-4 py-2 rounded-lg hover:bg-indigo-800 font-semibold disabled:bg-gray-400"
-                      >
-                        {auditBusy ? 'Chargement…' : 'Rechercher'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleExportAuditExcel}
-                        disabled={auditBusy || (Array.isArray(auditLogs) ? auditLogs.length === 0 : true) || exportBusy}
-                        className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 font-semibold disabled:bg-gray-400"
-                      >
-                        Export Excel
-                      </button>
-                    </div>
-
-                    {auditLogs.length === 0 ? (
-                      <div className="text-gray-600">Aucun log.</div>
-                    ) : (
-                      <div className="border border-gray-200 rounded-lg overflow-auto max-h-[55vh]">
-                        <table className="min-w-full text-xs">
-                          <thead className="sticky top-0 bg-gray-50">
-                            <tr className="text-left">
-                              <th className="p-2 border-b">Date</th>
-                              <th className="p-2 border-b">Email</th>
-                              <th className="p-2 border-b">Rôle</th>
-                              <th className="p-2 border-b">Action</th>
-                              <th className="p-2 border-b">Méthode</th>
-                              <th className="p-2 border-b">Chemin</th>
-                              <th className="p-2 border-b">Status</th>
-                              <th className="p-2 border-b">Metadata</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {auditLogs.slice(0, 500).map((l) => (
-                              <tr key={l.id} className="odd:bg-white even:bg-gray-50">
-                                <td className="p-2 border-b whitespace-nowrap">{l.createdAtMs ? new Date(Number(l.createdAtMs)).toLocaleString('fr-FR') : (l.createdAt || '')}</td>
-                                <td className="p-2 border-b">{l.email || '—'}</td>
-                                <td className="p-2 border-b whitespace-nowrap">{l.role || '-'}</td>
-                                <td className="p-2 border-b whitespace-nowrap">{l.action || '-'}</td>
-                                <td className="p-2 border-b whitespace-nowrap">{l.method || ''}</td>
-                                <td className="p-2 border-b">{(() => {
-                                  const p = String(l.path || '');
-                                  if (!p) return '';
-                                  if (p === '/api/meta/version') return 'Vérification version (heartbeat)';
-                                  const method = String(l.method || '').trim();
-                                  const query = String(l.query || '');
-                                  return `${method ? `${method} ` : ''}${p}${query || ''}`;
-                                })()}</td>
-                                <td className="p-2 border-b whitespace-nowrap">{l.status ?? ''}</td>
-                                <td className="p-2 border-b">{l.metadata ? JSON.stringify(l.metadata) : ''}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        {auditLogs.length > 500 ? (
-                          <div className="text-xs text-gray-500 p-2">Affichage limité à 500 lignes (export disponible sur l’ensemble chargé).</div>
-                        ) : null}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div>
-                    <div className="text-xs text-gray-600 mb-3">
-                      Sessions actives (tous rôles, multi-appareils). Actualisation automatique.
-                    </div>
-                    {presenceSessions.length === 0 ? (
-                      <div className="text-gray-600">Aucun utilisateur actif détecté.</div>
-                    ) : (
-                      <div className="space-y-2">
-                        {presenceSessions.map((s) => {
-                          const lastSeenMs = Number(s.lastSeenMs);
-                          const secondsAgo = Number.isFinite(lastSeenMs) ? Math.max(0, Math.round((Date.now() - lastSeenMs) / 1000)) : null;
-                          const isActive = secondsAgo !== null && secondsAgo <= 8;
-                          return (
-                            <div key={s.id || `${s.userId || ''}|${s.tabId || ''}|${s.email || ''}`} className="border border-gray-200 rounded-lg p-3 flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="font-semibold text-gray-800 truncate">{s.email || 'Utilisateur'}</div>
-                                <div className="text-xs text-gray-600">Rôle: {s.role || '-'}</div>
-                                <div className="text-xs text-gray-600 mt-1">Activité: <span className="font-semibold text-gray-800">{s.activity || '-'}</span></div>
-                              </div>
-                              <div className="text-right">
-                                <div className={`text-xs px-2 py-1 rounded inline-block ${isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>
-                                  {isActive ? 'Actif' : 'Inactif'}
-                                </div>
-                                <div className="text-xs text-gray-500 mt-2">{secondsAgo === null ? '-' : `Vu il y a ${secondsAgo}s`}</div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className={`relative p-4 border-t bg-white ${isAdmin ? 'flex flex-col sm:flex-row sm:justify-end gap-2' : 'flex justify-end'}`}>
-                <button
-                  onClick={() => setShowPresenceModal(false)}
-                  className={`bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold ${isAdmin ? 'w-full sm:w-auto' : ''}`}
-                >
-                  Fermer
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showUsersModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-slate-700 text-white">
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                  <Users size={22} />
-                  Gestion des utilisateurs
-                </h2>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => { setShowUsersModal(false); setUserFormError(''); }} className="hover:bg-slate-800 p-2 rounded">
-                    <X size={20} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <div className="border border-gray-200 rounded-lg p-4">
-                    <div className="font-bold text-gray-800 mb-3">Utilisateurs</div>
-                    <div className="space-y-2">
-                      {users.map((u) => (
-                        <div key={u.id} className="border border-gray-200 rounded-lg p-3 grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-start">
-                          <div className="min-w-0">
-                            <div className="font-semibold text-gray-800 truncate">{u.email}</div>
-                            <div className="text-xs text-gray-600">Rôle: {u.role}{u.technicianName ? ` | Technicien: ${u.technicianName}` : ''}</div>
-                          </div>
-                          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
-                            <button
-                              onClick={() => {
-                                setUserFormId(u.id);
-                                setUserForm({ email: u.email, role: u.role, technicianName: u.technicianName || '', password: '' });
-                                setUserFormError('');
-                              }}
-                              className="bg-gray-200 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-300 text-sm font-semibold w-full sm:w-auto"
-                            >
-                              Modifier
-                            </button>
-                            <button
-                              disabled={u.role === 'admin'}
-                              onClick={() => {
-                                (async () => {
-                                  try {
-                                    await apiFetchJson(`/api/users/${u.id}`, { method: 'DELETE' });
-                                    await refreshUsers();
-                                  } catch (e) {
-                                    setUserFormError(e?.message || 'Erreur serveur.');
-                                  }
-                                })();
-                              }}
-                              className="bg-red-600 text-white px-3 py-2 rounded-lg hover:bg-red-700 text-sm font-semibold disabled:bg-gray-400 w-full sm:w-auto"
-                            >
-                              Suppr.
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="border border-gray-200 rounded-lg p-4">
-                    <div className="font-bold text-gray-800 mb-3">Ajouter / Modifier</div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="sm:col-span-2">
-                        <label className="block text-xs text-gray-600 mb-1">Email</label>
-                        <input
-                          type="email"
-                          value={userForm.email}
-                          onChange={(e) => { setUserForm({ ...userForm, email: e.target.value }); setUserFormError(''); }}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                          placeholder="user@domaine.com"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Rôle</label>
-                        <select
-                          value={userForm.role}
-                          onChange={(e) => { setUserForm({ ...userForm, role: e.target.value }); setUserFormError(''); }}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                        >
-                          <option value="viewer">viewer (lecture)</option>
-                          <option value="technician">technician</option>
-                          <option value="admin">admin</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Nom technicien (si technician)</label>
-                        <input
-                          type="text"
-                          value={userForm.technicianName}
-                          onChange={(e) => { setUserForm({ ...userForm, technicianName: e.target.value }); setUserFormError(''); }}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                          placeholder="Ex: John Doe"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2">
-                        <label className="block text-xs text-gray-600 mb-1">Mot de passe (obligatoire pour créer / changer)</label>
-                        <input
-                          type="password"
-                          value={userForm.password}
-                          onChange={(e) => { setUserForm({ ...userForm, password: e.target.value }); setUserFormError(''); }}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                          placeholder="********"
-                        />
-                      </div>
-                    </div>
-
-                    {userFormError && (
-                      <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm mt-3">
-                        {userFormError}
-                      </div>
-                    )}
-
-                    <div className={`flex flex-col sm:flex-row gap-2 mt-4 ${isAdmin ? 'sm:justify-between' : ''}`}>
-                      <button
-                        onClick={() => {
-                          const email = String(userForm.email || '').trim().toLowerCase();
-                          if (!email) {
-                            setUserFormError('Email requis.');
-                            return;
-                          }
-                          if (!userForm.password) {
-                            setUserFormError('Mot de passe requis.');
-                            return;
-                          }
-
-                          (async () => {
-                            try {
-                              if (userFormId) {
-                                await apiFetchJson(`/api/users/${userFormId}`, {
-                                  method: 'PATCH',
-                                  body: JSON.stringify({
-                                    email,
-                                    role: userForm.role,
-                                    technicianName: userForm.technicianName || ''
-                                  })
-                                });
-
-                                await apiFetchJson(`/api/users/${userFormId}/reset-password`, {
-                                  method: 'POST',
-                                  body: JSON.stringify({ password: userForm.password })
-                                });
-                              } else {
-                                await apiFetchJson('/api/users', {
-                                  method: 'POST',
-                                  body: JSON.stringify({
-                                    email,
-                                    role: userForm.role,
-                                    technicianName: userForm.technicianName || '',
-                                    password: userForm.password
-                                  })
-                                });
-                              }
-
-                              await refreshUsers();
-                              setUserFormId(null);
-                              setUserForm({ email: '', role: 'viewer', technicianName: '', password: '' });
-                              setUserFormError('');
-                            } catch (e) {
-                              setUserFormError(e?.message || 'Erreur serveur.');
-                            }
-                          })();
-                        }}
-                        className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold w-full sm:w-auto"
-                      >
-                        Enregistrer
-                      </button>
-                      <button
-                        onClick={() => { setUserFormId(null); setUserForm({ email: '', role: 'viewer', technicianName: '', password: '' }); setUserFormError(''); }}
-                        className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold w-full sm:w-auto"
-                      >
-                        Réinitialiser
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-3 border-t bg-white" />
-            </div>
-          </div>
-        )}
+        <ScoringModal
+          open={showScoring}
+          isTechnician={isTechnician}
+          isViewer={isViewer}
+          isAdmin={isAdmin}
+          scoringMonth={scoringMonth}
+          setScoringMonth={setScoringMonth}
+          loadInterventions={loadInterventions}
+          sites={sites}
+          ficheHistory={ficheHistory}
+          interventions={interventions}
+          scoringDetails={scoringDetails}
+          setScoringDetails={setScoringDetails}
+          canExportExcel={canExportExcel}
+          handleExportScoringDetailsExcel={handleExportScoringDetailsExcel}
+          exportBusy={exportBusy}
+          formatDate={formatDate}
+          onClose={() => setShowScoring(false)}
+        />
+
+        <InterventionsModal
+            open={showInterventions}
+            isTechnician={isTechnician}
+            isAdmin={isAdmin}
+            isViewer={isViewer}
+            authUser={authUser}
+            technicianUnseenSentCount={technicianUnseenSentCount}
+            technicianSeenSentAt={technicianSeenSentAt}
+            setTechnicianSeenSentAt={setTechnicianSeenSentAt}
+            interventions={interventions}
+            setShowInterventions={setShowInterventions}
+            interventionsBusy={interventionsBusy}
+            interventionsError={interventionsError}
+            setInterventionsError={setInterventionsError}
+            users={users}
+            sites={sites}
+            filteredSites={filteredSites}
+            interventionsMonth={interventionsMonth}
+            setInterventionsMonth={setInterventionsMonth}
+            interventionsStatus={interventionsStatus}
+            setInterventionsStatus={setInterventionsStatus}
+            interventionsTechnicianUserId={interventionsTechnicianUserId}
+            setInterventionsTechnicianUserId={setInterventionsTechnicianUserId}
+            loadInterventions={loadInterventions}
+            canExportExcel={canExportExcel}
+            handleExportInterventionsExcel={handleExportInterventionsExcel}
+            exportBusy={exportBusy}
+            planningAssignments={planningAssignments}
+            setPlanningAssignments={setPlanningAssignments}
+            getInterventionKey={getInterventionKey}
+            ymdShiftForWorkdays={ymdShiftForWorkdays}
+            interventionsPrevMonthRetiredSiteIds={interventionsPrevMonthRetiredSiteIds}
+            interventionsPrevMonthKey={interventionsPrevMonthKey}
+            handlePlanIntervention={handlePlanIntervention}
+            technicianInterventionsTab={technicianInterventionsTab}
+            setTechnicianInterventionsTab={setTechnicianInterventionsTab}
+            showTechnicianInterventionsFilters={showTechnicianInterventionsFilters}
+            setShowTechnicianInterventionsFilters={setShowTechnicianInterventionsFilters}
+            handleCompleteIntervention={handleCompleteIntervention}
+            formatDate={formatDate}
+            completeModalOpen={completeModalOpen}
+            setCompleteModalOpen={setCompleteModalOpen}
+            completeModalSite={completeModalSite}
+            setCompleteModalSite={setCompleteModalSite}
+            completeModalIntervention={completeModalIntervention}
+            setCompleteModalIntervention={setCompleteModalIntervention}
+            completeForm={completeForm}
+            setCompleteForm={setCompleteForm}
+            completeFormError={completeFormError}
+            setCompleteFormError={setCompleteFormError}
+            nhModalOpen={nhModalOpen}
+            setNhModalOpen={setNhModalOpen}
+            nhModalSite={nhModalSite}
+            setNhModalSite={setNhModalSite}
+            nhModalIntervention={nhModalIntervention}
+            setNhModalIntervention={setNhModalIntervention}
+            nhForm={nhForm}
+            setNhForm={setNhForm}
+            nhFormError={nhFormError}
+            setNhFormError={setNhFormError}
+            apiFetchJson={apiFetchJson}
+            loadData={loadData}
+          />
+
+        <PresenceModal
+  open={showPresenceModal}
+  isAdmin={isAdmin}
+  presenceTab={presenceTab}
+  onSelectSessions={() => setPresenceTab('sessions')}
+  onSelectHistory={async () => {
+    setPresenceTab('history');
+    try {
+      await refreshUsers();
+    } catch {
+      // ignore
+    }
+    await loadAuditLogs();
+  }}
+  users={users}
+  auditUserId={auditUserId}
+  onAuditUserIdChange={(v) => setAuditUserId(v)}
+  auditFrom={auditFrom}
+  onAuditFromChange={(v) => setAuditFrom(v)}
+  auditTo={auditTo}
+  onAuditToChange={(v) => setAuditTo(v)}
+  auditQuery={auditQuery}
+  onAuditQueryChange={(v) => setAuditQuery(v)}
+  auditError={auditError}
+  auditBusy={auditBusy}
+  auditLogs={auditLogs}
+  onSearchAudit={loadAuditLogs}
+  onExportAuditExcel={handleExportAuditExcel}
+  exportBusy={exportBusy}
+  presenceSessions={presenceSessions}
+  onClose={() => setShowPresenceModal(false)}
+/>
+
+        <UsersModal
+  open={showUsersModal}
+  users={users}
+  userForm={userForm}
+  userFormId={userFormId}
+  userFormError={userFormError}
+  onClose={() => {
+    setShowUsersModal(false);
+    setUserFormError('');
+  }}
+  onEditUser={(u) => {
+    setUserFormId(u.id);
+    setUserForm({ email: u.email, role: u.role, technicianName: u.technicianName || '', password: '' });
+    setUserFormError('');
+  }}
+  onDeleteUser={(u) => {
+    (async () => {
+      try {
+        await apiFetchJson(`/api/users/${u.id}`, { method: 'DELETE' });
+        await refreshUsers();
+      } catch (e) {
+        setUserFormError(e?.message || 'Erreur serveur.');
+      }
+    })();
+  }}
+  onChangeUserForm={(next) => {
+    setUserForm(next);
+    setUserFormError('');
+  }}
+  onSave={() => {
+    const email = String(userForm.email || '').trim().toLowerCase();
+    if (!email) {
+      setUserFormError('Email requis.');
+      return;
+    }
+    if (!userForm.password) {
+      setUserFormError('Mot de passe requis.');
+      return;
+    }
+
+    (async () => {
+      try {
+        if (userFormId) {
+          await apiFetchJson(`/api/users/${userFormId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+              email,
+              role: userForm.role,
+              technicianName: userForm.technicianName || ''
+            })
+          });
+
+          await apiFetchJson(`/api/users/${userFormId}/reset-password`, {
+            method: 'POST',
+            body: JSON.stringify({ password: userForm.password })
+          });
+        } else {
+          await apiFetchJson('/api/users', {
+            method: 'POST',
+            body: JSON.stringify({
+              email,
+              role: userForm.role,
+              technicianName: userForm.technicianName || '',
+              password: userForm.password
+            })
+          });
+        }
+
+        await refreshUsers();
+        setUserFormId(null);
+        setUserForm({ email: '', role: 'viewer', technicianName: '', password: '' });
+        setUserFormError('');
+      } catch (e) {
+        setUserFormError(e?.message || 'Erreur serveur.');
+      }
+    })();
+  }}
+  onReset={() => {
+    setUserFormId(null);
+    setUserForm({ email: '', role: 'viewer', technicianName: '', password: '' });
+    setUserFormError('');
+  }}
+/>
 
         {/* Modal Calendrier (Technicien) */}
-        {showTechCalendar && isTechnician && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
-            <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-6xl sm:max-h-[90vh]">
-              <div className="flex items-start justify-between gap-3 px-3 py-3 sm:p-4 border-b bg-cyan-600 text-white">
-                <div className="min-w-0 flex items-center gap-2">
-                  <Calendar size={24} className="flex-shrink-0" />
-                  <h2 className="text-base sm:text-xl font-bold min-w-0">
-                    <span className="min-w-0 truncate">Calendrier</span>
-                  </h2>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    onClick={() => {
-                      setShowTechCalendar(false);
-                      setTechSelectedDate(null);
-                      setTechSelectedDayEvents([]);
-                      setShowTechDayDetailsModal(false);
-                    }}
-                    className="hover:bg-cyan-700 p-2 rounded"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                    <label className="text-xs font-semibold text-gray-700">Mois</label>
-                    <input
-                      type="month"
-                      value={techCalendarMonth}
-                      onChange={(e) => {
-                        const next = String(e.target.value || '').trim();
-                        setTechCalendarMonth(next);
-                      }}
-                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
-                    />
-                  </div>
-                  <div className="text-xs text-white/90 bg-cyan-700/40 border border-white/20 rounded-lg px-3 py-2">
-                    Lecture seule
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-7 gap-2 mb-2">
-                  {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map((day) => (
-                    <div key={day} className="text-center font-bold text-gray-700 py-2">
-                      {day}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-7 gap-2">
-                  {(() => {
-                    const m = String(techCalendarMonth || '').trim();
-                    const mm = m.match(/^(\d{4})-(\d{2})$/);
-                    const year = mm ? Number(mm[1]) : new Date().getFullYear();
-                    const month = mm ? Number(mm[2]) - 1 : new Date().getMonth();
-                    const firstDay = new Date(year, month, 1);
-                    const lastDay = new Date(year, month + 1, 0);
-                    const startDay = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
-                    const days = [];
-
-                    for (let i = 0; i < startDay; i++) {
-                      days.push(<div key={`empty-${i}`} className="h-24 bg-gray-50 rounded" />);
-                    }
-
-                    const pad2 = (n) => String(n).padStart(2, '0');
-                    const ymd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-                    const todayStr = ymd(new Date());
-
-                    for (let day = 1; day <= lastDay.getDate(); day++) {
-                      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                      const dow = new Date(`${dateStr}T00:00:00`).getDay();
-                      const isWeekend = dow === 0 || dow === 6;
-
-                      if (isWeekend) {
-                        days.push(
-                          <div
-                            key={day}
-                            className="h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full bg-slate-200/70 border-gray-300"
-                          />
-                        );
-                        continue;
-                      }
-
-                      const eventsForDay = getTechCalendarEventsForDay(dateStr);
-                      const isToday = todayStr === dateStr;
-                      const isSelected = techSelectedDate === dateStr;
-
-                      days.push(
-                        <button
-                          key={day}
-                          type="button"
-                          onClick={() => {
-                            const ev = getTechCalendarEventsForDay(dateStr);
-                            setTechSelectedDate(dateStr);
-                            setTechSelectedDayEvents(ev);
-                            setShowTechDayDetailsModal(true);
-                          }}
-                          className={`h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full hover:bg-gray-50 ${isToday ? 'border-blue-500 bg-blue-50' : 'border-gray-300'} ${isSelected ? 'ring-2 ring-cyan-500' : ''}`}
-                        >
-                          <div className="text-sm font-semibold text-gray-700">{day}</div>
-                          {eventsForDay.length > 0 && (
-                            <div className="text-xs space-y-1 mt-1">
-                              {eventsForDay.slice(0, 2).map((ev) => {
-                                const daysUntil = getDaysUntil(dateStr);
-                                const color = daysUntil <= 3 ? 'bg-red-500' : daysUntil <= 7 ? 'bg-orange-500' : 'bg-green-500';
-                                const ticket = String(ev?.item?.pmNumber || '').trim();
-                                const typeLabel = techCalendarPmTypeLabel(ev?.item);
-                                return (
-                                  <div key={`${ev?.site?.id || ev?.item?.id}`} className={`${color} text-white px-1 rounded flex items-start gap-1`}>
-                                    <span className="min-w-0 flex-1 whitespace-pre-line leading-tight break-words">{ev?.site?.nameSite || ev?.item?.siteId || '-'}</span>
-                                    <span className="ml-auto text-[10px] font-bold opacity-90">
-                                      {typeLabel}{ticket ? `:${ticket}` : ''}
-                                      {ev?.matchInfo?.label ? ` • ${ev.matchInfo.label === 'PM Simple' ? 'PM' : ev.matchInfo.label === 'PM et Vidange' ? 'PM+V' : 'V'}` : ''}
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                              {eventsForDay.length > 2 && (
-                                <div className="text-gray-600 text-center">+{eventsForDay.length - 2}</div>
-                              )}
-                            </div>
-                          )}
-                        </button>
-                      );
-                    }
-
-                    return days;
-                  })()}
-                </div>
-              </div>
-
-              <div className="p-3 border-t bg-white" />
-            </div>
-          </div>
-        )}
-
-        {showTechDayDetailsModal && showTechCalendar && isTechnician && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
-            <div className="bg-white rounded-none sm:rounded-lg shadow-xl sm:max-w-3xl sm:max-h-[90vh] w-full h-[100svh] max-h-[100svh] max-w-none overflow-hidden flex flex-col">
-              <div className="flex justify-between items-center p-4 border-b bg-cyan-600 text-white">
-                <div className="font-bold">Détails du {techSelectedDate ? formatDate(techSelectedDate) : ''}</div>
-                <button
-                  onClick={() => {
-                    setShowTechDayDetailsModal(false);
-                  }}
-                  className="hover:bg-cyan-700 p-2 rounded"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              <div className="p-4 overflow-y-auto flex-1">
-                {techSelectedDayEvents.length === 0 ? (
-                  <div className="text-gray-600">Aucune activité planifiée ce jour.</div>
-                ) : (
-                  <div className="space-y-2">
-                    {techSelectedDayEvents.map((evt) => {
-                      const it = evt?.item;
-                      const site = evt?.site;
-                      const matchInfo = evt?.matchInfo;
-                      const statusColor = it?.status === 'done' ? 'bg-green-100 text-green-800 border-green-200' : it?.status === 'sent' ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-amber-100 text-amber-800 border-amber-200';
-                      const ticket = String(it?.pmNumber || '').trim();
-                      const typeLabel = techCalendarPmTypeLabel(it);
-                      return (
-                        <div key={String(it?.id || `${site?.id}-${it?.plannedDate}-${it?.maintenanceType}`)} className="border border-gray-200 rounded-lg p-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="font-semibold text-gray-800 whitespace-pre-line leading-tight break-words">{site?.nameSite || it?.siteId || '-'}</div>
-                              {site?.idSite && <div className="text-xs text-gray-600">ID: {site.idSite}</div>}
-                              <div className="text-xs text-gray-600">{typeLabel} • {formatDate(it?.plannedDate)} • {String(it?.technicianName || '')}</div>
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                <span className="text-xs px-2 py-1 rounded border font-semibold bg-slate-50 text-slate-800 border-slate-200">
-                                  {typeLabel}{ticket ? `: ${ticket}` : ''}
-                                </span>
-                                {matchInfo?.label && (
-                                  <span className={`text-xs px-2 py-1 rounded border font-semibold ${matchInfo.kind === 'PM' || matchInfo.kind === 'PM_SIMPLE' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-800 border-slate-200'}`}>
-                                    {matchInfo.label}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{String(it?.status || '')}</span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              <div className="p-4 border-t bg-white flex justify-end">
-                <button
-                  onClick={() => setShowTechDayDetailsModal(false)}
-                  className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
-                >
-                  Fermer
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+              <TechnicianCalendarModal
+                open={showTechCalendar}
+                isTechnician={isTechnician}
+                techCalendarMonth={techCalendarMonth}
+                setTechCalendarMonth={setTechCalendarMonth}
+                techSelectedDate={techSelectedDate}
+                setTechSelectedDate={setTechSelectedDate}
+                techSelectedDayEvents={techSelectedDayEvents}
+                setTechSelectedDayEvents={setTechSelectedDayEvents}
+                showTechDayDetailsModal={showTechDayDetailsModal}
+                setShowTechDayDetailsModal={setShowTechDayDetailsModal}
+                getTechCalendarEventsForDay={getTechCalendarEventsForDay}
+                techCalendarPmTypeLabel={techCalendarPmTypeLabel}
+                formatDate={formatDate}
+                getDaysUntil={getDaysUntil}
+                onClose={() => {
+                  setShowTechCalendar(false);
+                  setTechSelectedDate(null);
+                  setTechSelectedDayEvents([]);
+                  setShowTechDayDetailsModal(false);
+                }}
+              /> 
 
         {urgentSites.length > 0 && (
           <div className="bg-red-50 border-2 border-red-400 rounded-lg p-3 sm:p-4 md:p-6 mb-4 md:mb-6">
@@ -8072,609 +5237,107 @@ const GeneratorMaintenanceApp = () => {
           </div>
         )}
 
-        {showDayDetailsModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gray-100">
-                <div>
-                  <h2 className="text-lg sm:text-xl font-bold text-gray-800">Détails du jour</h2>
-                  <div className="text-sm text-gray-600">{selectedDate ? formatDate(selectedDate) : ''}</div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => {
-                      setShowDayDetailsModal(false);
-                      setSelectedDayEvents([]);
-                    }}
-                    className="bg-gray-400 text-white px-3 py-2 rounded-lg hover:bg-gray-500"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-                {selectedDayEvents.length === 0 ? (
-                  <div className="text-gray-600">Aucune vidange planifiée ce jour.</div>
-                ) : (
-                  <div className="space-y-3">
-                    {selectedDayEvents.map((evt) => {
-                      const daysUntil = getDaysUntil(evt.date);
-                      const color = daysUntil !== null && daysUntil <= 3 ? 'bg-red-500' : daysUntil !== null && daysUntil <= 7 ? 'bg-orange-500' : 'bg-green-500';
-                      const st = String(evt?.intervention?.status || '');
-                      const dot = st === 'done' ? 'bg-green-200' : st === 'sent' ? 'bg-blue-200' : st === 'planned' ? 'bg-amber-200' : 'bg-gray-200';
-                      const moved = evt?.originalDate && String(evt.originalDate) !== String(evt.date);
-                      const daysLabel =
-                        daysUntil === null
-                          ? '-'
-                          : daysUntil < 0
-                            ? `RETARD ${Math.abs(daysUntil)}j`
-                            : daysUntil === 0
-                              ? "AUJOURD'HUI"
-                              : `${daysUntil}j`;
-
-                      return (
-                        <div key={`${evt.site.id}-${evt.type}`} className="border border-gray-200 rounded-lg p-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="font-semibold text-gray-800 whitespace-pre-line leading-tight break-words">{evt.site.nameSite}</div>
-                              <div className="text-xs text-gray-600">
-                                {evt.type} • {formatDate(evt.date)} • {evt.site.technician}
-                                {moved && (
-                                  <span className="ml-2 text-[11px] bg-slate-50 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full font-semibold">
-                                    Déplacée (origine: {formatDate(evt.originalDate)})
-                                  </span>
-                                )}
-                                {evt?.wasRetiredPrevMonth && (
-                                  <span className="ml-2 text-[11px] bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">
-                                    Retiré le mois passé
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-2 ${color} text-white`}>
-                                <span className={`inline-block w-2 h-2 rounded-full ${dot}`} />
-                                {daysLabel}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {isAdmin ? (
-                <div className="relative p-4 border-t bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                  <button
-                    onClick={() => {
-                      setShowDayDetailsModal(false);
-                      setSelectedDayEvents([]);
-                    }}
-                    className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold w-full sm:w-auto"
-                  >
-                    Fermer
-                  </button>
-                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                    {canExportExcel && (
-                      <button
-                        type="button"
-                        onClick={handleExportSelectedDayExcel}
-                        className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold disabled:bg-gray-400 flex items-center justify-center gap-2 w-full sm:w-auto"
-                        disabled={exportBusy || selectedDayEvents.length === 0}
-                      >
-                        <Download size={18} />
-                        Exporter Excel
-                      </button>
-                    )}
-                    {canGenerateFiche && (
-                      <button
-                        disabled={selectedDayEvents.length === 0}
-                        onClick={() => startBatchFicheGeneration(selectedDayEvents)}
-                        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold disabled:bg-gray-400 w-full sm:w-auto"
-                      >
-                        Générer les fiches (batch)
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="relative p-4 border-t bg-white flex flex-col sm:flex-row gap-3 sm:justify-end">
-                  <button
-                    onClick={() => {
-                      setShowDayDetailsModal(false);
-                      setSelectedDayEvents([]);
-                    }}
-                    className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
-                  >
-                    Fermer
-                  </button>
-                  {canExportExcel && (
-                    <button
-                      type="button"
-                      onClick={handleExportSelectedDayExcel}
-                      className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-800 font-semibold disabled:bg-gray-400 flex items-center gap-2"
-                      disabled={exportBusy || selectedDayEvents.length === 0}
-                    >
-                      <Download size={18} />
-                      Exporter Excel
-                    </button>
-                  )}
-                  {canGenerateFiche && (
-                    <button
-                      disabled={selectedDayEvents.length === 0}
-                      onClick={() => startBatchFicheGeneration(selectedDayEvents)}
-                      className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold disabled:bg-gray-400"
-                    >
-                      Générer les fiches (batch)
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        <DayDetailsModal
+          open={showDayDetailsModal}
+          selectedDate={selectedDate}
+          selectedDayEvents={selectedDayEvents}
+          setSelectedDayEvents={setSelectedDayEvents}
+          isAdmin={isAdmin}
+          canExportExcel={canExportExcel}
+          canGenerateFiche={canGenerateFiche}
+          exportBusy={exportBusy}
+          handleExportSelectedDayExcel={handleExportSelectedDayExcel}
+          startBatchFicheGeneration={startBatchFicheGeneration}
+          formatDate={formatDate}
+          getDaysUntil={getDaysUntil}
+          onClose={() => {
+            setShowDayDetailsModal(false);
+            setSelectedDayEvents([]);
+          }}
+        />   
 
         {/* Modale Réinitialisation */}
-        {showResetConfirm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-              <div className="flex items-center justify-between gap-3 mb-4">
-                <div className="flex items-center gap-3">
-                  <AlertCircle className="text-red-600" size={32} />
-                  <h2 className="text-xl font-bold text-gray-800">⚠️ ATTENTION</h2>
-                </div>
-              </div>
-              <p className="text-gray-700 mb-6">
-                Choisissez ce que vous souhaitez réinitialiser. Cette action est <strong>irréversible</strong>.
-              </p>
-              <div className="flex flex-col gap-2">
-                <button
-                  onClick={() => handleResetData({ includePm: false })}
-                  className="bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 font-semibold w-full"
-                >
-                  Réinitialiser Vidanges (PM conservé)
-                </button>
-
-                <button
-                  onClick={() => handleResetData({ includePm: true })}
-                  className="bg-red-800 text-white px-4 py-3 rounded-lg hover:bg-red-900 font-semibold w-full"
-                >
-                  Tout supprimer (incluant PM)
-                </button>
-
-                <button
-                  onClick={handleSetNextTicketNumber}
-                  className="bg-slate-700 text-white px-4 py-3 rounded-lg hover:bg-slate-800 font-semibold w-full"
-                >
-                  Définir le prochain ticket
-                </button>
-
-                <button
-                  onClick={() => setShowResetConfirm(false)}
-                  className="bg-gray-300 text-gray-800 px-4 py-3 rounded-lg hover:bg-gray-400 font-semibold w-full"
-                >
-                  Annuler
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <ResetConfirmModal
+          open={showResetConfirm}
+          onResetVidanges={() => handleResetData({ includePm: false })}
+          onResetAll={() => handleResetData({ includePm: true })}
+          onSetNextTicket={handleSetNextTicketNumber}
+          onCancel={() => setShowResetConfirm(false)}
+        />
 
         {/* Modale Suppression Site */}
         {showDeleteConfirm && siteToDelete && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-              <div className="flex items-center justify-between gap-3 mb-4">
-                <div className="flex items-center gap-3">
-                  <AlertCircle className="text-red-600" size={32} />
-                  <h2 className="text-xl font-bold text-gray-800">⚠️ Confirmer la suppression</h2>
-                </div>
-              </div>
-              <p className="text-gray-700 mb-4">
-                Êtes-vous sûr de vouloir supprimer le site <strong>{siteToDelete.nameSite}</strong> ?
-              </p>
-              <p className="text-sm text-gray-600 mb-6">
-                Cette action est <strong>irréversible</strong>. Toutes les données du site seront perdues.
-              </p>
-              <div className={isAdmin ? 'flex flex-col sm:flex-row sm:justify-between gap-3' : 'flex gap-3'}>
-                <button
-                  onClick={handleDeleteSite}
-                  className={isAdmin ? 'bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 font-semibold w-full sm:w-auto' : 'flex-1 bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 font-semibold'}
-                >
-                  Oui, supprimer
-                </button>
-                <button
-                  onClick={() => {
-                    setShowDeleteConfirm(false);
-                    setSiteToDelete(null);
-                  }}
-                  className={isAdmin ? 'bg-gray-300 text-gray-800 px-4 py-3 rounded-lg hover:bg-gray-400 font-semibold w-full sm:w-auto' : 'flex-1 bg-gray-300 text-gray-800 px-4 py-3 rounded-lg hover:bg-gray-400 font-semibold'}
-                >
-                  Annuler
-                </button>
-              </div>
-            </div>
-          </div>
+          <DeleteSiteConfirmModal
+            site={siteToDelete}
+            isAdmin={isAdmin}
+            onConfirm={handleDeleteSite}
+            onCancel={() => {
+              setShowDeleteConfirm(false);
+              setSiteToDelete(null);
+            }}
+          />
         )}
 
         {/* Modale Upload Bannière */}
-        {showBannerUpload && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-              <div className="flex items-center justify-between gap-3 mb-4">
-                <h2 className="text-xl font-bold text-gray-800">📤 Uploader la bannière</h2>
-              </div>
-              <p className="text-gray-600 mb-4">
-                Sélectionnez l'image PNG contenant les logos Helios Towers et STHIC
-              </p>
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/jpg"
-                onChange={handleBannerUpload}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2 mb-4"
-              />
-              <button
-                onClick={() => {
-                  setShowBannerUpload(false);
-                  setIsBatchFiche(false);
-                  setBatchFicheSites([]);
-                  setBatchFicheIndex(0);
-                  setSiteForFiche(null);
-                  setBannerImage('');
-                  setFicheContext(null);
-                }}
-                className="w-full bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500"
-              >
-                Annuler
-              </button>
-            </div>
-          </div>
-        )}
+        <UploadBannerModal
+          open={showBannerUpload}
+          handleBannerUpload={handleBannerUpload}
+          onCancel={() => {
+            setShowBannerUpload(false);
+            setIsBatchFiche(false);
+            setBatchFicheSites([]);
+            setBatchFicheIndex(0);
+            setSiteForFiche(null);
+            setBannerImage('');
+            setFicheContext(null);
+          }}
+        />
+
 
         {/* Modale Fiche d'Intervention */}
-        {showFicheModal && siteForFiche && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full my-8">
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gray-100">
-                <h2 className="text-xl font-bold text-gray-800">📄 Fiche d'Intervention - Aperçu</h2>
-                <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 w-full sm:w-auto">
-                  {isBatchFiche && (
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
-                      <button
-                        onClick={() => goBatchFiche(-1)}
-                        disabled={batchFicheIndex <= 0}
-                        className="bg-slate-600 text-white px-3 py-2 rounded-lg hover:bg-slate-700 font-semibold disabled:bg-gray-400 w-full sm:w-auto"
-                      >
-                        Précédent
-                      </button>
-                      <button
-                        onClick={() => goBatchFiche(1)}
-                        disabled={batchFicheIndex >= batchFicheSites.length - 1}
-                        className="bg-slate-600 text-white px-3 py-2 rounded-lg hover:bg-slate-700 font-semibold disabled:bg-gray-400 w-full sm:w-auto"
-                      >
-                        Suivant
-                      </button>
-                    </div>
-                  )}
-                  <button
-                    onClick={handlePrintFiche}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold w-full sm:w-auto"
-                  >
-                    Imprimer
-                  </button>
-                  <button
-                    onClick={handleSaveFichePdf}
-                    className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold w-full sm:w-auto"
-                  >
-                    Enregistrer le PDF
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowFicheModal(false);
-                      setSiteForFiche(null);
-                      setBannerImage('');
-                      setIsBatchFiche(false);
-                      setBatchFicheSites([]);
-                      setBatchFicheIndex(0);
-                      setFicheContext(null);
-                    }}
-                    className="bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500"
-                  >
-                    <X size={20} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="relative border-b bg-white h-0">
-                <div className="h-20" />
-              </div>
-
-              <div className="bg-white p-8 overflow-auto" style={{maxHeight: '80vh'}}>
-                <div
-                  id="fiche-print"
-                  className="bg-white mx-auto flex flex-col"
-                  style={{ maxWidth: '210mm', width: '100%', height: '277mm', boxSizing: 'border-box' }}
-                >
-                  {bannerImage && (
-                    <div className="mb-3 border-2 border-gray-300 rounded overflow-hidden bg-gray-200">
-                      <img
-                        src={bannerImage}
-                        alt="Bannière Helios Towers - STHIC"
-                        className="w-full"
-                        style={{ height: 'auto', display: 'block' }}
-                      />
-                    </div>
-                  )}
-
-                  {!bannerImage && (
-                    <div className="mb-4 bg-yellow-50 border-2 border-yellow-300 rounded p-3 text-center">
-                      <p className="text-yellow-800 font-semibold">⚠️ Bannière non chargée</p>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-4 mb-6 text-sm">
-                    <div>
-                      <p className="text-gray-600 text-xs mb-1">CLIENT</p>
-                      <p className="font-bold text-base">HTC</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600 text-xs mb-1">SITE</p>
-                      <p className="font-bold text-base">{siteForFiche.nameSite}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600 text-xs mb-1">RÉFÉRENCE TICKET</p>
-                      <p className="font-bold text-base">T{String(ticketNumber).padStart(5, '0')}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600 text-xs mb-1">NOM(S) DE L'INTERVENANT</p>
-                      <p className="font-bold text-base">{siteForFiche.technician}</p>
-                    </div>
-                    <div className="col-span-2">
-                      <p className="text-gray-600 text-xs mb-1">BPV N°</p>
-                      <p className="font-bold text-base">{formatDate(new Date().toISOString())}</p>
-                    </div>
-                  </div>
-
-                  <hr className="my-3 border-gray-800" style={{borderWidth: '2px'}} />
-
-                  <div className="mb-6">
-                    <p className="text-gray-600 text-xs mb-2">OBJET</p>
-                    <p className="font-bold text-sm">
-                      VIDANGE DU GE {siteForFiche.generateur} {siteForFiche.capacite} + Filtre à air GE + 05 Litres liquide de refroidissement
-                    </p>
-                  </div>
-
-                  <hr className="my-3 border-gray-800" style={{borderWidth: '2px'}} />
-
-                  <div className="flex-1 flex flex-col">
-                    <table className="w-full border-2 border-gray-800 text-sm" style={{height: '100%'}}>
-                      <thead>
-                        <tr>
-                          <th className="border-2 border-gray-800 p-3 bg-gray-100 text-center" style={{width: '15%'}}>Qtés</th>
-                          <th className="border-2 border-gray-800 p-3 bg-gray-100 text-center" style={{width: '20%'}}>PMW000xxxxxx</th>
-                          <th className="border-2 border-gray-800 p-3 bg-gray-100" style={{width: '65%'}}>Désignations</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td className="border-2 border-gray-800 p-4" style={{verticalAlign: 'top'}}>&nbsp;</td>
-                          <td className="border-2 border-gray-800 p-4" style={{verticalAlign: 'top'}}>&nbsp;</td>
-                          <td className="border-2 border-gray-800 p-6" style={{verticalAlign: 'top'}}>
-                            <div className="flex flex-col items-center justify-center h-full text-center space-y-3">
-                              {siteForFiche.kitVidange.split('/').map((item, idx) => (
-                                <div key={idx} className="text-sm">{item.trim()}</div>
-                              ))}
-                            </div>
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 text-sm mt-auto pt-4">
-                    <div className="border-2 border-gray-800 p-4" style={{minHeight: '90px'}}>
-                      <p className="font-bold mb-3 text-base">H</p>
-                      <p className="text-3xl font-bold text-center mt-2">{siteForFiche.nh1DV} H</p>
-                    </div>
-                    <div className="border-2 border-gray-800 p-4" style={{minHeight: '90px'}}>
-                      <p className="font-bold mb-3 text-right text-base">SIGNATURE RESPONSABLE</p>
-                      <div style={{height: '45px'}}></div>
-                      <p className="text-xs text-right mt-3">DATE</p>
-                      <p className="text-right font-bold">{formatDate(new Date().toISOString())}</p>
-                    </div>
-                  </div>
-
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+          <FicheModal
+            open={showFicheModal}
+            siteForFiche={siteForFiche}
+            bannerImage={bannerImage}
+            ticketNumber={ticketNumber}
+            isBatchFiche={isBatchFiche}
+            batchFicheIndex={batchFicheIndex}
+            batchFicheSites={batchFicheSites}
+            goBatchFiche={goBatchFiche}
+            handlePrintFiche={handlePrintFiche}
+            handleSaveFichePdf={handleSaveFichePdf}
+            onClose={() => {
+              setShowFicheModal(false);
+              setSiteForFiche(null);
+              setBannerImage('');
+              setIsBatchFiche(false);
+              setBatchFicheSites([]);
+              setBatchFicheIndex(0);
+              setFicheContext(null);
+            }}
+            formatDate={formatDate}
+          />  
 
         {/* Modal Historique */}
-        {showHistory && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
-            <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:h-auto sm:max-w-4xl sm:max-h-[90vh] sm:rounded-lg">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-amber-600 text-white">
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                  <Activity size={24} />
-                  Historique des Fiches d'Intervention
-                </h2>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => setShowHistory(false)} className="hover:bg-amber-700 p-2 rounded">
-                    <X size={20} />
-                  </button>
-                </div>
-              </div>
-              
-              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-start">
-                    <div className="flex flex-col w-full min-w-0">
-                      <span className="text-xs text-gray-600 mb-1">Recherche</span>
-                      <input
-                        type="text"
-                        value={historyQuery}
-                        onChange={(e) => setHistoryQuery(e.target.value)}
-                        placeholder="Ticket / site / technicien"
-                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full min-w-0"
-                      />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full min-w-0">
-                      <div className="flex flex-col w-full min-w-0">
-                        <span className="text-xs text-gray-600 mb-1">Du</span>
-                        <input
-                          type="date"
-                          value={historyDateFrom}
-                          onChange={(e) => setHistoryDateFrom(e.target.value)}
-                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full min-w-0"
-                        />
-                      </div>
-                      <div className="flex flex-col w-full min-w-0">
-                        <span className="text-xs text-gray-600 mb-1">Au</span>
-                        <input
-                          type="date"
-                          value={historyDateTo}
-                          onChange={(e) => setHistoryDateTo(e.target.value)}
-                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full min-w-0"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex flex-col w-full min-w-0">
-                      <span className="text-xs text-gray-600 mb-1">Statut</span>
-                      <select
-                        value={historyStatus}
-                        onChange={(e) => setHistoryStatus(e.target.value)}
-                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full"
-                      >
-                        <option value="all">Tous statuts</option>
-                        <option value="En attente">En attente</option>
-                        <option value="Effectuée">Effectuée</option>
-                      </select>
-                    </div>
-                    <div className="flex flex-col w-full min-w-0">
-                      <span className="text-xs text-gray-600 mb-1">Tri</span>
-                      <select
-                        value={historySort}
-                        onChange={(e) => setHistorySort(e.target.value)}
-                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full"
-                      >
-                        <option value="newest">Plus récent</option>
-                        <option value="oldest">Plus ancien</option>
-                        <option value="ticket">Ticket (A→Z)</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div className="text-xs text-gray-600 mt-3 flex justify-between">
-                    <span>Résultats: <strong>{filteredFicheHistory.length}</strong></span>
-                    <button
-                      onClick={() => {
-                        setHistoryQuery('');
-                        setHistoryDateFrom('');
-                        setHistoryDateTo('');
-                        setHistoryStatus('all');
-                        setHistorySort('newest');
-                      }}
-                      className="text-amber-700 hover:underline"
-                    >
-                      Réinitialiser
-                    </button>
-                  </div>
-                </div>
-
-                {ficheHistory.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500">
-                    <Activity size={48} className="mx-auto mb-4 text-gray-300" />
-                    <p className="text-lg font-semibold">Aucune fiche générée pour le moment</p>
-                    <p className="text-sm mt-2">Les fiches apparaîtront ici après génération</p>
-                  </div>
-                ) : filteredFicheHistory.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500">
-                    <Activity size={48} className="mx-auto mb-4 text-gray-300" />
-                    <p className="text-lg font-semibold">Aucun résultat</p>
-                    <p className="text-sm mt-2">Aucune fiche ne correspond aux filtres actuels</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {filteredFicheHistory.map(fiche => (
-                      <div key={fiche.id} className={`border-2 rounded-lg p-4 ${fiche.status === 'Effectuée' ? 'bg-green-50 border-green-300' : 'bg-yellow-50 border-yellow-300'}`}>
-                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-3">
-                          <div className="min-w-0">
-                            <h3 className="font-bold text-lg text-gray-800 truncate">{fiche.ticketNumber}</h3>
-                            <p className="text-sm text-gray-600 truncate">{fiche.siteName}</p>
-                          </div>
-                          <span className={`px-3 py-1 rounded-full text-sm font-semibold self-start ${fiche.status === 'Effectuée' ? 'bg-green-500 text-white' : 'bg-yellow-500 text-white'}`}>
-                            {fiche.status}
-                          </span>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-3">
-                          <div className="min-w-0 flex flex-wrap items-baseline">
-                            <span className="text-gray-600">Technicien:</span>
-                            <span className="ml-2 font-semibold break-words">{fiche.technician}</span>
-                          </div>
-                          <div className="min-w-0 flex flex-wrap items-baseline">
-                            <span className="text-gray-600">Heures vidangées:</span>
-                            <span className="ml-2 font-semibold break-words">
-                              {Number.isFinite(Number(fiche.intervalHours)) ? `${Number(fiche.intervalHours)}H` : '-'}
-                            </span>
-                            {fiche.isWithinContract === true && (
-                              <span className="ml-2 text-xs bg-green-100 text-green-800 border border-green-200 px-2 py-0.5 rounded-full font-semibold">
-                                Dans délai
-                              </span>
-                            )}
-                            {fiche.isWithinContract === false && (
-                              <span className="ml-2 text-xs bg-red-100 text-red-800 border border-red-200 px-2 py-0.5 rounded-full font-semibold">
-                                Hors délai
-                              </span>
-                            )}
-                          </div>
-                          <div className="min-w-0 flex flex-wrap items-baseline">
-                            <span className="text-gray-600">NH1 DV:</span>
-                            <span className="ml-2 font-semibold break-words">
-                              {Number.isFinite(Number(fiche.nh1DV)) ? `${Number(fiche.nh1DV)}H` : '-'}
-                            </span>
-                          </div>
-                          <div className="min-w-0 flex flex-wrap items-baseline">
-                            <span className="text-gray-600">Date DV:</span>
-                            <span className="ml-2 break-words">{fiche.dateDV ? formatDate(fiche.dateDV) : '-'}</span>
-                          </div>
-                          <div className="min-w-0 flex flex-wrap items-baseline">
-                            <span className="text-gray-600">NH relevé:</span>
-                            <span className="ml-2 font-semibold break-words">
-                              {Number.isFinite(Number(fiche.nhNow)) ? `${Number(fiche.nhNow)}H` : '-'}
-                            </span>
-                          </div>
-                          <div className="min-w-0 flex flex-wrap items-baseline">
-                            <span className="text-gray-600">Date génération fiche:</span>
-                            <span className="ml-2 break-words">{formatDate(fiche.dateGenerated)}</span>
-                          </div>
-                          <div className="min-w-0 flex flex-wrap items-baseline">
-                            <span className="text-gray-600">Date réalisation:</span>
-                            <span className="ml-2 break-words">{fiche.dateCompleted ? formatDate(fiche.dateCompleted) : '-'}</span>
-                          </div>
-                        </div>
-                        
-                        {fiche.status === 'En attente' && canMarkCompleted && (
-                          <button
-                            onClick={() => handleMarkAsCompleted(fiche.id)}
-                            className="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 font-semibold"
-                          >
-                            ✅ Marquer comme Effectuée
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="p-3 border-t bg-white" />
-            </div>
-          </div>
-        )}
+          <HistoryModal
+            open={showHistory}
+            onClose={() => setShowHistory(false)}
+            historyQuery={historyQuery}
+            setHistoryQuery={setHistoryQuery}
+            historyDateFrom={historyDateFrom}
+            setHistoryDateFrom={setHistoryDateFrom}
+            historyDateTo={historyDateTo}
+            setHistoryDateTo={setHistoryDateTo}
+            historyStatus={historyStatus}
+            setHistoryStatus={setHistoryStatus}
+            historySort={historySort}
+            setHistorySort={setHistorySort}
+            ficheHistory={ficheHistory}
+            filteredFicheHistory={filteredFicheHistory}
+            canMarkCompleted={canMarkCompleted}
+            handleMarkAsCompleted={handleMarkAsCompleted}
+            formatDate={formatDate}
+          />
 
         {/* Modal Calendrier */}
         
@@ -8714,686 +5377,56 @@ const GeneratorMaintenanceApp = () => {
           setShowDayDetailsModal={setShowDayDetailsModal}
         />
 
-        {false && showCalendar && !isTechnician && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
-            <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-7xl sm:max-h-[95vh]">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-cyan-600 text-white">
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                  <Calendar size={24} />
-                  Calendrier des Vidanges
-                </h2>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => setShowCalendar(false)} className="hover:bg-cyan-700 p-2 rounded">
-                    <X size={20} />
-                  </button>
-                </div>
-              </div>
-              
-              <div className="p-3 sm:p-6 overflow-y-auto flex-1">
-                <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
-                  <div className="bg-cyan-600 text-white rounded-xl p-3">
-                    <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Mois</div>
-                    <div className="grid grid-cols-3 gap-2 items-center mb-3">
-                      <button
-                        onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
-                        className="bg-cyan-700 text-white px-2 py-2 rounded-lg hover:bg-cyan-800 w-full text-sm font-semibold"
-                      >
-                        ←
-                      </button>
-                      <div className="text-sm font-bold text-white text-center capitalize">
-                        {currentMonth.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
-                      </div>
-                      <button
-                        onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
-                        className="bg-cyan-700 text-white px-2 py-2 rounded-lg hover:bg-cyan-800 w-full text-sm font-semibold"
-                      >
-                        →
-                      </button>
-                    </div>
-
-                    {isAdmin && (
-                      <div className="bg-white rounded-lg p-3 mb-3">
-                        <div className="text-xs font-semibold text-gray-700 mb-1">Technicien</div>
-                        <select
-                          value={calendarSendTechUserId}
-                          onChange={(e) => setCalendarSendTechUserId(e.target.value)}
-                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 w-full"
-                          disabled={usersBusy}
-                        >
-                          <option value="">-- Technicien --</option>
-                          {(Array.isArray(users) ? users : [])
-                            .filter((u) => u && u.role === 'technician')
-                            .slice()
-                            .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')))
-                            .map((u) => (
-                              <option key={u.id} value={u.id}>
-                                {u.technicianName || u.email}
-                              </option>
-                            ))}
-                        </select>
-
-                        {usersBusy && <div className="mt-1 text-xs text-gray-500">Chargement des techniciens…</div>}
-                        {!usersBusy && usersError && <div className="mt-1 text-xs text-rose-700">{usersError}</div>}
-                        {!usersBusy && !usersError && (Array.isArray(users) ? users : []).filter((u) => u && u.role === 'technician').length === 0 && (
-                          <div className="mt-1 text-xs text-gray-500">Aucun technicien chargé.</div>
-                        )}
-
-                        {!usersBusy && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                await refreshUsers();
-                              } catch {
-                                // ignore
-                              }
-                            }}
-                            className="mt-2 w-full bg-white border border-gray-300 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-50 text-sm font-semibold"
-                          >
-                            Recharger les techniciens
-                          </button>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={handleSendCalendarMonthPlanning}
-                          className="mt-2 w-full bg-cyan-700 text-white px-3 py-2 rounded-lg hover:bg-cyan-800 text-sm font-semibold disabled:opacity-60"
-                          disabled={!calendarSendTechUserId || usersBusy}
-                        >
-                          Envoyer planning du mois
-                        </button>
-                      </div>
-                    )}
-
-                    <div className="h-px bg-white/25 my-2" />
-
-                    <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Actions</div>
-                    <div className="flex flex-col">
-                      {canExportExcel && (
-                        <button
-                          type="button"
-                          onClick={handleExportCalendarMonthExcel}
-                          className="text-left px-3 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm disabled:opacity-60"
-                          disabled={exportBusy}
-                        >
-                          Exporter Excel
-                        </button>
-                      )}
-                      {isAdmin && (
-                        <label className={`text-left px-3 py-2 rounded-lg font-semibold text-sm ${basePlanBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-cyan-700 cursor-pointer'}`}>
-                          Importer base (Excel)
-                          <input
-                            type="file"
-                            accept=".xlsx,.xls"
-                            onChange={handleImportBasePlanExcel}
-                            className="hidden"
-                            disabled={basePlanBusy}
-                          />
-                        </label>
-                      )}
-                      {isAdmin && (
-                        <button
-                          type="button"
-                          onClick={generateBasePlanPreview}
-                          className="text-left px-3 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm disabled:opacity-60"
-                          disabled={basePlanBusy || basePlanBaseRows.length === 0}
-                        >
-                          Générer planning mois suivant
-                        </button>
-                      )}
-                      {isAdmin && (
-                        <button
-                          type="button"
-                          onClick={exportBasePlanPreviewExcel}
-                          className="text-left px-3 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm disabled:opacity-60"
-                          disabled={basePlanBusy || basePlanPreview.length === 0}
-                        >
-                          Exporter planning base
-                        </button>
-                      )}
-                      {isAdmin && (
-                        <button
-                          type="button"
-                          onClick={saveBasePlanToDb}
-                          className="text-left px-3 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm disabled:opacity-60"
-                          disabled={basePlanBusy || basePlanPreview.length === 0}
-                        >
-                          Enregistrer (DB)
-                        </button>
-                      )}
-                      {isAdmin && (
-                        <button
-                          type="button"
-                          onClick={deleteBasePlanFromDb}
-                          className="text-left px-3 py-2 rounded-lg hover:bg-cyan-700 font-semibold text-sm disabled:opacity-60"
-                          disabled={basePlanBusy}
-                        >
-                          Supprimer (DB)
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    {isAdmin && (basePlanBusy || basePlanErrors.length > 0 || basePlanPreview.length > 0) && (
-                      <div className="mt-0 space-y-2">
-                        {basePlanBusy && (
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div className="bg-indigo-600 h-2 rounded-full" style={{ width: `${basePlanProgress}%` }} />
-                          </div>
-                        )}
-                        {basePlanTargetMonth && (
-                          <div className="text-xs text-gray-700">
-                            Mois cible: <strong>{basePlanTargetMonth}</strong> | Base: <strong>{basePlanBaseRows.length}</strong> | Planning: <strong>{basePlanPreview.length}</strong>
-                          </div>
-                        )}
-                        {basePlanErrors.length > 0 && (
-                          <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2 max-h-32 overflow-auto">
-                            {basePlanErrors.slice(0, 20).map((m, idx) => (
-                              <div key={idx}>{m}</div>
-                            ))}
-                            {basePlanErrors.length > 20 && <div>… ({basePlanErrors.length - 20} autres)</div>}
-                          </div>
-                        )}
-                        {basePlanPreview.length > 0 && (
-                          <div className="border rounded-lg overflow-auto max-h-64">
-                            <table className="min-w-full text-xs">
-                              <thead className="sticky top-0 bg-gray-50">
-                                <tr className="text-left">
-                                  <th className="p-2 border-b">Site</th>
-                                  <th className="p-2 border-b">Site Name</th>
-                                  <th className="p-2 border-b">Region</th>
-                                  <th className="p-2 border-b">Short description</th>
-                                  <th className="p-2 border-b">Number</th>
-                                  <th className="p-2 border-b">Assigned to</th>
-                                  <th className="p-2 border-b">Scheduled WO Date</th>
-                                  <th className="p-2 border-b">Date of closing</th>
-                                  <th className="p-2 border-b">State</th>
-                                  <th className="p-2 border-b">PairGroup</th>
-                                  <th className="p-2 border-b">EPV2</th>
-                                  <th className="p-2 border-b">EPV3</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {(() => {
-                                  const normYmd = (v) => {
-                                    const s = v == null ? '' : String(v).trim();
-                                    const head = s.slice(0, 10);
-                                    return /^\d{4}-\d{2}-\d{2}$/.test(head) ? head : '';
-                                  };
-
-                                  const items = Array.isArray(basePlanPreview) ? basePlanPreview : [];
-                                  const bySite = new Map();
-                                  for (const it of items) {
-                                    const siteCode = String(it?.siteCode || '').trim();
-                                    const siteName = String(it?.siteName || '').trim();
-                                    const key = siteCode || siteName;
-                                    if (!key) continue;
-
-                                    if (!bySite.has(key)) {
-                                      bySite.set(key, {
-                                        siteCode,
-                                        siteName,
-                                        region: String(it?.region || it?.zone || '').trim(),
-                                        shortDescription: '',
-                                        number: String(it?.number || '').trim(),
-                                        assignedTo: String(it?.assignedTo || '').trim(),
-                                        scheduledWoDate: '',
-                                        dateOfClosing: String(it?.dateOfClosing || '').trim(),
-                                        state: String(it?.state || '').trim(),
-                                        pairGroup: String(it?.pairGroup || '').trim(),
-                                        epv2: '',
-                                        epv3: '',
-                                        _order: Number(it?.importOrder ?? 0)
-                                      });
-                                    }
-
-                                    const row = bySite.get(key);
-                                    row._order = Math.min(row._order, Number(it?.importOrder ?? 0));
-                                    if (!row.siteCode) row.siteCode = siteCode;
-                                    if (!row.siteName) row.siteName = siteName;
-                                    if (!row.region) row.region = String(it?.region || it?.zone || '').trim();
-                                    if (!row.number) row.number = String(it?.number || '').trim();
-                                    if (!row.assignedTo) row.assignedTo = String(it?.assignedTo || '').trim();
-                                    if (!row.dateOfClosing) row.dateOfClosing = String(it?.dateOfClosing || '').trim();
-                                    if (!row.state) row.state = String(it?.state || '').trim();
-                                    if (!row.pairGroup) row.pairGroup = String(it?.pairGroup || '').trim();
-
-                                    const slot = String(it?.epvSlot || '').trim().toUpperCase();
-                                    const plannedDate = normYmd(it?.plannedDate);
-                                    if (slot === 'EPV1' || slot === 'PM' || slot === 'MANUAL') {
-                                      if (!row.scheduledWoDate && plannedDate) row.scheduledWoDate = plannedDate;
-                                      if (!row.shortDescription) row.shortDescription = String(it?.shortDescription || '').trim();
-                                    }
-                                    if (slot === 'EPV2' && plannedDate) row.epv2 = plannedDate;
-                                    if (slot === 'EPV3' && plannedDate) row.epv3 = plannedDate;
-                                  }
-
-                                  const out = Array.from(bySite.values())
-                                    .sort((a, b) => {
-                                      const oa = Number(a?._order ?? 0);
-                                      const ob = Number(b?._order ?? 0);
-                                      if (oa !== ob) return oa - ob;
-                                      return String(a.siteCode || a.siteName || '').localeCompare(String(b.siteCode || b.siteName || ''));
-                                    })
-                                    .slice(0, 80);
-
-                                  return out.map((it, idx) => (
-                                    <tr key={`${it.siteCode || it.siteName}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-gray-50'}>
-                                      <td className="p-2 border-b whitespace-nowrap">{it.siteCode}</td>
-                                      <td className="p-2 border-b whitespace-nowrap">{it.siteName}</td>
-                                      <td className="p-2 border-b whitespace-nowrap">{it.region}</td>
-                                      <td className="p-2 border-b whitespace-nowrap">{it.shortDescription}</td>
-                                      <td className="p-2 border-b whitespace-nowrap">{it.number}</td>
-                                      <td className="p-2 border-b whitespace-nowrap">{it.assignedTo}</td>
-                                      <td className="p-2 border-b whitespace-nowrap">{it.scheduledWoDate}</td>
-                                      <td className="p-2 border-b whitespace-nowrap">{it.dateOfClosing}</td>
-                                      <td className="p-2 border-b whitespace-nowrap">{it.state}</td>
-                                      <td className="p-2 border-b whitespace-nowrap">{it.pairGroup}</td>
-                                      <td className="p-2 border-b whitespace-nowrap">{it.epv2}</td>
-                                      <td className="p-2 border-b whitespace-nowrap">{it.epv3}</td>
-                                    </tr>
-                                  ));
-                                })()}
-                              </tbody>
-                            </table>
-                            {basePlanPreview.length > 80 && (
-                              <div className="text-xs text-gray-600 p-2">Affichage limité aux 80 premières lignes (total: {basePlanPreview.length}).</div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <div>
-                      <div className="grid grid-cols-7 gap-2 mb-2">
-                        {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(day => (
-                          <div key={day} className="text-center font-bold text-gray-700 py-2">
-                            {day}
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="grid grid-cols-7 gap-2">
-                        {(() => {
-                          const year = currentMonth.getFullYear();
-                          const month = currentMonth.getMonth();
-                          const firstDay = new Date(year, month, 1);
-                          const lastDay = new Date(year, month + 1, 0);
-                          const startDay = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
-                          const days = [];
-
-                          for (let i = 0; i < startDay; i++) {
-                            days.push(<div key={`empty-${i}`} className="h-24 bg-gray-50 rounded"></div>);
-                          }
-
-                          for (let day = 1; day <= lastDay.getDate(); day++) {
-                            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                            const eventsForDay = getEventsForDay(dateStr);
-
-                            const isToday = new Date().toISOString().split('T')[0] === dateStr;
-                            const isSelected = selectedDate === dateStr;
-                            const dow = new Date(`${dateStr}T00:00:00`).getDay();
-                            const isWeekend = dow === 0 || dow === 6;
-
-                            if (isWeekend) {
-                              days.push(
-                                <div
-                                  key={day}
-                                  className={`h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full bg-slate-200/70 border-gray-300`}
-                                />
-                              );
-                              continue;
-                            }
-
-                            days.push(
-                              <button
-                                key={day}
-                                type="button"
-                                onClick={() => {
-                                  const events = getEventsForDay(dateStr);
-                                  setSelectedDate(dateStr);
-                                  setSelectedDayEvents(events);
-                                  setShowDayDetailsModal(true);
-                                }}
-                                className={`h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full hover:bg-gray-50 ${isToday ? 'border-blue-500 bg-blue-50' : 'border-gray-300'} ${isSelected ? 'ring-2 ring-cyan-500' : ''}`}
-                              >
-                                <div className="text-sm font-semibold text-gray-700">{day}</div>
-                                {eventsForDay.length > 0 && (
-                                  <div className="text-xs space-y-1 mt-1">
-                                    {eventsForDay.slice(0, 2).map((ev) => {
-                                      const daysUntil = getDaysUntil(dateStr);
-                                      const color = daysUntil <= 3 ? 'bg-red-500' : daysUntil <= 7 ? 'bg-orange-500' : 'bg-green-500';
-                                      const st = String(ev?.intervention?.status || '');
-                                      const dot = st === 'done' ? 'bg-green-200' : st === 'sent' ? 'bg-blue-200' : st === 'planned' ? 'bg-amber-200' : 'bg-gray-200';
-                                      const moved = ev?.originalDate && String(ev.originalDate) !== String(ev.date);
-                                      return (
-                                        <div key={`${ev.site.id}-${ev.type}`} className={`${color} text-white px-1 rounded flex items-start gap-1`}>
-                                          <span className={`inline-block w-2 h-2 rounded-full ${dot}`} />
-                                          <span className="min-w-0 flex-1 whitespace-pre-line leading-tight break-words">{ev.site.nameSite}</span>
-                                          {moved && <span className="ml-auto text-[10px] font-bold opacity-90">↔</span>}
-                                        </div>
-                                      );
-                                    })}
-                                    {eventsForDay.length > 2 && (
-                                      <div className="text-gray-600 text-center">+{eventsForDay.length - 2}</div>
-                                    )}
-                                  </div>
-                                )}
-                              </button>
-                            );
-                          }
-
-                          return days;
-                        })()}
-                      </div>
-                    </div>
-
-                    <div className="mt-6 flex gap-4 justify-center text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 bg-red-500 rounded"></div>
-                        <span>Urgent (≤3j)</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 bg-orange-500 rounded"></div>
-                        <span>Bientôt (≤7j)</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 bg-green-500 rounded"></div>
-                        <span>OK (&gt;7j)</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-3 border-t bg-white" />
-            </div>
-          </div>
-        )}
-
         {/* Formulaire Ajout */}
         {showAddForm && canWriteSites && (
-          <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 md:p-6 mb-4 md:mb-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg sm:text-xl font-bold text-gray-800">Ajouter un Nouveau Site</h2>
-              <button onClick={() => setShowAddForm(false)} className="text-gray-500 hover:text-gray-700">
-                <X size={24} />
-              </button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-              <input
-                type="text"
-                placeholder="ID Site (ex: CBBZ0057)"
-                value={formData.idSite}
-                onChange={(e) => setFormData({...formData, idSite: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
-              />
-              <input
-                type="text"
-                placeholder="Nom du Site"
-                value={formData.nameSite}
-                onChange={(e) => setFormData({...formData, nameSite: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
-              />
-              <input
-                type="text"
-                placeholder="Technicien"
-                value={formData.technician}
-                onChange={(e) => setFormData({...formData, technician: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
-              />
-              <input
-                type="text"
-                placeholder="Generateur (ex: ELCOS)"
-                value={formData.generateur}
-                onChange={(e) => setFormData({...formData, generateur: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
-              />
-              <input
-                type="text"
-                placeholder="Capacité (ex: 30 KVA)"
-                value={formData.capacite}
-                onChange={(e) => setFormData({...formData, capacite: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
-              />
-              <input
-                type="text"
-                placeholder="Kit Vidange"
-                value={formData.kitVidange}
-                onChange={(e) => setFormData({...formData, kitVidange: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base col-span-1 sm:col-span-2 lg:col-span-3"
-              />
-              <input
-                type="number"
-                placeholder="NH1 DV"
-                value={formData.nh1DV}
-                onChange={(e) => setFormData({...formData, nh1DV: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
-              />
-              <input
-                type="date"
-                value={formData.dateDV}
-                onChange={(e) => setFormData({...formData, dateDV: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
-              />
-              <input
-                type="number"
-                placeholder="NH2 A"
-                value={formData.nh2A}
-                onChange={(e) => setFormData({...formData, nh2A: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
-              />
-              <input
-                type="date"
-                value={formData.dateA}
-                onChange={(e) => setFormData({...formData, dateA: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
-              />
-              <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 sm:px-4 py-2">
-                <input
-                  type="checkbox"
-                  id="retired-add"
-                  checked={formData.retired}
-                  onChange={(e) => setFormData({...formData, retired: e.target.checked})}
-                  className="w-4 h-4"
-                />
-                <label htmlFor="retired-add" className="text-sm sm:text-base cursor-pointer">Site Retiré</label>
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4">
-              <button
-                onClick={handleAddSite}
-                className="bg-blue-600 text-white px-4 sm:px-6 py-2 rounded-lg hover:bg-blue-700 text-sm sm:text-base"
-              >
-                Ajouter
-              </button>
-              <button
-                onClick={() => {
-                  setShowAddForm(false);
-                  setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
-                }}
-                className="bg-gray-400 text-white px-4 sm:px-6 py-2 rounded-lg hover:bg-gray-500 text-sm sm:text-base"
-              >
-                Annuler
-              </button>
-            </div>
-          </div>
+          <AddSiteForm
+            formData={formData}
+            setFormData={setFormData}
+            onSubmit={handleAddSite}
+            onClose={() => setShowAddForm(false)}
+            onCancel={() => {
+              setShowAddForm(false);
+              setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
+            }}
+          />
         )}
 
         {/* Formulaire MAJ */}
         {showUpdateForm && selectedSite && canWriteSites && (
-          <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 md:p-6 mb-4 md:mb-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg sm:text-xl font-bold text-gray-800">
-                MAJ - {selectedSite.nameSite}
-              </h2>
-              <button onClick={() => {
-                setShowUpdateForm(false);
-                setSelectedSite(null);
-              }} className="text-gray-500 hover:text-gray-700">
-                <X size={24} />
-              </button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-              <input
-                type="number"
-                placeholder="NH2 A (nouveau)"
-                value={formData.nh2A}
-                onChange={(e) => setFormData({...formData, nh2A: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
-              />
-              <input
-                type="date"
-                value={formData.dateA}
-                onChange={(e) => setFormData({...formData, dateA: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
-              />
-              <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 sm:px-4 py-2">
-                <input
-                  type="checkbox"
-                  id="retired-update"
-                  checked={formData.retired}
-                  onChange={(e) => setFormData({...formData, retired: e.target.checked})}
-                  className="w-4 h-4"
-                />
-                <label htmlFor="retired-update" className="text-sm sm:text-base cursor-pointer">Site Retiré</label>
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4">
-              <button
-                onClick={handleUpdateSite}
-                className="bg-green-600 text-white px-4 sm:px-6 py-2 rounded-lg hover:bg-green-700 text-sm sm:text-base"
-              >
-                Mettre à jour
-              </button>
-              <button
-                onClick={() => {
-                  setShowUpdateForm(false);
-                  setSelectedSite(null);
-                  setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
-                }}
-                className="bg-gray-400 text-white px-4 sm:px-6 py-2 rounded-lg hover:bg-gray-500 text-sm sm:text-base"
-              >
-                Annuler
-              </button>
-            </div>
-          </div>
+          <UpdateSiteForm
+            selectedSite={selectedSite}
+            formData={formData}
+            setFormData={setFormData}
+            onSubmit={handleUpdateSite}
+            onClose={() => {
+              setShowUpdateForm(false);
+              setSelectedSite(null);
+            }}
+            onCancel={() => {
+              setShowUpdateForm(false);
+              setSelectedSite(null);
+              setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
+            }}
+          />
         )}
 
         {/* Formulaire Modifier */}
         {showEditForm && selectedSite && canWriteSites && (
-          <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 md:p-6 mb-4 md:mb-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg sm:text-xl font-bold text-gray-800">
-                Modifier - {selectedSite.nameSite}
-              </h2>
-              <button onClick={() => {
-                setShowEditForm(false);
-                setSelectedSite(null);
-              }} className="text-gray-500 hover:text-gray-700">
-                <X size={24} />
-              </button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-              <input
-                type="text"
-                placeholder="ID Site"
-                value={formData.idSite}
-                onChange={(e) => setFormData({...formData, idSite: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
-              />
-              <input
-                type="text"
-                placeholder="Nom du Site"
-                value={formData.nameSite}
-                onChange={(e) => setFormData({...formData, nameSite: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
-              />
-              <input
-                type="text"
-                placeholder="Technicien"
-                value={formData.technician}
-                onChange={(e) => setFormData({...formData, technician: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
-              />
-              <input
-                type="text"
-                placeholder="Generateur"
-                value={formData.generateur}
-                onChange={(e) => setFormData({...formData, generateur: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
-              />
-              <input
-                type="text"
-                placeholder="Capacité"
-                value={formData.capacite}
-                onChange={(e) => setFormData({...formData, capacite: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
-              />
-              <input
-                type="text"
-                placeholder="Kit Vidange"
-                value={formData.kitVidange}
-                onChange={(e) => setFormData({...formData, kitVidange: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base col-span-1 sm:col-span-2 lg:col-span-3"
-              />
-              <input
-                type="number"
-                placeholder="NH1 DV"
-                value={formData.nh1DV}
-                onChange={(e) => setFormData({...formData, nh1DV: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
-              />
-              <input
-                type="date"
-                value={formData.dateDV}
-                onChange={(e) => setFormData({...formData, dateDV: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
-              />
-              <input
-                type="number"
-                placeholder="NH2 A"
-                value={formData.nh2A}
-                onChange={(e) => setFormData({...formData, nh2A: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
-              />
-              <input
-                type="date"
-                value={formData.dateA}
-                onChange={(e) => setFormData({...formData, dateA: e.target.value})}
-                className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
-              />
-              <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 sm:px-4 py-2">
-                <input
-                  type="checkbox"
-                  id="retired-edit"
-                  checked={formData.retired}
-                  onChange={(e) => setFormData({...formData, retired: e.target.checked})}
-                  className="w-4 h-4"
-                />
-                <label htmlFor="retired-edit" className="text-sm sm:text-base cursor-pointer">Site Retiré</label>
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4">
-              <button
-                onClick={handleEditSite}
-                className="bg-green-600 text-white px-4 sm:px-6 py-2 rounded-lg hover:bg-green-700 text-sm sm:text-base"
-              >
-                Enregistrer
-              </button>
-              <button
-                onClick={() => {
-                  setShowEditForm(false);
-                  setSelectedSite(null);
-                  setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
-                }}
-                className="bg-gray-400 text-white px-4 sm:px-6 py-2 rounded-lg hover:bg-gray-500 text-sm sm:text-base"
-              >
-                Annuler
-              </button>
-            </div>
-          </div>
+          <EditSiteForm
+            selectedSite={selectedSite}
+            formData={formData}
+            setFormData={setFormData}
+            onSubmit={handleEditSite}
+            onClose={() => {
+              setShowEditForm(false);
+              setSelectedSite(null);
+            }}
+            onCancel={() => {
+              setShowEditForm(false);
+              setSelectedSite(null);
+              setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
+            }}
+          />
         )}
 
         <div className="mb-6">
@@ -9558,53 +5591,13 @@ const GeneratorMaintenanceApp = () => {
         </div>
 
         {/* Statistiques */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
-            <div className="flex items-center gap-3">
-              <CheckCircle className="text-green-600 flex-shrink-0" size={28} />
-              <div>
-                <p className="text-xs sm:text-sm text-gray-600">Total Sites</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-800">{isTechnician ? filteredSites.length : sites.length}</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="text-red-600 flex-shrink-0" size={28} />
-              <div>
-                <p className="text-xs sm:text-sm text-gray-600">Vidanges Urgentes</p>
-                <p className="text-xl sm:text-2xl font-bold text-red-600">{urgentSites.length}</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
-            <div className="flex items-center gap-3">
-              <Activity className="text-gray-600 flex-shrink-0" size={28} />
-              <div>
-                <p className="text-xs sm:text-sm text-gray-600">Sites Retirés</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-800">
-                  {isTechnician ? filteredSites.filter(s => s.retired).length : sites.filter(s => s.retired).length}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {isAdmin && (
-            <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
-              <div className="flex items-center gap-3">
-                <Calendar className="text-blue-600 flex-shrink-0" size={28} />
-                <div>
-                  <p className="text-xs sm:text-sm text-gray-600">Prochain Ticket</p>
-                  <p className="text-base sm:text-lg font-bold text-gray-800">
-                    T{String(ticketNumber).padStart(5, '0')}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+        <SitesStats
+          isAdmin={isAdmin}
+          sitesCount={isTechnician ? filteredSites.length : sites.length}
+          urgentSitesCount={urgentSites.length}
+          retiredSitesCount={isTechnician ? filteredSites.filter((s) => s.retired).length : sites.filter((s) => s.retired).length}
+          ticketNumber={ticketNumber}
+        />
 
       </div>
     </div>
