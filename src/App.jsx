@@ -4518,7 +4518,7 @@ const GeneratorMaintenanceApp = () => {
           />
         )}
         <div
-          className={`w-64 bg-slate-900 text-slate-100 border-r border-slate-800 flex flex-col p-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:pt-20 gap-1 fixed md:sticky top-0 left-0 h-[100svh] md:h-screen overflow-y-auto z-50 md:z-auto transform transition-transform md:translate-x-0 md:transition-[width,padding,transform] ${
+          className={`w-64 bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 border-slate-800 border-r-4 border-r-blue-600/25 flex flex-col p-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:pt-20 gap-1 fixed md:sticky top-0 left-0 h-[100svh] md:h-screen overflow-y-auto z-50 md:z-auto transform transition-transform md:translate-x-0 md:transition-[width,padding,transform] ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           } ${
             sidebarDockedOpen ? 'md:w-64 md:p-4 md:border-r md:border-slate-800' : 'md:w-0 md:p-0 md:border-r-0 md:overflow-hidden'
@@ -5475,10 +5475,10 @@ const GeneratorMaintenanceApp = () => {
                       </div>
 
                       <div className="grid grid-cols-3 gap-3 mt-4">
-                        <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                        <div className="bg-gray-50 rounded-lg p-2 sm:p-3 border border-gray-100 min-w-0">
                           <div className="text-xs text-gray-600">NH updaté</div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg font-bold text-blue-600">{Number.isFinite(Number(site.nhEstimated)) ? `${site.nhEstimated}H` : '-'}</span>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-base sm:text-lg font-bold text-blue-600 break-words leading-tight">{Number.isFinite(Number(site.nhEstimated)) ? `${site.nhEstimated}H` : '-'}</span>
                             {daysUntil < 0 && !site.retired && (
                               <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-800 text-xs font-medium rounded-full">
                                 En retard
@@ -5487,13 +5487,13 @@ const GeneratorMaintenanceApp = () => {
                             {site.status === 'done' && <CheckCircle className="text-green-500" size={16} />}
                           </div>
                         </div>
-                        <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                        <div className="bg-gray-50 rounded-lg p-2 sm:p-3 border border-gray-100 min-w-0">
                           <div className="text-xs text-gray-600">Diff updatée</div>
-                          <div className="text-lg font-bold text-blue-600">{site.diffEstimated}H</div>
+                          <div className="text-base sm:text-lg font-bold text-blue-600 break-words leading-tight">{site.diffEstimated}H</div>
                         </div>
-                        <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                        <div className="bg-gray-50 rounded-lg p-2 sm:p-3 border border-gray-100 min-w-0">
                           <div className="text-xs text-gray-600">Date updatée</div>
-                          <div className="text-lg font-bold text-blue-600">{formatDate(site.dateA)}</div>
+                          <div className="text-base sm:text-lg font-bold text-blue-600 break-words leading-tight">{formatDate(site.dateA)}</div>
                         </div>
                       </div>
 

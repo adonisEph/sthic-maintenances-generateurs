@@ -24,7 +24,7 @@ const TechnicianCalendarModal = ({
     <>
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
         <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-6xl sm:max-h-[90vh]">
-          <div className="flex items-start justify-between gap-3 px-3 py-3 sm:p-4 border-b bg-cyan-600 text-white">
+          <div className="flex items-start justify-between gap-3 px-3 py-3 sm:p-4 border-b border-slate-800 bg-slate-950 text-slate-100">
             <div className="min-w-0 flex items-center gap-2">
               <Calendar size={24} className="flex-shrink-0" />
               <h2 className="text-base sm:text-xl font-bold min-w-0">
@@ -32,7 +32,7 @@ const TechnicianCalendarModal = ({
               </h2>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <button onClick={onClose} className="hover:bg-cyan-700 p-2 rounded">
+              <button onClick={onClose} className="hover:bg-slate-800 p-2 rounded">
                 <X size={20} />
               </button>
             </div>
@@ -52,7 +52,7 @@ const TechnicianCalendarModal = ({
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
                 />
               </div>
-              <div className="text-xs text-white/90 bg-cyan-700/40 border border-white/20 rounded-lg px-3 py-2">
+              <div className="text-xs text-slate-100/90 bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2">
                 Lecture seule
               </div>
             </div>
@@ -161,13 +161,13 @@ const TechnicianCalendarModal = ({
       {showTechDayDetailsModal && open && isTechnician && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
           <div className="bg-white rounded-none sm:rounded-lg shadow-xl sm:max-w-3xl sm:max-h-[90vh] w-full h-[100svh] max-h-[100svh] max-w-none overflow-hidden flex flex-col">
-            <div className="flex justify-between items-center p-4 border-b bg-cyan-600 text-white">
+            <div className="flex justify-between items-center p-4 border-b border-slate-800 bg-slate-950 text-slate-100">
               <div className="font-bold">Détails du {techSelectedDate ? formatDate(techSelectedDate) : ''}</div>
               <button
                 onClick={() => {
                   setShowTechDayDetailsModal(false);
                 }}
-                className="hover:bg-cyan-700 p-2 rounded"
+                className="hover:bg-slate-800 p-2 rounded"
               >
                 <X size={18} />
               </button>

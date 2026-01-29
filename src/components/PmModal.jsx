@@ -100,7 +100,7 @@ const PmModal = (props) => {
 
         <div className="flex-1 overflow-hidden">
           <div className="flex flex-col lg:flex-row h-full min-h-0">
-            <div className="lg:w-72 w-full flex-shrink-0 bg-slate-900 text-slate-100 border-b border-slate-800 lg:border-b-0 lg:border-r lg:border-slate-800 overflow-y-auto">
+            <div className="lg:w-72 w-full flex-shrink-0 bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 border-slate-800 border-b-4 border-b-blue-600/25 lg:border-b-0 lg:border-r-4 lg:border-r-blue-600/25 overflow-y-auto">
               <div className="p-4 space-y-4">
                 <div>
                   <div className="text-xs font-bold uppercase tracking-wide text-slate-200/90 mb-2">Période</div>
