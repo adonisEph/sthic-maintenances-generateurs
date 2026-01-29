@@ -4513,15 +4513,15 @@ const GeneratorMaintenanceApp = () => {
       <div className="flex min-h-[100svh] md:min-h-screen">
         {sidebarOpen && (
           <div
-            className="fixed inset-0 bg-black/40 z-40 md:hidden"
+            className="fixed inset-0 bg-emerald-950/60 z-40 md:hidden"
             onClick={() => setSidebarOpen(false)}
           />
         )}
         <div
-          className={`from-emerald-950 via-emerald-900 to-emerald-950 text-white border-emerald-900/60 border-r-emerald-400/30 flex flex-col p-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:pt-20 gap-1 fixed md:sticky top-0 left-0 h-[100svh] md:h-screen overflow-y-auto z-50 md:z-auto transform transition-transform md:translate-x-0 md:transition-[width,padding,transform] ${
+          className={`bg-emerald-950 bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 text-white border-emerald-900/60 border-r-4 border-r-emerald-400/30 flex flex-col p-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:pt-20 gap-1 fixed md:sticky top-0 left-0 h-[100svh] md:h-screen overflow-y-auto z-50 md:z-auto transform transition-transform md:translate-x-0 md:transition-[width,padding,transform] ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           } ${
-            sidebarDockedOpen ? 'md:w-64 md:p-4 md:border-r md:border-slate-800' : 'md:w-0 md:p-0 md:border-r-0 md:overflow-hidden'
+            sidebarDockedOpen ? 'md:w-64 md:p-4' : 'md:w-0 md:p-0 md:border-r-0 md:overflow-hidden'
           }`}
         >
           <div className="flex items-center gap-2 px-2 py-2">

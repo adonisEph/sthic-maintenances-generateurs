@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calendar, X, Users, MapPin, Clock, AlertCircle } from 'lucide-react';
+import { Calendar, X, Users, MapPin, Clock, AlertCircle, Download, Upload, Trash2, RotateCcw, Sparkles } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { calculateEPVDates, calculateEstimatedNH } from '../utils/calculations';
 
@@ -726,172 +726,188 @@ const CalendarModal = (props) => {
         <div className="flex-1 overflow-hidden">
           <div className="flex flex-col lg:flex-row h-full min-h-0">
             <div className="lg:w-[280px] w-full flex-shrink-0 bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 text-white border-emerald-900/60 overflow-y-auto border-r-emerald-400/30">
-              <div className="p-3">
-                <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Mois</div>
-                <div className="grid grid-cols-3 gap-2 items-center mb-3">
-                  <button
-                    onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
-                    className="bg-white/10 hover:bg-white/15 text-white border border-white/10 w-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
-                  >
-                  ←
-                </button>
-              
-                <div className="text-sm font-bold text-white text-center capitalize">
-                  {currentMonth.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
-                </div>
-                <button
-                  onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
-                  className="bg-white/10 hover:bg-white/15 text-white border border-white/10 px-2 py-2 rounded-lg w-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
-                >
-                  →
-                </button>
-              
-
-                {isAdmin && (
-                <div className="bg-white/5 border border-white/10 rounded-lg p-3 mb-3">
-                  <div className="text-xs font-semibold text-white/90 mb-1">Technicien</div>
-                  <select
-                    value={calendarSendTechUserId}
-                    onChange={(e) => setCalendarSendTechUserId(e.target.value)}
-                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 w-full"
-                    disabled={usersBusy}
-                  >
-                    <option value="">-- Technicien --</option>
-                    {(Array.isArray(users) ? users : [])
-                      .filter((u) => u && u.role === 'technician')
-                      .slice()
-                      .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')))
-                      .map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.technicianName || u.email}
-                        </option>
-                      ))}
-                  </select>
-
-                  {usersBusy && <div className="mt-1 text-xs text-white/70">Chargement des techniciens…</div>}
-                  {!usersBusy && usersError && <div className="mt-1 text-xs text-rose-300">{usersError}</div>}
-                  {!usersBusy &&
-                    !usersError &&
-                    (Array.isArray(users) ? users : []).filter((u) => u && u.role === 'technician').length === 0 && (
-                      <div className="mt-1 text-xs text-white/70">Aucun technicien chargé.</div>
-                    )}
-
-                  {!usersBusy && (
+              <div className="p-3 space-y-5">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Mois</div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
                     <button
                       type="button"
-                      onClick={async () => {
-                        try {
-                          await refreshUsers();
-                        } catch {
-                          // ignore
-                        }
-                      }}
-                      className="mt-2 w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                      onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
+                      className="bg-white/10 hover:bg-white/15 text-white border border-white/10 px-2 py-2 rounded-lg w-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
                     >
-                      Recharger les techniciens
+                      ←
+                    </button>
+
+                    <div className="text-sm font-bold text-white text-center capitalize">
+                      {currentMonth.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
+                      className="bg-white/10 hover:bg-white/15 text-white border border-white/10 px-2 py-2 rounded-lg w-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                    >
+                      →
+                    </button>
+                  </div>
+
+                  {canExportExcel && (
+                    <button
+                      type="button"
+                      onClick={handleExportCalendarMonthExcel}
+                      className="mt-3 w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                      disabled={exportBusy}
+                    >
+                      <Download size={16} />
+                      Exporter Excel
                     </button>
                   )}
-
-                  <button
-                    type="button"
-                    onClick={handleSendCalendarMonthPlanning}
-                    className="mt-2 w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
-                    disabled={!calendarSendTechUserId || usersBusy}
-                  >
-                    Envoyer planning du mois
-                  </button>
-              </div>
-            )}
-
-            {isAdmin && (
-                <div className="bg-white/5 border border-white/10 rounded-lg p-3 mb-3">
-                  <div className="text-xs font-semibold text-white/90 mb-2 flex items-center gap-2">
-                    <Users size={14} />
-                    Clustering Sites
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowClustering(!showClustering)}
-                    className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
-                  >
-                    {showClustering ? 'Masquer' : 'Gérer'} les paires de sites
-                  </button>
                 </div>
-              )}
 
-              {isAdmin && (
-                <div className="bg-white/5 border border-white/10 rounded-lg p-3 mb-3">
-                  <div className="text-xs font-semibold text-white/90 mb-2 flex items-center gap-2">
-                    <Users size={14} />
-                    Planning Intelligent
+                {isAdmin && (
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Technicien</div>
+                    <div className="text-xs font-semibold text-white/90 mb-1">Destinataire</div>
+                    <select
+                      value={calendarSendTechUserId}
+                      onChange={(e) => setCalendarSendTechUserId(e.target.value)}
+                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 w-full"
+                      disabled={usersBusy}
+                    >
+                      <option value="">-- Technicien --</option>
+                      {(Array.isArray(users) ? users : [])
+                        .filter((u) => u && u.role === 'technician')
+                        .slice()
+                        .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')))
+                        .map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.technicianName || u.email}
+                          </option>
+                        ))}
+                    </select>
+
+                    {usersBusy && <div className="mt-1 text-xs text-white/70">Chargement des techniciens…</div>}
+                    {!usersBusy && usersError && <div className="mt-1 text-xs text-rose-300">{usersError}</div>}
+                    {!usersBusy &&
+                      !usersError &&
+                      (Array.isArray(users) ? users : []).filter((u) => u && u.role === 'technician').length === 0 && (
+                        <div className="mt-1 text-xs text-white/70">Aucun technicien chargé.</div>
+                      )}
+
+                    <div className="mt-2 space-y-2">
+                      {!usersBusy && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await refreshUsers();
+                            } catch {
+                              // ignore
+                            }
+                          }}
+                          className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                        >
+                          Recharger les techniciens
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={handleSendCalendarMonthPlanning}
+                        className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                        disabled={!calendarSendTechUserId || usersBusy}
+                      >
+                        Envoyer planning du mois
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={generateIntelligentPlanning}
-                    className="w-full bg-purple-600 text-white px-3 py-2 rounded-lg hover:bg-purple-700 text-sm font-semibold disabled:opacity-60"
-                    disabled={planningBusy}
-                  >
-                    {planningBusy ? 'Génération...' : 'Générer planning intelligent'}
-                  </button>
-                </div>
-              )}
+                )}
 
                 {isAdmin && (
-                  <label
-                    className={`text-left px-3 py-2 rounded-lg font-semibold text-sm transition-colors focus-within:ring-2 focus-within:ring-emerald-400/70 focus-within:ring-offset-2 focus-within:ring-offset-emerald-950 ${
-                      basePlanBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
-                    }`}
-                  >
-                    Importer base (Excel)
-                    <input
-                      type="file"
-                      accept=".xlsx,.xls"
-                      onChange={handleImportBasePlanExcel}
-                      className="hidden"
-                      disabled={basePlanBusy}
-                    />
-                  </label>
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Actions</div>
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowClustering(!showClustering)}
+                        className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                      >
+                        <Users size={16} />
+                        {showClustering ? 'Masquer le clustering' : 'Clustering sites'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={generateIntelligentPlanning}
+                        className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                        disabled={planningBusy}
+                      >
+                        <Sparkles size={16} />
+                        {planningBusy ? 'Génération...' : 'Générer planning intelligent'}
+                      </button>
+                    </div>
+                  </div>
                 )}
+
                 {isAdmin && (
-                  <button
-                    type="button"
-                    onClick={generateBasePlanPreview}
-                    className="text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
-                    disabled={basePlanBusy || basePlanBaseRows.length === 0}
-                  >
-                    Générer planning mois suivant
-                  </button>
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Base (Excel)</div>
+                    <div className="space-y-2">
+                      <label
+                        className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-emerald-400/70 focus-within:ring-offset-2 focus-within:ring-offset-emerald-950 ${
+                          basePlanBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
+                        }`}
+                      >
+                        <Upload size={16} />
+                        Importer base (Excel)
+                        <input
+                          type="file"
+                          accept=".xlsx,.xls"
+                          onChange={handleImportBasePlanExcel}
+                          className="hidden"
+                          disabled={basePlanBusy}
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={generateBasePlanPreview}
+                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                        disabled={basePlanBusy || basePlanBaseRows.length === 0}
+                      >
+                        Générer planning mois suivant
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={exportBasePlanPreviewExcel}
+                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                        disabled={basePlanBusy || basePlanPreview.length === 0}
+                      >
+                        Exporter planning base
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={saveBasePlanToDb}
+                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                        disabled={basePlanBusy || basePlanPreview.length === 0}
+                      >
+                        Enregistrer (DB)
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={deleteBasePlanFromDb}
+                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                        disabled={basePlanBusy}
+                      >
+                        Supprimer (DB)
+                      </button>
+                    </div>
+                  </div>
                 )}
-                {isAdmin && (
-                  <button
-                    type="button"
-                    onClick={exportBasePlanPreviewExcel}
-                    className="text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
-                    disabled={basePlanBusy || basePlanPreview.length === 0}
-                  >
-                    Exporter planning base
-                  </button>
-                )}
-                {isAdmin && (
-                  <button
-                    type="button"
-                    onClick={saveBasePlanToDb}
-                    className="text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
-                    disabled={basePlanBusy || basePlanPreview.length === 0}
-                  >
-                    Enregistrer (DB)
-                  </button>
-                )}
-                {isAdmin && (
-                  <button
-                    type="button"
-                    onClick={deleteBasePlanFromDb}
-                    className="text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
-                    disabled={basePlanBusy}
-                  >
-                    Supprimer (DB)
-                  </button>
-                )}
+
               </div>
 
               {/* Clustering Interface */}
@@ -1014,7 +1030,6 @@ const CalendarModal = (props) => {
                 </div>
               )}
 
-              </div>
             </div>
 
             <div className="flex-1 min-w-0 overflow-y-auto p-3 sm:p-6 space-y-3">
