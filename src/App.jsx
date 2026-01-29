@@ -4913,6 +4913,7 @@ const GeneratorMaintenanceApp = () => {
 />
                 <PmModal
           showPm={showPm}
+          appVersion={APP_VERSION}
           canUsePm={canUsePm}
           isViewer={isViewer}
           isAdmin={isAdmin}
@@ -5343,6 +5344,7 @@ const GeneratorMaintenanceApp = () => {
         
                 <CalendarModal
           showCalendar={showCalendar}
+          appVersion={APP_VERSION}
           isTechnician={isTechnician}
           setShowCalendar={setShowCalendar}
           currentMonth={currentMonth}

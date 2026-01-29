@@ -1,11 +1,12 @@
 import React from 'react';
-import { TrendingUp, X, Upload, Download, Trash2, RotateCcw } from 'lucide-react';
+import { TrendingUp, X, Upload, Download, Trash2, RotateCcw, Activity } from 'lucide-react';
 
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
 
 const PmModal = (props) => {
   const {
     showPm,
+    appVersion,
     canUsePm,
     isViewer,
     isAdmin,
@@ -74,26 +75,36 @@ const PmModal = (props) => {
   return (
     <div className="fixed inset-0 bg-emerald-950/60 flex items-center justify-center z-50 p-0 sm:p-0">
       <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-none sm:max-w-none sm:max-h-[100vh] sm:h-[100vh]">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b border-emerald-900/60 bg-emerald-800 text-white shadow-sm">
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <TrendingUp size={22} className="text-emerald-200" />
-            Maintenances planifiées (PM)
-            {isViewer && (
-              <span className="ml-2 bg-white/90 text-emerald-900 border border-white/70 px-2 py-0.5 rounded-full text-xs font-semibold">
-                Lecture seule
-              </span>
-            )}
-          </h2>
-          <div className="flex items-center gap-3">
+        <div className="bg-emerald-800 text-white px-4 py-2 flex items-center gap-2">
+          <Activity size={18} className="text-white/90" />
+          <div className="text-sm font-semibold">Gestion Maintenance & Vidanges</div>
+        </div>
+        <div className="bg-white border-b border-gray-200 shadow-sm px-4 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <Activity className="text-blue-600" size={24} />
+              <div className="min-w-0">
+                <div className="text-lg sm:text-xl font-bold text-gray-800">Gestion Maintenance & Vidanges</div>
+                <div className="text-xs text-gray-600">Version {appVersion} - Suivi H24/7j avec Fiches</div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="text-xs font-semibold text-emerald-800">Maintenances planifiées (PM)</div>
+                  {isViewer && (
+                    <span className="bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full text-xs font-semibold">
+                      Lecture seule
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
             <button
               onClick={() => {
                 setShowPm(false);
                 setPmError('');
                 setPmNotice('');
               }}
-              className="p-2 rounded hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+              className="p-2 rounded hover:bg-gray-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             >
-              <X size={20} />
+              <X size={20} className="text-gray-700" />
             </button>
           </div>
         </div>
@@ -101,6 +112,10 @@ const PmModal = (props) => {
         <div className="flex-1 overflow-hidden">
           <div className="flex flex-col lg:flex-row h-full min-h-0">
             <div className="lg:w-72 w-full flex-shrink-0 bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 text-white border-emerald-900/60 border-b-4 border-b-emerald-400/30 lg:border-b-0 lg:border-r-4 lg:border-r-emerald-400/30 overflow-y-auto">
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-emerald-900/60">
+                <Activity size={20} className="text-slate-100/90" />
+                <div className="text-lg font-bold text-slate-100 leading-tight">Navigation</div>
+              </div>
               <div className="p-4 space-y-4">
                 <div>
                   <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Période</div>
