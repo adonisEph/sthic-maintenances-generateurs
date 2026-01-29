@@ -708,13 +708,16 @@ const CalendarModal = (props) => {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-0">
       <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-none sm:max-w-none sm:max-h-[100vh] sm:h-[100vh]">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b border-gray-200 bg-white text-gray-900 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b border-slate-800 bg-slate-950 text-slate-100 shadow-sm">
           <h2 className="text-xl font-bold flex items-center gap-2">
-            <Calendar size={24} className="text-blue-600" />
+            <Calendar size={24} className="text-blue-400" />
             Calendrier des Vidanges
           </h2>
           <div className="flex items-center gap-3">
-            <button onClick={() => setShowCalendar(false)} className="hover:bg-gray-100 p-2 rounded">
+            <button
+              onClick={() => setShowCalendar(false)}
+              className="p-2 rounded hover:bg-slate-800/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+            >
               <X size={20} />
             </button>
           </div>
@@ -728,7 +731,7 @@ const CalendarModal = (props) => {
               <div className="grid grid-cols-3 gap-2 items-center mb-3">
                 <button
                   onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
-                  className="bg-slate-800 text-white px-2 py-2 rounded-lg hover:bg-slate-700 w-full text-sm font-semibold"
+                  className="bg-slate-800 text-white px-2 py-2 rounded-lg hover:bg-slate-700/90 w-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                 >
                   ←
                 </button>
@@ -737,7 +740,7 @@ const CalendarModal = (props) => {
                 </div>
                 <button
                   onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
-                  className="bg-slate-800 text-white px-2 py-2 rounded-lg hover:bg-slate-700 w-full text-sm font-semibold"
+                  className="bg-slate-800 text-white px-2 py-2 rounded-lg hover:bg-slate-700/90 w-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                 >
                   →
                 </button>
@@ -832,24 +835,10 @@ const CalendarModal = (props) => {
                 </div>
               )}
 
-              <div className="h-px bg-slate-700/60 my-2" />
-
-              <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Actions</div>
-              <div className="flex flex-col">
-                {canExportExcel && (
-                  <button
-                    type="button"
-                    onClick={handleExportCalendarMonthExcel}
-                    className="text-left px-3 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm disabled:opacity-60"
-                    disabled={exportBusy}
-                  >
-                    Exporter Excel
-                  </button>
-                )}
                 {isAdmin && (
                   <label
-                    className={`text-left px-3 py-2 rounded-lg font-semibold text-sm ${
-                      basePlanBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-800 cursor-pointer'
+                    className={`text-left px-3 py-2 rounded-lg font-semibold text-sm transition-colors focus-within:ring-2 focus-within:ring-blue-500/70 focus-within:ring-offset-2 focus-within:ring-offset-slate-950 ${
+                      basePlanBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-800/80 cursor-pointer'
                     }`}
                   >
                     Importer base (Excel)
@@ -866,7 +855,7 @@ const CalendarModal = (props) => {
                   <button
                     type="button"
                     onClick={generateBasePlanPreview}
-                    className="text-left px-3 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm disabled:opacity-60"
+                    className="text-left px-3 py-2 rounded-lg hover:bg-slate-800/80 font-semibold text-sm disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                     disabled={basePlanBusy || basePlanBaseRows.length === 0}
                   >
                     Générer planning mois suivant
@@ -876,7 +865,7 @@ const CalendarModal = (props) => {
                   <button
                     type="button"
                     onClick={exportBasePlanPreviewExcel}
-                    className="text-left px-3 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm disabled:opacity-60"
+                    className="text-left px-3 py-2 rounded-lg hover:bg-slate-800/80 font-semibold text-sm disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                     disabled={basePlanBusy || basePlanPreview.length === 0}
                   >
                     Exporter planning base
@@ -886,7 +875,7 @@ const CalendarModal = (props) => {
                   <button
                     type="button"
                     onClick={saveBasePlanToDb}
-                    className="text-left px-3 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm disabled:opacity-60"
+                    className="text-left px-3 py-2 rounded-lg hover:bg-slate-800/80 font-semibold text-sm disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                     disabled={basePlanBusy || basePlanPreview.length === 0}
                   >
                     Enregistrer (DB)
@@ -896,7 +885,7 @@ const CalendarModal = (props) => {
                   <button
                     type="button"
                     onClick={deleteBasePlanFromDb}
-                    className="text-left px-3 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm disabled:opacity-60"
+                    className="text-left px-3 py-2 rounded-lg hover:bg-slate-800/80 font-semibold text-sm disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                     disabled={basePlanBusy}
                   >
                     Supprimer (DB)

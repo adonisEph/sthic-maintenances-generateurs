@@ -74,9 +74,9 @@ const PmModal = (props) => {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-0">
       <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-none sm:max-w-none sm:max-h-[100vh] sm:h-[100vh]">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b border-gray-200 bg-white text-gray-900 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b border-slate-800 bg-slate-950 text-slate-100 shadow-sm">
           <h2 className="text-xl font-bold flex items-center gap-2">
-            <TrendingUp size={22} className="text-blue-600" />
+            <TrendingUp size={22} className="text-blue-400" />
             Maintenances planifiées (PM)
             {isViewer && (
               <span className="ml-2 bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full text-xs font-semibold">
@@ -91,7 +91,7 @@ const PmModal = (props) => {
                 setPmError('');
                 setPmNotice('');
               }}
-              className="hover:bg-gray-100 p-2 rounded"
+              className="p-2 rounded hover:bg-slate-800/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               <X size={20} />
             </button>
@@ -134,7 +134,7 @@ const PmModal = (props) => {
                     <button
                       type="button"
                       onClick={handlePmExportExcel}
-                      className="w-full bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-800 text-sm font-semibold flex items-center justify-center gap-2"
+                      className="w-full bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-800/90 text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                       disabled={pmBusy}
                     >
                       <Download size={16} />
@@ -159,7 +159,7 @@ const PmModal = (props) => {
                     <button
                       type="button"
                       onClick={handlePmExportReprogExcel}
-                      className="w-full bg-slate-800 text-white px-3 py-2 rounded-lg hover:bg-slate-900 text-sm font-semibold flex items-center justify-center gap-2"
+                      className="w-full bg-slate-800 text-white px-3 py-2 rounded-lg hover:bg-slate-900/90 text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                       disabled={pmBusy || exportBusy}
                     >
                       <Download size={16} />
@@ -228,8 +228,8 @@ const PmModal = (props) => {
                     <div className="text-xs font-bold uppercase tracking-wide text-slate-200/90 mb-2">Actions</div>
                     <div className="flex flex-col">
                       <label
-                        className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 ${
-                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-800 cursor-pointer'
+                        className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-blue-500/70 focus-within:ring-offset-2 focus-within:ring-offset-slate-950 ${
+                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-800/80 cursor-pointer'
                         }`}
                       >
                         <Upload size={16} />
@@ -244,8 +244,8 @@ const PmModal = (props) => {
                       </label>
 
                       <label
-                        className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 ${
-                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-800 cursor-pointer'
+                        className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-blue-500/70 focus-within:ring-offset-2 focus-within:ring-offset-slate-950 ${
+                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-800/80 cursor-pointer'
                         }`}
                       >
                         <Upload size={16} />
@@ -262,7 +262,7 @@ const PmModal = (props) => {
                       <button
                         type="button"
                         onClick={() => handlePmReset('imports')}
-                        className="text-left px-3 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm disabled:opacity-60 flex items-center gap-2"
+                        className="text-left px-3 py-2 rounded-lg hover:bg-slate-800/80 font-semibold text-sm disabled:opacity-60 flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                         disabled={pmBusy || pmResetBusy}
                       >
                         <Trash2 size={16} />
@@ -272,7 +272,7 @@ const PmModal = (props) => {
                       <button
                         type="button"
                         onClick={() => handlePmReset('all')}
-                        className="text-left px-3 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm disabled:opacity-60 flex items-center gap-2"
+                        className="text-left px-3 py-2 rounded-lg hover:bg-slate-800/80 font-semibold text-sm disabled:opacity-60 flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                         disabled={pmBusy || pmResetBusy}
                       >
                         <RotateCcw size={16} />

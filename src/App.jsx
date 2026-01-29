@@ -4531,7 +4531,7 @@ const GeneratorMaintenanceApp = () => {
               <button
                 type="button"
                 onClick={() => setSidebarDockedOpen(false)}
-                className="hidden md:inline-flex p-2 rounded hover:bg-slate-800"
+                className="hidden md:inline-flex p-2 rounded hover:bg-slate-800/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                 title="Réduire le menu"
               >
                 <ChevronLeft size={18} />
@@ -4539,7 +4539,7 @@ const GeneratorMaintenanceApp = () => {
               <button
                 type="button"
                 onClick={() => setSidebarOpen(false)}
-                className="md:hidden p-2 rounded hover:bg-slate-800"
+                className="md:hidden p-2 rounded hover:bg-slate-800/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
               >
                 <X size={18} />
               </button>
@@ -4575,7 +4575,7 @@ const GeneratorMaintenanceApp = () => {
                   }
                 }
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 flex items-center gap-2 text-base font-semibold"
             >
               <Calendar size={18} />
               Calendrier
@@ -4589,7 +4589,7 @@ const GeneratorMaintenanceApp = () => {
                 setShowTechCalendar(true);
                 await loadInterventions(m, 'all', 'all');
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 flex items-center gap-2 text-base font-semibold"
             >
               <Calendar size={18} />
               Calendrier
@@ -4616,7 +4616,7 @@ const GeneratorMaintenanceApp = () => {
                 }
                 await loadInterventions();
               }}
-              className="relative w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-base font-semibold"
+              className="relative w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 flex items-center gap-2 text-base font-semibold"
             >
               <CheckCircle size={18} />
               {isTechnician && technicianUnseenSentCount > 0 && (
@@ -4638,7 +4638,7 @@ const GeneratorMaintenanceApp = () => {
                 setShowScoring(true);
                 await loadInterventions(nextMonth, 'all', 'all');
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 flex items-center gap-2 text-base font-semibold"
             >
               <TrendingUp size={18} />
               Scoring
@@ -4667,7 +4667,7 @@ const GeneratorMaintenanceApp = () => {
                 const m = pmMonth || new Date().toISOString().slice(0, 7);
                 await refreshPmAll(m);
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 flex items-center gap-2 text-base font-semibold"
             >
               <TrendingUp size={18} />
               Maintenances (PM)
@@ -4679,7 +4679,7 @@ const GeneratorMaintenanceApp = () => {
               setSidebarOpen(false);
               setShowHistory(true);
             }}
-            className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-base font-semibold"
+            className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 flex items-center gap-2 text-base font-semibold"
           >
             <Activity size={18} />
             Historique
@@ -4691,7 +4691,7 @@ const GeneratorMaintenanceApp = () => {
                 setSidebarOpen(false);
                 setShowResetConfirm(true);
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 flex items-center gap-2 text-base font-semibold"
             >
               <X size={18} />
               Réinitialiser
@@ -4704,7 +4704,7 @@ const GeneratorMaintenanceApp = () => {
                 setSidebarOpen(false);
                 setShowUsersModal(true);
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 flex items-center gap-2 text-base font-semibold"
             >
               <Users size={18} />
               Utilisateurs
@@ -4717,7 +4717,7 @@ const GeneratorMaintenanceApp = () => {
                 setSidebarOpen(false);
                 setShowPresenceModal(true);
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 flex items-center gap-2 text-base font-semibold"
             >
               <Activity size={18} />
               Présence

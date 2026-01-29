@@ -22,7 +22,7 @@ const SidebarSitesActions = ({
             onCloseSidebar();
             onToggleAddForm();
           }}
-          className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-base font-semibold"
+          className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 flex items-center gap-2 text-base font-semibold"
         >
           <Plus size={18} />
           Nouveau Site
@@ -33,8 +33,8 @@ const SidebarSitesActions = ({
         <div className="flex flex-col gap-2">
           <label
             onClick={onCloseSidebar}
-            className={`w-full px-3 py-2 rounded-lg flex items-center gap-2 text-base font-semibold ${
-              importBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-800 cursor-pointer'
+            className={`w-full px-3 py-2 rounded-lg flex items-center gap-2 text-base font-semibold transition-colors focus-within:ring-2 focus-within:ring-blue-500/70 focus-within:ring-offset-2 focus-within:ring-offset-slate-950 ${
+              importBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-800/80 cursor-pointer'
             }`}
           >
             <Upload size={18} />
@@ -70,7 +70,7 @@ const SidebarSitesActions = ({
             onExportExcel();
           }}
           disabled={sitesCount === 0 || exportBusy || importBusy}
-          className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 disabled:opacity-60 text-base font-semibold"
+          className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 flex items-center gap-2 disabled:opacity-60 text-base font-semibold"
         >
           <Download size={18} />
           Exporter Excel
