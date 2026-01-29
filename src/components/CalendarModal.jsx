@@ -727,14 +727,15 @@ const CalendarModal = (props) => {
           <div className="flex flex-col lg:flex-row h-full min-h-0">
             <div className="lg:w-[280px] w-full flex-shrink-0 bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 border-slate-800 border-b-4 border-b-blue-600/25 lg:border-b-0 lg:border-r-4 lg:border-r-blue-600/25 overflow-y-auto">
               <div className="p-3">
-              <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Mois</div>
-              <div className="grid grid-cols-3 gap-2 items-center mb-3">
-                <button
-                  onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
-                  className="bg-slate-800 text-white px-2 py-2 rounded-lg hover:bg-slate-700/90 w-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-                >
+                <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Mois</div>
+                <div className="grid grid-cols-3 gap-2 items-center mb-3">
+                  <button
+                    onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
+                    className="bg-slate-800 text-white px-2 py-2 rounded-lg hover:bg-slate-700/90 w-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                  >
                   ←
                 </button>
+              
                 <div className="text-sm font-bold text-white text-center capitalize">
                   {currentMonth.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
                 </div>
@@ -744,9 +745,9 @@ const CalendarModal = (props) => {
                 >
                   →
                 </button>
-              </div>
+              
 
-              {isAdmin && (
+                {isAdmin && (
                 <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 mb-3">
                   <div className="text-xs font-semibold text-slate-200 mb-1">Technicien</div>
                   <select
@@ -799,10 +800,10 @@ const CalendarModal = (props) => {
                   >
                     Envoyer planning du mois
                   </button>
-                </div>
-              )}
+              </div>
+            )}
 
-              {isAdmin && (
+            {isAdmin && (
                 <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 mb-3">
                   <div className="text-xs font-semibold text-slate-200 mb-2 flex items-center gap-2">
                     <Users size={14} />
