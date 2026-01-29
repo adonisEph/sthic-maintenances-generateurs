@@ -72,14 +72,14 @@ const PmModal = (props) => {
   if (!showPm || !canUsePm) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-0">
+    <div className="fixed inset-0 bg-emerald-950/60 flex items-center justify-center z-50 p-0 sm:p-0">
       <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-none sm:max-w-none sm:max-h-[100vh] sm:h-[100vh]">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b border-slate-800 bg-slate-950 text-slate-100 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b border-emerald-900/60 bg-emerald-800 text-white shadow-sm">
           <h2 className="text-xl font-bold flex items-center gap-2">
-            <TrendingUp size={22} className="text-blue-400" />
+            <TrendingUp size={22} className="text-emerald-200" />
             Maintenances planifiées (PM)
             {isViewer && (
-              <span className="ml-2 bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full text-xs font-semibold">
+              <span className="ml-2 bg-white/90 text-emerald-900 border border-white/70 px-2 py-0.5 rounded-full text-xs font-semibold">
                 Lecture seule
               </span>
             )}
@@ -91,7 +91,7 @@ const PmModal = (props) => {
                 setPmError('');
                 setPmNotice('');
               }}
-              className="p-2 rounded hover:bg-slate-800/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              className="p-2 rounded hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
             >
               <X size={20} />
             </button>
@@ -100,13 +100,13 @@ const PmModal = (props) => {
 
         <div className="flex-1 overflow-hidden">
           <div className="flex flex-col lg:flex-row h-full min-h-0">
-            <div className="lg:w-72 w-full flex-shrink-0 bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 border-slate-800 border-b-4 border-b-blue-600/25 lg:border-b-0 lg:border-r-4 lg:border-r-blue-600/25 overflow-y-auto">
+            <div className="lg:w-72 w-full flex-shrink-0 bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 text-white border-emerald-900/60 border-b-4 border-b-emerald-400/30 lg:border-b-0 lg:border-r-4 lg:border-r-emerald-400/30 overflow-y-auto">
               <div className="p-4 space-y-4">
                 <div>
-                  <div className="text-xs font-bold uppercase tracking-wide text-slate-200/90 mb-2">Période</div>
+                  <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Période</div>
                   <div className="space-y-2">
                     <div className="flex flex-col">
-                      <label className="text-xs font-semibold text-slate-200/90 mb-1">Mois</label>
+                      <label className="text-xs font-semibold text-white/90 mb-1">Mois</label>
                       <input
                         type="month"
                         value={pmMonth}
@@ -125,7 +125,7 @@ const PmModal = (props) => {
                       onClick={async () => {
                         await refreshPmAll(pmMonth);
                       }}
-                      className="w-full bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700 text-sm font-semibold"
+                      className="w-full bg-emerald-600 text-white px-3 py-2 rounded-lg hover:bg-emerald-700 text-sm font-semibold"
                       disabled={pmBusy}
                     >
                       Rafraîchir
@@ -134,7 +134,7 @@ const PmModal = (props) => {
                     <button
                       type="button"
                       onClick={handlePmExportExcel}
-                      className="w-full bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-800/90 text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                      className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
                       disabled={pmBusy}
                     >
                       <Download size={16} />
@@ -144,10 +144,10 @@ const PmModal = (props) => {
                 </div>
 
                 <div>
-                  <div className="text-xs font-bold uppercase tracking-wide text-slate-200/90 mb-2">Exports</div>
+                  <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Exports</div>
                   <div className="space-y-2">
                     <div className="flex flex-col">
-                      <label className="text-xs font-semibold text-slate-200/90 mb-1">Reprogrammations (jour)</label>
+                      <label className="text-xs font-semibold text-white/90 mb-1">Reprogrammations (jour)</label>
                       <input
                         type="date"
                         value={pmReprogExportDate}
@@ -159,7 +159,7 @@ const PmModal = (props) => {
                     <button
                       type="button"
                       onClick={handlePmExportReprogExcel}
-                      className="w-full bg-slate-800 text-white px-3 py-2 rounded-lg hover:bg-slate-900/90 text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                      className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
                       disabled={pmBusy || exportBusy}
                     >
                       <Download size={16} />
@@ -170,10 +170,10 @@ const PmModal = (props) => {
 
                 {isAdmin && (
                   <div>
-                    <div className="text-xs font-bold uppercase tracking-wide text-slate-200/90 mb-2">Technicien</div>
+                    <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Technicien</div>
                     <div className="space-y-2">
                       <div className="flex flex-col">
-                        <label className="text-xs font-semibold text-slate-200/90 mb-1">Destinataire</label>
+                        <label className="text-xs font-semibold text-white/90 mb-1">Destinataire</label>
                         <select
                           value={pmSendTechUserId}
                           onChange={(e) => setPmSendTechUserId(e.target.value)}
@@ -208,14 +208,14 @@ const PmModal = (props) => {
                           setPmRejectedDateFilter('');
                           setPmRejectedModalOpen(true);
                         }}
-                        className="w-full bg-white border border-teal-200 text-teal-800 px-3 py-2 rounded-lg hover:bg-teal-50 text-sm font-semibold"
+                        className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
                         disabled={pmBusy}
                       >
                         Voir reprog rejetées
                       </button>
 
                       {(Array.isArray(users) ? users : []).filter((u) => u && u.role === 'technician').length === 0 && (
-                        <div className="text-xs text-slate-200/80">
+                        <div className="text-xs text-white/70">
                           Aucun technicien trouvé.
                         </div>
                       )}
@@ -225,11 +225,11 @@ const PmModal = (props) => {
 
                 {isAdmin && (
                   <div>
-                    <div className="text-xs font-bold uppercase tracking-wide text-slate-200/90 mb-2">Actions</div>
+                    <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Actions</div>
                     <div className="flex flex-col">
                       <label
-                        className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-blue-500/70 focus-within:ring-offset-2 focus-within:ring-offset-slate-950 ${
-                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-800/80 cursor-pointer'
+                        className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-emerald-400/70 focus-within:ring-offset-2 focus-within:ring-offset-emerald-950 ${
+                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
                         }`}
                       >
                         <Upload size={16} />
@@ -244,8 +244,8 @@ const PmModal = (props) => {
                       </label>
 
                       <label
-                        className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-blue-500/70 focus-within:ring-offset-2 focus-within:ring-offset-slate-950 ${
-                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-800/80 cursor-pointer'
+                        className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-emerald-400/70 focus-within:ring-offset-2 focus-within:ring-offset-emerald-950 ${
+                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
                         }`}
                       >
                         <Upload size={16} />
@@ -262,7 +262,7 @@ const PmModal = (props) => {
                       <button
                         type="button"
                         onClick={() => handlePmReset('imports')}
-                        className="text-left px-3 py-2 rounded-lg hover:bg-slate-800/80 font-semibold text-sm disabled:opacity-60 flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                        className="text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
                         disabled={pmBusy || pmResetBusy}
                       >
                         <Trash2 size={16} />
@@ -272,7 +272,7 @@ const PmModal = (props) => {
                       <button
                         type="button"
                         onClick={() => handlePmReset('all')}
-                        className="text-left px-3 py-2 rounded-lg hover:bg-slate-800/80 font-semibold text-sm disabled:opacity-60 flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                        className="text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
                         disabled={pmBusy || pmResetBusy}
                       >
                         <RotateCcw size={16} />
@@ -304,7 +304,7 @@ const PmModal = (props) => {
                 <div className="mb-4">
                   <div className="text-xs text-gray-700 mb-1">Import retour client: {pmClientStep || '…'}</div>
                   <div className="w-full bg-gray-200 rounded h-2 overflow-hidden">
-                    <div className="bg-slate-700 h-2" style={{ width: `${pmClientProgress}%` }} />
+                    <div className="bg-emerald-600 h-2" style={{ width: `${pmClientProgress}%` }} />
                   </div>
                 </div>
               )}
