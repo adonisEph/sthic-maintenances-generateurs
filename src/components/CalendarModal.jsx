@@ -709,32 +709,9 @@ const CalendarModal = (props) => {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-0">
       <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-none sm:max-w-none sm:max-h-[100vh] sm:h-[100vh]">
-        <div className="bg-emerald-800 text-white px-4 py-2 flex items-center gap-2">
-          <Activity size={18} className="text-white/90" />
-          <div className="text-sm font-semibold">Gestion Maintenance & Vidanges</div>
-        </div>
-        <div className="bg-white border-b border-gray-200 shadow-sm px-4 py-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <Activity className="text-blue-600" size={24} />
-              <div className="min-w-0">
-                <div className="text-lg sm:text-xl font-bold text-gray-800">Gestion Maintenance & Vidanges</div>
-                <div className="text-xs text-gray-600">Version {appVersion} - Suivi H24/7j avec Fiches</div>
-                <div className="text-xs font-semibold text-emerald-800">Calendrier des Vidanges</div>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowCalendar(false)}
-              className="p-2 rounded hover:bg-gray-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-            >
-              <X size={20} className="text-gray-700" />
-            </button>
-          </div>
-        </div>
-
         <div className="flex-1 overflow-hidden">
           <div className="flex flex-col lg:flex-row h-full min-h-0">
-            <div className="lg:w-[280px] w-full flex-shrink-0 bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 text-white border-emerald-900/60 overflow-y-auto border-r-emerald-400/30">
+            <div className="lg:w-[280px] w-full flex-shrink-0 bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 text-white border-emerald-900/60 overflow-y-auto border-r-4 border-r-emerald-400/30">
               <div className="flex items-center gap-2 px-4 py-3 border-b border-emerald-900/60">
                 <Activity size={20} className="text-slate-100/90" />
                 <div className="text-lg font-bold text-slate-100 leading-tight">Navigation</div>
@@ -1045,7 +1022,25 @@ const CalendarModal = (props) => {
 
             </div>
 
-            <div className="flex-1 min-w-0 overflow-y-auto p-3 sm:p-6 space-y-3">
+            <div className="flex-1 min-w-0 overflow-y-auto">
+              <div className="bg-white border-b border-gray-200 shadow-sm px-4 py-3 sticky top-0 z-20">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Activity className="text-blue-600" size={24} />
+                    <div className="min-w-0">
+                      <div className="text-xl sm:text-2xl font-bold text-gray-800">Calendrier des Vidanges</div>
+                      <div className="text-xs text-gray-600">Version {appVersion} - Suivi H24/7j avec Fiches</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowCalendar(false)}
+                    className="p-2 rounded hover:bg-gray-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                  >
+                    <X size={20} className="text-gray-700" />
+                  </button>
+                </div>
+              </div>
+              <div className="p-3 sm:p-6 space-y-3">
               {/* Planning Results */}
               {showPlanning && (
                 <div className="bg-white border rounded-lg p-4">
@@ -1424,6 +1419,7 @@ const CalendarModal = (props) => {
 
         <div className="p-3 border-t bg-white" />
       </div>
+    </div>
     </div>
   );
 };
