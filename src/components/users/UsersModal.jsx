@@ -45,6 +45,7 @@ const UsersModal = ({
                       <div className="font-semibold text-gray-800 truncate">{u.email}</div>
                       <div className="text-xs text-gray-600">
                         Rôle: {u.role}
+                        {u.zone ? ` | Zone: ${u.zone}` : ''}
                         {u.technicianName ? ` | Technicien: ${u.technicianName}` : ''}
                       </div>
                     </div>
@@ -90,8 +91,23 @@ const UsersModal = ({
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                   >
                     <option value="viewer">viewer (lecture)</option>
+                    <option value="manager">manager (zone)</option>
                     <option value="technician">technician</option>
                     <option value="admin">admin</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Zone</label>
+                  <select
+                    value={userForm.zone || ''}
+                    onChange={(e) => onChangeUserForm({ ...userForm, zone: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  >
+                    <option value="">-- Sélectionner --</option>
+                    <option value="BZV/POOL">BZV/POOL</option>
+                    <option value="PNR/KOUILOU">PNR/KOUILOU</option>
+                    <option value="UPCN">UPCN</option>
                   </select>
                 </div>
 

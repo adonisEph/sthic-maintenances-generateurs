@@ -59,6 +59,7 @@ export async function onRequestPost({ request, env }) {
       sub: user.id,
       email: user.email,
       role: user.role,
+      zone: user.zone || 'BZV/POOL',
       technicianName: user.technician_name || '',
       exp: Date.now() + expiresIn * 1000
     };
@@ -83,6 +84,7 @@ export async function onRequestPost({ request, env }) {
           id: user.id,
           email: user.email,
           role: user.role,
+          zone: user.zone || 'BZV/POOL',
           technicianName: user.technician_name || ''
         }
       },

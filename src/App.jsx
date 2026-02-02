@@ -38,7 +38,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '2.0.8';
+const APP_VERSION = '2.1.2';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const DAILY_NH_UPDATE_STORAGE_KEY = 'gma_daily_nh_update_ymd';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
@@ -120,7 +120,7 @@ const GeneratorMaintenanceApp = () => {
   const [accountError, setAccountError] = useState('');
   const [accountSaving, setAccountSaving] = useState(false);
   const [userFormId, setUserFormId] = useState(null);
-  const [userForm, setUserForm] = useState({ email: '', role: 'viewer', technicianName: '', password: '' });
+  const [userForm, setUserForm] = useState({ email: '', role: 'viewer', zone: 'BZV/POOL', technicianName: '', password: '' });
   const [userFormError, setUserFormError] = useState('');
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -2970,6 +2970,7 @@ const GeneratorMaintenanceApp = () => {
         const workbook = XLSX.read(data, { type: 'array' });
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+        const isSuperAdmin = authUser?.role === 'admin' && authUser?.zone === 'BZV/POOL';
 
         setImportStep('Préparation des sites…');
         setImportProgress((p) => Math.max(p, 40));
@@ -3023,8 +3024,16 @@ const GeneratorMaintenanceApp = () => {
             retired = true;
           }
 
+          const zoneRaw = row['Zone'] || row['zone'] || row['ZONE'] || '';
+          const zone = String(zoneRaw || '').trim().toUpperCase();
+          const normalizedZone =
+  zone === 'BZV/POOL' || zone === 'PNR/KOUILOU' || zone === 'UPCN'
+    ? zone
+    : '';
+
           importedSites.push({
             id: Date.now() + index,
+            ...(isSuperAdmin && normalizedZone ? { zone: normalizedZone } : {}),
             nameSite: row['Name Site'] || row['NameSite'] || `Site ${index + 1}`,
             idSite: row['ID Site'] || row['IDSite'] || row['Id Site'] || `ID${index + 1}`,
             technician: row['Techniciens'] || row['Technicians'] || row['Technicien'] || row['Technician'] || 'Non assigné',
@@ -5106,7 +5115,7 @@ const GeneratorMaintenanceApp = () => {
   }}
   onEditUser={(u) => {
     setUserFormId(u.id);
-    setUserForm({ email: u.email, role: u.role, technicianName: u.technicianName || '', password: '' });
+    setUserForm({ email: u.email, role: u.role, zone: u.zone || 'BZV/POOL', technicianName: u.technicianName || '', password: '' });
     setUserFormError('');
   }}
   onDeleteUser={(u) => {
@@ -5125,10 +5134,15 @@ const GeneratorMaintenanceApp = () => {
   }}
   onSave={() => {
     const email = String(userForm.email || '').trim().toLowerCase();
+    const zone = String(userForm.zone || '').trim();
     if (!email) {
       setUserFormError('Email requis.');
       return;
     }
+    if (!zone) {
+  setUserFormError('Zone requise.');
+  return;
+}
     if (!userForm.password) {
       setUserFormError('Mot de passe requis.');
       return;
@@ -5142,6 +5156,7 @@ const GeneratorMaintenanceApp = () => {
             body: JSON.stringify({
               email,
               role: userForm.role,
+              zone,
               technicianName: userForm.technicianName || ''
             })
           });
@@ -5156,6 +5171,7 @@ const GeneratorMaintenanceApp = () => {
             body: JSON.stringify({
               email,
               role: userForm.role,
+              zone,
               technicianName: userForm.technicianName || '',
               password: userForm.password
             })
@@ -5164,7 +5180,7 @@ const GeneratorMaintenanceApp = () => {
 
         await refreshUsers();
         setUserFormId(null);
-        setUserForm({ email: '', role: 'viewer', technicianName: '', password: '' });
+        setUserForm({ email: '', role: 'viewer', zone: 'BZV/POOL' ,technicianName: '', password: '' });
         setUserFormError('');
       } catch (e) {
         setUserFormError(e?.message || 'Erreur serveur.');
@@ -5173,7 +5189,7 @@ const GeneratorMaintenanceApp = () => {
   }}
   onReset={() => {
     setUserFormId(null);
-    setUserForm({ email: '', role: 'viewer', technicianName: '', password: '' });
+    setUserForm({ email: '', role: 'viewer', zone: 'BZV/POOL', technicianName: '', password: '' });
     setUserFormError('');
   }}
 />
@@ -5350,6 +5366,7 @@ const GeneratorMaintenanceApp = () => {
           currentMonth={currentMonth}
           setCurrentMonth={setCurrentMonth}
           isAdmin={isAdmin}
+          sites={sites}
           calendarSendTechUserId={calendarSendTechUserId}
           setCalendarSendTechUserId={setCalendarSendTechUserId}
           users={users}

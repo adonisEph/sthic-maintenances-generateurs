@@ -1,10 +1,11 @@
 import { ensureAdminUser } from '../../_utils/db.js';
-import { json, requireAdmin, requireAuth } from '../../_utils/http.js';
+import { json, requireAdmin, requireAuth, isSuperAdmin, userZone } from '../../_utils/http.js';
 
 function mapSiteRow(row) {
   if (!row) return null;
   return {
     id: row.id,
+    zone: row.zone || 'BZV/POOL',
     nameSite: row.name_site,
     idSite: row.id_site,
     technician: row.technician,
@@ -40,7 +41,12 @@ export async function onRequestGet({ env, data, params }) {
     const technicianName = String(user.technician_name || '').trim();
     if (!technicianName) return json({ error: 'Nom technicien manquant.' }, { status: 400 });
 
-    const res = await env.DB.prepare('SELECT * FROM sites WHERE technician = ? ORDER BY id_site ASC').bind(technicianName).all();
+    const z = userZone(data);
+    const stmt = isSuperAdmin(data)
+      ? env.DB.prepare('SELECT * FROM sites WHERE technician = ? ORDER BY id_site ASC').bind(technicianName)
+      : env.DB.prepare('SELECT * FROM sites WHERE zone = ? AND technician = ? ORDER BY id_site ASC').bind(z, technicianName);
+
+    const res = await stmt.all();
     const rows = Array.isArray(res?.results) ? res.results : [];
     return json(rows.map(mapSiteRow), { status: 200 });
   } catch (e) {

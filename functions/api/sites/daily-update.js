@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../_utils/db.js';
-import { json, requireAuth, isoNow } from '../_utils/http.js';
+import { json, requireAuth, isoNow, isSuperAdmin, userZone } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
 
 function ymdInTimeZone(date, timeZone) {
@@ -30,9 +30,12 @@ export async function onRequestPost({ env, data }) {
     const timeZone = 'Africa/Brazzaville';
     const todayYmd = ymdInTimeZone(new Date(), timeZone);
 
-    const res = await env.DB.prepare(
-      'SELECT id, nh2_a, date_a, regime, nh1_dv, retired FROM sites'
-    ).all();
+    const z = userZone(data);
+    const selectStmt = isSuperAdmin(data)
+      ? env.DB.prepare('SELECT id, nh2_a, date_a, regime, nh1_dv, retired FROM sites')
+      : env.DB.prepare('SELECT id, nh2_a, date_a, regime, nh1_dv, retired FROM sites WHERE zone = ?').bind(z);
+
+    const res = await selectStmt.all();
     const rows = Array.isArray(res?.results) ? res.results : [];
 
     const todayMs = ymdToUtcMs(todayYmd);
@@ -42,7 +45,7 @@ export async function onRequestPost({ env, data }) {
     let skippedNoDateA = 0;
     let skippedNoRegime = 0;
 
-    const stmt = env.DB.prepare(
+    const updateStmt = env.DB.prepare(
       'UPDATE sites SET nh2_a = ?, date_a = ?, nh_estimated = ?, diff_nhs = ?, diff_estimated = ?, updated_at = ? WHERE id = ?'
     );
 
@@ -75,7 +78,7 @@ export async function onRequestPost({ env, data }) {
       const nextNh2A = prevNh2A + (r * daysSince);
       const nextDiff = nextNh2A - nh1Dv;
 
-      await stmt.bind(nextNh2A, todayYmd, nextNh2A, nextDiff, nextDiff, now, row.id).run();
+      await updateStmt.bind(nextNh2A, todayYmd, nextNh2A, nextDiff, nextDiff, now, row.id).run();
       updated += 1;
     }
 

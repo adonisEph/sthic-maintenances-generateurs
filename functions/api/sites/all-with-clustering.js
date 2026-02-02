@@ -1,10 +1,11 @@
 import { ensureAdminUser } from '../_utils/db.js';
-import { json, requireAdmin, requireAuth } from '../_utils/http.js';
+import { json, requireAdmin, requireAuth, isSuperAdmin, userZone } from '../_utils/http.js';
 
 function mapSiteRow(row) {
   if (!row) return null;
   return {
     id: row.id,
+    zone: row.zone || 'BZV/POOL',
     nameSite: row.name_site,
     idSite: row.id_site,
     technician: row.technician,
@@ -33,9 +34,15 @@ export async function onRequestGet({ env, data }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
     if (!requireAdmin(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
 
-    const res = await env.DB.prepare(
-      'SELECT s.*, u.id as technician_user_id FROM sites s LEFT JOIN users u ON u.technician_name = s.technician ORDER BY s.id_site ASC'
-    ).all();
+    const z = userZone(data);
+
+    const query = isSuperAdmin(data)
+      ? 'SELECT s.*, u.id as technician_user_id FROM sites s LEFT JOIN users u ON u.technician_name = s.technician ORDER BY s.id_site ASC'
+      : 'SELECT s.*, u.id as technician_user_id FROM sites s LEFT JOIN users u ON u.technician_name = s.technician WHERE s.zone = ? ORDER BY s.id_site ASC';
+
+    const stmt = isSuperAdmin(data) ? env.DB.prepare(query) : env.DB.prepare(query).bind(z);
+
+    const res = await stmt.all();
     const rows = Array.isArray(res?.results) ? res.results : [];
     return json(rows.map(mapSiteRow), { status: 200 });
   } catch (e) {

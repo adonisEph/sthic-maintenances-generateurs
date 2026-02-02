@@ -93,6 +93,7 @@ export async function onRequest(context) {
           id: payload.sub,
           email: payload.email,
           role: payload.role,
+          zone: payload.zone || 'BZV/POOL',
           technicianName: payload.technicianName || ''
         };
       }

@@ -38,11 +38,19 @@ export async function ensureAdminUser(env) {
   const id = uuid();
   const now = nowIso();
 
-  await env.DB.prepare(
-    'INSERT INTO users (id, email, role, technician_name, password_hash, password_salt, password_iters, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  )
-    .bind(id, adminEmail, 'admin', '', hash, salt, iters, now, now)
-    .run();
+  try {
+    await env.DB.prepare(
+      'INSERT INTO users (id, email, role, zone, technician_name, password_hash, password_salt, password_iters, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    )
+      .bind(id, adminEmail, 'admin', 'BZV/POOL', '', hash, salt, iters, now, now)
+      .run();
+  } catch (e) {
+    await env.DB.prepare(
+      'INSERT INTO users (id, email, role, technician_name, password_hash, password_salt, password_iters, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    )
+      .bind(id, adminEmail, 'admin', '', hash, salt, iters, now, now)
+      .run();
+  }
 }
 
 export function mapUserPublic(row) {
@@ -51,6 +59,7 @@ export function mapUserPublic(row) {
     id: row.id,
     email: row.email,
     role: row.role,
+    zone: row.zone || 'BZV/POOL',
     technicianName: row.technician_name || '',
     disabledAt: row.disabled_at || null,
     createdAt: row.created_at,

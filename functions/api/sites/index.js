@@ -1,11 +1,12 @@
 import { ensureAdminUser } from '../_utils/db.js';
-import { json, requireAdmin, requireAuth, readJson, isoNow, newId } from '../_utils/http.js';
+import { json, requireAdmin, requireAuth, readJson, isoNow, newId, isSuperAdmin, userZone } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
 
 function mapSiteRow(row) {
   if (!row) return null;
   return {
     id: row.id,
+    zone: row.zone || 'BZV/POOL',
     nameSite: row.name_site,
     idSite: row.id_site,
     technician: row.technician,
@@ -31,10 +32,23 @@ export async function onRequestGet({ env, data }) {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
+    const role = String(data?.user?.role || '');
+    const z = userZone(data);
+
     let stmt = env.DB.prepare('SELECT * FROM sites ORDER BY id_site ASC');
-    if (data?.user?.role === 'technician') {
+    if (role === 'technician') {
       const techName = String(data?.user?.technicianName || '').trim();
-      stmt = env.DB.prepare('SELECT * FROM sites WHERE technician = ? ORDER BY id_site ASC').bind(techName);
+      if (isSuperAdmin(data)) {
+        stmt = env.DB.prepare('SELECT * FROM sites WHERE technician = ? ORDER BY id_site ASC').bind(techName);
+      } else {
+        stmt = env.DB.prepare('SELECT * FROM sites WHERE zone = ? AND technician = ? ORDER BY id_site ASC').bind(z, techName);
+      }
+    } else if (role === 'admin') {
+      if (!isSuperAdmin(data)) {
+        stmt = env.DB.prepare('SELECT * FROM sites WHERE zone = ? ORDER BY id_site ASC').bind(z);
+      }
+    } else if (role === 'manager' || role === 'viewer') {
+      stmt = env.DB.prepare('SELECT * FROM sites WHERE zone = ? ORDER BY id_site ASC').bind(z);
     }
 
     const res = await stmt.all();
@@ -54,11 +68,14 @@ export async function onRequestPost({ request, env, data }) {
     const id = newId();
     const now = isoNow();
 
+    const zone = isSuperAdmin(data) ? String(body.zone || userZone(data) || 'BZV/POOL') : userZone(data);
+
     await env.DB.prepare(
-      'INSERT INTO sites (id, name_site, id_site, technician, generateur, capacite, kit_vidange, nh1_dv, date_dv, nh2_a, date_a, regime, nh_estimated, diff_nhs, diff_estimated, seuil, retired, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO sites (id, zone, name_site, id_site, technician, generateur, capacite, kit_vidange, nh1_dv, date_dv, nh2_a, date_a, regime, nh_estimated, diff_nhs, diff_estimated, seuil, retired, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     )
       .bind(
         id,
+        zone,
         String(body.nameSite || ''),
         String(body.idSite || ''),
         String(body.technician || ''),

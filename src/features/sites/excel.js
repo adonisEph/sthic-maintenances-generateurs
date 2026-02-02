@@ -26,7 +26,8 @@ const parseRetiredFlag = (row) => {
   return retireValue === 'VRAI' || retireValue === true || retireValue === 'TRUE' || retireValue === 1;
 };
 
-export const buildImportedSitesFromRows = (jsonRows, onProgress) => {
+export const buildImportedSitesFromRows = (jsonRows, onProgress, options = {}) => {
+  const isSuperAdmin = Boolean(options?.isSuperAdmin);
   const rows = Array.isArray(jsonRows) ? jsonRows : [];
   const total = rows.length;
 
@@ -36,6 +37,13 @@ export const buildImportedSitesFromRows = (jsonRows, onProgress) => {
     if (!row['Name Site'] && !row['NameSite']) {
       continue;
     }
+
+    const zoneRaw = row['Zone'] || row['zone'] || row['ZONE'] || '';
+    const zone = String(zoneRaw || '').trim().toUpperCase();
+    const normalizedZone =
+      zone === 'BZV/POOL' || zone === 'PNR/KOUILOU' || zone === 'UPCN'
+        ? zone
+        : '';
 
     const nh1 = parseInt(row['NH1 DV'] || row['NH1DV'] || 0);
     const nh2 = parseInt(row['NH2 A'] || row['NH2A'] || 0);
@@ -54,6 +62,7 @@ export const buildImportedSitesFromRows = (jsonRows, onProgress) => {
 
     importedSites.push({
       id: Date.now() + index,
+      ...(isSuperAdmin && normalizedZone ? { zone: normalizedZone } : {}),
       nameSite: row['Name Site'] || row['NameSite'] || `Site ${index + 1}`,
       idSite: row['ID Site'] || row['IDSite'] || row['Id Site'] || `ID${index + 1}`,
       technician:

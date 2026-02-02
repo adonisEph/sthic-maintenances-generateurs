@@ -1,11 +1,12 @@
 import { ensureAdminUser } from '../_utils/db.js';
-import { json, requireAdmin, requireAuth, readJson, isoNow, newId, ymdToday } from '../_utils/http.js';
+import { json, requireAdmin, requireAuth, readJson, isoNow, newId, ymdToday, isSuperAdmin, userZone } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
 
 function mapRow(row) {
   if (!row) return null;
   return {
     id: row.id,
+    zone: row.zone || 'BZV/POOL',
     siteId: row.site_id,
     plannedDate: row.planned_date,
     epvType: row.epv_type,
@@ -32,6 +33,12 @@ export async function onRequestGet({ request, env, data }) {
 
     let where = '1=1';
     const binds = [];
+
+    const z = userZone(data);
+    if (!isSuperAdmin(data) && (data.user.role === 'admin' || data.user.role === 'manager' || data.user.role === 'viewer' || data.user.role === 'technician')) {
+      where += ' AND zone = ?';
+      binds.push(z);
+    }
 
     if (from) {
       where += ' AND planned_date >= ?';
@@ -79,13 +86,21 @@ export async function onRequestPost({ request, env, data }) {
       return json({ error: 'Champs requis manquants.' }, { status: 400 });
     }
 
+    const site = await env.DB.prepare('SELECT id, zone FROM sites WHERE id = ?').bind(siteId).first();
+    if (!site) return json({ error: 'Site introuvable.' }, { status: 404 });
+    const zone = String(site.zone || 'BZV/POOL');
+    if (!isSuperAdmin(data)) {
+      const z = userZone(data);
+      if (zone !== z) return json({ error: 'Accès interdit.' }, { status: 403 });
+    }
+
     const id = newId();
     const now = isoNow();
 
     await env.DB.prepare(
-      'INSERT INTO interventions (id, site_id, planned_date, epv_type, technician_user_id, technician_name, status, created_by_user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO interventions (id, site_id, zone, planned_date, epv_type, technician_user_id, technician_name, status, created_by_user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     )
-      .bind(id, siteId, plannedDate, epvType, technicianUserId, technicianName, 'planned', data.user.id, now, now)
+      .bind(id, siteId, zone, plannedDate, epvType, technicianUserId, technicianName, 'planned', data.user.id, now, now)
       .run();
 
     await touchLastUpdatedAt(env);

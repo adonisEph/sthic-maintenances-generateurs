@@ -12,6 +12,14 @@ export function requireAdmin(data) {
   return data?.user?.role === 'admin';
 }
 
+export function isSuperAdmin(data) {
+  return data?.user?.role === 'admin' && String(data?.user?.zone || '') === 'BZV/POOL';
+}
+
+export function userZone(data) {
+  return String(data?.user?.zone || 'BZV/POOL');
+}
+
 export function readJson(request) {
   return request.json().catch(() => ({}));
 }

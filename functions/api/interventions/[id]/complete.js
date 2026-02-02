@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../../_utils/db.js';
-import { json, requireAuth, readJson, isoNow, ymdToday } from '../../_utils/http.js';
+import { json, requireAuth, readJson, isoNow, ymdToday, isSuperAdmin, userZone } from '../../_utils/http.js';
 import { calculateEPVDates } from '../../_utils/calc.js';
 import { nextTicketNumber, formatTicket, touchLastUpdatedAt } from '../../_utils/meta.js';
 
@@ -26,6 +26,13 @@ export async function onRequestPost({ request, env, data, params }) {
 
     const site = await env.DB.prepare('SELECT * FROM sites WHERE id = ?').bind(intervention.site_id).first();
     if (!site) return json({ error: 'Site introuvable.' }, { status: 404 });
+
+    if (!isSuperAdmin(data)) {
+      const z = userZone(data);
+      if (String(site.zone || 'BZV/POOL') !== z) {
+        return json({ error: 'Accès interdit.' }, { status: 403 });
+      }
+    }
 
     const body = await readJson(request);
     const now = isoNow();

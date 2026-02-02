@@ -90,6 +90,7 @@ export async function createSessionCookie(secret, user) {
     sub: user.id,
     email: user.email,
     role: user.role,
+    zone: user.zone || 'BZV/POOL',
     technicianName: user.technician_name || '',
     exp: Date.now() + SESSION_TTL_SECONDS * 1000
   };

@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../_utils/db.js';
-import { json, requireAdmin, readJson, isoNow, newId } from '../_utils/http.js';
+import { json, requireAdmin, readJson, isoNow, newId, isSuperAdmin, userZone } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
 
 export async function onRequestPost({ request, env, data }) {
@@ -15,11 +15,14 @@ export async function onRequestPost({ request, env, data }) {
     const now = isoNow();
     for (const s of sites) {
       const id = s?.id ? String(s.id) : newId();
+
+      const zone = isSuperAdmin(data) ? String(s.zone || userZone(data) || 'BZV/POOL') : userZone(data);
       await env.DB.prepare(
-        'INSERT INTO sites (id, name_site, id_site, technician, generateur, capacite, kit_vidange, nh1_dv, date_dv, nh2_a, date_a, regime, nh_estimated, diff_nhs, diff_estimated, seuil, retired, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO sites (id, zone, name_site, id_site, technician, generateur, capacite, kit_vidange, nh1_dv, date_dv, nh2_a, date_a, regime, nh_estimated, diff_nhs, diff_estimated, seuil, retired, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       )
         .bind(
           id,
+          zone,
           String(s.nameSite || ''),
           String(s.idSite || ''),
           String(s.technician || ''),

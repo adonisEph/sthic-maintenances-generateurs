@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../../_utils/db.js';
-import { json, requireAuth, readJson, isoNow, newId, ymdToday } from '../../_utils/http.js';
+import { json, requireAuth, readJson, isoNow, newId, ymdToday, isSuperAdmin, userZone } from '../../_utils/http.js';
 import { touchLastUpdatedAt } from '../../_utils/meta.js';
 import { calculateDiffNHs, calculateEstimatedNH, calculateRegime } from '../../_utils/calc.js';
 
@@ -7,6 +7,7 @@ function mapSiteRow(row) {
   if (!row) return null;
   return {
     id: row.id,
+    zone: row.zone || 'BZV/POOL',
     nameSite: row.name_site,
     idSite: row.id_site,
     technician: row.technician,
@@ -43,6 +44,13 @@ export async function onRequestPost({ request, env, data, params }) {
 
     const site = await env.DB.prepare('SELECT * FROM sites WHERE id = ?').bind(siteId).first();
     if (!site) return json({ error: 'Site introuvable.' }, { status: 404 });
+
+    if (!isSuperAdmin(data)) {
+      const z = userZone(data);
+      if (String(site.zone || 'BZV/POOL') !== z) {
+        return json({ error: 'Accès interdit.' }, { status: 403 });
+      }
+    }
 
     const role = String(data?.user?.role || '');
     if (role !== 'admin' && role !== 'technician') {

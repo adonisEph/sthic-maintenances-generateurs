@@ -34,12 +34,15 @@ export async function onRequestPost({ request, env, data }) {
   const body = await request.json().catch(() => ({}));
   const email = normalizeEmailInput(body.email);
   const role = String(body.role || 'viewer');
+  const zone = String(body.zone || '').trim();
   const technicianName = String(body.technicianName || '');
   const password = String(body.password || '');
 
   if (!email) return json({ error: 'Email requis.' }, { status: 400 });
   if (!password) return json({ error: 'Mot de passe requis.' }, { status: 400 });
-  if (!['admin', 'viewer', 'technician'].includes(role)) return json({ error: 'Rôle invalide.' }, { status: 400 });
+  if (!['admin', 'viewer', 'technician', 'manager'].includes(role)) return json({ error: 'Rôle invalide.' }, { status: 400 });
+  if (!zone) return json({ error: 'Zone requise.' }, { status: 400 });
+  if (!['BZV/POOL', 'PNR/KOUILOU', 'UPCN'].includes(zone)) return json({ error: 'Zone invalide.' }, { status: 400 });
 
   const existing = await env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first();
   if (existing) return json({ error: 'Cet email existe déjà.' }, { status: 409 });
@@ -49,9 +52,9 @@ export async function onRequestPost({ request, env, data }) {
   const now = isoNow();
 
   await env.DB.prepare(
-    'INSERT INTO users (id, email, role, technician_name, password_hash, password_salt, password_iters, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO users (id, email, role, zone, technician_name, password_hash, password_salt, password_iters, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   )
-    .bind(id, email, role, technicianName, hash, salt, iters, now, now)
+    .bind(id, email, role, zone, technicianName, hash, salt, iters, now, now)
     .run();
 
   await touchLastUpdatedAt(env);

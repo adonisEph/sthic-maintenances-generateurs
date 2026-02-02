@@ -1,11 +1,12 @@
 import { ensureAdminUser } from '../_utils/db.js';
-import { json, requireAdmin, readJson, isoNow } from '../_utils/http.js';
+import { json, requireAdmin, readJson, isoNow, isSuperAdmin, userZone } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
 
 function mapSiteRow(row) {
   if (!row) return null;
   return {
     id: row.id,
+    zone: row.zone || 'BZV/POOL',
     nameSite: row.name_site,
     idSite: row.id_site,
     technician: row.technician,
@@ -36,6 +37,13 @@ export async function onRequestPatch({ request, env, data, params }) {
 
     const existing = await env.DB.prepare('SELECT * FROM sites WHERE id = ?').bind(id).first();
     if (!existing) return json({ error: 'Site introuvable.' }, { status: 404 });
+
+    if (!isSuperAdmin(data)) {
+      const z = userZone(data);
+      if (String(existing.zone || 'BZV/POOL') !== z) {
+        return json({ error: 'Accès interdit.' }, { status: 403 });
+      }
+    }
 
     const body = await readJson(request);
     const now = isoNow();
@@ -103,6 +111,14 @@ export async function onRequestDelete({ env, data, params }) {
 
     const existing = await env.DB.prepare('SELECT id FROM sites WHERE id = ?').bind(id).first();
     if (!existing) return json({ error: 'Site introuvable.' }, { status: 404 });
+
+    if (!isSuperAdmin(data)) {
+      const row = await env.DB.prepare('SELECT zone FROM sites WHERE id = ?').bind(id).first();
+      const z = userZone(data);
+      if (String(row?.zone || 'BZV/POOL') !== z) {
+        return json({ error: 'Accès interdit.' }, { status: 403 });
+      }
+    }
 
     await env.DB.prepare('DELETE FROM sites WHERE id = ?').bind(id).run();
     await env.DB.prepare('DELETE FROM interventions WHERE site_id = ?').bind(id).run();

@@ -28,10 +28,13 @@ export async function onRequestPatch({ request, env, data, params }) {
   const body = await request.json().catch(() => ({}));
   const nextEmail = body.email != null ? normalizeEmailInput(body.email) : existing.email;
   const nextRole = body.role != null ? String(body.role) : existing.role;
+  const nextZone = body.zone != null ? String(body.zone || '').trim() : (existing.zone || 'BZV/POOL');
   const nextTechnicianName = body.technicianName != null ? String(body.technicianName || '') : (existing.technician_name || '');
 
   if (!nextEmail) return json({ error: 'Email requis.' }, { status: 400 });
-  if (!['admin', 'viewer', 'technician'].includes(nextRole)) return json({ error: 'Rôle invalide.' }, { status: 400 });
+  if (!['admin', 'viewer', 'technician', 'manager'].includes(nextRole)) return json({ error: 'Rôle invalide.' }, { status: 400 });
+  if (!nextZone) return json({ error: 'Zone requise.' }, { status: 400 });
+  if (!['BZV/POOL', 'PNR/KOUILOU', 'UPCN'].includes(nextZone)) return json({ error: 'Zone invalide.' }, { status: 400 });
 
   if (existing.role === 'admin' && nextRole !== 'admin') {
     return json({ error: 'Impossible de rétrograder le compte admin.' }, { status: 400 });
@@ -43,8 +46,8 @@ export async function onRequestPatch({ request, env, data, params }) {
   }
 
   const now = isoNow();
-  await env.DB.prepare('UPDATE users SET email = ?, role = ?, technician_name = ?, updated_at = ? WHERE id = ?')
-    .bind(nextEmail, nextRole, nextTechnicianName, now, id)
+  await env.DB.prepare('UPDATE users SET email = ?, role = ?, zone = ?, technician_name = ?, updated_at = ? WHERE id = ?')
+    .bind(nextEmail, nextRole, nextZone, nextTechnicianName, now, id)
     .run();
 
   await touchLastUpdatedAt(env);

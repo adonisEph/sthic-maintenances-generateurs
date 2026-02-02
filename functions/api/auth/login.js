@@ -75,6 +75,7 @@ export async function onRequestPost({ request, env }) {
           id: user.id,
           email: user.email,
           role: user.role,
+          zone: user.zone || 'BZV/POOL',
           technicianName: user.technician_name || ''
         }
       },

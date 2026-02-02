@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calendar, X, Users, MapPin, Clock, AlertCircle, Download, Upload, Trash2, RotateCcw, Sparkles, Activity } from 'lucide-react';
+import { Calendar, X, Users, MapPin, Clock, AlertCircle, Download, Sparkles, Activity } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { calculateEPVDates, calculateEstimatedNH } from '../utils/calculations';
 
@@ -12,6 +12,7 @@ const CalendarModal = (props) => {
     currentMonth,
     setCurrentMonth,
     isAdmin,
+    sites,
     calendarSendTechUserId,
     setCalendarSendTechUserId,
     users,
@@ -22,17 +23,6 @@ const CalendarModal = (props) => {
     canExportExcel,
     handleExportCalendarMonthExcel,
     exportBusy,
-    basePlanBusy,
-    basePlanErrors,
-    basePlanPreview,
-    basePlanTargetMonth,
-    basePlanBaseRows,
-    basePlanProgress,
-    handleImportBasePlanExcel,
-    generateBasePlanPreview,
-    exportBasePlanPreviewExcel,
-    saveBasePlanToDb,
-    deleteBasePlanFromDb,
     getEventsForDay,
     getDaysUntil,
     selectedDate,
@@ -185,6 +175,7 @@ const CalendarModal = (props) => {
       Site: String(it?.siteCode || ''),
       'Site Name': String(it?.siteName || ''),
       Region: String(it?.region || ''),
+      Zone: String(it?.zone || ''),
       'Assigned to': String(it?.technician || ''),
       'Scheduled WO Date': String(it?.plannedDate || '').slice(0, 10),
       'Date of closing': '',
@@ -305,18 +296,42 @@ const CalendarModal = (props) => {
     setPlanningErrors([]);
     
     try {
-      // Load all sites with clustering data
-      const sitesResponse = await fetch('/api/sites/all-with-clustering');
-      if (!sitesResponse.ok) throw new Error('Erreur chargement sites');
-      const allSites = await sitesResponse.json();
+      const list = Array.isArray(sites) ? sites : [];
+      const techUsers = (Array.isArray(users) ? users : []).filter((u) => u && u.role === 'technician');
+
+      const resolveTechnicianUserId = (site) => {
+        const techName = String(site?.technician || '').trim();
+        if (!techName) return null;
+        const match = techUsers.find((u) => String(u?.technicianName || '').trim() === techName);
+        return match?.id || null;
+      };
+
+      const resolveTechnicianLabel = (techId, techName) => {
+        const u = techUsers.find((it) => String(it?.id) === String(techId));
+        return String(u?.technicianName || u?.email || techName || 'Unknown');
+      };
+
+      const allSites = list
+        .filter((s) => s && !s.retired)
+        .map((s) => {
+          const techId = s?.technicianId != null ? s.technicianId : resolveTechnicianUserId(s);
+          return {
+            ...s,
+            technicianId: techId,
+            region: s?.region ?? s?.zone ?? ''
+          };
+        });
       
       // Group sites by technician
       const sitesByTech = new Map();
       allSites.forEach(site => {
-        if (!sitesByTech.has(site.technicianId)) {
-          sitesByTech.set(site.technicianId, []);
+        const techId = site?.technicianId != null ? String(site.technicianId) : '';
+        const techName = String(site?.technician || '').trim();
+        const key = techId || `name:${techName || 'Unknown'}`;
+        if (!sitesByTech.has(key)) {
+          sitesByTech.set(key, []);
         }
-        sitesByTech.get(site.technicianId).push(site);
+        sitesByTech.get(key).push(site);
       });
       
       const planning = [];
@@ -325,6 +340,14 @@ const CalendarModal = (props) => {
       const targetMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
       const targetMonthYyyyMm = targetMonth.toISOString().slice(0, 7);
       const monthStartYmd = `${targetMonthYyyyMm}-01`;
+
+      const monthEndYmd = (() => {
+        const yy = Number(monthStartYmd.slice(0, 4));
+        const mm = Number(monthStartYmd.slice(5, 7));
+        if (!Number.isFinite(yy) || !Number.isFinite(mm)) return '';
+        const d = new Date(Date.UTC(yy, mm, 0));
+        return d.toISOString().slice(0, 10);
+      })();
       
       const ymdAddDays = (ymd, days) => {
         const src = String(ymd || '').slice(0, 10);
@@ -352,15 +375,28 @@ const CalendarModal = (props) => {
         return '';
       };
 
+      const lastWorkdayOfMonthYmd = (() => {
+        let cur = String(monthEndYmd || '').slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(cur)) return '';
+        for (let i = 0; i < 40; i += 1) {
+          if (asWorkday(cur) === cur) return cur;
+          cur = ymdAddDays(cur, -1);
+        }
+        return '';
+      })();
+
       // Process each technician
-      for (const [techId, sites] of sitesByTech.entries()) {
+      for (const [techKey, sites] of sitesByTech.entries()) {
+        const techId = String(techKey).startsWith('name:') ? '' : String(techKey);
+        const techName = resolveTechnicianLabel(techId, sites?.[0]?.technician);
         const capacity = getTechnicianCapacity(techId, sites.length);
-        const techUser = users.find(u => u.id === techId);
-        const techName = techUser?.technicianName || techUser?.email || 'Unknown';
         
         // Load clustering pairs for this technician
-        const pairsResponse = await fetch(`/api/clustering/by-technician/${techId}`);
-        const pairs = pairsResponse.ok ? await pairsResponse.json() : [];
+        let pairs = [];
+        if (techId) {
+          const pairsResponse = await fetch(`/api/clustering/by-technician/${techId}`);
+          pairs = pairsResponse.ok ? await pairsResponse.json() : [];
+        }
         const pairMap = new Map();
         pairs.forEach(pair => {
           pairMap.set(pair.siteId1, pair.siteId2);
@@ -459,9 +495,26 @@ const CalendarModal = (props) => {
         
         // Sort groups by EPV order date then urgency (the schedule date is assigned sequentially from month start)
         groups.sort((a, b) => {
-          const d1 = String(a.targetDate || '').localeCompare(String(b.targetDate || ''));
-          if (d1 !== 0) return d1;
-          return Number(b.urgency || 0) - Number(a.urgency || 0);
+          const aIn = a?.driver?._hasEpvInTargetMonth ? 1 : 0;
+          const bIn = b?.driver?._hasEpvInTargetMonth ? 1 : 0;
+          if (aIn !== bIn) return bIn - aIn;
+
+          if (!aIn && !bIn) {
+            const urg = Number(b?.urgency || 0) - Number(a?.urgency || 0);
+            if (urg !== 0) return urg;
+          }
+
+          const ad = String(a?.targetDate || '').trim();
+          const bd = String(b?.targetDate || '').trim();
+          const aHas = /^\d{4}-\d{2}-\d{2}$/.test(ad) ? 1 : 0;
+          const bHas = /^\d{4}-\d{2}-\d{2}$/.test(bd) ? 1 : 0;
+          if (aHas !== bHas) return bHas - aHas;
+          if (aHas && bHas) {
+            const d1 = ad.localeCompare(bd);
+            if (d1 !== 0) return d1;
+          }
+
+          return Number(b?.urgency || 0) - Number(a?.urgency || 0);
         });
         
         // Schedule groups (sequentially from month start)
@@ -471,12 +524,14 @@ const CalendarModal = (props) => {
         groups.forEach(group => {
           let plannedDate = '';
           let attempts = 0;
-          const maxAttempts = 60; // Max 2 months of attempts
+          const maxAttempts = 80;
           let currentYmd = cursorYmd;
           currentYmd = nextWorkdayForward(currentYmd) || currentYmd;
           
           while (!plannedDate && attempts < maxAttempts) {
             const dateStr = nextWorkdayForward(currentYmd);
+            if (!dateStr) break;
+            if (monthEndYmd && dateStr > monthEndYmd) break;
             const used = usedCapacity.get(dateStr) || 0;
             const needed = group.type === 'pair' ? 2 : 1;
             
@@ -487,6 +542,17 @@ const CalendarModal = (props) => {
               currentYmd = ymdAddDays(dateStr, 1);
               attempts++;
             }
+          }
+
+          if (!plannedDate && lastWorkdayOfMonthYmd) {
+            const forcedUsed = usedCapacity.get(lastWorkdayOfMonthYmd) || 0;
+            const forcedNeeded = group.type === 'pair' ? 2 : 1;
+            plannedDate = lastWorkdayOfMonthYmd;
+            usedCapacity.set(lastWorkdayOfMonthYmd, forcedUsed + forcedNeeded);
+            localErrors.push(
+              `Technicien ${techName}: capacité insuffisante sur ${targetMonthYyyyMm} ` +
+                `(${capacity}/jour). Groupe forcé au ${lastWorkdayOfMonthYmd} (surbooking).`
+            );
           }
 
           if (plannedDate) {
@@ -507,6 +573,7 @@ const CalendarModal = (props) => {
                 siteCode: site.idSite,
                 siteName: site.nameSite,
                 region: site.region,
+                zone: site.zone,
                 technician: techName,
                 technicianId: techId,
                 plannedDate: plannedDate,
@@ -527,7 +594,7 @@ const CalendarModal = (props) => {
 
         if (sites.length > 20) {
           const techLast = planning
-            .filter((p) => String(p.technicianId) === String(techId))
+            .filter((p) => String(p.technicianId || '') === String(techId || ''))
             .map((p) => String(p.plannedDate || '').slice(0, 10))
             .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
             .sort()
@@ -839,68 +906,8 @@ const CalendarModal = (props) => {
                   </div>
                 )}
 
-                {isAdmin && (
-                  <div>
-                    <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Base (Excel)</div>
-                    <div className="space-y-2">
-                      <label
-                        className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-emerald-400/70 focus-within:ring-offset-2 focus-within:ring-offset-emerald-950 ${
-                          basePlanBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
-                        }`}
-                      >
-                        <Upload size={16} />
-                        Importer base (Excel)
-                        <input
-                          type="file"
-                          accept=".xlsx,.xls"
-                          onChange={handleImportBasePlanExcel}
-                          className="hidden"
-                          disabled={basePlanBusy}
-                        />
-                      </label>
-
-                      <button
-                        type="button"
-                        onClick={generateBasePlanPreview}
-                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
-                        disabled={basePlanBusy || basePlanBaseRows.length === 0}
-                      >
-                        Générer planning mois suivant
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={exportBasePlanPreviewExcel}
-                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
-                        disabled={basePlanBusy || basePlanPreview.length === 0}
-                      >
-                        Exporter planning base
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={saveBasePlanToDb}
-                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
-                        disabled={basePlanBusy || basePlanPreview.length === 0}
-                      >
-                        Enregistrer (DB)
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={deleteBasePlanFromDb}
-                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
-                        disabled={basePlanBusy}
-                      >
-                        Supprimer (DB)
-                      </button>
-                    </div>
-                  </div>
-                )}
-
               </div>
 
-              {/* Clustering Interface */}
               {showClustering && isAdmin && (
                 <div className="bg-white/5 border-t border-white/10 p-3">
                   <div className="space-y-3">
@@ -951,15 +958,13 @@ const CalendarModal = (props) => {
                           <MapPin size={12} />
                           Sites à regrouper ({clusteringData.length} sites)
                         </div>
-                        <div className="text-xs text-white/60 mb-2">
-                          Cliquez sur les sites pour les regrouper en paires
-                        </div>
+                        <div className="text-xs text-white/60 mb-2">Cliquez sur les sites pour les regrouper en paires</div>
                         <div className="max-h-48 overflow-y-auto space-y-1">
                           {clusteringData.map((site) => {
                             const isPaired = selectedPairs.has(site.id);
                             const pairedWith = isPaired ? clusteringData.find(s => s.id === selectedPairs.get(site.id)) : null;
                             const isFirst = pairingFirstSiteId && String(pairingFirstSiteId) === String(site.id);
-                            
+
                             return (
                               <div
                                 key={site.id}
@@ -970,9 +975,11 @@ const CalendarModal = (props) => {
                               >
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-2">
-                                    <div className={`w-2 h-2 rounded-full ${
-                                      isPaired ? 'bg-emerald-200' : isFirst ? 'bg-amber-400' : 'bg-white/40'
-                                    }`} />
+                                    <div
+                                      className={`w-2 h-2 rounded-full ${
+                                        isPaired ? 'bg-emerald-200' : isFirst ? 'bg-amber-400' : 'bg-white/40'
+                                      }`}
+                                    />
                                     <span className="font-semibold">{site.code}</span> - {site.name}
                                   </div>
                                   <div className="flex items-center gap-2 text-white/60">
@@ -980,13 +987,9 @@ const CalendarModal = (props) => {
                                     <span>{site.regime}</span>
                                   </div>
                                 </div>
-                                <div className="text-white/60 mt-1">
-                                  {site.region || site.zone} • Dernière vidange: {site.lastVidange}
-                                </div>
+                                <div className="text-white/60 mt-1">{site.region || site.zone} • Dernière vidange: {site.lastVidange}</div>
                                 {pairedWith && (
-                                  <div className="text-emerald-200 mt-1 text-xs">
-                                    ⚭ Jumelé avec: {pairedWith.code} - {pairedWith.name}
-                                  </div>
+                                  <div className="text-emerald-200 mt-1 text-xs">⚭ Jumelé avec: {pairedWith.code} - {pairedWith.name}</div>
                                 )}
                               </div>
                             );
@@ -1081,6 +1084,7 @@ const CalendarModal = (props) => {
                               <th className="p-2 border-b">Site</th>
                               <th className="p-2 border-b">Nom</th>
                               <th className="p-2 border-b">Région</th>
+                              <th className="p-2 border-b">Zone</th>
                               <th className="p-2 border-b">Régime</th>
                               <th className="p-2 border-b">Type</th>
                               <th className="p-2 border-b">DG Service 2</th>
@@ -1099,6 +1103,7 @@ const CalendarModal = (props) => {
                                 <td className="p-2 border-b font-mono">{item.siteCode}</td>
                                 <td className="p-2 border-b">{item.siteName}</td>
                                 <td className="p-2 border-b">{item.region}</td>
+                                <td className="p-2 border-b">{item.zone || '—'}</td>
                                 <td className="p-2 border-b">
                                   <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
                                     {item.regime}
@@ -1170,139 +1175,6 @@ const CalendarModal = (props) => {
                   {planningData.length === 0 && planningErrors.length === 0 && (
                     <div className="p-3 bg-amber-50 border border-amber-200 rounded text-sm text-amber-900">
                       Aucun site planifié.
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {isAdmin && (basePlanBusy || basePlanErrors.length > 0 || basePlanPreview.length > 0) && (
-                <div className="mt-0 space-y-2">
-                  {basePlanBusy && (
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div className="bg-indigo-600 h-2 rounded-full" style={{ width: `${basePlanProgress}%` }} />
-                    </div>
-                  )}
-                  {basePlanTargetMonth && (
-                    <div className="text-xs text-gray-700">
-                      Mois cible: <strong>{basePlanTargetMonth}</strong> | Base: <strong>{basePlanBaseRows.length}</strong> | Planning:{' '}
-                      <strong>{basePlanPreview.length}</strong>
-                    </div>
-                  )}
-                  {basePlanErrors.length > 0 && (
-                    <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-2 max-h-32 overflow-auto">
-                      {basePlanErrors.slice(0, 20).map((m, idx) => (
-                        <div key={idx}>{m}</div>
-                      ))}
-                      {basePlanErrors.length > 20 && <div>… ({basePlanErrors.length - 20} autres)</div>}
-                    </div>
-                  )}
-                  {basePlanPreview.length > 0 && (
-                    <div className="border rounded-lg overflow-auto max-h-64">
-                      <table className="min-w-full text-xs">
-                        <thead className="sticky top-0 bg-gray-50">
-                          <tr className="text-left">
-                            <th className="p-2 border-b">Site</th>
-                            <th className="p-2 border-b">Site Name</th>
-                            <th className="p-2 border-b">Region</th>
-                            <th className="p-2 border-b">Short description</th>
-                            <th className="p-2 border-b">Number</th>
-                            <th className="p-2 border-b">Assigned to</th>
-                            <th className="p-2 border-b">Scheduled WO Date</th>
-                            <th className="p-2 border-b">Date of closing</th>
-                            <th className="p-2 border-b">State</th>
-                            <th className="p-2 border-b">PairGroup</th>
-                            <th className="p-2 border-b">EPV2</th>
-                            <th className="p-2 border-b">EPV3</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(() => {
-                            const normYmd = (v) => {
-                              const s = v == null ? '' : String(v).trim();
-                              const head = s.slice(0, 10);
-                              return /^\d{4}-\d{2}-\d{2}$/.test(head) ? head : '';
-                            };
-
-                            const items = Array.isArray(basePlanPreview) ? basePlanPreview : [];
-                            const bySite = new Map();
-                            for (const it of items) {
-                              const siteCode = String(it?.siteCode || '').trim();
-                              const siteName = String(it?.siteName || '').trim();
-                              const key = siteCode || siteName;
-                              if (!key) continue;
-
-                              if (!bySite.has(key)) {
-                                bySite.set(key, {
-                                  siteCode,
-                                  siteName,
-                                  region: String(it?.region || it?.zone || '').trim(),
-                                  shortDescription: '',
-                                  number: String(it?.number || '').trim(),
-                                  assignedTo: String(it?.assignedTo || '').trim(),
-                                  scheduledWoDate: '',
-                                  dateOfClosing: String(it?.dateOfClosing || '').trim(),
-                                  state: String(it?.state || '').trim(),
-                                  pairGroup: String(it?.pairGroup || '').trim(),
-                                  epv2: '',
-                                  epv3: '',
-                                  _order: Number(it?.importOrder ?? 0)
-                                });
-                              }
-
-                              const row = bySite.get(key);
-                              row._order = Math.min(row._order, Number(it?.importOrder ?? 0));
-                              if (!row.siteCode) row.siteCode = siteCode;
-                              if (!row.siteName) row.siteName = siteName;
-                              if (!row.region) row.region = String(it?.region || it?.zone || '').trim();
-                              if (!row.number) row.number = String(it?.number || '').trim();
-                              if (!row.assignedTo) row.assignedTo = String(it?.assignedTo || '').trim();
-                              if (!row.dateOfClosing) row.dateOfClosing = String(it?.dateOfClosing || '').trim();
-                              if (!row.state) row.state = String(it?.state || '').trim();
-                              if (!row.pairGroup) row.pairGroup = String(it?.pairGroup || '').trim();
-
-                              const slot = String(it?.epvSlot || '').trim().toUpperCase();
-                              const plannedDate = normYmd(it?.plannedDate);
-                              if (slot === 'EPV1' || slot === 'PM' || slot === 'MANUAL') {
-                                if (!row.scheduledWoDate && plannedDate) row.scheduledWoDate = plannedDate;
-                                if (!row.shortDescription) row.shortDescription = String(it?.shortDescription || '').trim();
-                              }
-                              if (slot === 'EPV2' && plannedDate) row.epv2 = plannedDate;
-                              if (slot === 'EPV3' && plannedDate) row.epv3 = plannedDate;
-                            }
-
-                            const out = Array.from(bySite.values())
-                              .sort((a, b) => {
-                                const oa = Number(a?._order ?? 0);
-                                const ob = Number(b?._order ?? 0);
-                                if (oa !== ob) return oa - ob;
-                                return String(a.siteCode || a.siteName || '').localeCompare(String(b.siteCode || b.siteName || ''));
-                              })
-                              .slice(0, 80);
-
-                            return out.map((it, idx) => (
-                              <tr key={`${it.siteCode || it.siteName}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-gray-50'}>
-                                <td className="p-2 border-b whitespace-nowrap">{it.siteCode}</td>
-                                <td className="p-2 border-b whitespace-nowrap">{it.siteName}</td>
-                                <td className="p-2 border-b whitespace-nowrap">{it.region}</td>
-                                <td className="p-2 border-b whitespace-nowrap">{it.shortDescription}</td>
-                                <td className="p-2 border-b whitespace-nowrap">{it.number}</td>
-                                <td className="p-2 border-b whitespace-nowrap">{it.assignedTo}</td>
-                                <td className="p-2 border-b whitespace-nowrap">{it.scheduledWoDate}</td>
-                                <td className="p-2 border-b whitespace-nowrap">{it.dateOfClosing}</td>
-                                <td className="p-2 border-b whitespace-nowrap">{it.state}</td>
-                                <td className="p-2 border-b whitespace-nowrap">{it.pairGroup}</td>
-                                <td className="p-2 border-b whitespace-nowrap">{it.epv2}</td>
-                                <td className="p-2 border-b whitespace-nowrap">{it.epv3}</td>
-                              </tr>
-                            ));
-                          })()}
-                        </tbody>
-                      </table>
-                      {basePlanPreview.length > 80 && (
-                        <div className="text-xs text-gray-600 p-2">
-                          Affichage limité aux 80 premières lignes (total: {basePlanPreview.length}).
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
