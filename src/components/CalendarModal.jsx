@@ -166,7 +166,7 @@ const CalendarModal = (props) => {
       return;
     }
 
-    const target = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+    const target = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
     const month = target.toISOString().slice(0, 7);
     const safeBase = `planning_intelligent_${month}`.replace(/[\\/:*?"<>|]+/g, '_');
 
@@ -337,17 +337,9 @@ const CalendarModal = (props) => {
       const planning = [];
       const localErrors = [];
 
-      const targetMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+      const targetMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
       const targetMonthYyyyMm = targetMonth.toISOString().slice(0, 7);
       const monthStartYmd = `${targetMonthYyyyMm}-01`;
-
-      const monthEndYmd = (() => {
-        const yy = Number(monthStartYmd.slice(0, 4));
-        const mm = Number(monthStartYmd.slice(5, 7));
-        if (!Number.isFinite(yy) || !Number.isFinite(mm)) return '';
-        const d = new Date(Date.UTC(yy, mm, 0));
-        return d.toISOString().slice(0, 10);
-      })();
       
       const ymdAddDays = (ymd, days) => {
         const src = String(ymd || '').slice(0, 10);
@@ -374,6 +366,16 @@ const CalendarModal = (props) => {
         }
         return '';
       };
+
+      const monthEndYmd = (() => {
+        let cur = `${targetMonthYyyyMm}-27`;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(cur)) return '';
+        for (let i = 0; i < 40; i += 1) {
+          if (asWorkday(cur) === cur) return cur;
+          cur = ymdAddDays(cur, -1);
+        }
+        return '';
+      })();
 
       const lastWorkdayOfMonthYmd = (() => {
         let cur = String(monthEndYmd || '').slice(0, 10);
@@ -478,6 +480,15 @@ const CalendarModal = (props) => {
                 });
                 processed.add(siteId);
                 processed.add(String(pairedSite.id));
+              } else {
+                groups.push({
+                  type: 'single',
+                  sites: [site],
+                  urgency: Number(site._urgency || 0),
+                  targetDate: String(site._epvOrderDate || ''),
+                  driver: site
+                });
+                processed.add(siteId);
               }
             } else {
               // Single site
@@ -517,53 +528,108 @@ const CalendarModal = (props) => {
           return Number(b?.urgency || 0) - Number(a?.urgency || 0);
         });
         
-        // Schedule groups (sequentially from month start)
+        const remainingGroups = Array.isArray(groups) ? [...groups] : [];
+
+        const groupMinDate = (g) => {
+          if (g?.driver?._hasEpvInTargetMonth) {
+            const td = String(g?.targetDate || '').slice(0, 10);
+            if (/^\d{4}-\d{2}-\d{2}$/.test(td) && td.slice(0, 7) === targetMonthYyyyMm) return td;
+          }
+          return monthStartYmd;
+        };
+
+        const compareGroups = (a, b) => {
+          const aIn = a?.driver?._hasEpvInTargetMonth ? 1 : 0;
+          const bIn = b?.driver?._hasEpvInTargetMonth ? 1 : 0;
+          if (aIn !== bIn) return bIn - aIn;
+
+          const urg = Number(b?.urgency || 0) - Number(a?.urgency || 0);
+          if (urg !== 0) return urg;
+
+          const aTd = String(a?.targetDate || '').slice(0, 10);
+          const bTd = String(b?.targetDate || '').slice(0, 10);
+          const aHas = /^\d{4}-\d{2}-\d{2}$/.test(aTd) ? 1 : 0;
+          const bHas = /^\d{4}-\d{2}-\d{2}$/.test(bTd) ? 1 : 0;
+          if (aHas !== bHas) return bHas - aHas;
+          if (aHas && bHas) {
+            const d = aTd.localeCompare(bTd);
+            if (d !== 0) return d;
+          }
+          return 0;
+        };
+
         const usedCapacity = new Map(); // date -> used slots
-        let cursorYmd = nextWorkdayForward(monthStartYmd);
-        
-        groups.forEach(group => {
-          let plannedDate = '';
-          let attempts = 0;
-          const maxAttempts = 80;
-          let currentYmd = cursorYmd;
-          currentYmd = nextWorkdayForward(currentYmd) || currentYmd;
-          
-          while (!plannedDate && attempts < maxAttempts) {
-            const dateStr = nextWorkdayForward(currentYmd);
-            if (!dateStr) break;
-            if (monthEndYmd && dateStr > monthEndYmd) break;
-            const used = usedCapacity.get(dateStr) || 0;
-            const needed = group.type === 'pair' ? 2 : 1;
-            
-            if (used + needed <= capacity) {
-              plannedDate = dateStr;
-              usedCapacity.set(dateStr, used + needed);
-            } else {
-              currentYmd = ymdAddDays(dateStr, 1);
-              attempts++;
-            }
+        let dayYmd = nextWorkdayForward(monthStartYmd);
+
+        while (remainingGroups.length > 0 && dayYmd && (!monthEndYmd || dayYmd <= monthEndYmd)) {
+          let used = usedCapacity.get(dayYmd) || 0;
+          let guard = 0;
+
+          while (used < capacity && remainingGroups.length > 0 && guard < 500) {
+            guard += 1;
+
+            const eligible = remainingGroups
+              .filter((g) => groupMinDate(g) <= dayYmd)
+              .filter((g) => {
+                const needed = g?.type === 'pair' ? 2 : 1;
+                return used + needed <= capacity;
+              })
+              .sort(compareGroups);
+
+            if (eligible.length === 0) break;
+
+            const selected = eligible[0];
+            const idx = remainingGroups.indexOf(selected);
+            if (idx >= 0) remainingGroups.splice(idx, 1);
+
+            const needed = selected?.type === 'pair' ? 2 : 1;
+            used += needed;
+            usedCapacity.set(dayYmd, used);
+
+            selected.sites.forEach((site) => {
+              const siteId = String(site.id);
+              const pairSite = selected.type === 'pair'
+                ? selected.sites.find((s) => String(s?.id) !== siteId) || null
+                : null;
+
+              planning.push({
+                siteId: siteId,
+                siteCode: site.idSite,
+                siteName: site.nameSite,
+                region: site.region,
+                zone: site.zone,
+                technician: techName,
+                technicianId: techId,
+                plannedDate: dayYmd,
+                epvType: String(site._epvType || ''),
+                maintenanceType: String(site._maintenanceType || ''),
+                regime: site.regime,
+                lastVidange: site.lastVidange || site.dateDV || site.date_dv,
+                epv1Date: String(site._epv1Shifted || ''),
+                epv2Date: String(site._epv2Shifted || ''),
+                epv3Date: String(site._epv3Shifted || ''),
+                urgency: Number(site._urgency || 0),
+                pairId: selected.type === 'pair' ? `${siteId}-${String(pairMap.get(siteId) || '')}` : null,
+                pairSiteCode: pairSite?.idSite || ''
+              });
+            });
           }
 
-          if (!plannedDate && lastWorkdayOfMonthYmd) {
-            const forcedUsed = usedCapacity.get(lastWorkdayOfMonthYmd) || 0;
-            const forcedNeeded = group.type === 'pair' ? 2 : 1;
-            plannedDate = lastWorkdayOfMonthYmd;
-            usedCapacity.set(lastWorkdayOfMonthYmd, forcedUsed + forcedNeeded);
-            localErrors.push(
-              `Technicien ${techName}: capacité insuffisante sur ${targetMonthYyyyMm} ` +
-                `(${capacity}/jour). Groupe forcé au ${lastWorkdayOfMonthYmd} (surbooking).`
-            );
-          }
+          dayYmd = nextWorkdayForward(ymdAddDays(dayYmd, 1));
+        }
 
-          if (plannedDate) {
-            cursorYmd = plannedDate;
-            if ((usedCapacity.get(plannedDate) || 0) >= capacity) {
-              cursorYmd = nextWorkdayForward(ymdAddDays(cursorYmd, 1));
-            }
-          }
-          
-          if (plannedDate) {
-            group.sites.forEach(site => {
+        if (remainingGroups.length > 0 && lastWorkdayOfMonthYmd) {
+          const neededSlots = remainingGroups.reduce((sum, g) => sum + (g?.type === 'pair' ? 2 : 1), 0);
+          const forcedUsed = usedCapacity.get(lastWorkdayOfMonthYmd) || 0;
+          usedCapacity.set(lastWorkdayOfMonthYmd, forcedUsed + neededSlots);
+
+          localErrors.push(
+            `Technicien ${techName}: capacité insuffisante sur ${targetMonthYyyyMm} ` +
+              `(${capacity}/jour). ${remainingGroups.length} groupe(s) forcé(s) au ${lastWorkdayOfMonthYmd} (surbooking).`
+          );
+
+          remainingGroups.forEach((group) => {
+            group.sites.forEach((site) => {
               const siteId = String(site.id);
               const pairSite = group.type === 'pair'
                 ? group.sites.find((s) => String(s?.id) !== siteId) || null
@@ -576,7 +642,7 @@ const CalendarModal = (props) => {
                 zone: site.zone,
                 technician: techName,
                 technicianId: techId,
-                plannedDate: plannedDate,
+                plannedDate: lastWorkdayOfMonthYmd,
                 epvType: String(site._epvType || ''),
                 maintenanceType: String(site._maintenanceType || ''),
                 regime: site.regime,
@@ -589,8 +655,8 @@ const CalendarModal = (props) => {
                 pairSiteCode: pairSite?.idSite || ''
               });
             });
-          }
-        });
+          });
+        }
 
         if (sites.length > 20) {
           const techLast = planning
@@ -1069,7 +1135,7 @@ const CalendarModal = (props) => {
                     <div className="space-y-4">
                       <div className="text-sm text-gray-600">
                         {(() => {
-                          const target = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+                          const target = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
                           return `${planningData.length} sites planifiés • ${target.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}`;
                         })()}
                       </div>
