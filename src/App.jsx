@@ -1780,10 +1780,41 @@ const GeneratorMaintenanceApp = () => {
             .map((p) => String(p?.month || '').trim())
             .filter(Boolean)
             .join(', ');
-          throw new Error(`Planning de base introuvable pour ${pmMonth}.${available ? `\n\nMois disponibles: ${available}` : ''}`);
+
+          const canCreate = Boolean(isAdmin && /^\d{4}-\d{2}$/.test(String(pmMonth || '').trim()));
+          if (canCreate) {
+            const shouldCreate = window.confirm(
+              `Planning de base introuvable pour ${pmMonth}.
+
+Voulez-vous créer un planning de base (vide) pour ce mois ?
+
+Ensuite, vous devrez importer/sauvegarder le planning de base (items) avant de ré-importer le retour client.`
+            );
+            if (shouldCreate) {
+              await apiFetchJson('/api/pm/base-plans', { method: 'POST', body: JSON.stringify({ month: pmMonth }) });
+              setPmNotice(
+                `✅ Plan de base créé pour ${pmMonth}.\n\nÉtape suivante: importer le planning de base (Excel) puis l'enregistrer en DB, ensuite relancer l'import retour client.`
+              );
+              setPmClientProgress(0);
+              setPmClientStep('');
+              return;
+            }
+          }
+
+          throw new Error(
+            `Planning de base introuvable pour ${pmMonth}.` +
+              `${available ? `\n\nMois disponibles: ${available}` : ''}` +
+              `\n\nAction requise: importer/sauvegarder le planning de base pour ${pmMonth} avant d'importer un retour client.`
+          );
         }
         const itemsRes = await apiFetchJson(`/api/pm/base-plans/${String(basePlan.id)}/items`, { method: 'GET' });
         const baseItems = Array.isArray(itemsRes?.items) ? itemsRes.items : [];
+
+        if (baseItems.length === 0) {
+          throw new Error(
+            `Planning de base vide pour ${pmMonth}.\n\nAction requise: importer/sauvegarder le planning de base (items) pour ${pmMonth} avant d'importer un retour client.`
+          );
+        }
 
         const siteByIdSite = new Map(
           (Array.isArray(sites) ? sites : [])
