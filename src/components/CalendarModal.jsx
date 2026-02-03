@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calendar, X, Users, MapPin, Clock, AlertCircle, Download, Sparkles, Activity } from 'lucide-react';
+import { Calendar, X, Users, MapPin, Clock, AlertCircle, Download, Sparkles, Activity, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { calculateEPVDates, calculateEstimatedNH } from '../utils/calculations';
 
@@ -45,6 +45,10 @@ const CalendarModal = (props) => {
   const [planningBusy, setPlanningBusy] = useState(false);
   const [planningErrors, setPlanningErrors] = useState([]);
   const [showPlanning, setShowPlanning] = useState(false);
+  const [planningStats, setPlanningStats] = useState(null);
+
+  const [globalPlanningImportBusy, setGlobalPlanningImportBusy] = useState(false);
+  const [globalPlanningImportError, setGlobalPlanningImportError] = useState('');
 
   // Utility functions for intelligent planning
   const ymdShiftForWorkdays = (ymd, opts) => {
@@ -157,6 +161,111 @@ const CalendarModal = (props) => {
     }
     const next = findNextWorkday(v);
     return next && next !== v ? next : '';
+  };
+
+  const handleImportGlobalPlanningAllZones = async (event) => {
+    const file = event?.target?.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setGlobalPlanningImportBusy(true);
+    setGlobalPlanningImportError('');
+
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+      const first = wb.SheetNames?.[0];
+      if (!first) throw new Error('Fichier Excel vide.');
+      const ws = wb.Sheets[first];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+      const toYmd = (v) => {
+        if (!v) return '';
+        if (v instanceof Date && !Number.isNaN(v.getTime())) return new Date(v.getTime()).toISOString().slice(0, 10);
+        const s = String(v).trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+        const d = new Date(s);
+        if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+        return '';
+      };
+
+      const items = (Array.isArray(rows) ? rows : [])
+        .map((r) => {
+          const siteCode = String(r?.Site ?? r?.siteCode ?? r?.['site code'] ?? '').trim();
+          const siteName = String(r?.['Site Name'] ?? r?.Nom ?? r?.siteName ?? '').trim();
+          const region = String(r?.Region ?? r?.Région ?? r?.region ?? '').trim();
+          const zone = String(r?.Zone ?? r?.zone ?? '').trim();
+          const assignedTo = String(r?.['Assigned to'] ?? r?.Technicien ?? r?.assignedTo ?? '').trim();
+          const plannedDate = toYmd(r?.['Scheduled WO Date'] ?? r?.plannedDate ?? r?.Date ?? r?.date);
+          const pairGroup = String(r?.Pair ?? r?.Paire ?? r?.pairGroup ?? '').trim();
+          const recommendedMaintenanceType = String(r?.EPV ?? r?.Type ?? r?.recommendedMaintenanceType ?? '').trim();
+          const epvSlot = String(r?.EPVSlot ?? r?.epvSlot ?? '').trim();
+          const shortDescription = String(r?.['Short description'] ?? r?.shortDescription ?? '').trim();
+
+          return {
+            siteId: null,
+            siteCode: siteCode || null,
+            siteName: siteName || null,
+            region: region || null,
+            zone: zone || null,
+            assignedTo: assignedTo || null,
+            pairGroup: pairGroup || null,
+            epvSlot: epvSlot || null,
+            shortDescription: shortDescription || null,
+            recommendedMaintenanceType: recommendedMaintenanceType || null,
+            plannedDate: plannedDate || null,
+            state: 'Planned'
+          };
+        })
+        .filter((it) => it.siteCode && it.plannedDate && /^\d{4}-\d{2}-\d{2}$/.test(it.plannedDate));
+
+      if (items.length === 0) {
+        throw new Error("Aucune ligne valide détectée. Vérifie les colonnes 'Site' et 'Scheduled WO Date'.");
+      }
+
+      const target = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+      const month = target.toISOString().slice(0, 7);
+
+      const planRes = await fetch('/api/pm/base-plans', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month })
+      });
+      const planText = await planRes.text().catch(() => '');
+      const planData = (() => {
+        try {
+          return planText ? JSON.parse(planText) : {};
+        } catch {
+          return {};
+        }
+      })();
+      if (!planRes.ok) throw new Error(String(planData?.error || planText || 'Erreur création plan.'));
+      const planId = String(planData?.plan?.id || '').trim();
+      if (!planId) throw new Error('Plan non créé.');
+
+      const itemsRes = await fetch(`/api/pm/base-plans/${planId}/items`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items })
+      });
+      const itemsText = await itemsRes.text().catch(() => '');
+      const itemsData = (() => {
+        try {
+          return itemsText ? JSON.parse(itemsText) : {};
+        } catch {
+          return {};
+        }
+      })();
+      if (!itemsRes.ok) throw new Error(String(itemsData?.error || itemsText || 'Erreur import.'));
+
+      alert(`✅ Planning global importé et sauvegardé (${itemsData?.inserted ?? items.length} lignes).`);
+    } catch (e) {
+      setGlobalPlanningImportError(String(e?.message || 'Erreur import planning global.'));
+    } finally {
+      setGlobalPlanningImportBusy(false);
+    }
   };
 
   const exportIntelligentPlanningExcel = () => {
@@ -294,6 +403,7 @@ const CalendarModal = (props) => {
   const generateIntelligentPlanning = async () => {
     setPlanningBusy(true);
     setPlanningErrors([]);
+    setPlanningStats(null);
     
     try {
       const list = Array.isArray(sites) ? sites : [];
@@ -470,13 +580,26 @@ const CalendarModal = (props) => {
                   if (aDate && bDate && aDate !== bDate) return aDate < bDate ? site : pairedSite;
                   return site;
                 })();
+
+                const pairHasEpvInTargetMonth = Boolean(site?._hasEpvInTargetMonth || pairedSite?._hasEpvInTargetMonth);
+                const pairMinDate = (() => {
+                  if (!pairHasEpvInTargetMonth) return '';
+                  const dates = [site, pairedSite]
+                    .filter((s) => s && s._hasEpvInTargetMonth)
+                    .map((s) => String(s?._epvOrderDate || '').slice(0, 10))
+                    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d.slice(0, 7) === targetMonthYyyyMm)
+                    .sort();
+                  return dates[0] || '';
+                })();
                 
                 groups.push({
                   type: 'pair',
                   sites: [site, pairedSite],
                   urgency: Math.max(Number(site._urgency || 0), Number(pairedSite._urgency || 0)),
                   targetDate: String(driver._epvOrderDate || ''),
-                  driver
+                  driver,
+                  hasEpvInTargetMonth: pairHasEpvInTargetMonth,
+                  minDate: pairMinDate
                 });
                 processed.add(siteId);
                 processed.add(String(pairedSite.id));
@@ -486,7 +609,9 @@ const CalendarModal = (props) => {
                   sites: [site],
                   urgency: Number(site._urgency || 0),
                   targetDate: String(site._epvOrderDate || ''),
-                  driver: site
+                  driver: site,
+                  hasEpvInTargetMonth: Boolean(site?._hasEpvInTargetMonth),
+                  minDate: site?._hasEpvInTargetMonth ? String(site?._epvOrderDate || '').slice(0, 10) : ''
                 });
                 processed.add(siteId);
               }
@@ -497,7 +622,9 @@ const CalendarModal = (props) => {
                 sites: [site],
                 urgency: Number(site._urgency || 0),
                 targetDate: String(site._epvOrderDate || ''),
-                driver: site
+                driver: site,
+                hasEpvInTargetMonth: Boolean(site?._hasEpvInTargetMonth),
+                minDate: site?._hasEpvInTargetMonth ? String(site?._epvOrderDate || '').slice(0, 10) : ''
               });
               processed.add(siteId);
             }
@@ -506,8 +633,8 @@ const CalendarModal = (props) => {
         
         // Sort groups by EPV order date then urgency (the schedule date is assigned sequentially from month start)
         groups.sort((a, b) => {
-          const aIn = a?.driver?._hasEpvInTargetMonth ? 1 : 0;
-          const bIn = b?.driver?._hasEpvInTargetMonth ? 1 : 0;
+          const aIn = a?.hasEpvInTargetMonth ? 1 : 0;
+          const bIn = b?.hasEpvInTargetMonth ? 1 : 0;
           if (aIn !== bIn) return bIn - aIn;
 
           if (!aIn && !bIn) {
@@ -531,16 +658,16 @@ const CalendarModal = (props) => {
         const remainingGroups = Array.isArray(groups) ? [...groups] : [];
 
         const groupMinDate = (g) => {
-          if (g?.driver?._hasEpvInTargetMonth) {
-            const td = String(g?.targetDate || '').slice(0, 10);
+          const td = String(g?.minDate || '').slice(0, 10);
+          if (g?.hasEpvInTargetMonth) {
             if (/^\d{4}-\d{2}-\d{2}$/.test(td) && td.slice(0, 7) === targetMonthYyyyMm) return td;
           }
           return monthStartYmd;
         };
 
         const compareGroups = (a, b) => {
-          const aIn = a?.driver?._hasEpvInTargetMonth ? 1 : 0;
-          const bIn = b?.driver?._hasEpvInTargetMonth ? 1 : 0;
+          const aIn = a?.hasEpvInTargetMonth ? 1 : 0;
+          const bIn = b?.hasEpvInTargetMonth ? 1 : 0;
           if (aIn !== bIn) return bIn - aIn;
 
           const urg = Number(b?.urgency || 0) - Number(a?.urgency || 0);
@@ -690,6 +817,31 @@ const CalendarModal = (props) => {
         state: 'Planned'
       }));
       
+      const plannedSiteIds = new Set(withNumbers.map((it) => String(it?.siteId || '')).filter((x) => x));
+      const sourceSiteIds = new Set(allSites.map((s) => String(s?.id || '')).filter((x) => x));
+      const missingSiteIds = [];
+      sourceSiteIds.forEach((id) => {
+        if (!plannedSiteIds.has(id)) missingSiteIds.push(id);
+      });
+      const missingSites = allSites
+        .filter((s) => missingSiteIds.includes(String(s?.id || '')))
+        .map((s) => String(s?.idSite || s?.nameSite || s?.id || ''))
+        .slice(0, 25);
+
+      const zoneCounts = {};
+      allSites.forEach((s) => {
+        const z = String(s?.zone || '').trim() || '—';
+        zoneCounts[z] = Number(zoneCounts[z] || 0) + 1;
+      });
+
+      setPlanningStats({
+        sourceCount: allSites.length,
+        plannedCount: plannedSiteIds.size,
+        missingCount: missingSiteIds.length,
+        missingSites,
+        zoneCounts
+      });
+
       setPlanningData(withNumbers);
       setShowPlanning(true);
 
@@ -968,6 +1120,26 @@ const CalendarModal = (props) => {
                         <Sparkles size={16} />
                         {planningBusy ? 'Génération...' : 'Générer planning intelligent'}
                       </button>
+
+                      <label
+                        className={`w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-emerald-400/70 focus-within:ring-offset-2 focus-within:ring-offset-emerald-950 ${
+                          globalPlanningImportBusy ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
+                        }`}
+                      >
+                        <Upload size={16} />
+                        {globalPlanningImportBusy ? 'Import...' : 'Import Planning global all zones'}
+                        <input
+                          type="file"
+                          accept=".xlsx,.xls"
+                          onChange={handleImportGlobalPlanningAllZones}
+                          className="hidden"
+                          disabled={globalPlanningImportBusy}
+                        />
+                      </label>
+
+                      {globalPlanningImportError && (
+                        <div className="text-xs text-rose-300">{globalPlanningImportError}</div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1139,6 +1311,31 @@ const CalendarModal = (props) => {
                           return `${planningData.length} sites planifiés • ${target.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}`;
                         })()}
                       </div>
+
+                      {planningStats && (
+                        <div className="p-3 bg-slate-50 border border-slate-200 rounded text-sm text-slate-700">
+                          <div>
+                            Source: <span className="font-semibold">{planningStats.sourceCount}</span>
+                            {' • '}Planifiés: <span className="font-semibold">{planningStats.plannedCount}</span>
+                            {' • '}Manquants: <span className={`font-semibold ${planningStats.missingCount > 0 ? 'text-red-700' : ''}`}>{planningStats.missingCount}</span>
+                          </div>
+
+                          {planningStats.zoneCounts && (
+                            <div className="mt-1 text-xs text-slate-600">
+                              {Object.entries(planningStats.zoneCounts)
+                                .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+                                .map(([z, c]) => `${z}: ${c}`)
+                                .join(' • ')}
+                            </div>
+                          )}
+
+                          {planningStats.missingCount > 0 && Array.isArray(planningStats.missingSites) && planningStats.missingSites.length > 0 && (
+                            <div className="mt-2 text-xs text-red-700">
+                              Exemples manquants: {planningStats.missingSites.join(', ')}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       
 
                       <div className="border rounded-lg overflow-auto max-h-96">
