@@ -1711,6 +1711,48 @@ const GeneratorMaintenanceApp = () => {
     if (done) alert('✅ Export Excel généré.');
   };
 
+  const handlePmExportExcel = async () => {
+    if (!canUsePm) return;
+    const ok = window.confirm(`Exporter les maintenances planifiées (${pmMonth}) en Excel ?`);
+    if (!ok) return;
+
+    const items = (Array.isArray(pmItems) ? pmItems : [])
+      .slice()
+      .sort((a, b) => {
+        const da = String(a?.scheduledWoDate || '').slice(0, 10);
+        const db = String(b?.scheduledWoDate || '').slice(0, 10);
+        const d = da.localeCompare(db);
+        if (d !== 0) return d;
+        return String(a?.number || '').localeCompare(String(b?.number || ''));
+      });
+
+    const rows = items.map((it) => ({
+      Zone: it.zone || '',
+      Region: it.region || '',
+      Site: it.siteCode || '',
+      'Site Name': it.siteName || '',
+      'Short description': it.shortDescription || '',
+      'Maintenance Type': it.maintenanceType || '',
+      Number: it.number || '',
+      'Assigned to': it.assignedTo || '',
+      'Scheduled WO Date': it.scheduledWoDate || '',
+      'Date of closing': it.dateOfClosing || '',
+      State: it.state || '',
+      Reprogrammation: it.reprogrammationDate || ''
+    }));
+
+    const done = await runExport({
+      label: 'Export Excel (PM)…',
+      fn: async () => {
+        exportXlsx({
+          fileBaseName: `PM_${pmMonth}_${new Date().toISOString().split('T')[0]}`,
+          sheets: [{ name: `PM-${pmMonth}`, rows }]
+        });
+      }
+    });
+    if (done) alert('✅ Export Excel généré.');
+  };
+
   const handlePmExportReprogExcel = async () => {
     if (!canUsePm) return;
     const ok = window.confirm(`Exporter les maintenances reprogrammées (${pmMonth}) en Excel ?`);
