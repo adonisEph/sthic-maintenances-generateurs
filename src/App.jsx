@@ -1434,6 +1434,17 @@ const GeneratorMaintenanceApp = () => {
     e.target.value = '';
   };
 
+  const handlePmGlobalImport = (e) => {
+    const file = e?.target?.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setPmNotice('');
+    setPmError('');
+    alert(
+      'Import planning PM global indisponible : aucun endpoint serveur n\'est configuré pour cette action.'
+    );
+  };
+
   const generateBasePlanPreview = async () => {
     if (!isAdmin) return;
     const month = getNextMonthYyyyMm(currentMonth);
