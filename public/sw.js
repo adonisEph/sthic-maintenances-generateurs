@@ -1,4 +1,4 @@
-const CACHE = 'gmga-pwa-v8';
+const CACHE = 'gmga-pwa-v9';
 const CORE_ASSETS = ['/', '/index.html', '/manifest.webmanifest', '/icon-192.svg', '/icon-512.svg'];
 
 self.addEventListener('install', (event) => {
@@ -34,6 +34,18 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/')) return;
 
+  const isAsset = url.pathname.startsWith('/assets/');
+  const isJsCss = url.pathname.endsWith('.js') || url.pathname.endsWith('.css');
+
+  const fetchAndCache = async () => {
+    const resp = await fetch(req, { cache: 'no-store' });
+    if (resp && resp.ok) {
+      const copy = resp.clone();
+      caches.open(CACHE).then((cache) => cache.put(req, copy));
+    }
+    return resp;
+  };
+
   if (req.mode === 'navigate') {
     event.respondWith(
       fetch(req)
@@ -44,6 +56,11 @@ self.addEventListener('fetch', (event) => {
         })
         .catch(() => caches.match('/index.html'))
     );
+    return;
+  }
+
+  if (isAsset || isJsCss) {
+    event.respondWith(fetchAndCache().catch(() => caches.match(req)));
     return;
   }
 
