@@ -1,7 +1,8 @@
-const CACHE = 'gmga-pwa-v6';
+const CACHE = 'gmga-pwa-v8';
 const CORE_ASSETS = ['/', '/index.html', '/manifest.webmanifest', '/icon-192.svg', '/icon-512.svg'];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches
       .open(CACHE)
