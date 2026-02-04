@@ -993,145 +993,30 @@ const GeneratorMaintenanceApp = () => {
     return '';
   };
 
+  const basePlanSplitCell = (value) => {
+    if (Array.isArray(value)) return value.map((v) => String(v || '').trim()).filter(Boolean);
+    const raw = String(value || '').trim();
+    if (!raw) return [''];
+    const parts = raw
+      .split(/[\n\r\t;,|/]+/)
+      .map((v) => String(v || '').trim())
+      .filter(Boolean);
+    return parts.length > 0 ? parts : [raw];
+  };
+
   const loadPmMonths = async () => {
     const data = await apiFetchJson('/api/pm/months', { method: 'GET' });
     setPmMonths(Array.isArray(data?.months) ? data.months : []);
     return Array.isArray(data?.months) ? data.months : [];
   };
 
-  const ensurePmMonth = async (yyyymm) => {
-    const month = String(yyyymm || '').trim();
-    if (!month) return '';
-
-    if (isAdmin) {
-      const data = await apiFetchJson('/api/pm/months', {
-        method: 'POST',
-        body: JSON.stringify({ month })
-      });
-      return data?.month?.id ? String(data.month.id) : '';
-    }
-
-    const months = await loadPmMonths();
-    const found = (Array.isArray(months) ? months : []).find((m) => String(m?.month || '').trim() === month) || null;
-    return found?.id ? String(found.id) : '';
-  };
-
-  const loadPmItems = async (monthId) => {
-    const data = await apiFetchJson(`/api/pm/months/${monthId}/items`, { method: 'GET' });
-    setPmItems(Array.isArray(data?.items) ? data.items : []);
-  };
-
-  const handlePmOpenReprog = (it) => {
+  const handleImportBasePlanExcel = (e) => {
     if (!isAdmin) return;
-    const date = it?.reprogrammationDate ? String(it.reprogrammationDate).slice(0, 10) : '';
-    const status = it?.reprogrammationStatus ? String(it.reprogrammationStatus).trim() : '';
-    const reason = it?.reprogrammationReason ? String(it.reprogrammationReason) : '';
-    setPmReprogItem(it || null);
-    setPmReprogForm({ date, status, reason });
-    setPmReprogError('');
-    setPmReprogOpen(true);
-  };
-
-  const handlePmSaveReprog = async () => {
-    if (!isAdmin) return;
-    if (!pmMonthId) {
-      setPmReprogError('Mois introuvable.');
-      return;
-    }
-    const it = pmReprogItem;
-    const itemId = String(it?.id || '').trim();
-    if (!itemId) {
-      setPmReprogError('Ticket introuvable.');
-      return;
-    }
-
-    const reprogrammationDate = String(pmReprogForm?.date || '').trim();
-    const reprogrammationStatus = String(pmReprogForm?.status || '').trim();
-    const reprogrammationReason = String(pmReprogForm?.reason || '').trim();
-
-    if (reprogrammationDate && !/^\d{4}-\d{2}-\d{2}$/.test(reprogrammationDate)) {
-      setPmReprogError('Date invalide.');
-      return;
-    }
-    if (reprogrammationStatus && !['APPROVED', 'REJECTED', 'PENDING'].includes(reprogrammationStatus)) {
-      setPmReprogError('Statut invalide.');
-      return;
-    }
-
-    try {
-      setPmReprogSaving(true);
-      setPmReprogError('');
-      await apiFetchJson(`/api/pm/months/${pmMonthId}/items`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          id: itemId,
-          reprogrammationDate: reprogrammationDate || null,
-          reprogrammationStatus: reprogrammationStatus || null,
-          reprogrammationReason: reprogrammationReason || null
-        })
-      });
-
-      await loadPmItems(pmMonthId);
-      await loadPmDashboard(pmMonthId);
-      setPmReprogOpen(false);
-      setPmReprogItem(null);
-      setPmReprogForm({ date: '', status: '', reason: '' });
-    } catch (e) {
-      setPmReprogError(e?.message || 'Erreur serveur.');
-    } finally {
-      setPmReprogSaving(false);
-    }
-  };
-
-  const loadPmImports = async (monthId) => {
-    const data = await apiFetchJson(`/api/pm/months/${monthId}/imports`, { method: 'GET' });
-    setPmImports(Array.isArray(data?.imports) ? data.imports : []);
-  };
-
-  const loadPmDashboard = async (monthId) => {
-    const data = await apiFetchJson(`/api/pm/months/${monthId}/dashboard`, { method: 'GET' });
-    setPmDashboard(data || null);
-  };
-
-  const refreshPmAll = async (yyyymm) => {
-    try {
-      setPmBusy(true);
-      setPmError('');
-      setPmNotice('');
-      setPmNocProgress(0);
-      setPmNocStep('');
-      setPmClientProgress(0);
-      setPmClientStep('');
-      setPmGlobalCompare(null);
-      const m = String(yyyymm || '').trim();
-      const id = await ensurePmMonth(m);
-      setPmMonth(m);
-      setPmMonthId(id);
-      if (isAdmin) {
-        await loadPmMonths();
-      }
-      if (id) {
-        await loadPmItems(id);
-        await loadPmImports(id);
-        await loadPmDashboard(id);
-      } else {
-        setPmItems([]);
-        setPmImports([]);
-        setPmDashboard(null);
-      }
-    } catch (e) {
-      setPmError(e?.message || 'Erreur serveur.');
-    } finally {
-      setPmBusy(false);
-    }
-  };
-
-  const handlePmGlobalImport = (e) => {
     const file = e?.target?.files?.[0];
     if (!file) return;
 
     const ok = window.confirm(
-      `Confirmer l'import du Planning PM global ?\n\nMois: ${pmMonth}\nFichier: ${file?.name || ''}`
+      `Confirmer l'import du planning de base ?\n\nFichier: ${file?.name || ''}`
     );
     if (!ok) {
       e.target.value = '';
@@ -1139,120 +1024,34 @@ const GeneratorMaintenanceApp = () => {
     }
 
     const reader = new FileReader();
-    setPmBusy(true);
-    setPmError('');
-    setPmNotice('');
-    setPmGlobalCompare(null);
+    setBasePlanBusy(true);
+    setBasePlanProgress(10);
+    setBasePlanErrors([]);
+    setBasePlanPreview([]);
 
     reader.onload = async (event) => {
       try {
+        setBasePlanProgress(35);
         const data = new Uint8Array(event.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const jsonData = XLSX.utils.sheet_to_json(sheet);
 
-        const arr = Array.isArray(jsonData) ? jsonData : [];
-        const firstRow = arr[0];
-        if (!firstRow || typeof firstRow !== 'object') {
-          throw new Error('Fichier vide ou colonnes introuvables.');
-        }
-
-        const requiredHeaders = [
-          'Site',
-          'Site Name',
-          'Region',
-          'Short description',
-          'Number',
-          'Assigned to',
-          'Scheduled WO Date',
-          'Date of closing',
-          'State'
-        ];
-        const headerSet = new Set(Object.keys(firstRow).map((k) => pmNormKey(k)));
-        const missingHeaders = requiredHeaders.filter((h) => !headerSet.has(pmNormKey(h)));
-        if (missingHeaders.length > 0) {
-          throw new Error(`Colonnes manquantes: ${missingHeaders.join(', ')}`);
-        }
-
-        const rows = [];
-        for (let idx = 0; idx < arr.length; idx += 1) {
-          const row = arr[idx];
-          const siteCode = String(pmGet(row, 'Site', 'Site (id)', 'Site id', 'Site Code') || '').trim();
-          const siteName = String(pmGet(row, 'Site Name', 'Site name', 'Name Site') || '').trim();
-          const region = String(pmGet(row, 'Region', 'REGION', 'Région') || '').trim();
-          const shortDescription = String(pmGet(row, 'Short description', 'Short Description') || '').trim();
-          const number = String(pmGet(row, 'Number') || '').trim();
-          const assignedTo = String(pmGet(row, 'Assigned to', 'Assigned To') || '').trim();
-          const scheduledWoDate = pmNormalizeDate(pmGet(row, 'Scheduled WO Date', 'Scheduled Wo Date', 'Scheduled date', 'Scheduled Date'));
-          const dateOfClosing = pmNormalizeDate(pmGet(row, 'Date of closing', 'Date of Closing', 'Closing date', 'Date closing'));
-          const state = String(pmGet(row, 'State') || '').trim();
-
-          if (!siteCode && !siteName) continue;
-          if (!scheduledWoDate) continue;
-
-          rows.push({
-            siteCode,
-            siteName,
-            region,
-            shortDescription,
-            number,
-            assignedTo,
-            scheduledWoDate,
-            dateOfClosing,
-            state
-          });
-        }
-
+        const rows = Array.isArray(jsonData) ? jsonData : [];
         if (rows.length === 0) {
-          throw new Error('Aucune ligne valide trouvée (colonnes obligatoires manquantes).');
+          throw new Error('Fichier Excel vide ou illisible.');
         }
 
-        const planRes = await apiFetchJson('/api/pm/global-plans', {
-          method: 'POST',
-          body: JSON.stringify({ month: pmMonth })
-        });
-        const planId = String(planRes?.plan?.id || '').trim();
-        if (!planId) throw new Error('Plan global non créé.');
-
-        await apiFetchJson(`/api/pm/global-plans/${planId}/items`, {
-          method: 'POST',
-          body: JSON.stringify({ items: rows })
-        });
-
-        setPmNotice(`✅ Planning PM global importé (${rows.length} lignes).`);
-
-        if (Array.isArray(pmItems) && pmItems.length > 0) {
-          const normSiteName = (v) =>
-            String(v || '')
-              .normalize('NFD')
-              .replace(/[\u0300-\u036f]/g, '')
-              .trim()
-              .toLowerCase();
-          const clientKeys = new Set();
-          pmItems.forEach((it) => {
-            const code = String(it?.siteCode || '').trim();
-            const name = normSiteName(it?.siteName || '');
-            if (code) clientKeys.add(`code:${code}`);
-            if (name) clientKeys.add(`name:${name}`);
-          });
-          const retired = rows.filter((g) => {
-            const code = String(g?.siteCode || '').trim();
-            const name = normSiteName(g?.siteName || '');
-            if (code && clientKeys.has(`code:${code}`)) return false;
-            if (name && clientKeys.has(`name:${name}`)) return false;
-            return true;
-          });
-          setPmGlobalCompare({
-            month: pmMonth,
-            globalCount: rows.length,
-            clientCount: pmItems.length,
-            retired
-          });
-        }
-      } catch (err) {
-        setPmError(err?.message || 'Erreur lors de l\'import du planning PM global.');
+        setBasePlanBaseRows(rows);
+        setBasePlanProgress(100);
+        alert(`✅ Fichier base importé (${rows.length} lignes).`);
+      } catch (error) {
+        setBasePlanErrors([error?.message || 'Erreur lors de l\'import du planning de base.']);
       } finally {
-        setPmBusy(false);
+        setTimeout(() => {
+          setBasePlanBusy(false);
+          setBasePlanProgress(0);
+        }, 400);
       }
     };
 
