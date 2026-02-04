@@ -32,12 +32,14 @@ const PmModal = (props) => {
     pmResetBusy,
     handlePmReset,
     handlePmNocImport,
+    handlePmGlobalImport,
     handlePmClientImport,
     pmError,
     pmNotice,
     pmClientProgress,
     pmClientStep,
     pmClientCompare,
+    pmGlobalCompare,
     pmItems,
     pmImports,
     pmSearch,
@@ -240,6 +242,22 @@ const PmModal = (props) => {
                         />
                       </label>
 
+                      <label
+                        className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-emerald-400/70 focus-within:ring-offset-2 focus-within:ring-offset-emerald-950 ${
+                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
+                        }`}
+                      >
+                        <Upload size={16} />
+                        Import planning PM global
+                        <input
+                          type="file"
+                          accept=".xlsx,.xls"
+                          onChange={handlePmGlobalImport}
+                          className="hidden"
+                          disabled={pmBusy}
+                        />
+                      </label>
+
                       <button
                         type="button"
                         onClick={() => handlePmReset('imports')}
@@ -301,6 +319,46 @@ const PmModal = (props) => {
               {pmError && (
                 <div className="mb-4 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">
                   {pmError}
+                </div>
+              )}
+
+              {pmGlobalCompare && (
+                <div className="mb-4 bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+                  <div className="text-sm font-semibold text-indigo-900 mb-2">
+                    Planning PM global vs retour client ({pmGlobalCompare.month})
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-indigo-900">
+                    <div className="bg-white border border-indigo-200 rounded p-2">Global: <span className="font-semibold">{pmGlobalCompare.globalCount}</span></div>
+                    <div className="bg-white border border-indigo-200 rounded p-2">Client: <span className="font-semibold">{pmGlobalCompare.clientCount}</span></div>
+                    <div className="bg-red-50 border border-red-200 rounded p-2">Retirés: <span className="font-semibold">{pmGlobalCompare.retired.length}</span></div>
+                  </div>
+
+                  <div className="mt-3 bg-white border border-red-200 rounded-lg overflow-auto max-h-64">
+                    <div className="text-xs font-semibold px-3 py-2 border-b text-red-800">Sites retirés</div>
+                    <table className="min-w-full text-xs">
+                      <thead className="sticky top-0 bg-red-50">
+                        <tr>
+                          <th className="p-2 border-b">Date</th>
+                          <th className="p-2 border-b">Site</th>
+                          <th className="p-2 border-b">Ticket</th>
+                          <th className="p-2 border-b">État</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pmGlobalCompare.retired.slice(0, 50).map((r, idx) => (
+                          <tr key={`ret-global-${r.siteCode || r.siteName}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-red-50'}>
+                            <td className="p-2 border-b whitespace-nowrap">{r.scheduledWoDate || ''}</td>
+                            <td className="p-2 border-b whitespace-pre-line leading-tight break-words">{r.siteName || r.siteCode}</td>
+                            <td className="p-2 border-b">{r.number || ''}</td>
+                            <td className="p-2 border-b">{r.state || ''}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {pmGlobalCompare.retired.length > 50 && (
+                      <div className="text-xs text-gray-600 p-2">Affichage limité (50) — total: {pmGlobalCompare.retired.length}</div>
+                    )}
+                  </div>
                 </div>
               )}
 

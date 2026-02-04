@@ -153,6 +153,7 @@ const GeneratorMaintenanceApp = () => {
   const [pmClientProgress, setPmClientProgress] = useState(0);
   const [pmClientStep, setPmClientStep] = useState('');
   const [pmClientCompare, setPmClientCompare] = useState(null);
+  const [pmGlobalCompare, setPmGlobalCompare] = useState(null);
   const [pmResetBusy, setPmResetBusy] = useState(false);
   const [pmFilterState, setPmFilterState] = useState('all');
   const [pmFilterType, setPmFilterType] = useState('all');
@@ -1101,6 +1102,7 @@ const GeneratorMaintenanceApp = () => {
       setPmNocStep('');
       setPmClientProgress(0);
       setPmClientStep('');
+      setPmGlobalCompare(null);
       const m = String(yyyymm || '').trim();
       const id = await ensurePmMonth(m);
       setPmMonth(m);
@@ -1124,596 +1126,136 @@ const GeneratorMaintenanceApp = () => {
     }
   };
 
-  const handlePmExportExcel = async () => {
-    if (!canUsePm) return;
-    const ok = window.confirm(`Exporter le suivi PM (${pmMonth}) en Excel ?`);
-    if (!ok) return;
+  const handlePmGlobalImport = (e) => {
+    const file = e?.target?.files?.[0];
+    if (!file) return;
 
-    const norm = (s) => String(s || '').trim().toLowerCase();
-    const bucketForState = (state) => {
-      const v = norm(state);
-      if (v === 'closed complete' || v === 'closed') return 'closed';
-      if (v === 'awaiting closure' || v === 'awaiting') return 'awaiting';
-      if (v === 'work in progress' || v === 'wip') return 'wip';
-      return 'assigned';
-    };
-
-    const dateEq = (isoOrYmd, ymd) => {
-      if (!ymd) return true;
-      const d = isoOrYmd ? String(isoOrYmd).slice(0, 10) : '';
-      return d === String(ymd).slice(0, 10);
-    };
-
-    const normStatus = (s) => {
-      const v = String(s || '').trim().toLowerCase();
-      if (!v) return '';
-      if (v === 'approved' || v === 'ok' || v === 'yes' || v === 'oui' || v === 'validee' || v === 'validée' || v === 'approuvee' || v === 'approuvée') {
-        return 'APPROVED';
-      }
-      if (v === 'rejected' || v === 'ko' || v === 'no' || v === 'non' || v === 'rejete' || v === 'rejeté' || v === 'rejetee' || v === 'rejetée' || v === 'refusee' || v === 'refusée') {
-        return 'REJECTED';
-      }
-      if (v === 'pending' || v === 'attente' || v === 'en attente' || v === 'waiting') return 'PENDING';
-      return '';
-    };
-
-    const effectiveReprogStatus = (it) => {
-      const explicit = normStatus(it?.reprogrammationStatus);
-      if (explicit) return explicit;
-      const hasDate = !!String(it?.reprogrammationDate || '').trim();
-      const hasReason = !!String(it?.reprogrammationReason || '').trim();
-      if (hasDate) return 'APPROVED';
-      if (hasReason) return 'PENDING';
-      return '';
-    };
-
-    const search = String(pmSearch || '').trim().toLowerCase();
-    const exportItems = (Array.isArray(pmItems) ? pmItems : []).filter((it) => {
-      if (pmFilterType && pmFilterType !== 'all') {
-        if (String(it?.maintenanceType || '').trim() !== String(pmFilterType)) return false;
-      }
-      if (pmFilterZone && pmFilterZone !== 'all') {
-        if (String(it?.zone || '').trim() !== String(pmFilterZone)) return false;
-      }
-      if (pmFilterDate) {
-        if (!dateEq(it?.scheduledWoDate, pmFilterDate)) return false;
-      }
-      if (pmFilterReprog && pmFilterReprog !== 'all') {
-        const st = effectiveReprogStatus(it);
-        if (pmFilterReprog === 'approved' && st !== 'APPROVED') return false;
-        if (pmFilterReprog === 'rejected' && st !== 'REJECTED') return false;
-        if (pmFilterReprog === 'pending' && st !== 'PENDING') return false;
-      }
-      if (search) {
-        const hay = [
-          it?.number,
-          it?.siteName,
-          it?.siteCode,
-          it?.region,
-          it?.zone,
-          it?.maintenanceType,
-          it?.assignedTo,
-          it?.shortDescription,
-          it?.reprogrammationReason,
-          it?.reprogrammationStatus
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-        if (!hay.includes(search)) return false;
-      }
-      if (pmFilterState && pmFilterState !== 'all') {
-        if (bucketForState(it?.state) !== pmFilterState) return false;
-      }
-      return true;
-    });
-
-    const rows = exportItems.map((it) => ({
-      'Zone': it.zone || '',
-      'Region': it.region || '',
-      'Site': it.siteCode || '',
-      'Site Name': it.siteName || '',
-      'Short description': it.shortDescription || '',
-      'Maintenance Type': it.maintenanceType || '',
-      'Number': it.number || '',
-      'Assigned to': it.assignedTo || '',
-      'Scheduled WO Date': it.scheduledWoDate || '',
-      'Date of closing': it.closedAt || '',
-      'Statut reprogrammation': effectiveReprogStatus(it) || '',
-      'Reprogrammation': it.reprogrammationDate || '',
-      'Raisons': it.reprogrammationReason || '',
-      'State': it.state || ''
-    }));
-
-    const done = await runExport({
-      label: 'Export Excel (PM)…',
-      fn: async () => {
-        exportXlsx({
-          fileBaseName: `PM_${pmMonth}_${new Date().toISOString().split('T')[0]}`,
-          sheets: [{ name: `PM-${pmMonth}`, rows }]
-        });
-      }
-    });
-    if (done) alert('✅ Export Excel généré.');
-  };
-
-  const deleteBasePlanFromDb = async () => {
-    if (!isAdmin) return;
-
-    const defaultMonth = (() => {
-      const t = String(basePlanTargetMonth || '').trim();
-      if (/^\d{4}-\d{2}$/.test(t)) return t;
-      return `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}`;
-    })();
-    const month = String(window.prompt('Mois à supprimer (YYYY-MM)', defaultMonth) || '').trim();
-    if (!month) return;
-    if (!/^\d{4}-\d{2}$/.test(month)) {
-      alert('Mois invalide (YYYY-MM).');
+    const ok = window.confirm(
+      `Confirmer l'import du Planning PM global ?\n\nMois: ${pmMonth}\nFichier: ${file?.name || ''}`
+    );
+    if (!ok) {
+      e.target.value = '';
       return;
     }
 
-    const ok = window.confirm(
-      `Supprimer définitivement le planning de base en DB pour ${month} ?\n\nCette action supprime aussi toutes les lignes (items).`
-    );
-    if (!ok) return;
-
-    setBasePlanBusy(true);
-    setBasePlanProgress(20);
-    try {
-      const plansRes = await apiFetchJson('/api/pm/base-plans', { method: 'GET' });
-      const plans = Array.isArray(plansRes?.plans) ? plansRes.plans : [];
-      const plan = plans.find((p) => String(p?.month || '').trim() === month) || null;
-      if (!plan?.id) {
-        const available = plans
-          .map((p) => String(p?.month || '').trim())
-          .filter(Boolean)
-          .join(', ');
-        throw new Error(`Planning de base introuvable pour ${month}.${available ? `\n\nMois disponibles: ${available}` : ''}`);
-      }
-
-      setBasePlanProgress(60);
-      await apiFetchJson(`/api/pm/base-plans/${String(plan.id)}`, { method: 'DELETE' });
-      setBasePlanProgress(100);
-
-      // Après suppression DB, on réinitialise l'UI du planning de base pour éviter les confusions
-      setBasePlanPreview([]);
-      setBasePlanErrors([]);
-      setBasePlanBaseRows([]);
-
-      alert(`✅ Planning de base supprimé (${month}).`);
-    } catch (e) {
-      alert(e?.message || 'Erreur serveur.');
-    } finally {
-      setTimeout(() => {
-        setBasePlanBusy(false);
-        setBasePlanProgress(0);
-      }, 300);
-    }
-  };
-
-  const basePlanNormalizeYmd = (value) => {
-    if (!value && value !== 0) return '';
-    if (typeof value === 'number') {
-      try {
-        const d = XLSX.SSF.parse_date_code(value);
-        if (!d || !d.y || !d.m || !d.d) return '';
-        return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
-      } catch {
-        return '';
-      }
-    }
-    const s = String(value || '').trim();
-    if (!s) return '';
-    const m = s.match(/(\d{4})[-/](\d{2})[-/](\d{2})/);
-    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-    const fr = s.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-    if (fr) return `${fr[3]}-${fr[2]}-${fr[1]}`;
-    return '';
-  };
-
-  const getNextMonthYyyyMm = (d) => {
-    const dt = d instanceof Date ? d : new Date();
-    const year = dt.getFullYear();
-    const month = dt.getMonth();
-    const next = new Date(year, month + 1, 1);
-    return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
-  };
-
-  const basePlanSplitCell = (value) => {
-    const s = String(value ?? '').trim();
-    if (!s) return [];
-    const parts = s
-      .split(/\s*(?:\r?\n|\+|;|,|\/|\\|\||\bet\b|&|\s-\s)\s*/i)
-      .map((p) => String(p || '').trim())
-      .filter(Boolean);
-    if (parts.length <= 1) return [s];
-    return parts;
-  };
-
-  const isBzvPoolZone = (zoneOrRegion) => {
-    const z = String(zoneOrRegion || '').toLowerCase();
-    return z.includes('bzv') || z.includes('pool');
-  };
-
-  const handleImportBasePlanExcel = (e) => {
-    const file = e?.target?.files?.[0];
-    if (!file) return;
     const reader = new FileReader();
+    setPmBusy(true);
+    setPmError('');
+    setPmNotice('');
+    setPmGlobalCompare(null);
+
     reader.onload = async (event) => {
       try {
-        setBasePlanBusy(true);
-        setBasePlanProgress(10);
-        setBasePlanErrors([]);
-
         const data = new Uint8Array(event.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const jsonData = XLSX.utils.sheet_to_json(sheet);
-        setBasePlanProgress(35);
 
-        const rows = [];
-        const errors = [];
         const arr = Array.isArray(jsonData) ? jsonData : [];
-
-        const importPairGroupStats = {
-          headerUsed: '',
-          nonEmptyCount: 0,
-          possibleHeaders: [],
-          hasAnyPairGroupHeader: false
-        };
-
-        try {
-          const firstRow = arr?.[0];
-          if (firstRow && typeof firstRow === 'object') {
-            const keys = Object.keys(firstRow);
-            importPairGroupStats.possibleHeaders = keys.filter((k) => {
-              const nk = pmNormKey(k).replace(/\s+/g, '');
-              return nk.includes('pair') || nk.includes('grp') || nk.includes('binome') || nk.includes('groupe');
-            });
-            importPairGroupStats.hasAnyPairGroupHeader = keys.some((k) => {
-              const nk = pmNormKey(k).replace(/\s+/g, '');
-              return nk.includes('pairgroup') || nk.includes('pairgrp') || nk.includes('pairgr') || nk.includes('binome') || nk.includes('paire');
-            });
-          }
-        } catch {
-          // ignore
+        const firstRow = arr[0];
+        if (!firstRow || typeof firstRow !== 'object') {
+          throw new Error('Fichier vide ou colonnes introuvables.');
         }
 
+        const requiredHeaders = [
+          'Site',
+          'Site Name',
+          'Region',
+          'Short description',
+          'Number',
+          'Assigned to',
+          'Scheduled WO Date',
+          'Date of closing',
+          'State'
+        ];
+        const headerSet = new Set(Object.keys(firstRow).map((k) => pmNormKey(k)));
+        const missingHeaders = requiredHeaders.filter((h) => !headerSet.has(pmNormKey(h)));
+        if (missingHeaders.length > 0) {
+          throw new Error(`Colonnes manquantes: ${missingHeaders.join(', ')}`);
+        }
+
+        const rows = [];
         for (let idx = 0; idx < arr.length; idx += 1) {
           const row = arr[idx];
-          const rawSiteCode = String(pmGet(row, 'Site (id)', 'Site', 'Site id', 'Site Code') || '').trim();
-          const rawSiteName = String(pmGet(row, 'Site Name', 'Site name', 'Name Site') || '').trim();
+          const siteCode = String(pmGet(row, 'Site', 'Site (id)', 'Site id', 'Site Code') || '').trim();
+          const siteName = String(pmGet(row, 'Site Name', 'Site name', 'Name Site') || '').trim();
           const region = String(pmGet(row, 'Region', 'REGION', 'Région') || '').trim();
-          const zone = String(pmGet(row, 'Zone', 'ZONE') || '').trim();
           const shortDescription = String(pmGet(row, 'Short description', 'Short Description') || '').trim();
           const number = String(pmGet(row, 'Number') || '').trim();
           const assignedTo = String(pmGet(row, 'Assigned to', 'Assigned To') || '').trim();
-          const dateOfClosing = basePlanNormalizeYmd(pmGet(row, 'Date of closing', 'Date of Closing', 'Closing date', 'Date closing'));
+          const scheduledWoDate = pmNormalizeDate(pmGet(row, 'Scheduled WO Date', 'Scheduled Wo Date', 'Scheduled date', 'Scheduled Date'));
+          const dateOfClosing = pmNormalizeDate(pmGet(row, 'Date of closing', 'Date of Closing', 'Closing date', 'Date closing'));
           const state = String(pmGet(row, 'State') || '').trim();
 
-          let pairGroupRaw = String(pmGet(row, 'PairGroup', 'Pair Group', 'Pair group') || '').trim();
-          if (!pairGroupRaw) {
-            try {
-              const keys = Object.keys(row || {});
-              for (const k of keys) {
-                const nk = pmNormKey(k).replace(/\s+/g, '');
-                const looksLikePairGroup =
-                  nk.includes('pairgroup') ||
-                  nk.includes('pairgrp') ||
-                  nk.includes('pairgr') ||
-                  (nk.includes('pair') && (nk.includes('group') || nk.includes('grp'))) ||
-                  nk.includes('binome') ||
-                  nk.includes('paire') ||
-                  nk.includes('groupe');
-                if (!looksLikePairGroup) continue;
-                const v = row?.[k];
-                if (v != null && String(v).trim() !== '') {
-                  pairGroupRaw = String(v).trim();
-                  if (!importPairGroupStats.headerUsed) importPairGroupStats.headerUsed = String(k);
-                  break;
-                }
-              }
-            } catch {
-              // ignore
-            }
-          }
+          if (!siteCode && !siteName) continue;
+          if (!scheduledWoDate) continue;
 
-          if (pairGroupRaw) importPairGroupStats.nonEmptyCount += 1;
-
-          const scheduledWoDate = basePlanNormalizeYmd(
-            pmGet(row, 'Scheduled WO Date', 'Scheduled Wo Date', 'Scheduled date', 'Scheduled Date')
-          );
-          const maintenanceType = String(pmGet(row, 'Maintenance Type') || '').trim() || pmInferType(row);
-
-          const epv1 = basePlanNormalizeYmd(pmGet(row, 'EPV1', 'EPV 1', 'Date EPV 1', 'Date EPV1'));
-          const epv2 = basePlanNormalizeYmd(pmGet(row, 'EPV2', 'EPV 2', 'Date EPV 2', 'Date EPV2'));
-          const epv3 = basePlanNormalizeYmd(pmGet(row, 'EPV3', 'EPV 3', 'Date EPV 3', 'Date EPV3'));
-
-          if (!rawSiteCode && !rawSiteName) continue;
-
-          const codes = basePlanSplitCell(rawSiteCode);
-          const names = basePlanSplitCell(rawSiteName);
-          const n = Math.max(codes.length, names.length, 1);
-          if (n > 2) errors.push(`Ligne ${idx + 2}: plus de 2 sites détectés dans la cellule.`);
-
-          const autoPairGroup = n >= 2 && !pairGroupRaw ? `AUTO-${String(assignedTo || 'NA').replace(/\s+/g, '-')}-${idx + 1}` : '';
-
-          for (let i = 0; i < Math.min(n, 2); i += 1) {
-            const siteCode = String(codes[i] || codes[0] || '').trim();
-            const siteName = String(names[i] || names[0] || '').trim();
-            if (!siteCode && !siteName) continue;
-            rows.push({
-              importOrder: idx * 10 + i,
-              siteCode,
-              siteName,
-              region,
-              zone: zone || region,
-              shortDescription,
-              number,
-              assignedTo,
-              pairGroup: pairGroupRaw || autoPairGroup,
-              scheduledWoDate,
-              dateOfClosing,
-              state,
-              maintenanceType,
-              epv1,
-              epv2,
-              epv3
-            });
-          }
+          rows.push({
+            siteCode,
+            siteName,
+            region,
+            shortDescription,
+            number,
+            assignedTo,
+            scheduledWoDate,
+            dateOfClosing,
+            state
+          });
         }
 
-        if (importPairGroupStats.nonEmptyCount === 0 && importPairGroupStats.possibleHeaders.length > 0) {
-          errors.push(
-            `⚠️ PairGroup: 0 valeur détectée dans ce fichier. Colonnes proches détectées: ${importPairGroupStats.possibleHeaders
-              .slice(0, 8)
-              .join(', ')}${importPairGroupStats.possibleHeaders.length > 8 ? '…' : ''}.`
-          );
+        if (rows.length === 0) {
+          throw new Error('Aucune ligne valide trouvée (colonnes obligatoires manquantes).');
         }
 
-        if (!importPairGroupStats.hasAnyPairGroupHeader) {
-          errors.push(
-            `⚠️ PairGroup: colonne absente dans ce fichier (sur la première ligne). Si tu veux imposer les vraies paires géographiques, ajoute une colonne "PairGroup" (ou "Binôme"/"Paire") avec la même valeur sur 2 lignes.`
-          );
-        }
+        const planRes = await apiFetchJson('/api/pm/global-plans', {
+          method: 'POST',
+          body: JSON.stringify({ month: pmMonth })
+        });
+        const planId = String(planRes?.plan?.id || '').trim();
+        if (!planId) throw new Error('Plan global non créé.');
 
-        // Cas Excel courant: PairGroup saisi sur une seule ligne (cellules fusionnées / non répétées).
-        // On propage au voisin direct si ce PairGroup n'apparaît qu'une seule fois.
-        const normTech2 = (s) => String(s || '').trim().replace(/\s+/g, ' ');
-        const byTech2 = new Map();
-        for (const r of rows) {
-          const tech = normTech2(r?.assignedTo) || 'Non assigné';
-          if (!byTech2.has(tech)) byTech2.set(tech, []);
-          byTech2.get(tech).push(r);
-        }
-        for (const techRows of byTech2.values()) {
-          techRows.sort((a, b) => Number(a?.importOrder ?? 0) - Number(b?.importOrder ?? 0));
+        await apiFetchJson(`/api/pm/global-plans/${planId}/items`, {
+          method: 'POST',
+          body: JSON.stringify({ items: rows })
+        });
 
-          const normName = (s) =>
-            String(s || '')
-              .replace(/[\u200B-\u200D\uFEFF]/g, '')
-              .replace(/\u00A0/g, ' ')
+        setPmNotice(`✅ Planning PM global importé (${rows.length} lignes).`);
+
+        if (Array.isArray(pmItems) && pmItems.length > 0) {
+          const normSiteName = (v) =>
+            String(v || '')
               .normalize('NFD')
               .replace(/[\u0300-\u036f]/g, '')
-              .toLowerCase()
-              .replace(/[“”«»"'’`]/g, ' ')
-              .replace(/[\u2010\u2011\u2012\u2013\u2014\u2212\-]/g, ' ')
-              .replace(/[\\/|_]/g, ' ')
-              .replace(/[^a-z0-9 ]+/g, ' ')
               .trim()
-              .replace(/\s+/g, ' ');
-
-          const rawCounts = new Map();
-          for (const r of techRows) {
-            const g = String(r?.pairGroup || '').trim();
-            if (!g) continue;
-            rawCounts.set(g, Number(rawCounts.get(g) || 0) + 1);
-          }
-
-          for (const r of techRows) {
-            const g = String(r?.pairGroup || '').trim();
-            if (!g) continue;
-            const n = Number(rawCounts.get(g) || 0);
-            if (n !== 1) continue;
-            const gNorm = normName(g);
-            const myNorm = normName(r?.siteName);
-            if (gNorm && myNorm && gNorm === myNorm) r.pairGroup = '';
-          }
-
-          const nameToRows = new Map();
-          for (const r of techRows) {
-            const nm = normName(r?.siteName);
-            if (!nm) continue;
-            if (!nameToRows.has(nm)) nameToRows.set(nm, []);
-            nameToRows.get(nm).push(r);
-          }
-
-          const counts = new Map();
-          for (const r of techRows) {
-            const g = String(r?.pairGroup || '').trim();
-            if (!g) continue;
-            counts.set(g, Number(counts.get(g) || 0) + 1);
-          }
-
-          let crossK = 1;
-          const usedCross = new Set();
-          const isExplicitGroup = (r) => {
-            const g = String(r?.pairGroup || '').trim();
-            if (!g) return false;
-            return Number(counts.get(g) || 0) >= 2;
-          };
-
-          const isAlreadyCrossPaired = (r) => {
-            const nm = normName(r?.siteName);
-            const key = `${Number(r?.importOrder ?? 0)}|${nm}`;
-            return usedCross.has(key);
-          };
-
-          const applyCrossPair = (a, b) => {
-            const aName = normName(a?.siteName);
-            const bName = normName(b?.siteName);
-            if (!aName || !bName) return false;
-            const keyA = `${Number(a?.importOrder ?? 0)}|${aName}`;
-            const keyB = `${Number(b?.importOrder ?? 0)}|${bName}`;
-            if (usedCross.has(keyA) || usedCross.has(keyB)) return false;
-            const canonical = `XPAIR-${String(techRows?.[0]?.assignedTo || 'TECH').replace(/\s+/g, '-')}-${crossK}`;
-            crossK += 1;
-            a.pairGroup = canonical;
-            b.pairGroup = canonical;
-            usedCross.add(keyA);
-            usedCross.add(keyB);
-            counts.set(canonical, 2);
+              .toLowerCase();
+          const clientKeys = new Set();
+          pmItems.forEach((it) => {
+            const code = String(it?.siteCode || '').trim();
+            const name = normSiteName(it?.siteName || '');
+            if (code) clientKeys.add(`code:${code}`);
+            if (name) clientKeys.add(`name:${name}`);
+          });
+          const retired = rows.filter((g) => {
+            const code = String(g?.siteCode || '').trim();
+            const name = normSiteName(g?.siteName || '');
+            if (code && clientKeys.has(`code:${code}`)) return false;
+            if (name && clientKeys.has(`name:${name}`)) return false;
             return true;
-          };
-
-          // 1) Mutual reference: A.PairGroup == B.SiteName AND B.PairGroup == A.SiteName
-          for (const r of techRows) {
-            const gRaw = String(r?.pairGroup || '').trim();
-            if (!gRaw) continue;
-            if (isExplicitGroup(r)) continue;
-            if (isAlreadyCrossPaired(r)) continue;
-
-            const myName = normName(r?.siteName);
-            const targetName = normName(gRaw);
-            if (!myName || !targetName) continue;
-            if (myName === targetName) continue;
-
-            const candidates = nameToRows.get(targetName) || [];
-            const partner =
-              candidates.find((x) => x !== r && normName(x?.pairGroup) === myName && !isExplicitGroup(x) && !isAlreadyCrossPaired(x)) || null;
-            if (!partner) continue;
-            applyCrossPair(r, partner);
-          }
-
-          // 2) One-way reference: A.PairGroup == B.SiteName (B can be empty/self)
-          for (const r of techRows) {
-            const gRaw = String(r?.pairGroup || '').trim();
-            if (!gRaw) continue;
-            if (isExplicitGroup(r)) continue;
-            if (isAlreadyCrossPaired(r)) continue;
-
-            const myName = normName(r?.siteName);
-            const targetName = normName(gRaw);
-            if (!myName || !targetName) continue;
-            if (myName === targetName) continue;
-
-            const candidates = nameToRows.get(targetName) || [];
-            let partner = null;
-            for (const cand of candidates) {
-              if (cand === r) continue;
-              if (isExplicitGroup(cand)) continue;
-              if (isAlreadyCrossPaired(cand)) continue;
-              partner = cand;
-              break;
-            }
-            if (!partner) continue;
-
-            applyCrossPair(r, partner);
-          }
-
-          for (let i = 0; i + 1 < techRows.length; i += 1) {
-            const cur = techRows[i];
-            const next = techRows[i + 1];
-            const g = String(cur?.pairGroup || '').trim();
-            if (!g) continue;
-            if (String(next?.pairGroup || '').trim()) continue;
-            const n = Number(counts.get(g) || 0);
-            if (n !== 1) continue;
-
-            const looksLikeSiteName = !!(nameToRows.get(normName(g)) || []).length;
-            if (looksLikeSiteName) continue;
-
-            next.pairGroup = g;
-            counts.set(g, 2);
-          }
-
-          const counts2 = new Map();
-          for (const r of techRows) {
-            const g = String(r?.pairGroup || '').trim();
-            if (!g) continue;
-            counts2.set(g, Number(counts2.get(g) || 0) + 1);
-          }
-
-          for (const [g, n] of counts2.entries()) {
-            if (n !== 2) {
-              const gNorm = normName(g);
-              const targets = nameToRows.get(gNorm) || [];
-              const looksLikeSiteName = targets.length > 0;
-              const refs = techRows.filter((r) => normName(r?.pairGroup) === gNorm);
-              const refSite = String(refs?.[0]?.siteName || '').trim();
-              const techName = techRows?.[0]?.assignedTo || 'technicien';
-
-              const isSelfRef = refs.some((r) => {
-                const rn = normName(r?.siteName);
-                return rn && rn === gNorm;
-              });
-
-              if (looksLikeSiteName) {
-                if (isSelfRef && targets.length === refs.length) {
-                  errors.push(
-                    `⚠️ PairGroup '${g}' pour '${techName}': auto-référence détectée (PairGroup = Site Name), donc aucun binôme possible (trouvé ${n}). Mets le nom du site binôme dans PairGroup, ou mets une même valeur de groupe sur exactement 2 lignes.`
-                  );
-                } else if (targets.length > 1) {
-                  errors.push(
-                    `⚠️ PairGroup '${g}' pour '${techName}': binôme ambigu (plusieurs lignes ont Site Name='${g}', trouvé ${targets.length}). Renomme/qualifie ces sites ou utilise un PairGroup identique sur 2 lignes.`
-                  );
-                } else {
-                  const t = targets[0];
-                  const targetSite = String(t?.siteName || '').trim();
-                  const targetPg = String(t?.pairGroup || '').trim();
-                  const targetPgHint = targetPg ? ` (PairGroup cible='${targetPg}')` : '';
-                  const refHint = refSite ? ` Référence='${refSite}'.` : '';
-                  errors.push(
-                    `⚠️ PairGroup '${g}' pour '${techName}': binôme introuvable ou non apparié (trouvé ${n}). Cible trouvée: '${targetSite}'${targetPgHint}.${refHint} Vérifie que la cible est dans le même technicien et qu'elle n'est pas déjà appariée ailleurs.`
-                  );
-                }
-              } else {
-                errors.push(`⚠️ PairGroup '${g}' pour '${techName}' doit regrouper exactement 2 lignes (trouvé ${n}).`);
-              }
-            }
-          }
+          });
+          setPmGlobalCompare({
+            month: pmMonth,
+            globalCount: rows.length,
+            clientCount: pmItems.length,
+            retired
+          });
         }
-
-        // Si un technicien est en capacité 2 sites/jour et que PairGroup est vide,
-        // on applique la parité "à la STHIC" en groupant 2 lignes consécutives du même technicien.
-        // (on respecte l'ordre du fichier Excel)
-        const normTech = (s) => String(s || '').trim().replace(/\s+/g, ' ');
-        const techToRows = new Map();
-        for (const r of rows) {
-          const tech = normTech(r?.assignedTo) || 'Non assigné';
-          if (!techToRows.has(tech)) techToRows.set(tech, []);
-          techToRows.get(tech).push(r);
-        }
-        for (const [tech, techRows] of techToRows.entries()) {
-          const uniqueSites = new Set(techRows.map((r) => String(r?.siteCode || r?.siteName || '').trim()).filter(Boolean));
-          const capacityPerDay = uniqueSites.size > 20 ? 2 : 1;
-          if (capacityPerDay !== 2) continue;
-
-          const free = techRows.filter((r) => !String(r?.pairGroup || '').trim());
-          let k = 1;
-          for (let i = 0; i + 1 < free.length; i += 2) {
-            const g = `AUTO2-${String(tech).replace(/\s+/g, '-')}-${k}`;
-            free[i].pairGroup = g;
-            free[i + 1].pairGroup = g;
-            k += 1;
-          }
-        }
-
-        setBasePlanBaseRows(rows);
-        setBasePlanPreview([]);
-        setBasePlanTargetMonth(getNextMonthYyyyMm(currentMonth));
-        setBasePlanErrors(errors);
-        setBasePlanProgress(100);
-        alert(`✅ Base importée: ${rows.length} lignes.`);
       } catch (err) {
-        alert(err?.message || 'Erreur lors de la lecture du fichier.');
+        setPmError(err?.message || 'Erreur lors de l\'import du planning PM global.');
       } finally {
-        setTimeout(() => {
-          setBasePlanBusy(false);
-          setBasePlanProgress(0);
-        }, 200);
+        setPmBusy(false);
       }
     };
+
     reader.readAsArrayBuffer(file);
     e.target.value = '';
   };
@@ -1723,47 +1265,22 @@ const GeneratorMaintenanceApp = () => {
     if (!file) return;
 
     const ok = window.confirm(
-      `Confirmer l'import du retour client ?\n\nCe fichier va remplacer le planning du mois PM ${pmMonth} et permettra le suivi via NOC.\n\nFichier: ${file?.name || ''}`
+      `Confirmer l'import retour client ?\n\nLe système va comparer le planning de base pour ${pmMonth}.\nFichier: ${file?.name || ''}`
     );
     if (!ok) {
       e.target.value = '';
       return;
     }
 
-    const normalizeType = (t) => {
-      const s = String(t || '').trim().toLowerCase();
-      if (!s) return '';
-      if (s.includes('fullpm') || s.includes('pmwo')) return 'fullpmwo';
-      if (s.includes('dg')) return 'dg';
-      if (s.includes('air') || s.includes('conditioning') || s.includes('clim')) return 'air';
-      return s;
-    };
-
-    const normalizeYmd = (v) => String(v || '').slice(0, 10);
-
-    const normSiteName = (s) =>
-      String(s || '')
-        .replace(/[\u200B-\u200D\uFEFF]/g, '')
-        .replace(/\u00A0/g, ' ')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, ' ');
-
     const reader = new FileReader();
     setPmBusy(true);
     setPmError('');
     setPmNotice('');
-    setPmClientCompare(null);
-    setPmClientProgress(5);
+    setPmClientProgress(10);
     setPmClientStep('Lecture du fichier…');
 
     reader.onload = async (event) => {
       try {
-        setPmClientProgress(20);
-        setPmClientStep('Analyse Excel…');
-
         const data = new Uint8Array(event.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -1780,15 +1297,10 @@ const GeneratorMaintenanceApp = () => {
             .map((p) => String(p?.month || '').trim())
             .filter(Boolean)
             .join(', ');
-
           const canCreate = Boolean(isAdmin && /^\d{4}-\d{2}$/.test(String(pmMonth || '').trim()));
           if (canCreate) {
             const shouldCreate = window.confirm(
-              `Planning de base introuvable pour ${pmMonth}.
-
-Voulez-vous créer un planning de base (vide) pour ce mois ?
-
-Ensuite, vous devrez importer/sauvegarder le planning de base (items) avant de ré-importer le retour client.`
+              `Planning de base introuvable pour ${pmMonth}.\n\nVoulez-vous créer un planning de base (vide) pour ce mois ?\n\nEnsuite, importez le planning de base (items) puis relancez l'import retour client.`
             );
             if (shouldCreate) {
               await apiFetchJson('/api/pm/base-plans', { method: 'POST', body: JSON.stringify({ month: pmMonth }) });
@@ -1800,58 +1312,47 @@ Ensuite, vous devrez importer/sauvegarder le planning de base (items) avant de r
               return;
             }
           }
-
           throw new Error(
             `Planning de base introuvable pour ${pmMonth}.` +
               `${available ? `\n\nMois disponibles: ${available}` : ''}` +
               `\n\nAction requise: importer/sauvegarder le planning de base pour ${pmMonth} avant d'importer un retour client.`
           );
         }
+
         const itemsRes = await apiFetchJson(`/api/pm/base-plans/${String(basePlan.id)}/items`, { method: 'GET' });
         const baseItems = Array.isArray(itemsRes?.items) ? itemsRes.items : [];
-
         if (baseItems.length === 0) {
           throw new Error(
             `Planning de base vide pour ${pmMonth}.\n\nAction requise: importer/sauvegarder le planning de base (items) pour ${pmMonth} avant d'importer un retour client.`
           );
         }
 
-        const siteByIdSite = new Map(
-          (Array.isArray(sites) ? sites : [])
-            .filter(Boolean)
-            .map((s) => [String(s?.idSite || '').trim(), s])
-            .filter(([k]) => Boolean(k))
-        );
-        const siteByName = new Map(
-          (Array.isArray(sites) ? sites : [])
-            .filter(Boolean)
-            .map((s) => [normSiteName(s?.nameSite), s])
-            .filter(([k]) => Boolean(k))
-        );
-
-        const findSite = (siteCode, siteName) => {
-          const code = String(siteCode || '').trim();
-          if (code) {
-            const byCode = siteByIdSite.get(code);
-            if (byCode) return byCode;
-          }
-          const nm = normSiteName(siteName);
-          if (nm) {
-            const byName = siteByName.get(nm);
-            if (byName) return byName;
-          }
-          return null;
+        const normSiteName = (v) =>
+          String(v || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .trim()
+            .toLowerCase();
+        const normalizeType = (v) => String(v || '').trim().toLowerCase();
+        const normalizeYmd = (v) => {
+          const s = v ? String(v).slice(0, 10) : '';
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+          return s;
         };
 
-        setPmClientProgress(60);
-        setPmClientStep('Préparation comparaison…');
+        const siteIndex = new Map(
+          (Array.isArray(sites) ? sites : [])
+            .map(getUpdatedSite)
+            .filter(Boolean)
+            .map((s) => [String(s.idSite || '').trim(), s])
+            .filter(([k]) => k)
+        );
 
         const parseClientRows = () => {
           const out = [];
           const arr = Array.isArray(jsonData) ? jsonData : [];
           for (let idx = 0; idx < arr.length; idx += 1) {
             const row = arr[idx];
-
             const rawSiteCode = pmGet(row, 'Site (id)', 'Site', 'Site id', 'Site Code', 'Site (Id)');
             const rawSiteName = pmGet(row, 'Site Name', 'Site name', 'Name Site');
             const rawNumber = pmGet(row, 'Number', 'Ticket', 'Ticket Number');
@@ -1862,106 +1363,65 @@ Ensuite, vous devrez importer/sauvegarder le planning de base (items) avant de r
 
             const codes = basePlanSplitCell(rawSiteCode);
             const names = basePlanSplitCell(rawSiteName);
-            const nums = basePlanSplitCell(rawNumber);
-            const n = Math.max(codes.length, names.length, nums.length, 1);
+            const n = Math.max(codes.length, names.length, 1);
             for (let i = 0; i < Math.min(n, 2); i += 1) {
               const siteCode = String(codes[i] || codes[0] || '').trim();
               const siteName = String(names[i] || names[0] || '').trim();
-              const number = String(nums[i] || nums[0] || '').trim();
-              if (!siteCode && !siteName) continue;
               out.push({
-                number,
+                _row: idx + 2,
+                number: String(rawNumber || '').trim(),
                 siteCode,
                 siteName,
                 maintenanceType: String(rawType || '').trim(),
                 scheduledWoDate: rawDate,
                 shortDescription,
-                assignedTo,
-                _row: idx + 2
+                assignedTo
               });
             }
           }
-          return out;
+          return out.filter((r) => r.siteCode || r.siteName);
         };
 
         const clientRows = parseClientRows();
-
         const numberSeen = new Set();
-        for (const r of clientRows) {
-          const n = String(r?.number || '').trim();
-          if (!n) {
-            throw new Error(`Ticket manquant (Number) dans le fichier retour client (ligne Excel ${r?._row || '?'}).`);
+        for (const row of clientRows) {
+          if (!row.number) {
+            throw new Error('Le fichier retour client doit contenir la colonne Number (ticket) pour chaque ligne.');
           }
-          if (numberSeen.has(n)) {
-            throw new Error(
-              `Doublon de ticket (Number) dans le fichier retour client: '${n}'.\n\nChaque ligne (site) doit avoir un ticket unique, y compris en cas de paire.`
-            );
+          if (numberSeen.has(row.number)) {
+            throw new Error(`Numéro de ticket en doublon dans le fichier: '${row.number}'.`);
           }
-          numberSeen.add(n);
+          numberSeen.add(row.number);
         }
 
         const baseMap = new Map();
-        for (const it of baseItems) {
-          const siteCode = String(it?.siteCode || '').trim();
-          const date = normalizeYmd(it?.plannedDate);
-          const t = normalizeType(it?.recommendedMaintenanceType);
-          if (!siteCode || !date || !t) continue;
-          const key = `${siteCode}|${date}|${t}`;
-          baseMap.set(key, it);
-        }
+        baseItems.forEach((b) => {
+          const code = String(b?.siteCode || '').trim();
+          const date = normalizeYmd(b?.plannedDate);
+          const t = normalizeType(b?.recommendedMaintenanceType || b?.shortDescription || '');
+          if (!code || !date) return;
+          baseMap.set(`${code}|${date}|${t}`, b);
+        });
 
         const clientMap = new Map();
-        for (const it of clientRows) {
-          const siteCode = String(it?.siteCode || '').trim();
-          const date = normalizeYmd(it?.scheduledWoDate);
-          const t = normalizeType(it?.maintenanceType);
-          if (!siteCode || !date || !t) continue;
-          const key = `${siteCode}|${date}|${t}`;
-          clientMap.set(key, it);
-        }
+        clientRows.forEach((r) => {
+          const code = String(r?.siteCode || '').trim();
+          const date = normalizeYmd(r?.scheduledWoDate);
+          const t = normalizeType(r?.maintenanceType || r?.shortDescription || '');
+          if (!code || !date) return;
+          clientMap.set(`${code}|${date}|${t}`, r);
+        });
 
         const retained = [];
         const removed = [];
         const added = [];
-
-        for (const [key, b] of baseMap.entries()) {
-          const c = clientMap.get(key);
-          if (c) {
-            retained.push({
-              siteCode: b.siteCode,
-              siteName: b.siteName,
-              plannedDate: normalizeYmd(b.plannedDate),
-              maintenanceType: b.recommendedMaintenanceType,
-              assignedTo: b.assignedTo,
-              number: c.number || ''
-            });
-          } else {
-            removed.push({
-              siteCode: b.siteCode,
-              siteName: b.siteName,
-              plannedDate: normalizeYmd(b.plannedDate),
-              maintenanceType: b.recommendedMaintenanceType,
-              assignedTo: b.assignedTo
-            });
-          }
-        }
-
-        for (const [key, c] of clientMap.entries()) {
-          if (baseMap.has(key)) continue;
-          const s = findSite(c.siteCode, c.siteName);
-          added.push({
-            siteCode: c.siteCode,
-            siteName: String(c.siteName || s?.nameSite || '').trim(),
-            plannedDate: normalizeYmd(c.scheduledWoDate),
-            maintenanceType: c.maintenanceType,
-            assignedTo: String(c.assignedTo || s?.technician || '').trim(),
-            number: c.number || ''
-          });
-        }
-
-        retained.sort((a, b) => String(a.plannedDate).localeCompare(String(b.plannedDate)) || String(a.siteCode).localeCompare(String(b.siteCode)));
-        removed.sort((a, b) => String(a.plannedDate).localeCompare(String(b.plannedDate)) || String(a.siteCode).localeCompare(String(b.siteCode)));
-        added.sort((a, b) => String(a.plannedDate).localeCompare(String(b.plannedDate)) || String(a.siteCode).localeCompare(String(b.siteCode)));
+        baseMap.forEach((b, key) => {
+          if (clientMap.has(key)) retained.push(b);
+          else removed.push(b);
+        });
+        clientMap.forEach((c, key) => {
+          if (!baseMap.has(key)) added.push(c);
+        });
 
         setPmClientCompare({
           month: pmMonth,
@@ -1973,9 +1433,6 @@ Ensuite, vous devrez importer/sauvegarder le planning de base (items) avant de r
           added
         });
 
-        setPmClientProgress(75);
-        setPmClientStep('Construction planning mensuel…');
-
         const items = [];
         for (const r of clientRows) {
           const number = String(r?.number || '').trim();
@@ -1985,10 +1442,14 @@ Ensuite, vous devrez importer/sauvegarder le planning de base (items) avant de r
           if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
             throw new Error(`Date invalide dans le fichier retour client (ligne Excel ${r?._row || '?'}): '${String(r?.scheduledWoDate || '')}'.`);
           }
-          const t = normalizeType(r?.maintenanceType);
+          const t = normalizeType(r?.maintenanceType || r?.shortDescription || '');
           const key = `${siteCode}|${date}|${t}`;
           const b = baseMap.get(key) || null;
-          const s = b ? null : findSite(siteCode, r?.siteName);
+          const s = b
+            ? null
+            : siteIndex.get(siteCode) ||
+              siteIndex.get(String(r?.siteCode || '').trim()) ||
+              null;
           items.push({
             number,
             siteCode: siteCode || String(b?.siteCode || s?.idSite || '').trim(),
@@ -2034,6 +1495,40 @@ Ensuite, vous devrez importer/sauvegarder le planning de base (items) avant de r
         setPmNotice(
           `✅ Retour client importé. Planning mensuel mis à jour (${items.length} tickets). Retenus: ${retained.length} • Retirés: ${removed.length} • Ajouts: ${added.length}`
         );
+
+        try {
+          const globalPlans = await apiFetchJson('/api/pm/global-plans', { method: 'GET' });
+          const gp = (Array.isArray(globalPlans?.plans) ? globalPlans.plans : [])
+            .find((p) => String(p?.month || '').trim() === String(pmMonth || '').trim());
+          if (gp?.id) {
+            const globalItemsRes = await apiFetchJson(`/api/pm/global-plans/${String(gp.id)}/items`, { method: 'GET' });
+            const globalItems = Array.isArray(globalItemsRes?.items) ? globalItemsRes.items : [];
+            const clientKeys = new Set();
+            clientRows.forEach((r) => {
+              const code = String(r?.siteCode || '').trim();
+              const name = normSiteName(r?.siteName || '');
+              if (code) clientKeys.add(`code:${code}`);
+              if (name) clientKeys.add(`name:${name}`);
+            });
+            const retired = globalItems.filter((g) => {
+              const code = String(g?.siteCode || '').trim();
+              const name = normSiteName(g?.siteName || '');
+              if (code && clientKeys.has(`code:${code}`)) return false;
+              if (name && clientKeys.has(`name:${name}`)) return false;
+              return true;
+            });
+            setPmGlobalCompare({
+              month: pmMonth,
+              globalCount: globalItems.length,
+              clientCount: clientRows.length,
+              retired
+            });
+          } else {
+            setPmGlobalCompare(null);
+          }
+        } catch {
+          setPmGlobalCompare(null);
+        }
       } catch (err) {
         setPmClientProgress(0);
         setPmClientStep('');
@@ -4979,12 +4474,14 @@ Ensuite, vous devrez importer/sauvegarder le planning de base (items) avant de r
           pmResetBusy={pmResetBusy}
           handlePmReset={handlePmReset}
           handlePmNocImport={handlePmNocImport}
+          handlePmGlobalImport={handlePmGlobalImport}
           handlePmClientImport={handlePmClientImport}
           pmError={pmError}
           pmNotice={pmNotice}
           pmClientProgress={pmClientProgress}
           pmClientStep={pmClientStep}
           pmClientCompare={pmClientCompare}
+          pmGlobalCompare={pmGlobalCompare}
           pmItems={pmItems}
           pmImports={pmImports}
           pmSearch={pmSearch}
