@@ -1010,6 +1010,99 @@ const GeneratorMaintenanceApp = () => {
     return Array.isArray(data?.months) ? data.months : [];
   };
 
+  const loadPmItems = async (monthId) => {
+    if (!monthId) {
+      setPmItems([]);
+      return [];
+    }
+    const data = await apiFetchJson(`/api/pm/months/${String(monthId)}/items`, { method: 'GET' });
+    const items = Array.isArray(data?.items) ? data.items : [];
+    setPmItems(items);
+    return items;
+  };
+
+  const loadPmImports = async (monthId) => {
+    if (!monthId) {
+      setPmImports([]);
+      return [];
+    }
+    const data = await apiFetchJson(`/api/pm/months/${String(monthId)}/imports`, { method: 'GET' });
+    const imports = Array.isArray(data?.imports) ? data.imports : [];
+    setPmImports(imports);
+    return imports;
+  };
+
+  const loadPmDashboard = async (monthId) => {
+    if (!monthId) {
+      setPmDashboard(null);
+      return null;
+    }
+    const data = await apiFetchJson(`/api/pm/months/${String(monthId)}/dashboard`, { method: 'GET' });
+    setPmDashboard(data || null);
+    return data || null;
+  };
+
+  const ensurePmMonth = async (month) => {
+    const yyyymm = String(month || '').trim();
+    if (!/^\d{4}-\d{2}$/.test(yyyymm)) {
+      throw new Error('Mois PM invalide (YYYY-MM).');
+    }
+
+    const months = Array.isArray(pmMonths) && pmMonths.length > 0 ? pmMonths : await loadPmMonths();
+    const existing = months.find((m) => String(m?.month || '').trim() === yyyymm);
+    if (existing?.id) return String(existing.id);
+
+    if (!isAdmin) {
+      throw new Error(`Planning PM introuvable pour ${yyyymm}.`);
+    }
+
+    const created = await apiFetchJson('/api/pm/months', {
+      method: 'POST',
+      body: JSON.stringify({ month: yyyymm })
+    });
+    const createdId = String(created?.month?.id || '').trim();
+    if (!createdId) throw new Error('Mois PM introuvable.');
+    await loadPmMonths();
+    return createdId;
+  };
+
+  const refreshPmAll = async (month = pmMonth) => {
+    try {
+      setPmBusy(true);
+      setPmError('');
+      setPmNotice('');
+
+      const yyyymm = String(month || '').trim();
+      if (!/^\d{4}-\d{2}$/.test(yyyymm)) {
+        setPmMonthId('');
+        setPmItems([]);
+        setPmImports([]);
+        setPmDashboard(null);
+        return;
+      }
+
+      const months = await loadPmMonths();
+      const existing = (Array.isArray(months) ? months : []).find((m) => String(m?.month || '').trim() === yyyymm);
+      if (!existing?.id) {
+        setPmMonthId('');
+        setPmItems([]);
+        setPmImports([]);
+        setPmDashboard(null);
+        return;
+      }
+
+      const monthId = String(existing.id);
+      setPmMonthId(monthId);
+      await loadPmItems(monthId);
+      await loadPmImports(monthId);
+      await loadPmDashboard(monthId);
+    } catch (e) {
+      setPmError(e?.message || 'Erreur lors du rafraîchissement PM.');
+    } finally {
+      setPmBusy(false);
+    }
+  };
+
   const handleImportBasePlanExcel = (e) => {
     if (!isAdmin) return;
     const file = e?.target?.files?.[0];
