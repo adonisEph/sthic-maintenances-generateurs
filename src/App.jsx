@@ -1445,6 +1445,67 @@ const GeneratorMaintenanceApp = () => {
     );
   };
 
+  const handlePmOpenReprog = (item) => {
+    if (!item) return;
+    setPmReprogItem(item);
+    setPmReprogOpen(true);
+    setPmReprogForm({
+      date: item?.reprogrammationDate ? String(item.reprogrammationDate).slice(0, 10) : '',
+      status: item?.reprogrammationStatus || '',
+      reason: item?.reprogrammationReason || ''
+    });
+    setPmReprogError('');
+  };
+
+  const handlePmSaveReprog = async () => {
+    if (!isAdmin) {
+      setPmReprogError('Accès interdit.');
+      return;
+    }
+    if (!pmMonthId) {
+      setPmReprogError('Veuillez sélectionner un mois PM.');
+      return;
+    }
+    if (!pmReprogItem?.id) {
+      setPmReprogError('Ticket introuvable.');
+      return;
+    }
+
+    setPmReprogSaving(true);
+    setPmReprogError('');
+    setPmNotice('');
+    try {
+      const payload = {
+        id: pmReprogItem.id,
+        reprogrammationDate: pmReprogForm?.date || null,
+        reprogrammationStatus: pmReprogForm?.status || null,
+        reprogrammationReason: pmReprogForm?.reason || null
+      };
+      const res = await apiFetchJson(`/api/pm/months/${pmMonthId}/items`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload)
+      });
+
+      const updatedItem = res?.item || null;
+      if (updatedItem) {
+        setPmItems((prev) =>
+          (Array.isArray(prev) ? prev : []).map((it) => (String(it?.id) === String(updatedItem.id) ? updatedItem : it))
+        );
+      }
+
+      await loadPmDashboard(pmMonthId);
+
+      setPmReprogOpen(false);
+      setPmReprogItem(null);
+      setPmReprogForm({ date: '', status: '', reason: '' });
+      setPmNotice('✅ Reprogrammation enregistrée.');
+    } catch (e) {
+      setPmReprogError(e?.message || 'Erreur lors de la reprogrammation.');
+    } finally {
+      setPmReprogSaving(false);
+    }
+  };
+
   const generateBasePlanPreview = async () => {
     if (!isAdmin) return;
     const month = getNextMonthYyyyMm(currentMonth);
