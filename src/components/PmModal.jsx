@@ -72,10 +72,6 @@ const PmModal = (props) => {
     handlePmOpenReprog,
     handlePmSaveReprog,
     formatDate,
-    handlePmGlobalImport,
-    pmGlobalProgress,
-    pmGlobalStep,
-pmGlobalCompare,
   } = props;
 
   const [pmRetiredSitesOpen, setPmRetiredSitesOpen] = React.useState(false);

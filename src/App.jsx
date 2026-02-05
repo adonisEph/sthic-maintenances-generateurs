@@ -155,7 +155,7 @@ const GeneratorMaintenanceApp = () => {
   const [pmClientCompare, setPmClientCompare] = useState(null);
   const [pmGlobalProgress, setPmGlobalProgress] = useState(0);
   const [pmGlobalStep, setPmGlobalStep] = useState('');
-const [pmGlobalCompare, setPmGlobalCompare] = useState(null);
+  const [pmGlobalCompare, setPmGlobalCompare] = useState(null);
   const [pmResetBusy, setPmResetBusy] = useState(false);
   const [pmFilterState, setPmFilterState] = useState('all');
   const [pmFilterType, setPmFilterType] = useState('all');
@@ -5234,11 +5234,15 @@ Ensuite, vous devrez importer/sauvegarder le planning de base (items) avant de r
           handlePmReset={handlePmReset}
           handlePmNocImport={handlePmNocImport}
           handlePmClientImport={handlePmClientImport}
+          handlePmGlobalImport={handlePmGlobalImport}
           pmError={pmError}
           pmNotice={pmNotice}
           pmClientProgress={pmClientProgress}
           pmClientStep={pmClientStep}
           pmClientCompare={pmClientCompare}
+          pmGlobalProgress={pmGlobalProgress}
+          pmGlobalStep={pmGlobalStep}
+          pmGlobalCompare={pmGlobalCompare}
           pmItems={pmItems}
           pmImports={pmImports}
           pmSearch={pmSearch}
