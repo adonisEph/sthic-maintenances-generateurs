@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calendar, X, Users, MapPin, Clock, AlertCircle, Download, Sparkles, Activity, Upload } from 'lucide-react';
+import { Calendar, X, Users, MapPin, Clock, AlertCircle, Download, Sparkles, Activity, Trash2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { calculateEPVDates, calculateEstimatedNH } from '../utils/calculations';
 
@@ -7,6 +7,7 @@ const CalendarModal = (props) => {
   const {
     showCalendar,
     appVersion,
+    authUser,
     isTechnician,
     setShowCalendar,
     currentMonth,
@@ -47,8 +48,110 @@ const CalendarModal = (props) => {
   const [showPlanning, setShowPlanning] = useState(false);
   const [planningStats, setPlanningStats] = useState(null);
 
-  const [globalPlanningImportBusy, setGlobalPlanningImportBusy] = useState(false);
-  const [globalPlanningImportError, setGlobalPlanningImportError] = useState('');
+  const authZone = String(authUser?.zone || authUser?.region || '');
+  const isSuperAdmin = authUser?.role === 'admin' && authZone === 'BZV/POOL';
+  const defaultZone = authZone || 'BZV/POOL';
+  const [purgeBasePlans, setPurgeBasePlans] = useState(true);
+  const [purgeIntelligent, setPurgeIntelligent] = useState(true);
+  const [purgeZones, setPurgeZones] = useState([defaultZone]);
+  const [purgeBusy, setPurgeBusy] = useState(false);
+  const [purgeError, setPurgeError] = useState('');
+  const [purgePreview, setPurgePreview] = useState(null);
+
+  const allZones = ['BZV/POOL', 'PNR/KOUILOU', 'UPCN'];
+  const effectivePurgeZones = (() => {
+    if (!isSuperAdmin) return [defaultZone];
+    const z = (Array.isArray(purgeZones) ? purgeZones : []).map((v) => String(v || '').trim()).filter(Boolean);
+    return z.length > 0 ? Array.from(new Set(z)) : [defaultZone];
+  })();
+
+  const togglePurgeZone = (zone) => {
+    const z = String(zone || '').trim();
+    if (!z) return;
+    setPurgeZones((prev) => {
+      const arr = Array.isArray(prev) ? prev.slice() : [];
+      const has = arr.includes(z);
+      if (has) return arr.filter((it) => it !== z);
+      arr.push(z);
+      return arr;
+    });
+  };
+
+  const handlePurgePreview = async () => {
+    setPurgeBusy(true);
+    setPurgeError('');
+    setPurgePreview(null);
+    try {
+      const res = await fetch('/api/admin/purge-plans', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dryRun: true,
+          purgeBasePlans,
+          purgeIntelligent,
+          zones: effectivePurgeZones
+        })
+      });
+      const txt = await res.text().catch(() => '');
+      const data = (() => {
+        try {
+          return txt ? JSON.parse(txt) : {};
+        } catch {
+          return {};
+        }
+      })();
+      if (!res.ok) throw new Error(String(data?.error || txt || 'Erreur serveur.'));
+      setPurgePreview(data?.preview || null);
+    } catch (e) {
+      setPurgeError(e?.message || 'Erreur lors du nettoyage.');
+    } finally {
+      setPurgeBusy(false);
+    }
+  };
+
+  const handlePurgeExecute = async () => {
+    if (!purgeBasePlans && !purgeIntelligent) {
+      setPurgeError('Sélectionne au moins une option (Base STHIC / Intelligent).');
+      return;
+    }
+    const scopeLabel = effectivePurgeZones.join(', ');
+    const ok = window.confirm(
+      `Confirmer le nettoyage ?\n\nZones: ${scopeLabel}\n\nBase STHIC: ${purgeBasePlans ? 'Oui' : 'Non'}\nIntelligent: ${purgeIntelligent ? 'Oui' : 'Non'}`
+    );
+    if (!ok) return;
+
+    setPurgeBusy(true);
+    setPurgeError('');
+    try {
+      const res = await fetch('/api/admin/purge-plans', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dryRun: false,
+          purgeBasePlans,
+          purgeIntelligent,
+          zones: effectivePurgeZones
+        })
+      });
+      const txt = await res.text().catch(() => '');
+      const data = (() => {
+        try {
+          return txt ? JSON.parse(txt) : {};
+        } catch {
+          return {};
+        }
+      })();
+      if (!res.ok) throw new Error(String(data?.error || txt || 'Erreur serveur.'));
+      setPurgePreview(null);
+      alert('✅ Nettoyage terminé.');
+    } catch (e) {
+      setPurgeError(e?.message || 'Erreur lors du nettoyage.');
+    } finally {
+      setPurgeBusy(false);
+    }
+  };
 
   // Utility functions for intelligent planning
   const ymdShiftForWorkdays = (ymd, opts) => {
@@ -146,10 +249,12 @@ const CalendarModal = (props) => {
     if (!isHoliday) return '';
 
     const nextDay = ymdAddDaysUtc(v, 1);
+    const next2Day = ymdAddDaysUtc(v, 2);
     const nextDow = new Date(`${nextDay}T00:00:00Z`).getUTCDay();
-    const weekendNext = nextDow === 0 || nextDow === 6;
+    const next2Dow = new Date(`${next2Day}T00:00:00Z`).getUTCDay();
+    const weekendSoon = nextDow === 0 || nextDow === 6 || next2Dow === 0 || next2Dow === 6;
 
-    if (weekendNext) {
+    if (weekendSoon) {
       const prev = findPrevWorkday(v);
       return prev && prev !== v ? prev : '';
     }
@@ -161,118 +266,6 @@ const CalendarModal = (props) => {
     }
     const next = findNextWorkday(v);
     return next && next !== v ? next : '';
-  };
-
-  const handleImportGlobalPlanningAllZones = async (event) => {
-    const file = event?.target?.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-
-    setGlobalPlanningImportBusy(true);
-    setGlobalPlanningImportError('');
-
-    try {
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: 'array', cellDates: true });
-      const first = wb.SheetNames?.[0];
-      if (!first) throw new Error('Fichier Excel vide.');
-      const ws = wb.Sheets[first];
-      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
-
-      const toYmd = (v) => {
-        if (!v) return '';
-        if (v instanceof Date && !Number.isNaN(v.getTime())) return new Date(v.getTime()).toISOString().slice(0, 10);
-        const s = String(v).trim();
-        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-        const d = new Date(s);
-        if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
-        return '';
-      };
-
-      const items = (Array.isArray(rows) ? rows : [])
-        .map((r) => {
-          const siteCode = String(r?.Site ?? r?.siteCode ?? r?.['site code'] ?? '').trim();
-          const siteName = String(r?.['Site Name'] ?? r?.Nom ?? r?.siteName ?? '').trim();
-          const region = String(r?.Region ?? r?.Région ?? r?.region ?? '').trim();
-          const zone = String(r?.Zone ?? r?.zone ?? '').trim();
-          const assignedTo = String(r?.['Assigned to'] ?? r?.Technicien ?? r?.assignedTo ?? '').trim();
-          const plannedDate = toYmd(r?.['Scheduled WO Date'] ?? r?.plannedDate ?? r?.Date ?? r?.date);
-          const pairGroup = String(r?.Pair ?? r?.Paire ?? r?.pairGroup ?? '').trim();
-          const recommendedMaintenanceType = String(r?.EPV ?? r?.Type ?? r?.recommendedMaintenanceType ?? '').trim();
-          const epvSlot = String(r?.EPVSlot ?? r?.epvSlot ?? '').trim();
-          const shortDescription = String(r?.['Short description'] ?? r?.shortDescription ?? '').trim();
-
-          return {
-            siteId: null,
-            siteCode: siteCode || null,
-            siteName: siteName || null,
-            region: region || null,
-            zone: zone || null,
-            assignedTo: assignedTo || null,
-            pairGroup: pairGroup || null,
-            epvSlot: epvSlot || null,
-            shortDescription: shortDescription || null,
-            recommendedMaintenanceType: recommendedMaintenanceType || null,
-            plannedDate: plannedDate || null,
-            state: 'Planned'
-          };
-        })
-        .filter((it) => it.siteCode && it.plannedDate && /^\d{4}-\d{2}-\d{2}$/.test(it.plannedDate));
-
-      if (items.length === 0) {
-        throw new Error("Aucune ligne valide détectée. Vérifie les colonnes 'Site' et 'Scheduled WO Date'.");
-      }
-
-      const yyyyMmLocal = (d) => {
-        const dt = d instanceof Date ? d : new Date(d);
-        const yy = dt.getFullYear();
-        const mm = String(dt.getMonth() + 1).padStart(2, '0');
-        return `${yy}-${mm}`;
-      };
-
-      const target = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
-      const month = yyyyMmLocal(target);
-
-      const planRes = await fetch('/api/pm/base-plans', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ month })
-      });
-      const planText = await planRes.text().catch(() => '');
-      const planData = (() => {
-        try {
-          return planText ? JSON.parse(planText) : {};
-        } catch {
-          return {};
-        }
-      })();
-      if (!planRes.ok) throw new Error(String(planData?.error || planText || 'Erreur création plan.'));
-      const planId = String(planData?.plan?.id || '').trim();
-      if (!planId) throw new Error('Plan non créé.');
-
-      const itemsRes = await fetch(`/api/pm/base-plans/${planId}/items`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items })
-      });
-      const itemsText = await itemsRes.text().catch(() => '');
-      const itemsData = (() => {
-        try {
-          return itemsText ? JSON.parse(itemsText) : {};
-        } catch {
-          return {};
-        }
-      })();
-      if (!itemsRes.ok) throw new Error(String(itemsData?.error || itemsText || 'Erreur import.'));
-
-      alert(`✅ Planning global importé et sauvegardé (${itemsData?.inserted ?? items.length} lignes).`);
-    } catch (e) {
-      setGlobalPlanningImportError(String(e?.message || 'Erreur import planning global.'));
-    } finally {
-      setGlobalPlanningImportBusy(false);
-    }
   };
 
   const exportIntelligentPlanningExcel = () => {
@@ -294,23 +287,18 @@ const CalendarModal = (props) => {
     const safeBase = `planning_intelligent_${month}`.replace(/[\/:*?"<>|]+/g, '_');
 
     const rows = items.map((it) => ({
-      Number: '',
       Site: String(it?.siteCode || ''),
       'Site Name': String(it?.siteName || ''),
-      Region: String(it?.region || ''),
-      Zone: String(it?.zone || ''),
-      'Assigned to': String(it?.technician || ''),
-      'Scheduled WO Date': String(it?.plannedDate || '').slice(0, 10),
-      'Date of closing': '',
+      Region: String(it?.region || it?.zone || ''),
+      'Short description': String(it?.shortDescription || it?.maintenanceType || ''),
+      Number: String(it?.number || ''),
+      'Assigned to': String(it?.assignedTo || it?.technician || ''),
+      'Scheduled WO Date': String(it?.scheduledWoDate || it?.plannedDate || '').slice(0, 10),
+      'Date of closing': String(it?.dateOfClosing || ''),
       State: String(it?.state || 'Planned'),
-      Regime: String(it?.regime || ''),
-      EPV: String(it?.maintenanceType || ''),
-      'DG Service 2': String(it?.epvType) === 'EPV2' ? 'DG Service 2' : '',
-      EPV2: String(it?.epvType) === 'EPV2' ? String(it?.epv2Date || '') : '',
-      'DG Service 3': String(it?.epvType) === 'EPV3' ? 'DG Service 3' : '',
-      EPV3: String(it?.epvType) === 'EPV3' ? String(it?.epv3Date || '') : '',
-      Urgence: Number(it?.urgency || 0),
-      Pair: String(it?.pairSiteCode || '')
+      EPV2: String(it?.epv2 || it?.epv2Date || ''),
+      EPV3: String(it?.epv3 || it?.epv3Date || ''),
+      'Paire Site': String(it?.pairSiteCode || '')
     }));
 
     const wb = XLSX.utils.book_new();
@@ -372,46 +360,70 @@ const CalendarModal = (props) => {
     const nhEstimated = site?.nhEstimated != null ? Number(site.nhEstimated) : calculateEstimatedNH(nh2, dateA, regimeNumber);
     const epv = calculateEPVDates(regimeNumber, dateA, nh1, nhEstimated);
 
-    const candidates = [
-      { type: 'EPV1', date: String(epv?.epv1 || '').slice(0, 10) },
-      { type: 'EPV2', date: String(epv?.epv2 || '').slice(0, 10) },
-      { type: 'EPV3', date: String(epv?.epv3 || '').slice(0, 10) }
-    ].filter((c) => /^\d{4}-\d{2}-\d{2}$/.test(c.date));
+    const epv1Raw = String(epv?.epv1 || '').slice(0, 10);
+    const epv2Raw = String(epv?.epv2 || '').slice(0, 10);
+    const epv3Raw = String(epv?.epv3 || '').slice(0, 10);
 
-    const shifted = candidates
-      .map((c) => ({ ...c, date: ymdShiftForWorkdays(c.date) || c.date }))
-      .sort((a, b) => a.date.localeCompare(b.date));
+    const norm = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(String(d || '')) ? String(d).slice(0, 10) : '');
+    const epv1Shifted = (() => {
+      const d = norm(epv1Raw);
+      return d ? ymdShiftForWorkdays(d) || d : '';
+    })();
+    const epv2Shifted = (() => {
+      const d = norm(epv2Raw);
+      return d ? ymdShiftForWorkdays(d) || d : '';
+    })();
+    const epv3Shifted = (() => {
+      const d = norm(epv3Raw);
+      return d ? ymdShiftForWorkdays(d) || d : '';
+    })();
 
-    const inTarget = shifted.filter((c) => c.date.slice(0, 7) === targetMonthYyyyMm);
-    const chosen = (inTarget[0] || null);
-    const fallback = shifted[0] || null;
+    const inTargetEpv1 = epv1Shifted ? epv1Shifted.slice(0, 7) === targetMonthYyyyMm : false;
+    const inTargetEpv2 = epv2Shifted ? epv2Shifted.slice(0, 7) === targetMonthYyyyMm : false;
+    const inTargetEpv3 = epv3Shifted ? epv3Shifted.slice(0, 7) === targetMonthYyyyMm : false;
 
-    const selectedType = String(chosen?.type || fallback?.type || 'EPV1');
+    const slot1 = inTargetEpv1 ? 'EPV1' : inTargetEpv2 ? 'EPV2' : inTargetEpv3 ? 'EPV3' : 'EPV1';
+    const slot2 = slot1 === 'EPV1' ? 'EPV2' : slot1 === 'EPV2' ? 'EPV3' : '';
+    const slot3 = slot1 === 'EPV1' ? 'EPV3' : '';
 
-    const epv1Shifted = (shifted.find((c) => c.type === 'EPV1')?.date || '');
-    const epv2Shifted = (shifted.find((c) => c.type === 'EPV2')?.date || '');
-    const epv3Shifted = (shifted.find((c) => c.type === 'EPV3')?.date || '');
-    const hasEpv1InTargetMonth = epv1Shifted ? epv1Shifted.slice(0, 7) === targetMonthYyyyMm : false;
+    const dateForSlot = (slot) => {
+      if (slot === 'EPV1') return epv1Shifted;
+      if (slot === 'EPV2') return epv2Shifted;
+      if (slot === 'EPV3') return epv3Shifted;
+      return '';
+    };
+
+    const date1 = dateForSlot(slot1);
+    const date2 = dateForSlot(slot2);
+    const date3 = dateForSlot(slot3);
 
     const maintenanceType = (() => {
-      if (selectedType === 'EPV1') return 'PM+Vidange';
-      if (selectedType === 'EPV2') return 'DG Service 2';
-      if (selectedType === 'EPV3') return 'DG Service 3';
+      if (slot1 === 'EPV1') return 'PM+Vidange';
+      if (slot1 === 'EPV2') return 'DG Service 2';
+      if (slot1 === 'EPV3') return 'DG Service 3';
       return 'PM Simple';
     })();
 
+    const orderDate = date1 || epv1Shifted || epv2Shifted || epv3Shifted || '';
+    const hasEpvInTargetMonth = inTargetEpv1 || inTargetEpv2 || inTargetEpv3;
+
     return {
-      epv1: String(epv?.epv1 || '').slice(0, 10),
-      epv2: String(epv?.epv2 || '').slice(0, 10),
-      epv3: String(epv?.epv3 || '').slice(0, 10),
+      epv1: epv1Raw,
+      epv2: epv2Raw,
+      epv3: epv3Raw,
       epv1Shifted,
       epv2Shifted,
       epv3Shifted,
-      epvType: selectedType,
-      targetDate: chosen?.date || '',
-      orderDate: (chosen?.date || fallback?.date || ''),
-      hasEpvInTargetMonth: inTarget.length > 0,
-      hasEpv1InTargetMonth,
+      slot1,
+      slot2,
+      slot3,
+      date1,
+      date2,
+      date3,
+      targetDate: date1,
+      orderDate,
+      hasEpvInTargetMonth,
+      hasEpv1InTargetMonth: inTargetEpv1,
       maintenanceType
     };
   };
@@ -634,14 +646,14 @@ const CalendarModal = (props) => {
                 })();
 
                 const pairHasEpvInTargetMonth = Boolean(site?._hasEpvInTargetMonth || pairedSite?._hasEpvInTargetMonth);
-                const pairMinDate = (() => {
-                  if (!pairHasEpvInTargetMonth) return '';
+                const pairDeadlineDate = (() => {
+                  if (!pairHasEpvInTargetMonth) return String(lastWorkdayOfMonthYmd || monthEndYmd || '').slice(0, 10);
                   const dates = [site, pairedSite]
                     .filter((s) => s && s._hasEpvInTargetMonth)
                     .map((s) => String(s?._epvOrderDate || '').slice(0, 10))
                     .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d.slice(0, 7) === targetMonthYyyyMm)
                     .sort();
-                  return dates[0] || '';
+                  return dates[0] || String(lastWorkdayOfMonthYmd || monthEndYmd || '').slice(0, 10);
                 })();
                 
                 groups.push({
@@ -652,7 +664,8 @@ const CalendarModal = (props) => {
                   targetDate: String(driver._epvOrderDate || ''),
                   driver,
                   hasEpvInTargetMonth: pairHasEpvInTargetMonth,
-                  minDate: pairMinDate
+                  minDate: monthStartYmd,
+                  maxDate: pairDeadlineDate
                 });
                 processed.add(siteId);
                 processed.add(String(pairedSite.id));
@@ -665,7 +678,10 @@ const CalendarModal = (props) => {
                   targetDate: String(site._epvOrderDate || ''),
                   driver: site,
                   hasEpvInTargetMonth: Boolean(site?._hasEpvInTargetMonth),
-                  minDate: site?._hasEpvInTargetMonth ? String(site?._epvOrderDate || '').slice(0, 10) : ''
+                  minDate: monthStartYmd,
+                  maxDate: site?._hasEpvInTargetMonth
+                    ? String(site?._epvOrderDate || '').slice(0, 10)
+                    : String(lastWorkdayOfMonthYmd || monthEndYmd || '').slice(0, 10)
                 });
                 processed.add(siteId);
               }
@@ -679,68 +695,58 @@ const CalendarModal = (props) => {
                 targetDate: String(site._epvOrderDate || ''),
                 driver: site,
                 hasEpvInTargetMonth: Boolean(site?._hasEpvInTargetMonth),
-                minDate: site?._hasEpvInTargetMonth ? String(site?._epvOrderDate || '').slice(0, 10) : ''
+                minDate: monthStartYmd,
+                maxDate: site?._hasEpvInTargetMonth
+                  ? String(site?._epvOrderDate || '').slice(0, 10)
+                  : String(lastWorkdayOfMonthYmd || monthEndYmd || '').slice(0, 10)
               });
               processed.add(siteId);
             }
           }
         });
         
-        // Sort groups by constraints (the schedule date is assigned sequentially from month start)
+        const groupMaxDate = (g) => {
+          const td = String(g?.maxDate || '').slice(0, 10);
+          if (/^\d{4}-\d{2}-\d{2}$/.test(td) && td.slice(0, 7) === targetMonthYyyyMm) return td;
+          return String(lastWorkdayOfMonthYmd || monthEndYmd || '').slice(0, 10);
+        };
+
+        // Sort groups: prioritize those with EPV deadline in target month, then earliest deadline (EDF), then urgency
         groups.sort((a, b) => {
+          const aIn = a?.hasEpvInTargetMonth ? 1 : 0;
+          const bIn = b?.hasEpvInTargetMonth ? 1 : 0;
+          if (aIn !== bIn) return bIn - aIn;
+
+          const ad = groupMaxDate(a);
+          const bd = groupMaxDate(b);
+          if (ad && bd && ad !== bd) return ad.localeCompare(bd);
+
           const urg = Number(b?.urgency || 0) - Number(a?.urgency || 0);
           if (urg !== 0) return urg;
 
           const lvd = Number(a?.lastVidangeTs || Number.POSITIVE_INFINITY) - Number(b?.lastVidangeTs || Number.POSITIVE_INFINITY);
           if (lvd !== 0) return lvd;
 
-          const aIn = a?.hasEpvInTargetMonth ? 1 : 0;
-          const bIn = b?.hasEpvInTargetMonth ? 1 : 0;
-          if (aIn !== bIn) return bIn - aIn;
-
-          const ad = String(a?.targetDate || '').trim();
-          const bd = String(b?.targetDate || '').trim();
-          const aHas = /^\d{4}-\d{2}-\d{2}$/.test(ad) ? 1 : 0;
-          const bHas = /^\d{4}-\d{2}-\d{2}$/.test(bd) ? 1 : 0;
-          if (aHas !== bHas) return bHas - aHas;
-          if (aHas && bHas) {
-            const d1 = ad.localeCompare(bd);
-            if (d1 !== 0) return d1;
-          }
-
-          return Number(b?.urgency || 0) - Number(a?.urgency || 0);
+          return 0;
         });
         
         const remainingGroups = Array.isArray(groups) ? [...groups] : [];
 
-        const groupMinDate = (g) => {
-          const td = String(g?.minDate || '').slice(0, 10);
-          if (g?.hasEpvInTargetMonth) {
-            if (/^\d{4}-\d{2}-\d{2}$/.test(td) && td.slice(0, 7) === targetMonthYyyyMm) return td;
-          }
-          return monthStartYmd;
-        };
-
         const compareGroups = (a, b) => {
+          const aIn = a?.hasEpvInTargetMonth ? 1 : 0;
+          const bIn = b?.hasEpvInTargetMonth ? 1 : 0;
+          if (aIn !== bIn) return bIn - aIn;
+
+          const ad = groupMaxDate(a);
+          const bd = groupMaxDate(b);
+          if (ad && bd && ad !== bd) return ad.localeCompare(bd);
+
           const urg = Number(b?.urgency || 0) - Number(a?.urgency || 0);
           if (urg !== 0) return urg;
 
           const lvd = Number(a?.lastVidangeTs || Number.POSITIVE_INFINITY) - Number(b?.lastVidangeTs || Number.POSITIVE_INFINITY);
           if (lvd !== 0) return lvd;
 
-          const aIn = a?.hasEpvInTargetMonth ? 1 : 0;
-          const bIn = b?.hasEpvInTargetMonth ? 1 : 0;
-          if (aIn !== bIn) return bIn - aIn;
-
-          const aTd = String(a?.targetDate || '').slice(0, 10);
-          const bTd = String(b?.targetDate || '').slice(0, 10);
-          const aHas = /^\d{4}-\d{2}-\d{2}$/.test(aTd) ? 1 : 0;
-          const bHas = /^\d{4}-\d{2}-\d{2}$/.test(bTd) ? 1 : 0;
-          if (aHas !== bHas) return bHas - aHas;
-          if (aHas && bHas) {
-            const d = aTd.localeCompare(bTd);
-            if (d !== 0) return d;
-          }
           return 0;
         };
 
@@ -754,23 +760,32 @@ const CalendarModal = (props) => {
           while (used < capacity && remainingGroups.length > 0 && guard < 500) {
             guard += 1;
 
-            const eligible = remainingGroups
-              .filter((g) => groupMinDate(g) <= dayYmd)
+            const eligibleOnTime = remainingGroups
+              .filter((g) => groupMaxDate(g) >= dayYmd)
               .filter((g) => {
                 const needed = g?.type === 'pair' ? 2 : 1;
                 return used + needed <= capacity;
               })
               .sort(compareGroups);
 
-            if (eligible.length === 0) break;
+            const eligibleLate = remainingGroups
+              .filter((g) => {
+                const needed = g?.type === 'pair' ? 2 : 1;
+                return used + needed <= capacity;
+              })
+              .sort(compareGroups);
 
-            const selected = eligible[0];
+            const selected = eligibleOnTime.length > 0 ? eligibleOnTime[0] : eligibleLate.length > 0 ? eligibleLate[0] : null;
+            if (!selected) break;
             const idx = remainingGroups.indexOf(selected);
             if (idx >= 0) remainingGroups.splice(idx, 1);
 
             const needed = selected?.type === 'pair' ? 2 : 1;
             used += needed;
             usedCapacity.set(dayYmd, used);
+
+            const deadlineDate = groupMaxDate(selected);
+            const isLate = deadlineDate ? dayYmd > deadlineDate : false;
 
             selected.sites.forEach((site) => {
               const siteId = String(site.id);
@@ -787,6 +802,8 @@ const CalendarModal = (props) => {
                 technician: techName,
                 technicianId: techId,
                 plannedDate: dayYmd,
+                deadlineDate,
+                isLate,
                 epvType: String(site._epvType || ''),
                 maintenanceType: String(site._maintenanceType || ''),
                 regime: site.regime,
@@ -815,6 +832,8 @@ const CalendarModal = (props) => {
           );
 
           remainingGroups.forEach((group) => {
+            const deadlineDate = groupMaxDate(group);
+            const isLate = deadlineDate ? lastWorkdayOfMonthYmd > deadlineDate : false;
             group.sites.forEach((site) => {
               const siteId = String(site.id);
               const pairSite = group.type === 'pair'
@@ -829,6 +848,8 @@ const CalendarModal = (props) => {
                 technician: techName,
                 technicianId: techId,
                 plannedDate: lastWorkdayOfMonthYmd,
+                deadlineDate,
+                isLate,
                 epvType: String(site._epvType || ''),
                 maintenanceType: String(site._maintenanceType || ''),
                 regime: site.regime,
@@ -870,11 +891,58 @@ const CalendarModal = (props) => {
         return b.urgency - a.urgency;
       });
 
-      const withNumbers = planning.map((it) => ({
-        ...it,
-        number: '',
-        state: 'Planned'
-      }));
+      let allocatedStart = 0;
+      try {
+        const allocRes = await fetch('/api/meta/ticket-number/allocate', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ count: planning.length })
+        });
+        const allocText = await allocRes.text().catch(() => '');
+        const allocData = (() => {
+          try {
+            return allocText ? JSON.parse(allocText) : {};
+          } catch {
+            return {};
+          }
+        })();
+        if (!allocRes.ok) throw new Error(String(allocData?.error || allocText || 'Erreur allocation tickets.'));
+        allocatedStart = Number(allocData?.start || 0);
+      } catch (e) {
+        localErrors.push(String(e?.message || 'Erreur allocation tickets.'));
+        allocatedStart = 0;
+      }
+
+      const withNumbers = planning.map((it, idx) => {
+        const n = allocatedStart > 0 ? allocatedStart + idx : 0;
+        const ticket = n > 0 ? `T${String(n).padStart(5, '0')}` : '';
+        return {
+          ...it,
+          shortDescription: String(it?.maintenanceType || ''),
+          assignedTo: String(it?.technician || ''),
+          scheduledWoDate: String(it?.plannedDate || '').slice(0, 10),
+          dateOfClosing: '',
+          state: 'Planned',
+          number: ticket,
+          epv2: String(it?.epv2Date || ''),
+          epv3: String(it?.epv3Date || '')
+        };
+      });
+
+      const lateItems = withNumbers.filter((it) => Boolean(it?.isLate));
+      const lateCount = lateItems.length;
+      const lateSites = lateItems
+        .map((it) => String(it?.siteCode || it?.siteName || it?.siteId || ''))
+        .filter((x) => x)
+        .slice(0, 25);
+
+      if (lateCount > 0) {
+        localErrors.push(
+          `${lateCount} site(s) planifié(s) après la date EPV (retard). ` +
+            `Exemples: ${lateSites.join(', ')}`
+        );
+      }
       
       const plannedSiteIds = new Set(withNumbers.map((it) => String(it?.siteId || '')).filter((x) => x));
       const sourceSiteIds = new Set(allSites.map((s) => String(s?.id || '')).filter((x) => x));
@@ -898,6 +966,8 @@ const CalendarModal = (props) => {
         plannedCount: plannedSiteIds.size,
         missingCount: missingSiteIds.length,
         missingSites,
+        lateCount,
+        lateSites,
         zoneCounts
       });
 
@@ -1161,6 +1231,91 @@ const CalendarModal = (props) => {
                   <div>
                     <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Actions</div>
                     <div className="space-y-2">
+                      <div className="bg-white/5 border border-white/10 rounded-lg p-3">
+                        <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2 flex items-center gap-2">
+                          <Trash2 size={14} />
+                          Nettoyage
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="flex items-center gap-2 text-xs text-white/90">
+                            <input
+                              type="checkbox"
+                              checked={purgeBasePlans}
+                              onChange={(e) => setPurgeBasePlans(Boolean(e.target.checked))}
+                              disabled={purgeBusy}
+                            />
+                            Base STHIC (planning base)
+                          </label>
+
+                          <label className="flex items-center gap-2 text-xs text-white/90">
+                            <input
+                              type="checkbox"
+                              checked={purgeIntelligent}
+                              onChange={(e) => setPurgeIntelligent(Boolean(e.target.checked))}
+                              disabled={purgeBusy}
+                            />
+                            Intelligent (PM months/items/imports/NOC/assignments)
+                          </label>
+
+                          {isSuperAdmin && (
+                            <div className="mt-2">
+                              <div className="text-xs font-semibold text-white/90 mb-1">Zones</div>
+                              <div className="grid grid-cols-1 gap-1">
+                                {allZones.map((z) => (
+                                  <label key={z} className="flex items-center gap-2 text-xs text-white/80">
+                                    <input
+                                      type="checkbox"
+                                      checked={effectivePurgeZones.includes(z)}
+                                      onChange={() => togglePurgeZone(z)}
+                                      disabled={purgeBusy}
+                                    />
+                                    {z}
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {!isSuperAdmin && (
+                            <div className="text-xs text-white/70">Zone: {defaultZone}</div>
+                          )}
+
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={handlePurgePreview}
+                              className="flex-1 bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-xs font-semibold disabled:opacity-60 transition-colors"
+                              disabled={purgeBusy || (!purgeBasePlans && !purgeIntelligent)}
+                            >
+                              {purgeBusy ? 'Recherche…' : 'Rechercher'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handlePurgeExecute}
+                              className="flex-1 bg-rose-700 hover:bg-rose-800 text-white px-3 py-2 rounded-lg text-xs font-semibold disabled:opacity-60 transition-colors"
+                              disabled={purgeBusy || (!purgeBasePlans && !purgeIntelligent)}
+                            >
+                              Nettoyer
+                            </button>
+                          </div>
+
+                          {purgeError && <div className="text-xs text-rose-300">{purgeError}</div>}
+
+                          {purgePreview && (
+                            <div className="mt-2 text-[11px] text-white/80 bg-black/20 border border-white/10 rounded p-2 space-y-1">
+                              <div>Base items: {purgePreview.pmBasePlanItems || 0}</div>
+                              <div>Base plans à supprimer: {purgePreview.pmBasePlansToDelete || 0}</div>
+                              <div>PM items: {purgePreview.pmItems || 0}</div>
+                              <div>NOC rows: {purgePreview.pmNocRows || 0}</div>
+                              <div>Assignments: {purgePreview.pmAssignments || 0}</div>
+                              <div>Mois PM à supprimer: {purgePreview.pmMonthsToDelete || 0}</div>
+                              <div>Imports à supprimer: {purgePreview.pmImportsToDelete || 0}</div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
                       <button
                         type="button"
                         onClick={() => setShowClustering(!showClustering)}
@@ -1180,25 +1335,6 @@ const CalendarModal = (props) => {
                         {planningBusy ? 'Génération...' : 'Générer planning intelligent'}
                       </button>
 
-                      <label
-                        className={`w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-emerald-400/70 focus-within:ring-offset-2 focus-within:ring-offset-emerald-950 ${
-                          globalPlanningImportBusy ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
-                        }`}
-                      >
-                        <Upload size={16} />
-                        {globalPlanningImportBusy ? 'Import...' : 'Import Planning global all zones'}
-                        <input
-                          type="file"
-                          accept=".xlsx,.xls"
-                          onChange={handleImportGlobalPlanningAllZones}
-                          className="hidden"
-                          disabled={globalPlanningImportBusy}
-                        />
-                      </label>
-
-                      {globalPlanningImportError && (
-                        <div className="text-xs text-rose-300">{globalPlanningImportError}</div>
-                      )}
                     </div>
                   </div>
                 )}

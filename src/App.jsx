@@ -153,6 +153,9 @@ const GeneratorMaintenanceApp = () => {
   const [pmClientProgress, setPmClientProgress] = useState(0);
   const [pmClientStep, setPmClientStep] = useState('');
   const [pmClientCompare, setPmClientCompare] = useState(null);
+  const [pmGlobalProgress, setPmGlobalProgress] = useState(0);
+  const [pmGlobalStep, setPmGlobalStep] = useState('');
+const [pmGlobalCompare, setPmGlobalCompare] = useState(null);
   const [pmResetBusy, setPmResetBusy] = useState(false);
   const [pmFilterState, setPmFilterState] = useState('all');
   const [pmFilterType, setPmFilterType] = useState('all');
@@ -2046,6 +2049,257 @@ Ensuite, vous devrez importer/sauvegarder le planning de base (items) avant de r
     reader.readAsArrayBuffer(file);
     e.target.value = '';
   };
+
+  const handlePmGlobalImport = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const ok = window.confirm(
+    `Confirmer l'import du planning PM global ?\n\nCe fichier va être enregistré en base (par zone) pour le mois ${pmMonth} et sera comparé automatiquement au retour client.\n\nFichier: ${file?.name || ''}`
+  );
+  if (!ok) {
+    e.target.value = '';
+    return;
+  }
+
+  const normalizeType = (t) => {
+    const s = String(t || '').trim().toLowerCase();
+    if (!s) return '';
+    if (s.includes('fullpm') || s.includes('pmwo')) return 'fullpmwo';
+    if (s.includes('dg')) return 'dg';
+    if (s.includes('air') || s.includes('conditioning') || s.includes('clim')) return 'air';
+    return s;
+  };
+
+  const normalizeYmd = (v) => String(v || '').slice(0, 10);
+
+  const reader = new FileReader();
+  setPmBusy(true);
+  setPmError('');
+  setPmNotice('');
+  setPmGlobalCompare(null);
+  setPmGlobalProgress(5);
+  setPmGlobalStep('Lecture du fichier…');
+
+  reader.onload = async (event) => {
+    try {
+      setPmGlobalProgress(20);
+      setPmGlobalStep('Analyse Excel…');
+
+      const data = new Uint8Array(event.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const jsonData = XLSX.utils.sheet_to_json(sheet);
+
+      const monthId = pmMonthId || (await ensurePmMonth(pmMonth));
+      setPmMonthId(monthId);
+
+      setPmGlobalProgress(40);
+      setPmGlobalStep('Préparation des lignes…');
+
+      const rows = [];
+      const arr = Array.isArray(jsonData) ? jsonData : [];
+      for (let idx = 0; idx < arr.length; idx += 1) {
+        const row = arr[idx];
+
+        const siteCode = String(pmGet(row, 'Site', 'Site (id)', 'Site id', 'Site Code') || '').trim();
+        const siteName = String(pmGet(row, 'Site Name', 'Site name') || '').trim();
+
+        const maintenanceType = String(pmGet(row, 'Maintenance Type') || pmInferType(row) || '').trim();
+        const scheduledWoDate = pmNormalizeDate(pmGet(row, 'Scheduled WO Date', 'Scheduled Wo Date', 'Scheduled date', 'Scheduled Date', 'Date'));
+        const assignedTo = String(pmGet(row, 'Assigned to', 'Assigned To') || '').trim();
+        const shortDescription = String(pmGet(row, 'Short description', 'Short Description') || '').trim();
+        const number = String(pmGet(row, 'Number', 'Ticket', 'Ticket Number') || '').trim();
+
+        const zone = String(pmGet(row, 'Zone', 'zone', 'Region', 'region') || '').trim();
+        const region = String(pmGet(row, 'Region', 'region') || '').trim();
+
+        const state = String(pmGet(row, 'State') || '').trim();
+        const epv2 = pmNormalizeDate(pmGet(row, 'EPV2'));
+        const epv3 = pmNormalizeDate(pmGet(row, 'EPV3'));
+        const pairSiteCode = String(pmGet(row, 'Paire Site', 'Pair Site', 'Pair') || '').trim();
+
+        if (!siteCode && !siteName) continue;
+
+        rows.push({
+          number,
+          siteCode,
+          siteName,
+          region,
+          zone, // IMPORTANT: backend utilise zone ou region pour splitter/filtrer
+          shortDescription,
+          maintenanceType,
+          scheduledWoDate,
+          assignedTo,
+          state,
+          epv2,
+          epv3,
+          pairSiteCode,
+          _row: idx + 2
+        });
+      }
+
+      const items = rows
+        .filter((r) => String(r?.siteCode || '').trim())
+        .map((r) => ({
+          number: String(r.number || '').trim() || null,
+          siteCode: String(r.siteCode || '').trim(),
+          siteName: String(r.siteName || '').trim(),
+          region: String(r.region || '').trim() || null,
+          zone: String(r.zone || '').trim() || null,
+          shortDescription: String(r.shortDescription || '').trim() || null,
+          maintenanceType: String(r.maintenanceType || '').trim(),
+          scheduledWoDate: String(r.scheduledWoDate || '').trim(),
+          assignedTo: String(r.assignedTo || '').trim() || null,
+          state: String(r.state || '').trim() || null,
+          epv2: String(r.epv2 || '').trim() || null,
+          epv3: String(r.epv3 || '').trim() || null,
+          pairSiteCode: String(r.pairSiteCode || '').trim() || null
+        }));
+
+      if (items.length === 0) {
+        throw new Error('Aucune ligne exploitable trouvée dans le fichier planning PM global.');
+      }
+
+      setPmGlobalProgress(60);
+      setPmGlobalStep('Enregistrement planning PM global…');
+
+      await apiFetchJson(`/api/pm/months/${monthId}/global-import`, {
+        method: 'POST',
+        body: JSON.stringify({ filename: file?.name || null, items })
+      });
+
+      setPmGlobalProgress(75);
+      setPmGlobalStep('Lecture du planning global stocké…');
+
+      const globalRes = await apiFetchJson(`/api/pm/months/${monthId}/global-items`, { method: 'GET' });
+      const globalItems = Array.isArray(globalRes?.items) ? globalRes.items : [];
+
+      setPmGlobalProgress(85);
+      setPmGlobalStep('Comparaison global vs client…');
+
+      // Comparaison "global vs client"
+      // - retained/removed/added : match par siteCode + date + type (normalisés)
+      // - retiredSites : siteCode présent dans global, mais ABSENT totalement du client sur le mois (sans date/type)
+      const clientItems = Array.isArray(pmItems) ? pmItems : [];
+
+      const globalMap = new Map();
+      for (const it of globalItems) {
+        const sc = String(it?.siteCode || '').trim();
+        const d = normalizeYmd(it?.scheduledWoDate);
+        const t = normalizeType(it?.maintenanceType);
+        if (!sc || !d || !t) continue;
+        globalMap.set(`${sc}|${d}|${t}`, it);
+      }
+
+      const clientMap = new Map();
+      for (const it of clientItems) {
+        const sc = String(it?.siteCode || '').trim();
+        const d = normalizeYmd(it?.scheduledWoDate);
+        const t = normalizeType(it?.maintenanceType);
+        if (!sc || !d || !t) continue;
+        clientMap.set(`${sc}|${d}|${t}`, it);
+      }
+
+      const retained = [];
+      const removed = [];
+      const added = [];
+
+      for (const [key, g] of globalMap.entries()) {
+        const c = clientMap.get(key);
+        if (c) {
+          retained.push({
+            siteCode: g.siteCode,
+            siteName: g.siteName,
+            plannedDate: normalizeYmd(g.scheduledWoDate),
+            maintenanceType: g.maintenanceType,
+            zone: g.zone || '',
+            number: c.number || ''
+          });
+        } else {
+          removed.push({
+            siteCode: g.siteCode,
+            siteName: g.siteName,
+            plannedDate: normalizeYmd(g.scheduledWoDate),
+            maintenanceType: g.maintenanceType,
+            zone: g.zone || ''
+          });
+        }
+      }
+
+      for (const [key, c] of clientMap.entries()) {
+        if (globalMap.has(key)) continue;
+        added.push({
+          siteCode: c.siteCode,
+          siteName: c.siteName,
+          plannedDate: normalizeYmd(c.scheduledWoDate),
+          maintenanceType: c.maintenanceType,
+          zone: c.zone || ''
+        });
+      }
+
+      // retiredSites: présence global, absence complète client sur le mois
+      const clientSites = new Set(clientItems.map((it) => String(it?.siteCode || '').trim()).filter(Boolean));
+
+      const retiredMap = new Map();
+      for (const it of globalItems) {
+        const sc = String(it?.siteCode || '').trim();
+        if (!sc) continue;
+        if (clientSites.has(sc)) continue;
+        if (!retiredMap.has(sc)) {
+          retiredMap.set(sc, {
+            siteCode: sc,
+            siteName: String(it?.siteName || '').trim(),
+            zone: String(it?.zone || '').trim(),
+            region: String(it?.region || '').trim()
+          });
+        }
+      }
+      const retiredSites = Array.from(retiredMap.values()).sort(
+        (a, b) => String(a.zone || '').localeCompare(String(b.zone || '')) || String(a.siteCode).localeCompare(String(b.siteCode))
+      );
+
+      retained.sort((a, b) => String(a.plannedDate).localeCompare(String(b.plannedDate)) || String(a.siteCode).localeCompare(String(b.siteCode)));
+      removed.sort((a, b) => String(a.plannedDate).localeCompare(String(b.plannedDate)) || String(a.siteCode).localeCompare(String(b.siteCode)));
+      added.sort((a, b) => String(a.plannedDate).localeCompare(String(b.plannedDate)) || String(a.siteCode).localeCompare(String(b.siteCode)));
+
+      // On met globalPlanId: si plusieurs zones, on met 'multi'
+      const uniquePlanIds = Array.from(new Set(globalItems.map((x) => String(x?.planId || '').trim()).filter(Boolean)));
+      const globalPlanId = uniquePlanIds.length === 1 ? uniquePlanIds[0] : uniquePlanIds.length > 1 ? 'multi' : '';
+
+      setPmGlobalCompare({
+        month: pmMonth,
+        globalPlanId,
+        globalCount: globalMap.size,
+        clientCount: clientMap.size,
+        retained,
+        removed,
+        added,
+        retiredSites
+      });
+
+      setPmGlobalProgress(95);
+      setPmGlobalStep('Rafraîchissement…');
+
+      await loadPmMonths();
+      await loadPmImports(monthId);
+      await loadPmDashboard(monthId);
+
+      setPmGlobalProgress(100);
+      setPmGlobalStep('Terminé');
+      setPmNotice(`✅ Planning PM global importé (${items.length} lignes). Comparaison: retenus ${retained.length} • absents client ${removed.length} • ajouts client ${added.length} • sites retirés ${retiredSites.length}`);
+    } catch (err) {
+      setPmGlobalProgress(0);
+      setPmGlobalStep('');
+      setPmError(err?.message || 'Erreur lors de l’import planning PM global.');
+    } finally {
+      setPmBusy(false);
+    }
+  };
+
+  reader.readAsArrayBuffer(file);
+  e.target.value = '';
+};
 
   const generateBasePlanPreview = async () => {
     if (!isAdmin) return;
@@ -5392,6 +5646,7 @@ Ensuite, vous devrez importer/sauvegarder le planning de base (items) avant de r
                 <CalendarModal
           showCalendar={showCalendar}
           appVersion={APP_VERSION}
+          authUser={authUser}
           isTechnician={isTechnician}
           setShowCalendar={setShowCalendar}
           currentMonth={currentMonth}

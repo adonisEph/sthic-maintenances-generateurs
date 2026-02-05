@@ -33,11 +33,15 @@ const PmModal = (props) => {
     handlePmReset,
     handlePmNocImport,
     handlePmClientImport,
+    handlePmGlobalImport,
     pmError,
     pmNotice,
     pmClientProgress,
     pmClientStep,
     pmClientCompare,
+    pmGlobalProgress,
+    pmGlobalStep,
+    pmGlobalCompare,
     pmItems,
     pmImports,
     pmSearch,
@@ -67,8 +71,14 @@ const PmModal = (props) => {
     pmReprogSaving,
     handlePmOpenReprog,
     handlePmSaveReprog,
-    formatDate
+    formatDate,
+    handlePmGlobalImport,
+    pmGlobalProgress,
+    pmGlobalStep,
+pmGlobalCompare,
   } = props;
+
+  const [pmRetiredSitesOpen, setPmRetiredSitesOpen] = React.useState(false);
 
   if (!showPm || !canUsePm) return null;
 
@@ -240,6 +250,22 @@ const PmModal = (props) => {
                         />
                       </label>
 
+                      <label
+                        className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-emerald-400/70 focus-within:ring-offset-2 focus-within:ring-offset-emerald-950 ${
+                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
+                        }`}
+                      >
+                        <Upload size={16} />
+                        Import planning PM global
+                        <input
+                          type="file"
+                          accept=".xlsx,.xls"
+                          onChange={handlePmGlobalImport}
+                          className="hidden"
+                          disabled={pmBusy}
+                        />
+                      </label>
+
                       <button
                         type="button"
                         onClick={() => handlePmReset('imports')}
@@ -315,6 +341,15 @@ const PmModal = (props) => {
                   <div className="text-xs text-gray-700 mb-1">Import retour client: {pmClientStep || '…'}</div>
                   <div className="w-full bg-gray-200 rounded h-2 overflow-hidden">
                     <div className="bg-emerald-600 h-2" style={{ width: `${pmClientProgress}%` }} />
+                  </div>
+                </div>
+              )}
+
+              {pmGlobalProgress > 0 && (
+                <div className="mb-4">
+                  <div className="text-xs text-gray-700 mb-1">Import planning PM global: {pmGlobalStep || '…'}</div>
+                  <div className="w-full bg-gray-200 rounded h-2 overflow-hidden">
+                    <div className="bg-emerald-600 h-2" style={{ width: `${pmGlobalProgress}%` }} />
                   </div>
                 </div>
               )}
@@ -411,6 +446,168 @@ const PmModal = (props) => {
                       {pmClientCompare.added.length > 50 && (
                         <div className="text-xs text-gray-600 p-2">Affichage limité (50) — total: {pmClientCompare.added.length}</div>
                       )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {pmGlobalCompare && (
+                <div className="mb-4 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="text-sm font-semibold text-slate-900">
+                      Planning PM global vs retour client ({pmGlobalCompare.month})
+                    </div>
+                    {Array.isArray(pmGlobalCompare.retiredSites) && pmGlobalCompare.retiredSites.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setPmRetiredSitesOpen(true)}
+                        className="text-xs font-semibold px-2 py-1 rounded border border-fuchsia-200 bg-fuchsia-50 text-fuchsia-900 hover:bg-fuchsia-100"
+                        disabled={pmBusy}
+                      >
+                        Sites retirés: {pmGlobalCompare.retiredSites.length}
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="mt-2 grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs text-slate-800">
+                    <div className="bg-white border border-slate-200 rounded p-2">Global: <span className="font-semibold">{pmGlobalCompare.globalCount}</span></div>
+                    <div className="bg-white border border-slate-200 rounded p-2">Client: <span className="font-semibold">{pmGlobalCompare.clientCount}</span></div>
+                    <div className="bg-emerald-50 border border-emerald-200 rounded p-2">Retenus: <span className="font-semibold">{pmGlobalCompare.retained.length}</span></div>
+                    <div className="bg-red-50 border border-red-200 rounded p-2">Absents client: <span className="font-semibold">{pmGlobalCompare.removed.length}</span></div>
+                    <div className="bg-amber-50 border border-amber-200 rounded p-2 sm:col-span-2">Ajouts client: <span className="font-semibold">{pmGlobalCompare.added.length}</span></div>
+                    <div className="bg-white border border-slate-200 rounded p-2 sm:col-span-2">Plan ID: <span className="font-mono">{pmGlobalCompare.globalPlanId}</span></div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 lg:grid-cols-3 gap-3">
+                    <div className="bg-white border border-slate-200 rounded-lg overflow-auto max-h-64">
+                      <div className="text-xs font-semibold px-3 py-2 border-b">Retenus</div>
+                      <table className="min-w-full text-xs">
+                        <thead className="sticky top-0 bg-gray-50">
+                          <tr>
+                            <th className="p-2 border-b">Date</th>
+                            <th className="p-2 border-b">Site</th>
+                            <th className="p-2 border-b">Type</th>
+                            <th className="p-2 border-b">Zone</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pmGlobalCompare.retained.slice(0, 50).map((r, idx) => (
+                            <tr key={`gret-${r.siteCode}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-gray-50'}>
+                              <td className="p-2 border-b whitespace-nowrap">{r.plannedDate}</td>
+                              <td className="p-2 border-b whitespace-pre-line leading-tight break-words">{r.siteName || r.siteCode}</td>
+                              <td className="p-2 border-b">{r.maintenanceType}</td>
+                              <td className="p-2 border-b whitespace-nowrap">{r.zone || ''}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {pmGlobalCompare.retained.length > 50 && (
+                        <div className="text-xs text-gray-600 p-2">Affichage limité (50) — total: {pmGlobalCompare.retained.length}</div>
+                      )}
+                    </div>
+
+                    <div className="bg-white border border-red-200 rounded-lg overflow-auto max-h-64">
+                      <div className="text-xs font-semibold px-3 py-2 border-b text-red-800">Absents client</div>
+                      <table className="min-w-full text-xs">
+                        <thead className="sticky top-0 bg-red-50">
+                          <tr>
+                            <th className="p-2 border-b">Date</th>
+                            <th className="p-2 border-b">Site</th>
+                            <th className="p-2 border-b">Type</th>
+                            <th className="p-2 border-b">Zone</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pmGlobalCompare.removed.slice(0, 50).map((r, idx) => (
+                            <tr key={`grem-${r.siteCode}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-red-50'}>
+                              <td className="p-2 border-b whitespace-nowrap">{r.plannedDate}</td>
+                              <td className="p-2 border-b whitespace-pre-line leading-tight break-words">{r.siteName || r.siteCode}</td>
+                              <td className="p-2 border-b">{r.maintenanceType}</td>
+                              <td className="p-2 border-b whitespace-nowrap">{r.zone || ''}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {pmGlobalCompare.removed.length > 50 && (
+                        <div className="text-xs text-gray-600 p-2">Affichage limité (50) — total: {pmGlobalCompare.removed.length}</div>
+                      )}
+                    </div>
+
+                    <div className="bg-white border border-amber-200 rounded-lg overflow-auto max-h-64">
+                      <div className="text-xs font-semibold px-3 py-2 border-b text-amber-900">Ajouts client</div>
+                      <table className="min-w-full text-xs">
+                        <thead className="sticky top-0 bg-amber-50">
+                          <tr>
+                            <th className="p-2 border-b">Date</th>
+                            <th className="p-2 border-b">Site</th>
+                            <th className="p-2 border-b">Type</th>
+                            <th className="p-2 border-b">Zone</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pmGlobalCompare.added.slice(0, 50).map((r, idx) => (
+                            <tr key={`gadd-${r.siteCode}-${idx}`} className={idx % 2 ? 'bg-white' : 'bg-amber-50'}>
+                              <td className="p-2 border-b whitespace-nowrap">{r.plannedDate}</td>
+                              <td className="p-2 border-b whitespace-pre-line leading-tight break-words">{r.siteName || r.siteCode}</td>
+                              <td className="p-2 border-b">{r.maintenanceType}</td>
+                              <td className="p-2 border-b whitespace-nowrap">{r.zone || ''}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {pmGlobalCompare.added.length > 50 && (
+                        <div className="text-xs text-gray-600 p-2">Affichage limité (50) — total: {pmGlobalCompare.added.length}</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {pmGlobalCompare && pmRetiredSitesOpen && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+                  <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
+                    <div className="flex justify-between items-center p-4 border-b bg-fuchsia-800 text-white">
+                      <div className="font-bold">Sites retirés (global présent, client absent)</div>
+                      <button
+                        type="button"
+                        onClick={() => setPmRetiredSitesOpen(false)}
+                        className="hover:bg-fuchsia-900 p-2 rounded"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+                    <div className="p-4 overflow-auto">
+                      <table className="min-w-[800px] w-full text-sm">
+                        <thead className="bg-fuchsia-50 sticky top-0 z-10">
+                          <tr className="text-left text-xs text-fuchsia-900 border-b border-fuchsia-200">
+                            <th className="px-3 py-2 font-semibold whitespace-nowrap">Zone</th>
+                            <th className="px-3 py-2 font-semibold whitespace-nowrap">Site</th>
+                            <th className="px-3 py-2 font-semibold whitespace-nowrap">Site Name</th>
+                            <th className="px-3 py-2 font-semibold whitespace-nowrap">Region</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(Array.isArray(pmGlobalCompare.retiredSites) ? pmGlobalCompare.retiredSites : []).length === 0 ? (
+                            <tr>
+                              <td className="px-4 py-4 text-gray-600" colSpan={4}>
+                                Aucun site.
+                              </td>
+                            </tr>
+                          ) : (
+                            (Array.isArray(pmGlobalCompare.retiredSites) ? pmGlobalCompare.retiredSites : []).map((it, idx) => (
+                              <tr
+                                key={`${it?.siteCode || it?.site || 'site'}-${idx}`}
+                                className={`border-b border-fuchsia-100 hover:bg-fuchsia-50/60 ${idx % 2 === 1 ? 'bg-white' : 'bg-fuchsia-50/40'}`}
+                              >
+                                <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.zone || '-'}</td>
+                                <td className="px-3 py-2 text-slate-900 whitespace-nowrap font-semibold">{it?.siteCode || it?.site || '-'}</td>
+                                <td className="px-3 py-2 text-slate-900 max-w-[360px] whitespace-pre-line leading-tight break-words">{it?.siteName || '-'}</td>
+                                <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.region || '-'}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 </div>

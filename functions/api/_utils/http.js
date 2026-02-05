@@ -13,11 +13,12 @@ export function requireAdmin(data) {
 }
 
 export function isSuperAdmin(data) {
-  return data?.user?.role === 'admin' && String(data?.user?.zone || '') === 'BZV/POOL';
+  const z = String(data?.user?.zone || data?.user?.region || '');
+  return data?.user?.role === 'admin' && z === 'BZV/POOL';
 }
 
 export function userZone(data) {
-  return String(data?.user?.zone || 'BZV/POOL');
+  return String(data?.user?.zone || data?.user?.region || 'BZV/POOL');
 }
 
 export function readJson(request) {
