@@ -38,11 +38,11 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '2.1.2';
+const APP_VERSION = '2.1.4';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const DAILY_NH_UPDATE_STORAGE_KEY = 'gma_daily_nh_update_ymd';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
-const SPLASH_MIN_MS = 4350;
+const SPLASH_MIN_MS = 4300;
 
 const GeneratorMaintenanceApp = () => {
   const storage = useStorage();
