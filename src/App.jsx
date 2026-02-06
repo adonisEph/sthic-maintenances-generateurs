@@ -411,6 +411,8 @@ const GeneratorMaintenanceApp = () => {
       alert(e?.message || "Erreur lors de l'envoi du planning PM.");
     } finally {
       setPmSendBusy(false);
+      setPmNocProgress(0);
+      setPmNocStep('');
     }
   };
 
@@ -1391,6 +1393,8 @@ const GeneratorMaintenanceApp = () => {
           const shortDescription = String(pmGet(row, 'Short description', 'Short Description') || '').trim();
           const number = String(pmGet(row, 'Number') || '').trim();
           const assignedTo = String(pmGet(row, 'Assigned to', 'Assigned To') || '').trim();
+          const rawZone = pmGet(row, 'Zone', 'zone', 'Region', 'region');
+          const zone = String(rawZone || '').trim();
           const dateOfClosing = basePlanNormalizeYmd(pmGet(row, 'Date of closing', 'Date of Closing', 'Closing date', 'Date closing'));
           const state = String(pmGet(row, 'State') || '').trim();
 
@@ -1965,8 +1969,8 @@ const GeneratorMaintenanceApp = () => {
             number,
             siteCode: siteCode || String(b?.siteCode || s?.idSite || '').trim(),
             siteName: String(b?.siteName || r?.siteName || s?.nameSite || '').trim(),
-            region: String(b?.region || s?.region || s?.zone || '').trim(),
-            zone: String(b?.zone || b?.region || s?.zone || s?.region || '').trim(),
+            region: String(b?.region || s?.region || s?.zone || zone || '').trim(),
+            zone: String(b?.zone || b?.region || s?.zone || s?.region || zone || '').trim(),
             shortDescription: String(b?.shortDescription || r?.shortDescription || '').trim(),
             maintenanceType: String(b?.recommendedMaintenanceType || r?.maintenanceType || '').trim(),
             scheduledWoDate: date,
@@ -2007,16 +2011,17 @@ const GeneratorMaintenanceApp = () => {
           const globalRes = await apiFetchJson(`/api/pm/months/${monthId}/global-items`, { method: 'GET' });
           const globalItems = Array.isArray(globalRes?.items) ? globalRes.items : [];
 
+          const clientItems2 = Array.isArray(items) ? items : [];
+            
           if (globalItems.length > 0) {
-            const clientItems2 = Array.isArray(items) ? items : [];
 
-            const globalMap = new Map();
-            for (const it of globalItems) {
-              const sc = String(it?.siteCode || '').trim();
-              const d = normalizeYmd2(it?.scheduledWoDate);
-              const t = normalizeType2(it?.maintenanceType);
+              const globalMap = new Map();
+              for (const it of globalItems) {
+                const sc = String(it?.siteCode || '').trim();
+                const d = normalizeYmd2(it?.scheduledWoDate);
+                const t = normalizeType2(it?.maintenanceType);
               if (!sc || !d || !t) continue;
-              globalMap.set(`${sc}|${d}|${t}`, it);
+                globalMap.set(`${sc}|${d}|${t}`, it);
             }
 
             const clientMap = new Map();
