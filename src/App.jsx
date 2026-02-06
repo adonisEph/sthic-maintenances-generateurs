@@ -1393,8 +1393,6 @@ const GeneratorMaintenanceApp = () => {
           const shortDescription = String(pmGet(row, 'Short description', 'Short Description') || '').trim();
           const number = String(pmGet(row, 'Number') || '').trim();
           const assignedTo = String(pmGet(row, 'Assigned to', 'Assigned To') || '').trim();
-          const rawZone = pmGet(row, 'Zone', 'zone', 'Region', 'region');
-          const zone = String(rawZone || '').trim();
           const dateOfClosing = basePlanNormalizeYmd(pmGet(row, 'Date of closing', 'Date of Closing', 'Closing date', 'Date closing'));
           const state = String(pmGet(row, 'State') || '').trim();
 
