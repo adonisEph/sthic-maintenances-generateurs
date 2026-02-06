@@ -1833,7 +1833,8 @@ const GeneratorMaintenanceApp = () => {
             const rawDate = pmNormalizeDate(pmGet(row, 'Scheduled WO Date', 'Scheduled Wo Date', 'Scheduled date', 'Scheduled Date', 'Date'));
             const shortDescription = String(pmGet(row, 'Short description', 'Short Description') || '').trim();
             const assignedTo = String(pmGet(row, 'Assigned to', 'Assigned To') || '').trim();
-
+            const rawZone = pmGet(row, 'Zone', 'zone', 'Region', 'region');
+            const zone = String(rawZone || '').trim();
             const codes = basePlanSplitCell(rawSiteCode);
             const names = basePlanSplitCell(rawSiteName);
             const nums = basePlanSplitCell(rawNumber);
@@ -1851,6 +1852,7 @@ const GeneratorMaintenanceApp = () => {
                 scheduledWoDate: rawDate,
                 shortDescription,
                 assignedTo,
+                zone,
                 _row: idx + 2
               });
             }
@@ -1967,8 +1969,8 @@ const GeneratorMaintenanceApp = () => {
             number,
             siteCode: siteCode || String(b?.siteCode || s?.idSite || '').trim(),
             siteName: String(b?.siteName || r?.siteName || s?.nameSite || '').trim(),
-            region: String(b?.region || s?.region || s?.zone || zone || '').trim(),
-            zone: String(b?.zone || b?.region || s?.zone || s?.region || zone || '').trim(),
+            region: String(b?.region || s?.region || s?.zone || r?.zone || '').trim(),
+            zone: String(b?.zone || b?.region || s?.zone || s?.region || r?.zone || '').trim(),
             shortDescription: String(b?.shortDescription || r?.shortDescription || '').trim(),
             maintenanceType: String(b?.recommendedMaintenanceType || r?.maintenanceType || '').trim(),
             scheduledWoDate: date,
