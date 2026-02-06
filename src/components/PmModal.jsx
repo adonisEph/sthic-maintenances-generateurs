@@ -75,6 +75,126 @@ const PmModal = (props) => {
   } = props;
 
   const [pmRetiredSitesOpen, setPmRetiredSitesOpen] = React.useState(false);
+  const [pmPurgeOpen, setPmPurgeOpen] = React.useState(false);
+  const [pmPurgeBusy, setPmPurgeBusy] = React.useState(false);
+  const [pmPurgeGlobal, setPmPurgeGlobal] = React.useState(false);
+  const [pmPurgeClient, setPmPurgeClient] = React.useState(true);
+  const [pmPurgeDryRun, setPmPurgeDryRun] = React.useState(true);
+  const [pmPurgeZones, setPmPurgeZones] = React.useState([]);
+  const [pmPurgeResult, setPmPurgeResult] = React.useState(null);
+
+  const pmIsSuperAdmin = Boolean(props?.isSuperAdmin);
+
+  React.useEffect(() => {
+    if (!pmIsSuperAdmin) return;
+    setPmPurgeZones((z) => {
+      const cur = Array.isArray(z) ? z : [];
+      if (cur.length > 0) return cur;
+      return ['BZV/POOL', 'PNR/KOUILOU', 'UPCN'];
+    });
+  }, [pmIsSuperAdmin]);
+
+  const pmCallJson = async (url, options) => {
+    if (typeof props?.apiFetchJson === 'function') {
+      return await props.apiFetchJson(url, options);
+    }
+
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(options?.headers || {})
+    };
+    const res = await fetch(url, {
+      method: options?.method || 'GET',
+      credentials: 'same-origin',
+      headers,
+      body: options?.body
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data?.error ? String(data.error) : `HTTP ${res.status}`;
+      throw new Error(msg);
+    }
+    return data;
+  };
+
+  const pmEnsureMonthId = async (yyyymm) => {
+    const m = String(yyyymm || '').trim();
+    if (!m) throw new Error('Mois requis.');
+
+    const list = await pmCallJson('/api/pm/months', { method: 'GET' });
+    const months = Array.isArray(list?.months) ? list.months : [];
+    const found = months.find((x) => String(x?.month || '').trim() === m) || null;
+    const id = found?.id ? String(found.id) : '';
+    if (!id) throw new Error(`Mois introuvable: ${m}`);
+    return id;
+  };
+
+  const pmTogglePurgeZone = (zone) => {
+    const z = String(zone || '').trim();
+    if (!z) return;
+    setPmPurgeZones((prev) => {
+      const arr = Array.isArray(prev) ? prev : [];
+      if (arr.includes(z)) return arr.filter((x) => x !== z);
+      return [...arr, z];
+    });
+  };
+
+  const pmRunPurge = async ({ dryRun }) => {
+    if (!isAdmin) return;
+    const purgeGlobal = Boolean(pmPurgeGlobal);
+    const purgeClient = Boolean(pmPurgeClient);
+    if (!purgeGlobal && !purgeClient) {
+      setPmError('Veuillez sélectionner au moins une option de purge (client/global).');
+      return;
+    }
+
+    setPmPurgeBusy(true);
+    setPmError('');
+    setPmNotice('');
+    setPmPurgeResult(null);
+    try {
+      const monthId = await pmEnsureMonthId(pmMonth);
+      const body = {
+        purgeGlobal,
+        purgeClient,
+        dryRun: Boolean(dryRun)
+      };
+      if (pmIsSuperAdmin) {
+        body.zones = Array.isArray(pmPurgeZones) ? pmPurgeZones : [];
+      }
+
+      const res = await pmCallJson(`/api/pm/months/${monthId}/purge-imports`, {
+        method: 'POST',
+        body: JSON.stringify(body)
+      });
+      setPmPurgeResult(res || null);
+
+      if (Boolean(res?.dryRun)) {
+        setPmNotice(
+          `🧪 Dry-run purge (${String(res?.month || pmMonth)}): Global plans ${Number(res?.preview?.pmGlobalPlans || 0)} • Global items ${Number(
+            res?.preview?.pmGlobalPlanItems || 0
+          )} • Client items ${Number(res?.preview?.pmClientItems || 0)} • NOC ${Number(res?.preview?.pmClientNocRows || 0)} • Assign. ${Number(
+            res?.preview?.pmClientAssignments || 0
+          )}`
+        );
+        return;
+      }
+
+      setPmNotice(
+        `✅ Purge effectuée (${String(res?.month || pmMonth)}). Global plans ${Number(res?.deleted?.pmGlobalPlans || 0)} • Global items ${Number(
+          res?.deleted?.pmGlobalPlanItems || 0
+        )} • Client items ${Number(res?.deleted?.pmClientItems || 0)} • NOC ${Number(res?.deleted?.pmClientNocRows || 0)} • Assign. ${Number(
+          res?.deleted?.pmClientAssignments || 0
+        )}`
+      );
+      setPmPurgeOpen(false);
+      await refreshPmAll(pmMonth);
+    } catch (e) {
+      setPmError(e?.message || 'Erreur lors de la purge.');
+    } finally {
+      setPmPurgeBusy(false);
+    }
+  };
 
   if (!showPm || !canUsePm) return null;
 
@@ -261,6 +381,109 @@ const PmModal = (props) => {
                           disabled={pmBusy}
                         />
                       </label>
+
+                      <button
+                        type="button"
+                        onClick={() => setPmPurgeOpen((v) => !v)}
+                        className="text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                        disabled={pmBusy || pmPurgeBusy}
+                      >
+                        <Trash2 size={16} />
+                        Purge imports (avancé)
+                      </button>
+
+                      {pmPurgeOpen && (
+                        <div className="mx-3 my-2 p-3 rounded-lg border border-white/10 bg-white/5">
+                          <div className="text-xs font-semibold text-white/90 mb-2">Options purge</div>
+                          <div className="space-y-2">
+                            <label className="flex items-center gap-2 text-xs text-white/90">
+                              <input
+                                type="checkbox"
+                                checked={pmPurgeClient}
+                                onChange={(e) => setPmPurgeClient(Boolean(e.target.checked))}
+                                disabled={pmBusy || pmPurgeBusy}
+                              />
+                              Purger retour client (pm_items + noc + assignments)
+                            </label>
+                            <label className="flex items-center gap-2 text-xs text-white/90">
+                              <input
+                                type="checkbox"
+                                checked={pmPurgeGlobal}
+                                onChange={(e) => setPmPurgeGlobal(Boolean(e.target.checked))}
+                                disabled={pmBusy || pmPurgeBusy}
+                              />
+                              Purger planning global (pm_global_plans + items)
+                            </label>
+                            <label className="flex items-center gap-2 text-xs text-white/90">
+                              <input
+                                type="checkbox"
+                                checked={pmPurgeDryRun}
+                                onChange={(e) => setPmPurgeDryRun(Boolean(e.target.checked))}
+                                disabled={pmBusy || pmPurgeBusy}
+                              />
+                              Mode dry-run (prévisualisation)
+                            </label>
+
+                            {pmIsSuperAdmin && (
+                              <div>
+                                <div className="text-[11px] font-semibold text-white/90 mb-1">Zones (super-admin)</div>
+                                <div className="flex flex-col gap-1">
+                                  {['BZV/POOL', 'PNR/KOUILOU', 'UPCN'].map((z) => (
+                                    <label key={z} className="flex items-center gap-2 text-xs text-white/90">
+                                      <input
+                                        type="checkbox"
+                                        checked={(Array.isArray(pmPurgeZones) ? pmPurgeZones : []).includes(z)}
+                                        onChange={() => pmTogglePurgeZone(z)}
+                                        disabled={pmBusy || pmPurgeBusy}
+                                      />
+                                      {z}
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {pmPurgeResult?.preview && (
+                              <div className="text-[11px] text-white/80">
+                                Aperçu: plans global {Number(pmPurgeResult?.preview?.pmGlobalPlans || 0)} • items global {Number(
+                                  pmPurgeResult?.preview?.pmGlobalPlanItems || 0
+                                )} • items client {Number(pmPurgeResult?.preview?.pmClientItems || 0)} • noc {Number(
+                                  pmPurgeResult?.preview?.pmClientNocRows || 0
+                                )} • assign. {Number(pmPurgeResult?.preview?.pmClientAssignments || 0)}
+                              </div>
+                            )}
+
+                            <div className="flex flex-col gap-2 pt-2">
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (!pmPurgeDryRun) {
+                                    const ok = window.confirm(
+                                      `Confirmer la purge ?\n\nMois: ${pmMonth}\n\nCette action supprimera des données en base.`
+                                    );
+                                    if (!ok) return;
+                                  }
+                                  await pmRunPurge({ dryRun: pmPurgeDryRun });
+                                }}
+                                className="w-full bg-rose-600 text-white px-3 py-2 rounded-lg hover:bg-rose-700 text-sm font-semibold disabled:bg-white/10 disabled:text-white/60"
+                                disabled={pmBusy || pmPurgeBusy}
+                              >
+                                {pmPurgeDryRun ? 'Lancer dry-run' : 'Purger maintenant'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await pmRunPurge({ dryRun: true });
+                                }}
+                                className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                                disabled={pmBusy || pmPurgeBusy}
+                              >
+                                Prévisualiser (dry-run)
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       <button
                         type="button"

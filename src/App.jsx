@@ -38,7 +38,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '2.1.4';
+const APP_VERSION = '2.1.5';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const DAILY_NH_UPDATE_STORAGE_KEY = 'gma_daily_nh_update_ymd';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
@@ -1777,46 +1777,15 @@ const GeneratorMaintenanceApp = () => {
 
         const plansRes = await apiFetchJson('/api/pm/base-plans', { method: 'GET' });
         const plans = Array.isArray(plansRes?.plans) ? plansRes.plans : [];
+
         const basePlan = plans.find((p) => String(p?.month || '').trim() === String(pmMonth || '').trim()) || null;
-        if (!basePlan?.id) {
-          const available = plans
-            .map((p) => String(p?.month || '').trim())
-            .filter(Boolean)
-            .join(', ');
 
-          const canCreate = Boolean(isAdmin && /^\d{4}-\d{2}$/.test(String(pmMonth || '').trim()));
-          if (canCreate) {
-            const shouldCreate = window.confirm(
-              `Planning de base introuvable pour ${pmMonth}.
-
-Voulez-vous créer un planning de base (vide) pour ce mois ?
-
-Ensuite, vous devrez importer/sauvegarder le planning de base (items) avant de ré-importer le retour client.`
-            );
-            if (shouldCreate) {
-              await apiFetchJson('/api/pm/base-plans', { method: 'POST', body: JSON.stringify({ month: pmMonth }) });
-              setPmNotice(
-                `✅ Plan de base créé pour ${pmMonth}.\n\nÉtape suivante: importer le planning de base (Excel) puis l'enregistrer en DB, ensuite relancer l'import retour client.`
-              );
-              setPmClientProgress(0);
-              setPmClientStep('');
-              return;
-            }
-          }
-
-          throw new Error(
-            `Planning de base introuvable pour ${pmMonth}.` +
-              `${available ? `\n\nMois disponibles: ${available}` : ''}` +
-              `\n\nAction requise: importer/sauvegarder le planning de base pour ${pmMonth} avant d'importer un retour client.`
-          );
-        }
-        const itemsRes = await apiFetchJson(`/api/pm/base-plans/${String(basePlan.id)}/items`, { method: 'GET' });
-        const baseItems = Array.isArray(itemsRes?.items) ? itemsRes.items : [];
-
-        if (baseItems.length === 0) {
-          throw new Error(
-            `Planning de base vide pour ${pmMonth}.\n\nAction requise: importer/sauvegarder le planning de base (items) pour ${pmMonth} avant d'importer un retour client.`
-          );
+        let baseItems = [];
+        if (basePlan?.id) {
+          const itemsRes = await apiFetchJson(`/api/pm/base-plans/${String(basePlan.id)}/items`, { method: 'GET' });
+          baseItems = Array.isArray(itemsRes?.items) ? itemsRes.items : [];
+        } else {
+          baseItems = [];
         }
 
         const siteByIdSite = new Map(
@@ -1968,7 +1937,7 @@ Ensuite, vous devrez importer/sauvegarder le planning de base (items) avant de r
 
         setPmClientCompare({
           month: pmMonth,
-          basePlanId: String(basePlan.id),
+          basePlanId: basePlan?.id ? String(basePlan.id) : '',
           baseCount: baseMap.size,
           clientCount: clientMap.size,
           retained,
@@ -1996,8 +1965,8 @@ Ensuite, vous devrez importer/sauvegarder le planning de base (items) avant de r
             number,
             siteCode: siteCode || String(b?.siteCode || s?.idSite || '').trim(),
             siteName: String(b?.siteName || r?.siteName || s?.nameSite || '').trim(),
-            region: String(b?.region || '').trim(),
-            zone: String(b?.zone || b?.region || '').trim(),
+            region: String(b?.region || s?.region || s?.zone || '').trim(),
+            zone: String(b?.zone || b?.region || s?.zone || s?.region || '').trim(),
             shortDescription: String(b?.shortDescription || r?.shortDescription || '').trim(),
             maintenanceType: String(b?.recommendedMaintenanceType || r?.maintenanceType || '').trim(),
             scheduledWoDate: date,
@@ -2023,6 +1992,119 @@ Ensuite, vous devrez importer/sauvegarder le planning de base (items) avant de r
           method: 'POST',
           body: JSON.stringify({ filename: file?.name || null, items })
         });
+
+                try {
+          const normalizeType2 = (t) => {
+            const s2 = String(t || '').trim().toLowerCase();
+            if (!s2) return '';
+            if (s2.includes('fullpm') || s2.includes('pmwo')) return 'fullpmwo';
+            if (s2.includes('dg')) return 'dg';
+            if (s2.includes('air') || s2.includes('conditioning') || s2.includes('clim')) return 'air';
+            return s2;
+          };
+          const normalizeYmd2 = (v) => String(v || '').slice(0, 10);
+
+          const globalRes = await apiFetchJson(`/api/pm/months/${monthId}/global-items`, { method: 'GET' });
+          const globalItems = Array.isArray(globalRes?.items) ? globalRes.items : [];
+
+          if (globalItems.length > 0) {
+            const clientItems2 = Array.isArray(items) ? items : [];
+
+            const globalMap = new Map();
+            for (const it of globalItems) {
+              const sc = String(it?.siteCode || '').trim();
+              const d = normalizeYmd2(it?.scheduledWoDate);
+              const t = normalizeType2(it?.maintenanceType);
+              if (!sc || !d || !t) continue;
+              globalMap.set(`${sc}|${d}|${t}`, it);
+            }
+
+            const clientMap = new Map();
+            for (const it of clientItems2) {
+              const sc = String(it?.siteCode || '').trim();
+              const d = normalizeYmd2(it?.scheduledWoDate);
+              const t = normalizeType2(it?.maintenanceType);
+              if (!sc || !d || !t) continue;
+              clientMap.set(`${sc}|${d}|${t}`, it);
+            }
+
+            const retained = [];
+            const removed = [];
+            const added = [];
+
+            for (const [key, g] of globalMap.entries()) {
+              const c = clientMap.get(key);
+              if (c) {
+                retained.push({
+                  siteCode: g.siteCode,
+                  siteName: g.siteName,
+                  plannedDate: normalizeYmd2(g.scheduledWoDate),
+                  maintenanceType: g.maintenanceType,
+                  zone: g.zone || '',
+                  number: c.number || ''
+                });
+              } else {
+                removed.push({
+                  siteCode: g.siteCode,
+                  siteName: g.siteName,
+                  plannedDate: normalizeYmd2(g.scheduledWoDate),
+                  maintenanceType: g.maintenanceType,
+                  zone: g.zone || ''
+                });
+              }
+            }
+
+            for (const [key, c] of clientMap.entries()) {
+              if (globalMap.has(key)) continue;
+              added.push({
+                siteCode: c.siteCode,
+                siteName: c.siteName,
+                plannedDate: normalizeYmd2(c.scheduledWoDate),
+                maintenanceType: c.maintenanceType,
+                zone: c.zone || ''
+              });
+            }
+
+            const clientSites = new Set(clientItems2.map((it) => String(it?.siteCode || '').trim()).filter(Boolean));
+            const retiredMap = new Map();
+            for (const it of globalItems) {
+              const sc = String(it?.siteCode || '').trim();
+              if (!sc) continue;
+              if (clientSites.has(sc)) continue;
+              if (!retiredMap.has(sc)) {
+                retiredMap.set(sc, {
+                  siteCode: sc,
+                  siteName: String(it?.siteName || '').trim(),
+                  zone: String(it?.zone || '').trim(),
+                  region: String(it?.region || '').trim()
+                });
+              }
+            }
+            const retiredSites = Array.from(retiredMap.values()).sort(
+              (a, b) => String(a.zone || '').localeCompare(String(b.zone || '')) || String(a.siteCode).localeCompare(String(b.siteCode))
+            );
+
+            retained.sort((a, b) => String(a.plannedDate).localeCompare(String(b.plannedDate)) || String(a.siteCode).localeCompare(String(b.siteCode)));
+            removed.sort((a, b) => String(a.plannedDate).localeCompare(String(b.plannedDate)) || String(a.siteCode).localeCompare(String(b.siteCode)));
+            added.sort((a, b) => String(a.plannedDate).localeCompare(String(b.plannedDate)) || String(a.siteCode).localeCompare(String(b.siteCode)));
+
+            const uniquePlanIds = Array.from(new Set(globalItems.map((x) => String(x?.planId || '').trim()).filter(Boolean)));
+            const globalPlanId = uniquePlanIds.length === 1 ? uniquePlanIds[0] : uniquePlanIds.length > 1 ? 'multi' : '';
+
+            setPmGlobalCompare({
+              month: pmMonth,
+              globalPlanId,
+              globalCount: globalMap.size,
+              clientCount: clientMap.size,
+              retained,
+              removed,
+              added,
+              retiredSites
+            });
+          }
+        } catch {
+          // ignore
+        }
 
         setPmClientProgress(95);
         setPmClientStep('Rafraîchissement…');
@@ -5273,6 +5355,8 @@ Ensuite, vous devrez importer/sauvegarder le planning de base (items) avant de r
           handlePmOpenReprog={handlePmOpenReprog}
           handlePmSaveReprog={handlePmSaveReprog}
           formatDate={formatDate}
+          apiFetchJson={apiFetchJson}
+          isSuperAdmin={Boolean(authUser?.role === 'admin' && authUser?.zone === 'BZV/POOL')}
         />
 
         <ScoringModal
