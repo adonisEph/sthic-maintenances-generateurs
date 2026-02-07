@@ -1117,10 +1117,11 @@ const GeneratorMaintenanceApp = () => {
     }
 
     const normalizeType = (t) => String(t || '').trim().toLowerCase().replace(/\s+/g, '');
-    const isFullPmwo = (t) => {
-      const v = normalizeType(t);
-      return v === 'fullpmwo' || v.includes('fullpmwo');
-    };
+    const isFullPmwo = (maintenanceType, shortDescription) => {
+    const v1 = normalizeType(maintenanceType);
+    const v2 = normalizeType(shortDescription);
+    return v1 === 'fullpmwo' || v1.includes('fullpmwo') || v2 === 'fullpmwo' || v2.includes('fullpmwo');
+  };
 
     const [globalRes, clientRes] = await Promise.all([
       apiFetchJson(`/api/pm/months/${mId}/global-items`, { method: 'GET' }),
@@ -1133,39 +1134,42 @@ const GeneratorMaintenanceApp = () => {
     // Global: ensemble de sites FullPMWO (par zone scope)
     const globalSites = new Map();
     for (const it of globalItemsRaw) {
-      const siteCode = String(it?.siteCode || '').trim();
-      const zone = String(it?.zone || '').trim();
-      if (!siteCode || !zone) continue;
-      if (!scopeZones.includes(zone)) continue;
-      if (!isFullPmwo(it?.maintenanceType)) continue;
+    const siteCode = String(it?.siteCode || '').trim();
+    const zone = String(it?.zone || it?.region || '').trim();
+    if (!siteCode || !zone) continue;
+    if (!scopeZones.includes(zone)) continue;
 
-      if (!globalSites.has(siteCode)) {
-        globalSites.set(siteCode, {
-          siteCode,
-          siteName: String(it?.siteName || '').trim(),
-          zone,
-          maintenanceType: 'FullPMWO'
-        });
-      }
-    }
+    const key = `${zone}|${siteCode}`;
+  if (!globalSites.has(key)) {
+    globalSites.set(key, {
+      siteCode,
+      siteName: String(it?.siteName || '').trim(),
+      zone,
+      maintenanceType: 'FullPMWO'
+    });
+  }
+}
 
     // Client: ensemble de sites FullPMWO (par zone scope)
     const clientSites = new Set();
     for (const it of clientItemsRaw) {
       const siteCode = String(it?.siteCode || '').trim();
-      const zone = String(it?.zone || '').trim();
-      if (!siteCode || !zone) continue;
-      if (!scopeZones.includes(zone)) continue;
-      if (!isFullPmwo(it?.maintenanceType)) continue;
-      clientSites.add(siteCode);
-    }
+      const zone = String(it?.zone || it?.region || '').trim();
+    if (!siteCode || !zone) continue;
+    if (!scopeZones.includes(zone)) continue;
+
+    if (!isFullPmwo(it?.maintenanceType, it?.shortDescription)) continue;
+
+    const key = `${zone}|${siteCode}`;
+    clientSites.add(key);
+  }
 
     // Retirés = globalSites - clientSites (par siteCode)
-    const items = [];
-    for (const [siteCode, g] of globalSites.entries()) {
-      if (clientSites.has(siteCode)) continue;
-      items.push(g);
-    }
+const items = [];
+for (const [key, g] of globalSites.entries()) {
+  if (clientSites.has(key)) continue;
+  items.push(g);
+}
 
     items.sort(
       (a, b) =>

@@ -4,7 +4,7 @@ import { touchLastUpdatedAt } from '../../../_utils/meta.js';
 
 function requireAdminOrViewer(data) {
   const role = String(data?.user?.role || '');
-  return role === 'admin' || role === 'viewer';
+  return role === 'admin' || role === 'viewer' || role === 'manager';
 }
 
 function mapItemRow(r) {
