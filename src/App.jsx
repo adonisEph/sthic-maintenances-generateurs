@@ -1120,7 +1120,8 @@ const GeneratorMaintenanceApp = () => {
     const isFullPmwo = (maintenanceType, shortDescription) => {
     const v1 = normalizeType(maintenanceType);
     const v2 = normalizeType(shortDescription);
-    return v1 === 'fullpmwo' || v1.includes('fullpmwo') || v2 === 'fullpmwo' || v2.includes('fullpmwo');
+    const isFull = (v) => v === 'fullpmwo' || v.includes('fullpmwo') || v === 'epv1' || v.includes('epv1');
+    return isFull(v1) || isFull(v2);
   };
 
     const [globalRes, clientRes] = await Promise.all([
