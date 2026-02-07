@@ -1902,6 +1902,7 @@ const GeneratorMaintenanceApp = () => {
         await loadPmItems(monthId);
         await loadPmImports(monthId);
         await loadPmDashboard(monthId);
+        await refreshPmRetiredSites(monthId, pmMonth);
 
         setPmClientProgress(100);
         setPmClientStep('Terminé');
@@ -2046,6 +2047,7 @@ const GeneratorMaintenanceApp = () => {
         await loadPmMonths();
         await loadPmImports(monthId);
         await loadPmDashboard(monthId);
+        await refreshPmRetiredSites(monthId, pmMonth);
         await loadPmItems(monthId);
 
         setPmGlobalProgress(100);
@@ -2354,6 +2356,7 @@ const GeneratorMaintenanceApp = () => {
         await loadPmItems(monthId);
         await loadPmImports(monthId);
         await loadPmDashboard(monthId);
+        await refreshPmRetiredSites(monthId, pmMonth);
 
         setPmNocProgress(100);
         setPmNocStep('Terminé');
