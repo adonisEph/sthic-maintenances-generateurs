@@ -1110,7 +1110,15 @@ const GeneratorMaintenanceApp = () => {
     const authZone = String(authUser?.zone || '').trim();
     const superAdmin = Boolean(authUser?.role === 'admin' && authZone === 'BZV/POOL');
 
+    const normalizeZone = (z) =>
+      String(z || '')
+        .trim()
+        .toUpperCase()
+        .replace(/\s*\/\s*/g, '/')
+        .replace(/\s+/g, ' ');
+
     const scopeZones = superAdmin ? ['BZV/POOL', 'PNR/KOUILOU', 'UPCN'] : authZone ? [authZone] : [];
+    const scopeZonesNorm = scopeZones.map(normalizeZone).filter(Boolean);
     if (scopeZones.length === 0) {
       setPmRetiredSites(null);
       return;
@@ -1136,9 +1144,9 @@ const GeneratorMaintenanceApp = () => {
     const globalSites = new Map();
     for (const it of globalItemsRaw) {
     const siteCode = String(it?.siteCode || '').trim();
-    const zone = String(it?.zone || it?.region || '').trim();
+    const zone = normalizeZone(it?.zone || it?.region || '');
     if (!siteCode || !zone) continue;
-    if (!scopeZones.includes(zone)) continue;
+    if (!scopeZonesNorm.includes(zone)) continue;
 
     const key = `${zone}|${siteCode}`;
   if (!globalSites.has(key)) {
@@ -1155,9 +1163,9 @@ const GeneratorMaintenanceApp = () => {
     const clientSites = new Set();
     for (const it of clientItemsRaw) {
       const siteCode = String(it?.siteCode || '').trim();
-      const zone = String(it?.zone || it?.region || '').trim();
+      const zone = normalizeZone(it?.zone || it?.region || '');
     if (!siteCode || !zone) continue;
-    if (!scopeZones.includes(zone)) continue;
+    if (!scopeZonesNorm.includes(zone)) continue;
 
     if (!isFullPmwo(it?.maintenanceType, it?.shortDescription)) continue;
 
@@ -1179,16 +1187,16 @@ for (const [key, g] of globalSites.entries()) {
     );
 
     const byZone = {};
-    for (const z of scopeZones) byZone[z] = 0;
+    for (const z of scopeZonesNorm) byZone[z] = 0;
     for (const it of items) {
-      const z = String(it?.zone || '').trim();
+      const z = normalizeZone(it?.zone || '');
       if (!z) continue;
       byZone[z] = Number(byZone[z] || 0) + 1;
     }
 
     setPmRetiredSites({
       month,
-      scopeZones,
+      scopeZones: scopeZonesNorm,
       total: items.length,
       byZone,
       items
@@ -1874,8 +1882,8 @@ for (const [key, g] of globalSites.entries()) {
             siteName: String(b?.siteName || r?.siteName || s?.nameSite || '').trim(),
             region: String(b?.region || s?.region || s?.zone || r?.zone || '').trim(),
             zone: String(b?.zone || b?.region || s?.zone || s?.region || r?.zone || '').trim(),
-            shortDescription: String(b?.shortDescription || r?.shortDescription || '').trim(),
-            maintenanceType: String(b?.recommendedMaintenanceType || r?.maintenanceType || '').trim(),
+            shortDescription: String(r?.shortDescription || b?.shortDescription || '').trim(),
+            maintenanceType: String(r?.maintenanceType || b?.recommendedMaintenanceType || '').trim(),
             scheduledWoDate: date,
             assignedTo: String(b?.assignedTo || r?.assignedTo || s?.technician || '').trim(),
             state: 'Assigned',
