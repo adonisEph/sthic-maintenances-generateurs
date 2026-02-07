@@ -38,7 +38,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '2.1.5';
+const APP_VERSION = '2.1.6';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const DAILY_NH_UPDATE_STORAGE_KEY = 'gma_daily_nh_update_ymd';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
@@ -1097,6 +1097,126 @@ const GeneratorMaintenanceApp = () => {
     setPmDashboard(data || null);
   };
 
+  const refreshPmGlobalCompare = async (monthId) => {
+  const mId = String(monthId || '').trim();
+  if (!mId) {
+    setPmGlobalCompare(null);
+    return;
+  }
+
+  const normalizeType = (t) => {
+    const s = String(t || '').trim().toLowerCase();
+    if (!s) return '';
+    if (s.includes('fullpm') || s.includes('pmwo')) return 'fullpmwo';
+    if (s.includes('dg')) return 'dg';
+    if (s.includes('air') || s.includes('conditioning') || s.includes('clim')) return 'air';
+    return s;
+  };
+
+  const normalizeYmd = (v) => String(v || '').slice(0, 10);
+
+  const [globalRes, clientRes] = await Promise.all([
+    apiFetchJson(`/api/pm/months/${mId}/global-items`, { method: 'GET' }),
+    apiFetchJson(`/api/pm/months/${mId}/items`, { method: 'GET' })
+  ]);
+
+  const globalItems = Array.isArray(globalRes?.items) ? globalRes.items : [];
+  const clientItems = Array.isArray(clientRes?.items) ? clientRes.items : [];
+
+  const globalMap = new Map();
+  for (const it of globalItems) {
+    const sc = String(it?.siteCode || '').trim();
+    const d = normalizeYmd(it?.scheduledWoDate);
+    const t = normalizeType(it?.maintenanceType);
+    if (!sc || !d || !t) continue;
+    globalMap.set(`${sc}|${d}|${t}`, it);
+  }
+
+  const clientMap = new Map();
+  for (const it of clientItems) {
+    const sc = String(it?.siteCode || '').trim();
+    const d = normalizeYmd(it?.scheduledWoDate);
+    const t = normalizeType(it?.maintenanceType);
+    if (!sc || !d || !t) continue;
+    clientMap.set(`${sc}|${d}|${t}`, it);
+  }
+
+  const retained = [];
+  const removed = [];
+  const added = [];
+
+  for (const [key, g] of globalMap.entries()) {
+    const c = clientMap.get(key);
+    if (c) {
+      retained.push({
+        siteCode: g.siteCode,
+        siteName: g.siteName,
+        plannedDate: normalizeYmd(g.scheduledWoDate),
+        maintenanceType: g.maintenanceType,
+        zone: g.zone || '',
+        number: c.number || ''
+      });
+    } else {
+      removed.push({
+        siteCode: g.siteCode,
+        siteName: g.siteName,
+        plannedDate: normalizeYmd(g.scheduledWoDate),
+        maintenanceType: g.maintenanceType,
+        zone: g.zone || ''
+      });
+    }
+  }
+
+  for (const [key, c] of clientMap.entries()) {
+    if (globalMap.has(key)) continue;
+    added.push({
+      siteCode: c.siteCode,
+      siteName: c.siteName,
+      plannedDate: normalizeYmd(c.scheduledWoDate),
+      maintenanceType: c.maintenanceType,
+      zone: c.zone || ''
+    });
+  }
+
+  // retiredSites = global présent, client absent (par siteCode, indépendamment date/type)
+  const clientSites = new Set(clientItems.map((it) => String(it?.siteCode || '').trim()).filter(Boolean));
+  const retiredMap = new Map();
+  for (const it of globalItems) {
+    const sc = String(it?.siteCode || '').trim();
+    if (!sc) continue;
+    if (clientSites.has(sc)) continue;
+    if (!retiredMap.has(sc)) {
+      retiredMap.set(sc, {
+        siteCode: sc,
+        siteName: String(it?.siteName || '').trim(),
+        zone: String(it?.zone || '').trim(),
+        region: String(it?.region || '').trim()
+      });
+    }
+  }
+  const retiredSites = Array.from(retiredMap.values()).sort(
+    (a, b) => String(a.zone || '').localeCompare(String(b.zone || '')) || String(a.siteCode).localeCompare(String(b.siteCode))
+  );
+
+  retained.sort((a, b) => String(a.plannedDate).localeCompare(String(b.plannedDate)) || String(a.siteCode).localeCompare(String(b.siteCode)));
+  removed.sort((a, b) => String(a.plannedDate).localeCompare(String(b.plannedDate)) || String(a.siteCode).localeCompare(String(b.siteCode)));
+  added.sort((a, b) => String(a.plannedDate).localeCompare(String(b.plannedDate)) || String(a.siteCode).localeCompare(String(b.siteCode)));
+
+  const uniquePlanIds = Array.from(new Set(globalItems.map((x) => String(x?.planId || '').trim()).filter(Boolean)));
+  const globalPlanId = uniquePlanIds.length === 1 ? uniquePlanIds[0] : uniquePlanIds.length > 1 ? 'multi' : '';
+
+  setPmGlobalCompare({
+    month: pmMonth,
+    globalPlanId,
+    globalCount: globalMap.size,
+    clientCount: clientMap.size,
+    retained,
+    removed,
+    added,
+    retiredSites
+  });
+};
+
   const refreshPmAll = async (yyyymm) => {
     try {
       setPmBusy(true);
@@ -1117,6 +1237,7 @@ const GeneratorMaintenanceApp = () => {
         await loadPmItems(id);
         await loadPmImports(id);
         await loadPmDashboard(id);
+        await refreshPmGlobalCompare(id);
       } else {
         setPmItems([]);
         setPmImports([]);
@@ -2118,6 +2239,7 @@ const GeneratorMaintenanceApp = () => {
         await loadPmItems(monthId);
         await loadPmImports(monthId);
         await loadPmDashboard(monthId);
+        await refreshPmGlobalCompare(monthId);
 
         setPmClientProgress(100);
         setPmClientStep('Terminé');
@@ -2371,6 +2493,8 @@ const GeneratorMaintenanceApp = () => {
       await loadPmMonths();
       await loadPmImports(monthId);
       await loadPmDashboard(monthId);
+      await loadPmItems(monthId);
+      await refreshPmGlobalCompare(monthId);
 
       setPmGlobalProgress(100);
       setPmGlobalStep('Terminé');

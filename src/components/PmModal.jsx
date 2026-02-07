@@ -676,16 +676,16 @@ const PmModal = (props) => {
                     <div className="text-sm font-semibold text-slate-900">
                       Planning PM global vs retour client ({pmGlobalCompare.month})
                     </div>
-                    {Array.isArray(pmGlobalCompare.retiredSites) && pmGlobalCompare.retiredSites.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setPmRetiredSitesOpen(true)}
-                        className="text-xs font-semibold px-2 py-1 rounded border border-fuchsia-200 bg-fuchsia-50 text-fuchsia-900 hover:bg-fuchsia-100"
-                        disabled={pmBusy}
-                      >
-                        Sites retirés: {pmGlobalCompare.retiredSites.length}
-                      </button>
-                    )}
+                  {Array.isArray(pmGlobalCompare.retiredSites) && (
+                    <button
+                      type="button"
+                      onClick={() => setPmRetiredSitesOpen(true)}
+                      className="text-xs font-semibold px-2 py-1 rounded border border-fuchsia-200 bg-fuchsia-50 text-fuchsia-900 hover:bg-fuchsia-100"
+                      disabled={pmBusy}
+                    >
+                      Sites retirés pour la campagne ({pmGlobalCompare.month}): {pmGlobalCompare.retiredSites.length}
+                    </button>
+                  )}
                   </div>
 
                   <div className="mt-2 grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs text-slate-800">
@@ -786,7 +786,7 @@ const PmModal = (props) => {
                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
                   <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
                     <div className="flex justify-between items-center p-4 border-b bg-fuchsia-800 text-white">
-                      <div className="font-bold">Sites retirés (global présent, client absent)</div>
+                      <div className="font-bold">Sites retirés pour la campagne ({pmGlobalCompare.month})</div>
                       <button
                         type="button"
                         onClick={() => setPmRetiredSitesOpen(false)}
