@@ -993,6 +993,7 @@ const GeneratorMaintenanceApp = () => {
 
   const pmInferType = (row) => {
     const s = String(row?.['Short description'] || row?.['Short Description'] || row?.short_description || row?.description || '').toLowerCase();
+    if (s.includes('epv1')) return 'EPV1';
     if (s.includes('dg') || s.includes('generator')) return 'DG Service';
     if (s.includes('air') || s.includes('conditioning') || s.includes('clim')) return 'Air Conditioning Service';
     if (s.includes('fullpm') || s.includes('full pm') || s.includes('full pmwo') || s.includes('pmwo')) return 'FullPMWO';
@@ -1740,9 +1741,9 @@ for (const [key, g] of globalSites.entries()) {
             const rawSiteCode = pmGet(row, 'Site (id)', 'Site', 'Site id', 'Site Code', 'Site (Id)');
             const rawSiteName = pmGet(row, 'Site Name', 'Site name', 'Name Site');
             const rawNumber = pmGet(row, 'Number', 'Ticket', 'Ticket Number');
-            const rawType = pmGet(row, 'Maintenance Type') || pmInferType(row);
+            const rawType = pmGet(row, 'Maintenance Type', 'Maintenance type', 'Type') || pmInferType(row);
             const rawDate = pmNormalizeDate(pmGet(row, 'Scheduled WO Date', 'Scheduled Wo Date', 'Scheduled date', 'Scheduled Date', 'Date'));
-            const shortDescription = String(pmGet(row, 'Short description', 'Short Description') || '').trim();
+            const shortDescription = String(pmGet(row, 'Short description', 'Short Description', 'Description') || '').trim();
             const assignedTo = String(pmGet(row, 'Assigned to', 'Assigned To') || '').trim();
             const rawZone = pmGet(row, 'Zone', 'zone', 'Region', 'region');
             const zone = String(rawZone || '').trim();
