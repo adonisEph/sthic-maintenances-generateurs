@@ -215,14 +215,16 @@ const GeneratorMaintenanceApp = () => {
   const isViewer = currentRole === 'viewer';
   const isTechnician = currentRole === 'technician';
   const isManager = currentRole === 'manager';
-  const canWriteSites = isAdmin;
+  const canWriteSites = isAdmin || isManager;
   const canImportExport = isAdmin;
-  const canExportExcel = isAdmin || isViewer;
+  const canExportExcel = isAdmin || isManager || isViewer;
+  const canImportSites = canImportExport;
+  const canExportSites = canExportExcel && !isTechnician;
   const canReset = isAdmin;
-  const canGenerateFiche = isAdmin;
-  const canMarkCompleted = isAdmin || isTechnician;
+  const canGenerateFiche = isAdmin || isManager;
+  const canMarkCompleted = isAdmin || isManager || isTechnician;
   const canManageUsers = isAdmin;
-  const canUseInterventions = isAdmin || isTechnician || isViewer;
+  const canUseInterventions = isAdmin || isManager || isTechnician || isViewer;
   const canUsePm = isAdmin || isManager || isViewer;
 
   const apiFetchJson = async (path, init = {}) => {
@@ -256,7 +258,7 @@ const GeneratorMaintenanceApp = () => {
 
   const handleSendCalendarMonthPlanning = async () => {
     try {
-      if (!isAdmin) return;
+      if (!isAdmin && !isManager) return;
       const techId = String(calendarSendTechUserId || '').trim();
       if (!techId) {
         alert('Veuillez sélectionner un technicien.');
@@ -322,7 +324,7 @@ const GeneratorMaintenanceApp = () => {
 
   const handleSendPmMonthPlanning = async () => {
     try {
-      if (!isAdmin) return;
+      if (!isAdmin && !isManager) return;
 
       const techId = String(pmSendTechUserId || '').trim();
       if (!techId) {
@@ -628,9 +630,21 @@ const GeneratorMaintenanceApp = () => {
     setUsersBusy(true);
     setUsersError('');
     try {
-      const data = await apiFetchJson('/api/users', { method: 'GET' });
-      setUsers(Array.isArray(data?.users) ? data.users : []);
-      return data;
+      if (authUser?.role === 'admin') {
+        const data = await apiFetchJson('/api/users', { method: 'GET' });
+        setUsers(Array.isArray(data?.users) ? data.users : []);
+        return data;
+      }
+
+      if (authUser?.role === 'manager') {
+        const data = await apiFetchJson('/api/technicians', { method: 'GET' });
+        const techs = Array.isArray(data?.technicians) ? data.technicians : [];
+        setUsers(techs.map((t) => ({ ...t, role: 'technician' })));
+        return data;
+      }
+
+      setUsers([]);
+      return { users: [] };
     } catch (e) {
       setUsersError(e?.message || 'Erreur lors du chargement des techniciens.');
       throw e;
@@ -653,7 +667,7 @@ const GeneratorMaintenanceApp = () => {
           }
           await loadData();
           await loadFicheHistory();
-          if (data?.user?.role === 'admin') {
+          if (data?.user?.role === 'admin' || data?.user?.role === 'manager') {
             await loadTicketNumber();
           }
           if (data?.user?.role === 'technician') {
@@ -741,7 +755,9 @@ const GeneratorMaintenanceApp = () => {
       const { from, to } = monthRange(yyyyMm);
       const qs = new URLSearchParams({ from, to });
       if (status && status !== 'all') qs.set('status', status);
-      if (isAdmin && technicianUserId && technicianUserId !== 'all') qs.set('technicianUserId', String(technicianUserId));
+      if ((isAdmin || isManager) && technicianUserId && technicianUserId !== 'all') {
+        qs.set('technicianUserId', String(technicianUserId));
+      }
       const data = await apiFetchJson(`/api/interventions?${qs.toString()}`, { method: 'GET' });
       setInterventions(Array.isArray(data?.interventions) ? data.interventions : []);
     } catch (e) {
@@ -799,6 +815,7 @@ const GeneratorMaintenanceApp = () => {
 
   const handleSendJ1 = async () => {
     try {
+      if (!isAdmin && !isManager) return;
       const pad2 = (n) => String(n).padStart(2, '0');
       const ymdLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
       const tomorrowD = new Date();
@@ -872,7 +889,7 @@ const GeneratorMaintenanceApp = () => {
 
   const handleSetNextTicketNumber = async () => {
     try {
-      if (!isAdmin) return;
+      if (!isAdmin && !isManager) return;
       const raw = window.prompt('Définir le prochain ticket (ex: 1250 pour T01250)', String(ticketNumber || 1250));
       if (raw == null) return;
       const next = Number(String(raw).replace(/[^0-9]+/g, ''));
@@ -1029,7 +1046,7 @@ const GeneratorMaintenanceApp = () => {
   };
 
   const handlePmOpenReprog = (it) => {
-    if (!isAdmin) return;
+    if (!isAdmin && !isManager) return;
     const date = it?.reprogrammationDate ? String(it.reprogrammationDate).slice(0, 10) : '';
     const status = it?.reprogrammationStatus ? String(it.reprogrammationStatus).trim() : '';
     const reason = it?.reprogrammationReason ? String(it.reprogrammationReason) : '';
@@ -1040,7 +1057,7 @@ const GeneratorMaintenanceApp = () => {
   };
 
   const handlePmSaveReprog = async () => {
-    if (!isAdmin) return;
+    if (!isAdmin && !isManager) return;
     if (!pmMonthId) {
       setPmReprogError('Mois introuvable.');
       return;
@@ -2717,7 +2734,7 @@ for (const [key, g] of globalSites.entries()) {
     (async () => {
       let usedTicketNumber = ticketNumber;
 
-      if (isAdmin) {
+      if (isAdmin || isManager) {
         try {
           const data = await apiFetchJson('/api/meta/ticket-number/next', { method: 'POST', body: JSON.stringify({}) });
           if (Number.isFinite(Number(data?.ticketNumber))) {
@@ -4577,7 +4594,8 @@ for (const [key, g] of globalSites.entries()) {
 
           <SidebarSitesActions
             canWriteSites={canWriteSites}
-            canImportExport={canImportExport}
+            canImportSites={canImportExport}
+            canExportSites={canExportExcel && !isTechnician}
             onCloseSidebar={() => setSidebarOpen(false)}
             onToggleAddForm={() => setShowAddForm(!showAddForm)}
             importBusy={importBusy}
@@ -4594,7 +4612,7 @@ for (const [key, g] of globalSites.entries()) {
               onClick={async () => {
                 setSidebarOpen(false);
                 setShowCalendar(true);
-                if (authUser?.role === 'admin') {
+                if (authUser?.role === 'admin' || authUser?.role === 'manager') {
                   try {
                     await refreshUsers();
                   } catch {
@@ -4634,10 +4652,10 @@ for (const [key, g] of globalSites.entries()) {
                   setShowTechnicianInterventionsFilters(false);
                 }
                 setShowInterventions(true);
-                if (authUser?.role === 'admin') {
+                if (authUser?.role === 'admin' || authUser?.role === 'manager') {
                   try {
                     await refreshUsers();
-                  } catch (e) {
+                  } catch {
                     // ignore
                   }
                 }

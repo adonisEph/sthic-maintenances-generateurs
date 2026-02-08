@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../../../_utils/db.js';
-import { json, requireAuth, ymdToday } from '../../../_utils/http.js';
+import { json, requireAuth, ymdToday, isSuperAdmin, userZone } from '../../../_utils/http.js';
 
 function requireAdminOrViewer(data) {
   const role = String(data?.user?.role || '');
@@ -30,11 +30,17 @@ export async function onRequestGet({ env, data, params }) {
 
     const today = ymdToday();
 
-    const res = await env.DB.prepare(
-      'SELECT state, scheduled_wo_date, maintenance_type, zone, reprogrammation_date, reprogrammation_status, reprogrammation_reason FROM pm_items WHERE month_id = ?'
-    )
-      .bind(monthId)
-      .all();
+    const scopeZone = isSuperAdmin(data) ? null : String(userZone(data) || 'BZV/POOL');
+
+    const stmt = scopeZone
+      ? env.DB.prepare(
+          "SELECT state, scheduled_wo_date, maintenance_type, zone, reprogrammation_date, reprogrammation_status, reprogrammation_reason FROM pm_items WHERE month_id = ? AND COALESCE(region, zone, '') = ?"
+        ).bind(monthId, scopeZone)
+      : env.DB.prepare(
+          'SELECT state, scheduled_wo_date, maintenance_type, zone, reprogrammation_date, reprogrammation_status, reprogrammation_reason FROM pm_items WHERE month_id = ?'
+        ).bind(monthId);
+
+    const res = await stmt.all();
     const rows = Array.isArray(res?.results) ? res.results : [];
 
     const totals = {

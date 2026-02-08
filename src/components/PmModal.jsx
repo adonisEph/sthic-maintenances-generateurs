@@ -288,7 +288,7 @@ const PmModal = (props) => {
                   </div>
                 </div>
 
-                {isAdmin && (
+                {(isAdmin || isManager) && (
                   <div>
                     <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Technicien</div>
                     <div className="space-y-2">
@@ -303,6 +303,7 @@ const PmModal = (props) => {
                           <option value="">-- Technicien --</option>
                           {(Array.isArray(users) ? users : [])
                             .filter((u) => u && u.role === 'technician')
+                            .filter((u) => (isManager ? String(u?.zone || '').trim() === String(authZone || '').trim() : true))
                             .slice()
                             .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')))
                             .map((u) => (
@@ -334,7 +335,9 @@ const PmModal = (props) => {
                         Voir reprog rejetées
                       </button>
 
-                      {(Array.isArray(users) ? users : []).filter((u) => u && u.role === 'technician').length === 0 && (
+                      {(Array.isArray(users) ? users : [])
+                        .filter((u) => u && u.role === 'technician')
+                        .filter((u) => (isManager ? String(u?.zone || '').trim() === String(authZone || '').trim() : true)).length === 0 && (
                         <div className="text-xs text-white/70">
                           Aucun technicien trouvé.
                         </div>
@@ -343,7 +346,7 @@ const PmModal = (props) => {
                   </div>
                 )}
 
-                {isAdmin && (
+                {(isAdmin || isManager) && (
                   <div>
                     <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Actions</div>
                     <div className="flex flex-col">
@@ -395,128 +398,132 @@ const PmModal = (props) => {
                         />
                       </label>
 
-                      <button
-                        type="button"
-                        onClick={() => setPmPurgeOpen((v) => !v)}
-                        className="text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
-                        disabled={pmBusy || pmPurgeBusy}
-                      >
-                        <Trash2 size={16} />
-                        Purge imports (avancé)
-                      </button>
+                      {isAdmin && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setPmPurgeOpen((v) => !v)}
+                            className="text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                            disabled={pmBusy || pmPurgeBusy}
+                          >
+                            <Trash2 size={16} />
+                            Purge imports (avancé)
+                          </button>
 
-                      {pmPurgeOpen && (
-                        <div className="mx-3 my-2 p-3 rounded-lg border border-white/10 bg-white/5">
-                          <div className="text-xs font-semibold text-white/90 mb-2">Options purge</div>
-                          <div className="space-y-2">
-                            <label className="flex items-center gap-2 text-xs text-white/90">
-                              <input
-                                type="checkbox"
-                                checked={pmPurgeClient}
-                                onChange={(e) => setPmPurgeClient(Boolean(e.target.checked))}
-                                disabled={pmBusy || pmPurgeBusy}
-                              />
-                              Purger retour client (pm_items + noc + assignments)
-                            </label>
-                            <label className="flex items-center gap-2 text-xs text-white/90">
-                              <input
-                                type="checkbox"
-                                checked={pmPurgeGlobal}
-                                onChange={(e) => setPmPurgeGlobal(Boolean(e.target.checked))}
-                                disabled={pmBusy || pmPurgeBusy}
-                              />
-                              Purger planning global (pm_global_plans + items)
-                            </label>
-                            <label className="flex items-center gap-2 text-xs text-white/90">
-                              <input
-                                type="checkbox"
-                                checked={pmPurgeDryRun}
-                                onChange={(e) => setPmPurgeDryRun(Boolean(e.target.checked))}
-                                disabled={pmBusy || pmPurgeBusy}
-                              />
-                              Mode dry-run (prévisualisation)
-                            </label>
+                          {pmPurgeOpen && (
+                            <div className="mx-3 my-2 p-3 rounded-lg border border-white/10 bg-white/5">
+                              <div className="text-xs font-semibold text-white/90 mb-2">Options purge</div>
+                              <div className="space-y-2">
+                                <label className="flex items-center gap-2 text-xs text-white/90">
+                                  <input
+                                    type="checkbox"
+                                    checked={pmPurgeClient}
+                                    onChange={(e) => setPmPurgeClient(Boolean(e.target.checked))}
+                                    disabled={pmBusy || pmPurgeBusy}
+                                  />
+                                  Purger retour client (pm_items + noc + assignments)
+                                </label>
+                                <label className="flex items-center gap-2 text-xs text-white/90">
+                                  <input
+                                    type="checkbox"
+                                    checked={pmPurgeGlobal}
+                                    onChange={(e) => setPmPurgeGlobal(Boolean(e.target.checked))}
+                                    disabled={pmBusy || pmPurgeBusy}
+                                  />
+                                  Purger planning global (pm_global_plans + items)
+                                </label>
+                                <label className="flex items-center gap-2 text-xs text-white/90">
+                                  <input
+                                    type="checkbox"
+                                    checked={pmPurgeDryRun}
+                                    onChange={(e) => setPmPurgeDryRun(Boolean(e.target.checked))}
+                                    disabled={pmBusy || pmPurgeBusy}
+                                  />
+                                  Mode dry-run (prévisualisation)
+                                </label>
 
-                            {pmIsSuperAdmin && (
-                              <div>
-                                <div className="text-[11px] font-semibold text-white/90 mb-1">Zones (super-admin)</div>
-                                <div className="flex flex-col gap-1">
-                                  {['BZV/POOL', 'PNR/KOUILOU', 'UPCN'].map((z) => (
-                                    <label key={z} className="flex items-center gap-2 text-xs text-white/90">
-                                      <input
-                                        type="checkbox"
-                                        checked={(Array.isArray(pmPurgeZones) ? pmPurgeZones : []).includes(z)}
-                                        onChange={() => pmTogglePurgeZone(z)}
-                                        disabled={pmBusy || pmPurgeBusy}
-                                      />
-                                      {z}
-                                    </label>
-                                  ))}
+                                {pmIsSuperAdmin && (
+                                  <div>
+                                    <div className="text-[11px] font-semibold text-white/90 mb-1">Zones (super-admin)</div>
+                                    <div className="flex flex-col gap-1">
+                                      {['BZV/POOL', 'PNR/KOUILOU', 'UPCN'].map((z) => (
+                                        <label key={z} className="flex items-center gap-2 text-xs text-white/90">
+                                          <input
+                                            type="checkbox"
+                                            checked={(Array.isArray(pmPurgeZones) ? pmPurgeZones : []).includes(z)}
+                                            onChange={() => pmTogglePurgeZone(z)}
+                                            disabled={pmBusy || pmPurgeBusy}
+                                          />
+                                          {z}
+                                        </label>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {pmPurgeResult?.preview && (
+                                  <div className="text-[11px] text-white/80">
+                                    Aperçu: plans global {Number(pmPurgeResult?.preview?.pmGlobalPlans || 0)} • items global {Number(
+                                      pmPurgeResult?.preview?.pmGlobalPlanItems || 0
+                                    )} • items client {Number(pmPurgeResult?.preview?.pmClientItems || 0)} • noc {Number(
+                                      pmPurgeResult?.preview?.pmClientNocRows || 0
+                                    )} • assign. {Number(pmPurgeResult?.preview?.pmClientAssignments || 0)}
+                                  </div>
+                                )}
+
+                                <div className="flex flex-col gap-2 pt-2">
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      if (!pmPurgeDryRun) {
+                                        const ok = window.confirm(
+                                          `Confirmer la purge ?\n\nMois: ${pmMonth}\n\nCette action supprimera des données en base.`
+                                        );
+                                        if (!ok) return;
+                                      }
+                                      await pmRunPurge({ dryRun: pmPurgeDryRun });
+                                    }}
+                                    className="w-full bg-rose-600 text-white px-3 py-2 rounded-lg hover:bg-rose-700 text-sm font-semibold disabled:bg-white/10 disabled:text-white/60"
+                                    disabled={pmBusy || pmPurgeBusy}
+                                  >
+                                    {pmPurgeDryRun ? 'Lancer dry-run' : 'Purger maintenant'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      await pmRunPurge({ dryRun: true });
+                                    }}
+                                    className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                                    disabled={pmBusy || pmPurgeBusy}
+                                  >
+                                    Prévisualiser (dry-run)
+                                  </button>
                                 </div>
                               </div>
-                            )}
-
-                            {pmPurgeResult?.preview && (
-                              <div className="text-[11px] text-white/80">
-                                Aperçu: plans global {Number(pmPurgeResult?.preview?.pmGlobalPlans || 0)} • items global {Number(
-                                  pmPurgeResult?.preview?.pmGlobalPlanItems || 0
-                                )} • items client {Number(pmPurgeResult?.preview?.pmClientItems || 0)} • noc {Number(
-                                  pmPurgeResult?.preview?.pmClientNocRows || 0
-                                )} • assign. {Number(pmPurgeResult?.preview?.pmClientAssignments || 0)}
-                              </div>
-                            )}
-
-                            <div className="flex flex-col gap-2 pt-2">
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  if (!pmPurgeDryRun) {
-                                    const ok = window.confirm(
-                                      `Confirmer la purge ?\n\nMois: ${pmMonth}\n\nCette action supprimera des données en base.`
-                                    );
-                                    if (!ok) return;
-                                  }
-                                  await pmRunPurge({ dryRun: pmPurgeDryRun });
-                                }}
-                                className="w-full bg-rose-600 text-white px-3 py-2 rounded-lg hover:bg-rose-700 text-sm font-semibold disabled:bg-white/10 disabled:text-white/60"
-                                disabled={pmBusy || pmPurgeBusy}
-                              >
-                                {pmPurgeDryRun ? 'Lancer dry-run' : 'Purger maintenant'}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  await pmRunPurge({ dryRun: true });
-                                }}
-                                className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
-                                disabled={pmBusy || pmPurgeBusy}
-                              >
-                                Prévisualiser (dry-run)
-                              </button>
                             </div>
-                          </div>
-                        </div>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => handlePmReset('imports')}
+                            className="text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                            disabled={pmBusy || pmResetBusy}
+                          >
+                            <Trash2 size={16} />
+                            Suppr. imports
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handlePmReset('all')}
+                            className="text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                            disabled={pmBusy || pmResetBusy}
+                          >
+                            <RotateCcw size={16} />
+                            Reset mois
+                          </button>
+                        </>
                       )}
-
-                      <button
-                        type="button"
-                        onClick={() => handlePmReset('imports')}
-                        className="text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
-                        disabled={pmBusy || pmResetBusy}
-                      >
-                        <Trash2 size={16} />
-                        Suppr. imports
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handlePmReset('all')}
-                        className="text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
-                        disabled={pmBusy || pmResetBusy}
-                      >
-                        <RotateCcw size={16} />
-                        Reset mois
-                      </button>
                     </div>
                   </div>
                 )}

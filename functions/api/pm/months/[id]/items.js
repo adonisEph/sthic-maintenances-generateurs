@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../../../_utils/db.js';
-import { json, requireAuth, requireAdmin, readJson, isoNow } from '../../../_utils/http.js';
+import { json, requireAuth, readJson, isoNow, isSuperAdmin, userZone } from '../../../_utils/http.js';
 import { touchLastUpdatedAt } from '../../../_utils/meta.js';
 
 function requireAdminOrViewer(data) {
@@ -53,6 +53,12 @@ export async function onRequestGet({ request, env, data, params }) {
 
     const where = ['month_id = ?'];
     const bind = [monthId];
+
+    // Scope zone: super-admin voit tout, sinon zone du user
+    if (!isSuperAdmin(data)) {
+      where.push("COALESCE(region, zone, '') = ?");
+      bind.push(String(userZone(data) || 'BZV/POOL'));
+    }
 
     if (date) {
       where.push("substr(scheduled_wo_date, 1, 10) = ?");
@@ -124,7 +130,9 @@ export async function onRequestPatch({ request, env, data, params }) {
   try {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
-    if (!requireAdmin(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
+
+    const role = String(data?.user?.role || '');
+    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const monthId = String(params?.id || '').trim();
     if (!monthId) return json({ error: 'Mois requis.' }, { status: 400 });
@@ -151,6 +159,14 @@ export async function onRequestPatch({ request, env, data, params }) {
 
     const existing = await env.DB.prepare('SELECT * FROM pm_items WHERE id = ? AND month_id = ?').bind(id, monthId).first();
     if (!existing) return json({ error: 'Ticket introuvable.' }, { status: 404 });
+
+    if (!isSuperAdmin(data)) {
+      const z = String(userZone(data) || 'BZV/POOL');
+      const itemZone = String(existing?.region || existing?.zone || '').trim();
+      if (!itemZone || itemZone !== z) {
+        return json({ error: 'Accès interdit.' }, { status: 403 });
+      }
+    }
 
     const now = isoNow();
     await env.DB.prepare(

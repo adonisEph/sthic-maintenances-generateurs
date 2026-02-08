@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../_utils/db.js';
-import { json, requireAdmin, ymdToday, isoNow, readJson, isSuperAdmin, userZone } from '../_utils/http.js';
+import { json, requireAuth, ymdToday, isoNow, readJson, isSuperAdmin, userZone } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
 
 function ymdAddDays(ymd, days) {
@@ -11,7 +11,10 @@ function ymdAddDays(ymd, days) {
 export async function onRequestPost({ request, env, data }) {
   try {
     await ensureAdminUser(env);
-    if (!requireAdmin(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
+    if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
+
+    const role = String(data?.user?.role || '');
+    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const body = await readJson(request);
     const providedPlannedDate = String(body?.plannedDate || '').trim();

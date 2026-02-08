@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../_utils/db.js';
-import { json, requireAdmin, requireAuth, readJson, isoNow, newId } from '../_utils/http.js';
+import { json, requireAuth, readJson, isoNow, newId, isSuperAdmin, userZone } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
 
 function normId(v) {
@@ -19,11 +19,21 @@ export async function onRequestPost({ request, env, data }) {
   try {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
-    if (!requireAdmin(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
+
+    const role = String(data?.user?.role || '');
+    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const body = await readJson(request);
     const technicianId = normId(body?.technicianId);
     if (!technicianId) return json({ error: 'Technicien requis.' }, { status: 400 });
+
+    if (!isSuperAdmin(data)) {
+      const z = String(userZone(data) || 'BZV/POOL');
+      const tech = await env.DB.prepare('SELECT id, role, zone FROM users WHERE id = ?').bind(technicianId).first();
+      if (!tech) return json({ error: 'Technicien introuvable.' }, { status: 404 });
+      if (String(tech?.role || '') !== 'technician') return json({ error: 'Technicien invalide.' }, { status: 400 });
+      if (String(tech?.zone || 'BZV/POOL') !== z) return json({ error: 'Accès interdit.' }, { status: 403 });
+    }
 
     const pairsIn = Array.isArray(body?.pairs) ? body.pairs : [];
     const unique = new Set();

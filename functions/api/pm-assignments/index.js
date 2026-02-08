@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../_utils/db.js';
-import { json, requireAuth } from '../_utils/http.js';
+import { json, requireAuth, isSuperAdmin, userZone } from '../_utils/http.js';
 
 function mapRow(row) {
   if (!row) return null;
@@ -26,7 +26,7 @@ export async function onRequestGet({ request, env, data }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
     const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'technician') {
+    if (role !== 'admin' && role !== 'technician' && role !== 'manager') {
       return json({ error: 'Accès interdit.' }, { status: 403 });
     }
 
@@ -38,6 +38,12 @@ export async function onRequestGet({ request, env, data }) {
 
     let where = '1=1';
     const binds = [];
+
+    // Scope zone: admin non-super-admin + manager => zone limitée
+    if ((role === 'admin' || role === 'manager') && !isSuperAdmin(data)) {
+      where += ' AND zone = ?';
+      binds.push(userZone(data));
+    }
 
     if (from) {
       where += ' AND planned_date >= ?';

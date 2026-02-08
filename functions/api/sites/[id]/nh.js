@@ -53,7 +53,7 @@ export async function onRequestPost({ request, env, data, params }) {
     }
 
     const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'technician') {
+    if (role !== 'admin' && role !== 'technician' && role !== 'manager') {
       return json({ error: 'Accès interdit.' }, { status: 403 });
     }
 

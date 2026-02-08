@@ -32,6 +32,9 @@ const CalendarModal = (props) => {
     setShowDayDetailsModal
   } = props;
 
+  const isManager = String(authUser?.role || '') === 'manager';
+  const authZone = String(authUser?.zone || '').trim();
+
   // State for clustering functionality
   const [showClustering, setShowClustering] = useState(false);
   const [clusteringTech, setClusteringTech] = useState('');
@@ -47,8 +50,6 @@ const CalendarModal = (props) => {
   const [planningErrors, setPlanningErrors] = useState([]);
   const [showPlanning, setShowPlanning] = useState(false);
   const [planningStats, setPlanningStats] = useState(null);
-
-  const authZone = String(authUser?.zone || authUser?.region || '');
   const isSuperAdmin = authUser?.role === 'admin' && authZone === 'BZV/POOL';
   const defaultZone = authZone || 'BZV/POOL';
   const [purgeBasePlans, setPurgeBasePlans] = useState(true);
@@ -1168,7 +1169,7 @@ const CalendarModal = (props) => {
                   )}
                 </div>
 
-                {isAdmin && (
+                {(isAdmin || isManager) && (
                   <div>
                     <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Technicien</div>
                     <div className="text-xs font-semibold text-white/90 mb-1">Destinataire</div>
@@ -1181,6 +1182,7 @@ const CalendarModal = (props) => {
                       <option value="">-- Technicien --</option>
                       {(Array.isArray(users) ? users : [])
                         .filter((u) => u && u.role === 'technician')
+                        .filter((u) => (isManager ? String(u?.zone || '').trim() === authZone : true))
                         .slice()
                         .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')))
                         .map((u) => (
@@ -1194,7 +1196,9 @@ const CalendarModal = (props) => {
                     {!usersBusy && usersError && <div className="mt-1 text-xs text-rose-300">{usersError}</div>}
                     {!usersBusy &&
                       !usersError &&
-                      (Array.isArray(users) ? users : []).filter((u) => u && u.role === 'technician').length === 0 && (
+                      (Array.isArray(users) ? users : [])
+                        .filter((u) => u && u.role === 'technician')
+                        .filter((u) => (isManager ? String(u?.zone || '').trim() === authZone : true)).length === 0 && (
                         <div className="mt-1 text-xs text-white/70">Aucun technicien chargé.</div>
                       )}
 

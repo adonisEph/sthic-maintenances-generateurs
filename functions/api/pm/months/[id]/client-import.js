@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../../../_utils/db.js';
-import { json, requireAuth, requireAdmin, readJson, isoNow, newId } from '../../../_utils/http.js';
+import { json, requireAuth, readJson, isoNow, newId, isSuperAdmin, userZone } from '../../../_utils/http.js';
 import { touchLastUpdatedAt } from '../../../_utils/meta.js';
 
 function normStr(v) {
@@ -11,7 +11,9 @@ export async function onRequestPost({ request, env, data, params }) {
   try {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
-    if (!requireAdmin(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
+
+    const role = String(data?.user?.role || '');
+    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const monthId = String(params?.id || '').trim();
     if (!monthId) return json({ error: 'Mois requis.' }, { status: 400 });
@@ -22,6 +24,8 @@ export async function onRequestPost({ request, env, data, params }) {
     const body = await readJson(request);
     const items = Array.isArray(body?.items) ? body.items : [];
     const filename = normStr(body?.filename);
+
+    const scopeZone = isSuperAdmin(data) ? null : String(userZone(data) || 'BZV/POOL');
 
     const now = isoNow();
 
@@ -37,12 +41,24 @@ export async function onRequestPost({ request, env, data, params }) {
       seen.add(number);
     }
 
-    await env.DB.prepare('DELETE FROM pm_items WHERE month_id = ?').bind(monthId).run();
+    if (scopeZone) {
+      await env.DB.prepare("DELETE FROM pm_items WHERE month_id = ? AND COALESCE(region, zone, '') = ?")
+        .bind(monthId, scopeZone)
+        .run();
+    } else {
+      // super-admin: remplace tout (multi-zones)
+      await env.DB.prepare('DELETE FROM pm_items WHERE month_id = ?').bind(monthId).run();
+    }
 
     let inserted = 0;
     for (const it of items) {
       const number = String(it?.number || '').trim();
       if (!number) continue;
+
+      if (scopeZone) {
+        const z = String(it?.zone || it?.region || '').trim();
+        if (!z || z !== scopeZone) continue;
+      }
 
       const id = newId();
       await env.DB.prepare(

@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../../../_utils/db.js';
-import { json, requireAuth, requireAdmin, readJson, isoNow, newId, userZone, isSuperAdmin } from '../../../_utils/http.js';
+import { json, requireAuth, readJson, isoNow, newId, userZone, isSuperAdmin } from '../../../_utils/http.js';
 import { touchLastUpdatedAt } from '../../../_utils/meta.js';
 
 function normStr(v) {
@@ -11,7 +11,9 @@ export async function onRequestPost({ request, env, data, params }) {
   try {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
-    if (!requireAdmin(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
+
+    const role = String(data?.user?.role || '');
+    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const monthId = String(params?.id || '').trim();
     if (!monthId) return json({ error: 'Mois requis.' }, { status: 400 });

@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../../../_utils/db.js';
-import { json, requireAuth, requireAdmin, readJson, isoNow, newId } from '../../../_utils/http.js';
+import { json, requireAuth, readJson, isoNow, newId, isSuperAdmin, userZone } from '../../../_utils/http.js';
 import { touchLastUpdatedAt } from '../../../_utils/meta.js';
 
 function normStr(v) {
@@ -17,7 +17,9 @@ export async function onRequestPost({ request, env, data, params }) {
   try {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
-    if (!requireAdmin(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
+
+    const role = String(data?.user?.role || '');
+    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const monthId = String(params?.id || '').trim();
     if (!monthId) return json({ error: 'Mois requis.' }, { status: 400 });
@@ -31,6 +33,8 @@ export async function onRequestPost({ request, env, data, params }) {
 
     const now = isoNow();
     const importId = newId();
+
+    const scopeZone = isSuperAdmin(data) ? null : String(userZone(data) || 'BZV/POOL');
 
     let updated = 0;
     let missing = 0;
@@ -70,11 +74,17 @@ export async function onRequestPost({ request, env, data, params }) {
       if (numbers.length === 0) continue;
 
       const inPlaceholders = numbers.map(() => '?').join(',');
-      const existing = await env.DB.prepare(
-        `SELECT number FROM pm_items WHERE month_id = ? AND number IN (${inPlaceholders})`
-      )
-        .bind(monthId, ...numbers)
-        .all();
+      const existing = scopeZone
+        ? await env.DB.prepare(
+            `SELECT number FROM pm_items WHERE month_id = ? AND COALESCE(region, zone, '') = ? AND number IN (${inPlaceholders})`
+          )
+            .bind(monthId, scopeZone, ...numbers)
+            .all()
+        : await env.DB.prepare(
+            `SELECT number FROM pm_items WHERE month_id = ? AND number IN (${inPlaceholders})`
+          )
+            .bind(monthId, ...numbers)
+            .all();
 
       const existingSet = new Set((existing?.results || []).map((r) => String(r.number)));
       for (const n of numbers) {
@@ -103,16 +113,22 @@ export async function onRequestPost({ request, env, data, params }) {
         updArgs.push(r.number, r.state, r.closedAt);
       }
 
-      await env.DB.prepare(
-        `WITH upd(number, state, closed_at) AS (VALUES ${updValues})
-         UPDATE pm_items
-         SET state = COALESCE((SELECT state FROM upd WHERE upd.number = pm_items.number), state),
-             closed_at = COALESCE((SELECT closed_at FROM upd WHERE upd.number = pm_items.number), closed_at),
-             last_noc_import_at = ?,
-             updated_at = ?
-         WHERE month_id = ? AND number IN (SELECT number FROM upd)`
-      )
-        .bind(...updArgs, now, now, monthId)
+      const updSql =
+        `WITH upd(number, state, closed_at) AS (VALUES ${updValues})\n` +
+        ` UPDATE pm_items\n` +
+        ` SET state = COALESCE((SELECT state FROM upd WHERE upd.number = pm_items.number), state),\n` +
+        `     closed_at = COALESCE((SELECT closed_at FROM upd WHERE upd.number = pm_items.number), closed_at),\n` +
+        `     last_noc_import_at = ?,\n` +
+        `     updated_at = ?\n` +
+        ` WHERE month_id = ? AND number IN (SELECT number FROM upd)` +
+        (scopeZone ? " AND COALESCE(region, zone, '') = ?" : '');
+
+      const finalArgs = scopeZone
+        ? [...updArgs, now, now, monthId, scopeZone]
+        : [...updArgs, now, now, monthId];
+
+      await env.DB.prepare(updSql)
+        .bind(...finalArgs)
         .run();
     }
 

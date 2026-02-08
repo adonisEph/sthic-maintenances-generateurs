@@ -3,7 +3,8 @@ import { Plus, Upload, Download } from 'lucide-react';
 
 const SidebarSitesActions = ({
   canWriteSites,
-  canImportExport,
+  canImportSites,
+  canExportSites,
   onCloseSidebar,
   onToggleAddForm,
   importBusy,
@@ -29,7 +30,7 @@ const SidebarSitesActions = ({
         </button>
       )}
 
-      {canImportExport && (
+      {canImportSites && (
         <div className="flex flex-col gap-2">
           <label
             onClick={onCloseSidebar}
@@ -63,7 +64,7 @@ const SidebarSitesActions = ({
         </div>
       )}
 
-      {canImportExport && (
+      {canExportSites && (
         <button
           onClick={() => {
             onCloseSidebar();

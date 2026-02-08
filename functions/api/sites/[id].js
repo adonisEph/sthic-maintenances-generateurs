@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../_utils/db.js';
-import { json, requireAdmin, readJson, isoNow, isSuperAdmin, userZone } from '../_utils/http.js';
+import { json, readJson, isoNow, isSuperAdmin, userZone } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
 
 function mapSiteRow(row) {
@@ -30,7 +30,9 @@ function mapSiteRow(row) {
 export async function onRequestPatch({ request, env, data, params }) {
   try {
     await ensureAdminUser(env);
-    if (!requireAdmin(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
+
+    const role = String(data?.user?.role || '');
+    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const id = String(params?.id || '');
     if (!id) return json({ error: 'ID manquant.' }, { status: 400 });

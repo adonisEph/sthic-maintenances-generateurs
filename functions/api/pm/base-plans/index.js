@@ -1,10 +1,10 @@
 import { ensureAdminUser } from '../../_utils/db.js';
-import { json, requireAuth, requireAdmin, readJson, isoNow, newId } from '../../_utils/http.js';
+import { json, requireAuth, readJson, isoNow, newId } from '../../_utils/http.js';
 import { touchLastUpdatedAt } from '../../_utils/meta.js';
 
 function requireAdminOrViewer(data) {
   const role = String(data?.user?.role || '');
-  return role === 'admin' || role === 'viewer';
+  return role === 'admin' || role === 'viewer' || role === 'manager';
 }
 
 export async function onRequestGet({ env, data }) {
@@ -44,7 +44,9 @@ export async function onRequestPost({ request, env, data }) {
   try {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
-    if (!requireAdmin(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
+
+    const role = String(data?.user?.role || '');
+    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const body = await readJson(request);
     const month = String(body?.month || '').trim();

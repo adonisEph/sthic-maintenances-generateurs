@@ -68,6 +68,9 @@ const InterventionsModal = ({
 }) => {
   if (!open) return null;
 
+  const isManager = String(authUser?.role || '') === 'manager';
+  const authZone = String(authUser?.zone || '').trim();
+
   return (
     <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${isTechnician ? 'p-0' : 'p-0 sm:p-4'}`}>
       <div
@@ -243,7 +246,7 @@ const InterventionsModal = ({
                   </select>
                 </div>
 
-                {isAdmin && (
+                {(isAdmin || isManager) && (
                   <div className="flex flex-col">
                     <span className="text-xs text-gray-600 mb-1">Technicien</span>
                     <select
@@ -258,6 +261,7 @@ const InterventionsModal = ({
                       <option value="all">Tous</option>
                       {(Array.isArray(users) ? users : [])
                         .filter((u) => u && u.role === 'technician')
+                        .filter((u) => (isManager ? String(u?.zone || '').trim() === authZone : true))
                         .slice()
                         .sort((a, b) =>
                           String(a.technicianName || a.email || '').localeCompare(
@@ -297,7 +301,7 @@ const InterventionsModal = ({
             )}
           </div>
 
-          {isAdmin && (
+          {(isAdmin || isManager) && (
             <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
                 <div>
@@ -309,6 +313,7 @@ const InterventionsModal = ({
               {(() => {
                 const techUsers = (Array.isArray(users) ? users : [])
                   .filter((u) => u && u.role === 'technician')
+                  .filter((u) => (isManager ? String(u?.zone || '').trim() === authZone : true))
                   .slice()
                   .sort((a, b) =>
                     String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || ''))

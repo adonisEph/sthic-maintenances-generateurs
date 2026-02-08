@@ -1,12 +1,13 @@
 import { ensureAdminUser } from '../../_utils/db.js';
-import { json, requireAdmin, requireAuth, readJson, isoNow } from '../../_utils/http.js';
+import { json, requireAuth, readJson, isoNow } from '../../_utils/http.js';
 import { formatTicket, touchLastUpdatedAt } from '../../_utils/meta.js';
 
 export async function onRequestPost({ request, env, data }) {
   try {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
-    if (!requireAdmin(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
+    const role = String(data?.user?.role || '');
+    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const body = await readJson(request);
     const next = Number(body?.next);

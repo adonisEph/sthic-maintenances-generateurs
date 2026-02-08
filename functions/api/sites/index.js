@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../_utils/db.js';
-import { json, requireAdmin, requireAuth, readJson, isoNow, newId, isSuperAdmin, userZone } from '../_utils/http.js';
+import { json, requireAuth, readJson, isoNow, newId, isSuperAdmin, userZone } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
 
 function mapSiteRow(row) {
@@ -62,7 +62,9 @@ export async function onRequestGet({ env, data }) {
 export async function onRequestPost({ request, env, data }) {
   try {
     await ensureAdminUser(env);
-    if (!requireAdmin(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
+
+    const role = String(data?.user?.role || '');
+    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const body = await readJson(request);
     const id = newId();

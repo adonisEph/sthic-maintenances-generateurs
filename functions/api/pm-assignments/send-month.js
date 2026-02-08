@@ -1,11 +1,14 @@
 import { ensureAdminUser } from '../_utils/db.js';
-import { json, requireAdmin, readJson, isoNow, newId } from '../_utils/http.js';
+import { json, requireAuth, isSuperAdmin, readJson, isoNow, newId, userZone } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
 
 export async function onRequestPost({ request, env, data }) {
   try {
     await ensureAdminUser(env);
-    if (!requireAdmin(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
+    if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
+
+    const role = String(data?.user?.role || '');
+    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const body = await readJson(request);
     const assignments = Array.isArray(body?.assignments) ? body.assignments : [];
@@ -14,6 +17,8 @@ export async function onRequestPost({ request, env, data }) {
     }
 
     const now = isoNow();
+
+    const scopeZone = isSuperAdmin(data) ? null : userZone(data);
 
     let created = 0;
     let updated = 0;
@@ -34,6 +39,12 @@ export async function onRequestPost({ request, env, data }) {
       if (!technicianUserId || !technicianName) continue;
 
       const id = newId();
+
+      const site = await env.DB.prepare('SELECT zone FROM sites WHERE id = ?').bind(siteId).first();
+      const zone = String(site?.zone || 'BZV/POOL');
+      if (scopeZone && zone !== scopeZone) {
+        continue;
+      }
 
       const insertRes = await env.DB.prepare(
         'INSERT OR IGNORE INTO pm_assignments (id, month, pm_number, site_id, site_code, planned_date, maintenance_type, technician_user_id, technician_name, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)' 
