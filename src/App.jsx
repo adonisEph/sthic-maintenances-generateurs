@@ -1452,6 +1452,94 @@ for (const [key, g] of globalSites.entries()) {
     return parts;
   };
 
+  const handleImportBasePlanExcel = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const ok = window.confirm(`Importer le fichier base (planning) ?\n\nFichier: ${file?.name || ''}`);
+    if (!ok) {
+      e.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    setBasePlanBusy(true);
+    setBasePlanProgress(10);
+    setBasePlanErrors([]);
+    setBasePlanPreview([]);
+
+    reader.onload = async (event) => {
+      try {
+        setBasePlanProgress(25);
+        const data = new Uint8Array(event.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(sheet);
+
+        const arr = Array.isArray(jsonData) ? jsonData : [];
+        const rows = [];
+
+        for (let idx = 0; idx < arr.length; idx += 1) {
+          const row = arr[idx];
+
+          const rawSiteCode = String(pmGet(row, 'Site', 'Site (id)', 'Site id', 'Site Code') || '').trim();
+          const rawSiteName = String(pmGet(row, 'Site Name', 'Site name', 'Name Site', 'Nom du site') || '').trim();
+          const rawRegion = String(pmGet(row, 'Region', 'Région', 'Zone') || '').trim();
+          const rawZone = String(pmGet(row, 'Zone', 'zone', 'Region', 'region') || '').trim();
+
+          const assignedTo = String(pmGet(row, 'Assigned to', 'Assigned To', 'NOM TECHNICIEN', 'Nom Technicien') || '').trim();
+          const shortDescription = String(pmGet(row, 'Short description', 'Short Description', 'Description') || '').trim();
+
+          const scheduledWoDate = pmNormalizeDate(pmGet(row, 'Scheduled WO Date', 'Scheduled Wo Date', 'Scheduled date', 'Scheduled Date', 'Date'));
+          const epv2 = pmNormalizeDate(pmGet(row, 'EPV2'));
+          const epv3 = pmNormalizeDate(pmGet(row, 'EPV3'));
+
+          const pairGroup = String(pmGet(row, 'PairGroup', 'Pair Group', 'Paire', 'Paire Site', 'Pair Site') || '').trim();
+
+          if (!rawSiteCode && !rawSiteName) continue;
+
+          rows.push({
+            siteCode: rawSiteCode,
+            siteName: rawSiteName,
+            region: rawRegion,
+            zone: rawZone,
+            assignedTo,
+            shortDescription,
+            scheduledWoDate,
+            epv2,
+            epv3,
+            pairGroup,
+            importOrder: idx,
+            _row: idx + 2
+          });
+        }
+
+        if (rows.length === 0) {
+          throw new Error('Aucune ligne exploitable trouvée dans le fichier base.');
+        }
+
+        setBasePlanBaseRows(rows);
+
+        if (!String(basePlanTargetMonth || '').trim()) {
+          setBasePlanTargetMonth(getNextMonthYyyyMm(currentMonth));
+        }
+
+        setBasePlanProgress(100);
+        setPmNotice(`✅ Fichier base importé (${rows.length} lignes).`);
+      } catch (err) {
+        setBasePlanErrors([err?.message || 'Erreur lors de l\'import du fichier base.']);
+      } finally {
+        setTimeout(() => {
+          setBasePlanBusy(false);
+          setBasePlanProgress(0);
+        }, 300);
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
+  };
+
   const isBzvPoolZone = (zoneOrRegion) => {
     const z = String(zoneOrRegion || '').toLowerCase();
     return z.includes('bzv') || z.includes('pool');
