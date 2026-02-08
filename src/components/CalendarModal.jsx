@@ -1231,7 +1231,7 @@ const CalendarModal = (props) => {
                   </div>
                 )}
 
-                {isAdmin && (
+                {(isAdmin || isManager) && (
                   <div>
                     <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Actions</div>
                     <div className="space-y-2">
@@ -1345,7 +1345,7 @@ const CalendarModal = (props) => {
 
               </div>
 
-              {showClustering && isAdmin && (
+              {showClustering && (isAdmin || isManager) && (
                 <div className="bg-white/5 border-t border-white/10 p-3">
                   <div className="space-y-3">
                     <div className="text-xs font-semibold text-white/90">Technicien cible</div>

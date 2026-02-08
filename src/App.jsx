@@ -38,11 +38,11 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '2.1.6';
+const APP_VERSION = '2.2.1';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const DAILY_NH_UPDATE_STORAGE_KEY = 'gma_daily_nh_update_ymd';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
-const SPLASH_MIN_MS = 4300;
+const SPLASH_MIN_MS = 4250;
 
 const GeneratorMaintenanceApp = () => {
   const storage = useStorage();
@@ -216,9 +216,8 @@ const GeneratorMaintenanceApp = () => {
   const isTechnician = currentRole === 'technician';
   const isManager = currentRole === 'manager';
   const canWriteSites = isAdmin || isManager;
-  const canImportExport = isAdmin;
+  const canImportSites = isAdmin || isManager;
   const canExportExcel = isAdmin || isManager || isViewer;
-  const canImportSites = canImportExport;
   const canExportSites = canExportExcel && !isTechnician;
   const canReset = isAdmin;
   const canGenerateFiche = isAdmin || isManager;
@@ -2973,7 +2972,7 @@ for (const [key, g] of globalSites.entries()) {
   const handleImportExcel = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
+    const scope = (isAdmin && authUser?.zone === 'BZV/POOL') ? 'toutes les zones' : `la zone ${String(authUser?.zone || '')}`;
     const ok = window.confirm(
       `Confirmer l'import Excel ?\n\nCe fichier va remplacer la liste des sites en base.\nFichier: ${file?.name || ''}`
     );
@@ -4594,7 +4593,7 @@ for (const [key, g] of globalSites.entries()) {
 
           <SidebarSitesActions
             canWriteSites={canWriteSites}
-            canImportSites={canImportExport}
+            canImportSites={canImportSites} 
             canExportSites={canExportExcel && !isTechnician}
             onCloseSidebar={() => setSidebarOpen(false)}
             onToggleAddForm={() => setShowAddForm(!showAddForm)}

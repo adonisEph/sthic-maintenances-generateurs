@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../_utils/db.js';
-import { json, requireAuth } from '../_utils/http.js';
+import { json, requireAuth, isSuperAdmin, userZone } from '../_utils/http.js';
 
 function mapRow(row) {
   if (!row) return null;
@@ -40,20 +40,31 @@ export async function onRequestGet({ request, env, data }) {
     const binds = [];
 
     if (from) {
-      where += ' AND date_generated >= ?';
+      where += ' AND fh.date_generated >= ?';
       binds.push(from);
     }
     if (to) {
-      where += ' AND date_generated <= ?';
+      where += ' AND fh.date_generated <= ?';
       binds.push(to);
     }
 
     if (data.user.role === 'technician') {
-      where += ' AND technician = ?';
+      where += ' AND fh.technician = ?';
       binds.push(String(data.user.technicianName || ''));
+      if (!isSuperAdmin(data)) {
+        where += ' AND s.zone = ?';
+        binds.push(String(userZone(data) || 'BZV/POOL'));
+      }
     }
 
-    const stmt = env.DB.prepare(`SELECT * FROM fiche_history WHERE ${where} ORDER BY date_generated DESC LIMIT 2000`);
+    const stmt = env.DB.prepare(
+      `SELECT fh.* 
+      FROM fiche_history fh
+      LEFT JOIN sites s ON s.id = fh.site_id
+      WHERE ${where}
+      ORDER BY fh.date_generated DESC
+      LIMIT 2000`
+    );
     const res = await stmt.bind(...binds).all();
     const rows = Array.isArray(res?.results) ? res.results : [];
 

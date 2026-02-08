@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../_utils/db.js';
-import { json, requireAdmin, requireAuth, isSuperAdmin, userZone } from '../_utils/http.js';
+import { json, requireAuth, isSuperAdmin, userZone } from '../_utils/http.js';
 
 function mapSiteRow(row) {
   if (!row) return null;
@@ -32,9 +32,19 @@ export async function onRequestGet({ env, data }) {
   try {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
-    if (!requireAdmin(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
+    const role = String(data?.user?.role || '');
+    const z = String(userZone(data) || 'BZV/POOL')
 
-    const z = userZone(data);
+    if (role === 'manager') {
+      const techZone = String(user?.zone || 'BZV/POOL');
+      if (techZone !== z) return json({ error: 'Accès interdit.' }, { status: 403 });
+    }
+
+    const u = await env.DB.prepare('SELECT id, zone FROM users WHERE id = ?').bind(techId).first();
+    if (!u) return json({ error: 'Technicien introuvable.' }, { status: 404 });
+    if (role === 'manager' && String(u.zone || 'BZV/POOL') !== String(userZone(data) || 'BZV/POOL')) {
+      return json({ error: 'Accès interdit.' }, { status: 403 });
+    }
 
     const query = isSuperAdmin(data)
       ? 'SELECT s.*, u.id as technician_user_id FROM sites s LEFT JOIN users u ON u.technician_name = s.technician ORDER BY s.id_site ASC'

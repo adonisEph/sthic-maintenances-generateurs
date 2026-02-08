@@ -1,28 +1,36 @@
 import { ensureAdminUser } from '../_utils/db.js';
-import { json, requireAdmin, readJson, isoNow, newId, isSuperAdmin, userZone } from '../_utils/http.js';
+import { json, readJson, isoNow, newId, isSuperAdmin, userZone } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
 
 export async function onRequestPost({ request, env, data }) {
   try {
     await ensureAdminUser(env);
-    if (!requireAdmin(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
+    const role = String(data?.user?.role || '');
+    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const body = await readJson(request);
     const sites = Array.isArray(body?.sites) ? body.sites : [];
+    const z = String(userZone(data) || 'BZV/POOL');
 
-    await env.DB.prepare('DELETE FROM sites').run();
+    if (isSuperAdmin(data)) {
+      await env.DB.prepare('DELETE FROM sites').run();
+    } else {
+      await env.DB.prepare('DELETE FROM sites WHERE zone = ?').bind(z).run();
+    }
 
     const now = isoNow();
     for (const s of sites) {
       const id = s?.id ? String(s.id) : newId();
+      const rowZone = isSuperAdmin(data)
+        ? String(s.zone || z || 'BZV/POOL')
+        : z;
 
-      const zone = isSuperAdmin(data) ? String(s.zone || userZone(data) || 'BZV/POOL') : userZone(data);
       await env.DB.prepare(
         'INSERT INTO sites (id, zone, name_site, id_site, technician, generateur, capacite, kit_vidange, nh1_dv, date_dv, nh2_a, date_a, regime, nh_estimated, diff_nhs, diff_estimated, seuil, retired, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       )
         .bind(
           id,
-          zone,
+          rowZone,
           String(s.nameSite || ''),
           String(s.idSite || ''),
           String(s.technician || ''),
