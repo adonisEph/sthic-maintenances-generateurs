@@ -1149,7 +1149,7 @@ const GeneratorMaintenanceApp = () => {
     const globalItemsRaw = Array.isArray(globalRes?.items) ? globalRes.items : [];
     const clientItemsRaw = Array.isArray(clientRes?.items) ? clientRes.items : [];
 
-    // Global: ensemble de sites FullPMWO (par zone scope)
+    // Global: ensemble de sites (par zone scope)
     const globalSites = new Map();
     for (const it of globalItemsRaw) {
     const siteCode = normalizeSiteCode(it?.siteCode);
@@ -1157,15 +1157,13 @@ const GeneratorMaintenanceApp = () => {
     if (!siteCode || !zone) continue;
     if (!scopeZonesNorm.includes(zone)) continue;
 
-    if (!isFullPmwo(it?.maintenanceType, it?.shortDescription)) continue;
-
     const key = `${zone}|${siteCode}`;
   if (!globalSites.has(key)) {
     globalSites.set(key, {
       siteCode,
       siteName: String(it?.siteName || '').trim(),
       zone,
-      maintenanceType: 'FullPMWO'
+      maintenanceType: it?.maintenanceType || ''
     });
   }
 }
