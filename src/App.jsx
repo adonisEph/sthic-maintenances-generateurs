@@ -1118,6 +1118,14 @@ const GeneratorMaintenanceApp = () => {
         .replace(/\s*\/\s*/g, '/')
         .replace(/\s+/g, ' ');
 
+    const normalizeSiteCode = (v) =>
+      String(v || '')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/\u00A0/g, ' ')
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, '');
+
     const scopeZones = superAdmin ? ['BZV/POOL', 'PNR/KOUILOU', 'UPCN'] : authZone ? [authZone] : [];
     const scopeZonesNorm = scopeZones.map(normalizeZone).filter(Boolean);
     if (scopeZones.length === 0) {
@@ -1144,10 +1152,12 @@ const GeneratorMaintenanceApp = () => {
     // Global: ensemble de sites FullPMWO (par zone scope)
     const globalSites = new Map();
     for (const it of globalItemsRaw) {
-    const siteCode = String(it?.siteCode || '').trim();
+    const siteCode = normalizeSiteCode(it?.siteCode);
     const zone = normalizeZone(it?.zone || it?.region || '');
     if (!siteCode || !zone) continue;
     if (!scopeZonesNorm.includes(zone)) continue;
+
+    if (!isFullPmwo(it?.maintenanceType, it?.shortDescription)) continue;
 
     const key = `${zone}|${siteCode}`;
   if (!globalSites.has(key)) {
@@ -1163,7 +1173,7 @@ const GeneratorMaintenanceApp = () => {
     // Client: ensemble de sites FullPMWO (par zone scope)
     const clientSites = new Set();
     for (const it of clientItemsRaw) {
-      const siteCode = String(it?.siteCode || '').trim();
+      const siteCode = normalizeSiteCode(it?.siteCode);
       const zone = normalizeZone(it?.zone || it?.region || '');
     if (!siteCode || !zone) continue;
     if (!scopeZonesNorm.includes(zone)) continue;
