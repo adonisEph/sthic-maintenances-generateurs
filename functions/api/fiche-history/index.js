@@ -51,10 +51,11 @@ export async function onRequestGet({ request, env, data }) {
     if (data.user.role === 'technician') {
       where += ' AND fh.technician = ?';
       binds.push(String(data.user.technicianName || ''));
-      if (!isSuperAdmin(data)) {
-        where += ' AND s.zone = ?';
-        binds.push(String(userZone(data) || 'BZV/POOL'));
-      }
+    }
+
+    if (!isSuperAdmin(data)) {
+      where += ' AND s.zone = ?';
+      binds.push(String(userZone(data) || 'BZV/POOL'));
     }
 
     const stmt = env.DB.prepare(
