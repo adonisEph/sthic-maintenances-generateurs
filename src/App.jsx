@@ -1765,6 +1765,185 @@ for (const [key, g] of globalSites.entries()) {
     e.target.value = '';
   };
 
+  const handlePmGlobalImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const ok = window.confirm(
+      `Confirmer l'import du planning PM global ?\n\nCe fichier va être enregistré en base (par zone) pour le mois ${pmMonth} et sera comparé automatiquement au retour client.\n\nFichier: ${file?.name || ''}`
+    );
+    if (!ok) {
+      e.target.value = '';
+      return;
+    }
+
+    const normSiteName = (s) =>
+      String(s || '')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/\u00A0/g, ' ')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ');
+
+    const siteByIdSite = new Map(
+      (Array.isArray(sites) ? sites : [])
+        .filter(Boolean)
+        .map((s) => [String(s?.idSite || '').trim(), s])
+        .filter(([k]) => Boolean(k))
+    );
+    const siteByName = new Map(
+      (Array.isArray(sites) ? sites : [])
+        .filter(Boolean)
+        .map((s) => [normSiteName(s?.nameSite), s])
+        .filter(([k]) => Boolean(k))
+    );
+
+    const findSite = (siteCode, siteName) => {
+      const code = String(siteCode || '').trim();
+      if (code) {
+        const byCode = siteByIdSite.get(code);
+        if (byCode) return byCode;
+      }
+      const nm = normSiteName(siteName);
+      if (nm) {
+        const byName = siteByName.get(nm);
+        if (byName) return byName;
+      }
+      return null;
+    };
+
+    const reader = new FileReader();
+    setPmBusy(true);
+    setPmError('');
+    setPmNotice('');
+    setPmGlobalCompare(null);
+    setPmGlobalProgress(5);
+    setPmGlobalStep('Lecture du fichier…');
+
+    reader.onload = async (event) => {
+      try {
+        setPmGlobalProgress(20);
+        setPmGlobalStep('Analyse Excel…');
+
+        const data = new Uint8Array(event.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(sheet);
+
+        const monthId = pmMonthId || (await ensurePmMonth(pmMonth));
+        setPmMonthId(monthId);
+
+        setPmGlobalProgress(40);
+        setPmGlobalStep('Préparation des lignes…');
+
+        const rows = [];
+        const arr = Array.isArray(jsonData) ? jsonData : [];
+        for (let idx = 0; idx < arr.length; idx += 1) {
+          const row = arr[idx];
+
+          const rawSiteCode = String(pmGet(row, 'Site', 'Site (id)', 'Site id', 'Site Code') || '').trim();
+          const rawSiteName = String(pmGet(row, 'Site Name', 'Site name', 'Name Site', 'Nom du site') || '').trim();
+
+          let siteCode = rawSiteCode;
+          let siteName = rawSiteName;
+
+          const resolved = findSite(rawSiteCode, rawSiteName || rawSiteCode);
+          if (resolved?.idSite) {
+            siteCode = String(resolved.idSite).trim();
+            if (!siteName) siteName = String(resolved?.nameSite || '').trim();
+          }
+
+          const maintenanceType = String(pmGet(row, 'Maintenance Type', 'Maintenance type', 'Type') || '').trim();
+          const scheduledWoDate = pmNormalizeDate(
+            pmGet(row, 'Scheduled WO Date', 'Scheduled Wo Date', 'Scheduled date', 'Scheduled Date', 'Date')
+          );
+          const assignedTo = String(pmGet(row, 'Assigned to', 'Assigned To') || '').trim();
+          const shortDescription = String(pmGet(row, 'Short description', 'Short Description', 'Description') || '').trim();
+          const number = String(pmGet(row, 'Number', 'Ticket', 'Ticket Number') || '').trim();
+
+          const zone = String(pmGet(row, 'Zone', 'zone', 'Region', 'region') || '').trim();
+          const region = String(pmGet(row, 'Region', 'region') || '').trim();
+          const state = String(pmGet(row, 'State') || '').trim();
+          const epv2 = pmNormalizeDate(pmGet(row, 'EPV2'));
+          const epv3 = pmNormalizeDate(pmGet(row, 'EPV3'));
+          const pairSiteCode = String(pmGet(row, 'Paire Site', 'Pair Site', 'Pair') || '').trim();
+
+          if (!siteCode && !siteName) continue;
+          if (!siteCode) continue;
+
+          rows.push({
+            number,
+            siteCode,
+            siteName,
+            region,
+            zone,
+            shortDescription,
+            maintenanceType,
+            scheduledWoDate,
+            assignedTo,
+            state,
+            epv2,
+            epv3,
+            pairSiteCode,
+            _row: idx + 2
+          });
+        }
+
+        const items = rows.map((r) => ({
+          number: String(r.number || '').trim() || null,
+          siteCode: String(r.siteCode || '').trim(),
+          siteName: String(r.siteName || '').trim(),
+          region: String(r.region || '').trim() || null,
+          zone: String(r.zone || '').trim() || null,
+          shortDescription: String(r.shortDescription || '').trim() || null,
+          maintenanceType: String(r.maintenanceType || '').trim(),
+          scheduledWoDate: String(r.scheduledWoDate || '').trim(),
+          assignedTo: String(r.assignedTo || '').trim() || null,
+          state: String(r.state || '').trim() || null,
+          epv2: String(r.epv2 || '').trim() || null,
+          epv3: String(r.epv3 || '').trim() || null,
+          pairSiteCode: String(r.pairSiteCode || '').trim() || null
+        }));
+
+        if (items.length === 0) {
+          throw new Error('Aucune ligne exploitable trouvée dans le fichier planning PM global.');
+        }
+
+        setPmGlobalProgress(60);
+        setPmGlobalStep('Enregistrement planning PM global…');
+
+        await apiFetchJson(`/api/pm/months/${monthId}/global-import`, {
+          method: 'POST',
+          body: JSON.stringify({ filename: file?.name || null, items })
+        });
+
+        setPmGlobalProgress(95);
+        setPmGlobalStep('Rafraîchissement…');
+
+        await loadPmMonths();
+        await loadPmImports(monthId);
+        await loadPmDashboard(monthId);
+        await refreshPmRetiredSites(monthId, pmMonth);
+        await loadPmItems(monthId);
+
+        setPmGlobalProgress(100);
+        setPmGlobalStep('Terminé');
+        setPmNotice(`✅ Planning PM global importé (${items.length} lignes).`);
+      } catch (err) {
+        setPmGlobalProgress(0);
+        setPmGlobalStep('');
+        setPmError(err?.message || 'Erreur lors de l’import planning PM global.');
+      } finally {
+        setPmBusy(false);
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
+  };
+
   const generateBasePlanPreview = async () => {
     if (!isAdmin) return;
     const month = getNextMonthYyyyMm(currentMonth);
