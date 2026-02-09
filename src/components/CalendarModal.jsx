@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calendar, X, Users, MapPin, Clock, AlertCircle, Download, Sparkles, Activity, Trash2 } from 'lucide-react';
+import { Calendar, X, Users, MapPin, Clock, AlertCircle, Download, Sparkles, Activity, Trash2, Menu, ChevronLeft } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { calculateEPVDates, calculateEstimatedNH } from '../utils/calculations';
 
@@ -14,6 +14,9 @@ const CalendarModal = (props) => {
     setCurrentMonth,
     isAdmin,
     sites,
+    calendarZone,
+    setCalendarZone,
+    showZoneFilter,
     calendarSendTechUserId,
     setCalendarSendTechUserId,
     users,
@@ -29,11 +32,14 @@ const CalendarModal = (props) => {
     selectedDate,
     setSelectedDate,
     setSelectedDayEvents,
-    setShowDayDetailsModal
+    setShowDayDetailsModal,
+    isViewer,
+    isSuperAdmin,
   } = props;
 
   const isManager = String(authUser?.role || '') === 'manager';
   const authZone = String(authUser?.zone || '').trim();
+  const zones = ['ALL', 'BZV/POOL', 'PNR/KOUILOU', 'UPCN'];
 
   // State for clustering functionality
   const [showClustering, setShowClustering] = useState(false);
@@ -50,7 +56,7 @@ const CalendarModal = (props) => {
   const [planningErrors, setPlanningErrors] = useState([]);
   const [showPlanning, setShowPlanning] = useState(false);
   const [planningStats, setPlanningStats] = useState(null);
-  const isSuperAdmin = authUser?.role === 'admin' && authZone === 'BZV/POOL';
+  const localIsSuperAdmin = authUser?.role === 'admin' && authZone === 'BZV/POOL';
   const defaultZone = authZone || 'BZV/POOL';
   const [purgeBasePlans, setPurgeBasePlans] = useState(true);
   const [purgeIntelligent, setPurgeIntelligent] = useState(true);
@@ -58,10 +64,11 @@ const CalendarModal = (props) => {
   const [purgeBusy, setPurgeBusy] = useState(false);
   const [purgeError, setPurgeError] = useState('');
   const [purgePreview, setPurgePreview] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const allZones = ['BZV/POOL', 'PNR/KOUILOU', 'UPCN'];
   const effectivePurgeZones = (() => {
-    if (!isSuperAdmin) return [defaultZone];
+    if (!localIsSuperAdmin) return [defaultZone];
     const z = (Array.isArray(purgeZones) ? purgeZones : []).map((v) => String(v || '').trim()).filter(Boolean);
     return z.length > 0 ? Array.from(new Set(z)) : [defaultZone];
   })();
@@ -1126,12 +1133,21 @@ const CalendarModal = (props) => {
       <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-none sm:max-w-none sm:max-h-[100vh] sm:h-[100vh]">
         <div className="flex-1 overflow-hidden">
           <div className="flex flex-col lg:flex-row h-full min-h-0">
-            <div className="lg:w-[280px] w-full flex-shrink-0 bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 text-white border-emerald-900/60 overflow-y-auto border-r-4 border-r-emerald-400/30">
-              <div className="flex items-center gap-2 px-4 py-3 border-b border-emerald-900/60">
-                <Activity size={20} className="text-slate-100/90" />
-                <div className="text-lg font-bold text-slate-100 leading-tight">Navigation</div>
-              </div>
-              <div className="p-3 space-y-5">
+            {sidebarOpen && (
+              <div className="lg:w-[280px] w-full flex-shrink-0 bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 text-white border-emerald-900/60 overflow-y-auto border-r-4 border-r-emerald-400/30">
+                <div className="flex items-center gap-2 px-4 py-3 border-b border-emerald-900/60">
+                  <Activity size={20} className="text-slate-100/90" />
+                  <div className="text-lg font-bold text-slate-100 leading-tight">Navigation</div>
+                  <button
+                    type="button"
+                    onClick={() => setSidebarOpen(false)}
+                    className="ml-auto p-2 rounded hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                    title="Masquer le menu"
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+                </div>
+                <div className="p-3 space-y-5">
                 <div>
                   <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Mois</div>
                   <div className="grid grid-cols-3 gap-2 items-center">
@@ -1155,6 +1171,23 @@ const CalendarModal = (props) => {
                       →
                     </button>
                   </div>
+
+                  {showZoneFilter && (
+                    <div className="mt-3">
+                      <div className="text-xs font-semibold text-white/90 mb-1">Zone</div>
+                      <select
+                        value={calendarZone}
+                        onChange={(e) => setCalendarZone(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
+                      >
+                        {zones.map((z) => (
+                          <option key={z} value={z}>
+                            {z === 'ALL' ? 'Toutes' : z}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   {canExportExcel && (
                     <button
@@ -1461,11 +1494,22 @@ const CalendarModal = (props) => {
               )}
 
             </div>
+            )}
 
             <div className="flex-1 min-w-0 overflow-y-auto">
               <div className="bg-white border-b border-gray-200 shadow-sm px-4 py-3 sticky top-0 z-20">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
+                    {!sidebarOpen && (
+                      <button
+                        type="button"
+                        onClick={() => setSidebarOpen(true)}
+                        className="p-2 rounded hover:bg-gray-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                        title="Afficher le menu"
+                      >
+                        <Menu size={20} className="text-gray-700" />
+                      </button>
+                    )}
                     <Activity className="text-blue-600" size={24} />
                     <div className="min-w-0">
                       <div className="text-xl sm:text-2xl font-bold text-gray-800">Calendrier des Vidanges</div>

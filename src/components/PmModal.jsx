@@ -1,5 +1,5 @@
 import React from 'react';
-import { TrendingUp, X, Upload, Download, Trash2, RotateCcw, Activity } from 'lucide-react';
+import { TrendingUp, X, Upload, Download, Trash2, RotateCcw, Activity, Menu, ChevronLeft } from 'lucide-react';
 
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
 
@@ -79,6 +79,7 @@ const PmModal = (props) => {
   const [pmRetiredSitesOpen, setPmRetiredSitesOpen] = React.useState(false);
   const [pmRetiredSitesZoneFilter, setPmRetiredSitesZoneFilter] = React.useState('ALL');
   const [pmPurgeOpen, setPmPurgeOpen] = React.useState(false);
+  const [sidebarOpen, setSidebarOpen] = React.useState(true);
   const [pmPurgeBusy, setPmPurgeBusy] = React.useState(false);
   const [pmPurgeGlobal, setPmPurgeGlobal] = React.useState(false);
   const [pmPurgeClient, setPmPurgeClient] = React.useState(true);
@@ -216,12 +217,21 @@ const PmModal = (props) => {
       <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-none sm:max-w-none sm:max-h-[100vh] sm:h-[100vh]">
         <div className="flex-1 overflow-hidden">
           <div className="flex flex-col lg:flex-row h-full min-h-0">
-            <div className="lg:w-72 w-full flex-shrink-0 bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 text-white border-emerald-900/60 border-b-4 border-b-emerald-400/30 lg:border-b-0 lg:border-r-4 lg:border-r-emerald-400/30 overflow-y-auto">
-              <div className="flex items-center gap-2 px-4 py-3 border-b border-emerald-900/60">
-                <Activity size={20} className="text-slate-100/90" />
-                <div className="text-lg font-bold text-slate-100 leading-tight">Navigation</div>
-              </div>
-              <div className="p-4 space-y-4">
+            {sidebarOpen && (
+              <div className="lg:w-72 w-full flex-shrink-0 bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 text-white border-emerald-900/60 border-b-4 border-b-emerald-400/30 lg:border-b-0 lg:border-r-4 lg:border-r-emerald-400/30 overflow-y-auto">
+                <div className="flex items-center gap-2 px-4 py-3 border-b border-emerald-900/60">
+                  <Activity size={20} className="text-slate-100/90" />
+                  <div className="text-lg font-bold text-slate-100 leading-tight">Navigation</div>
+                  <button
+                    type="button"
+                    onClick={() => setSidebarOpen(false)}
+                    className="ml-auto p-2 rounded hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                    title="Masquer le menu"
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+                </div>
+                <div className="p-4 space-y-4">
                 <div>
                   <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Période</div>
                   <div className="space-y-2">
@@ -529,10 +539,21 @@ const PmModal = (props) => {
                 )}
               </div>
             </div>
+            )}
             <div className="flex-1 min-w-0 overflow-y-auto">
               <div className="bg-white border-b border-gray-200 shadow-sm px-4 py-3 sticky top-0 z-20">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
+                    {!sidebarOpen && (
+                      <button
+                        type="button"
+                        onClick={() => setSidebarOpen(true)}
+                        className="p-2 rounded hover:bg-gray-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                        title="Afficher le menu"
+                      >
+                        <Menu size={20} className="text-gray-700" />
+                      </button>
+                    )}
                     <Activity className="text-blue-600" size={24} />
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -1233,7 +1254,7 @@ const PmModal = (props) => {
                           <th className="px-3 py-2 font-semibold whitespace-nowrap">Statut reprog.</th>
                           <th className="px-3 py-2 font-semibold whitespace-nowrap">Date reprog.</th>
                           <th className="px-3 py-2 font-semibold whitespace-nowrap">Raison</th>
-                          {isAdmin && <th className="px-3 py-2 font-semibold whitespace-nowrap">Action</th>}
+                          {(isAdmin || isManager) && <th className="px-3 py-2 font-semibold whitespace-nowrap">Action</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -1271,7 +1292,7 @@ const PmModal = (props) => {
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{reprogStatus || '-'}</td>
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{reprog || '-'}</td>
                                 <td className="px-3 py-2 text-slate-900 max-w-[260px] truncate" title={reason || ''}>{reason || '-'}</td>
-                                {isAdmin && (
+                                {(isAdmin || isManager) && (
                                   <td className="px-3 py-2 text-gray-800 whitespace-nowrap">
                                     <button
                                       type="button"

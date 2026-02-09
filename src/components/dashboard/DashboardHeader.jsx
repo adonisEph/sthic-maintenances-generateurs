@@ -4,11 +4,16 @@ import { Download } from 'lucide-react';
 const DashboardHeader = ({
   dashboardMonth,
   onDashboardMonthChange,
+  dashboardZone,
+  onDashboardZoneChange,
+  showZoneFilter,
   onRefresh,
   canExportExcel,
   onExportExcel,
   exportBusy
 }) => {
+  const zones = ['ALL', 'BZV/POOL', 'PNR/KOUILOU', 'UPCN'];
+
   return (
     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
       <div>
@@ -23,6 +28,22 @@ const DashboardHeader = ({
           onChange={(e) => onDashboardMonthChange(e.target.value)}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
         />
+        {showZoneFilter && (
+          <>
+            <label className="text-xs text-gray-600">Zone</label>
+            <select
+              value={dashboardZone}
+              onChange={(e) => onDashboardZoneChange(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            >
+              {zones.map((z) => (
+                <option key={z} value={z}>
+                  {z === 'ALL' ? 'Toutes' : z}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
         <button
           type="button"
           onClick={onRefresh}

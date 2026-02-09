@@ -6,6 +6,10 @@ const ScoringModal = ({
   isTechnician,
   isViewer,
   isAdmin,
+  authUser,
+  scoringZone,
+  setScoringZone,
+  showZoneFilter,
   scoringMonth,
   setScoringMonth,
   loadInterventions,
@@ -21,6 +25,9 @@ const ScoringModal = ({
   onClose
 }) => {
   if (!open || isTechnician) return null;
+
+  const zones = ['ALL', 'BZV/POOL', 'PNR/KOUILOU', 'UPCN'];
+  const zoneActive = showZoneFilter && scoringZone && scoringZone !== 'ALL' ? String(scoringZone) : '';
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -64,6 +71,26 @@ const ScoringModal = ({
                 }}
                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
               />
+
+              {showZoneFilter && (
+                <>
+                  <label className="text-xs text-gray-600">Zone</label>
+                  <select
+                    value={scoringZone}
+                    onChange={(e) => {
+                      setScoringZone(e.target.value);
+                      setScoringDetails({ open: false, title: '', kind: '', items: [] });
+                    }}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  >
+                    {zones.map((z) => (
+                      <option key={z} value={z}>
+                        {z === 'ALL' ? 'Toutes' : z}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
             </div>
           </div>
 
@@ -79,9 +106,9 @@ const ScoringModal = ({
                 .map((s) => [String(s.id), s])
             );
 
-            const doneInMonth = ficheHistory.filter(
-              (f) => f && f.status === 'Effectuée' && f.dateCompleted && isInMonth(f.dateCompleted, scoringMonth)
-            );
+            const doneInMonth = ficheHistory
+              .filter((f) => f && f.status === 'Effectuée' && f.dateCompleted && isInMonth(f.dateCompleted, scoringMonth))
+              .filter((f) => !zoneActive || String(f?.zone || '').trim() === zoneActive);
             const doneWithin = doneInMonth.filter((f) => f.isWithinContract === true);
             const doneOver = doneInMonth.filter((f) => f.isWithinContract === false);
 
@@ -93,6 +120,7 @@ const ScoringModal = ({
                   isInMonth(i.plannedDate, scoringMonth) &&
                   (i.status === 'planned' || i.status === 'sent')
               )
+              .filter((i) => !zoneActive || String(i?.zone || '').trim() === zoneActive)
               .slice()
               .sort((a, b) => {
                 const statusRank = (s) => (s === 'sent' ? 0 : s === 'planned' ? 1 : 2);

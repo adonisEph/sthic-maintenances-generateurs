@@ -35,7 +35,7 @@ export async function onRequestGet({ request, env, data }) {
     const binds = [];
 
     const z = userZone(data);
-    if (!isSuperAdmin(data) && (data.user.role === 'admin' || data.user.role === 'manager' || data.user.role === 'viewer' || data.user.role === 'technician')) {
+    if (!isSuperAdmin(data) && (data.user.role === 'manager' || data.user.role === 'technician')) {
       where += ' AND zone = ?';
       binds.push(z);
     }

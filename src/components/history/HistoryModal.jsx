@@ -14,13 +14,25 @@ const HistoryModal = ({
   setHistoryStatus,
   historySort,
   setHistorySort,
+  historyZone,
+  setHistoryZone,
+  showZoneFilter,
   ficheHistory,
   filteredFicheHistory,
   canMarkCompleted,
   handleMarkAsCompleted,
+  isViewer,
+  isAdmin,
   formatDate
 }) => {
   if (!open) return null;
+
+  const zones = ['ALL', 'BZV/POOL', 'PNR/KOUILOU', 'UPCN'];
+  const listAll = Array.isArray(filteredFicheHistory) ? filteredFicheHistory : [];
+  const list =
+    showZoneFilter && historyZone && historyZone !== 'ALL'
+      ? listAll.filter((f) => String(f?.zone || '').trim() === String(historyZone))
+      : listAll;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
@@ -95,9 +107,27 @@ const HistoryModal = ({
                 </select>
               </div>
             </div>
+
+            {showZoneFilter && (
+              <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
+                <span className="text-xs text-gray-600">Zone</span>
+                <select
+                  value={historyZone}
+                  onChange={(e) => setHistoryZone(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full sm:w-auto"
+                >
+                  {zones.map((z) => (
+                    <option key={z} value={z}>
+                      {z === 'ALL' ? 'Toutes' : z}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className="text-xs text-gray-600 mt-3 flex justify-between">
               <span>
-                Résultats: <strong>{filteredFicheHistory.length}</strong>
+                Résultats: <strong>{list.length}</strong>
               </span>
               <button
                 onClick={() => {
@@ -106,6 +136,7 @@ const HistoryModal = ({
                   setHistoryDateTo('');
                   setHistoryStatus('all');
                   setHistorySort('newest');
+                  if (showZoneFilter) setHistoryZone('ALL');
                 }}
                 className="text-amber-700 hover:underline"
               >
@@ -120,7 +151,7 @@ const HistoryModal = ({
               <p className="text-lg font-semibold">Aucune fiche générée pour le moment</p>
               <p className="text-sm mt-2">Les fiches apparaîtront ici après génération</p>
             </div>
-          ) : filteredFicheHistory.length === 0 ? (
+          ) : list.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <Activity size={48} className="mx-auto mb-4 text-gray-300" />
               <p className="text-lg font-semibold">Aucun résultat</p>
@@ -128,7 +159,7 @@ const HistoryModal = ({
             </div>
           ) : (
             <div className="space-y-3">
-              {filteredFicheHistory.map((fiche) => (
+              {list.map((fiche) => (
                 <div
                   key={fiche.id}
                   className={`border-2 rounded-lg p-4 ${fiche.status === 'Effectuée' ? 'bg-green-50 border-green-300' : 'bg-yellow-50 border-yellow-300'}`}

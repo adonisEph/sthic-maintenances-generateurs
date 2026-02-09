@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../../_utils/db.js';
-import { json, requireAuth, readJson, isoNow, newId } from '../../_utils/http.js';
+import { json, requireAuth, readJson, isoNow, newId, isSuperAdmin, userZone } from '../../_utils/http.js';
 import { touchLastUpdatedAt } from '../../_utils/meta.js';
 
 function requireAdminOrViewer(data) {
@@ -13,13 +13,20 @@ export async function onRequestGet({ env, data }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
     if (!requireAdminOrViewer(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
 
+    const role = String(data?.user?.role || '');
+    const scopeZone = isSuperAdmin(data) || role === 'viewer' ? null : String(userZone(data) || 'BZV/POOL');
+
     const res = await env.DB.prepare('SELECT * FROM pm_months ORDER BY month DESC').all();
     const months = Array.isArray(res?.results) ? res.results : [];
 
     const out = [];
     for (const m of months) {
       const monthId = String(m.id);
-      const countRow = await env.DB.prepare('SELECT COUNT(1) as c FROM pm_items WHERE month_id = ?').bind(monthId).first();
+      const countRow = scopeZone
+        ? await env.DB.prepare("SELECT COUNT(1) as c FROM pm_items WHERE month_id = ? AND COALESCE(region, zone, '') = ?")
+            .bind(monthId, scopeZone)
+            .first()
+        : await env.DB.prepare('SELECT COUNT(1) as c FROM pm_items WHERE month_id = ?').bind(monthId).first();
       const lastImport = await env.DB.prepare(
         'SELECT imported_at FROM pm_imports WHERE month_id = ? ORDER BY imported_at DESC LIMIT 1'
       )

@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../../../_utils/db.js';
-import { json, requireAuth, readJson, isoNow, newId } from '../../../_utils/http.js';
+import { json, requireAuth, readJson, isoNow, newId, isSuperAdmin, userZone } from '../../../_utils/http.js';
 import { touchLastUpdatedAt } from '../../../_utils/meta.js';
 
 function requireAdminOrViewer(data) {
@@ -40,15 +40,22 @@ export async function onRequestGet({ env, data, params }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
     if (!requireAdminOrViewer(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
 
+    const role = String(data?.user?.role || '');
+    const scopeZone = isSuperAdmin(data) || role === 'viewer' ? null : String(userZone(data) || 'BZV/POOL');
+
     const planId = String(params?.id || '').trim();
     if (!planId) return json({ error: 'Plan requis.' }, { status: 400 });
 
     const plan = await env.DB.prepare('SELECT * FROM pm_base_plans WHERE id = ?').bind(planId).first();
     if (!plan) return json({ error: 'Plan introuvable.' }, { status: 404 });
 
-    const res = await env.DB.prepare('SELECT * FROM pm_base_plan_items WHERE plan_id = ? ORDER BY planned_date ASC, site_code ASC, site_name ASC')
-      .bind(planId)
-      .all();
+    const stmt = scopeZone
+      ? env.DB.prepare(
+          "SELECT * FROM pm_base_plan_items WHERE plan_id = ? AND COALESCE(region, zone, '') = ? ORDER BY planned_date ASC, site_code ASC, site_name ASC"
+        ).bind(planId, scopeZone)
+      : env.DB.prepare('SELECT * FROM pm_base_plan_items WHERE plan_id = ? ORDER BY planned_date ASC, site_code ASC, site_name ASC').bind(planId);
+
+    const res = await stmt.all();
     const rows = Array.isArray(res?.results) ? res.results : [];
     return json({ items: rows.map(mapItemRow) }, { status: 200 });
   } catch (e) {

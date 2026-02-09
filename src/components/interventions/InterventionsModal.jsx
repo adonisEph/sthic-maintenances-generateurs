@@ -9,6 +9,9 @@ const InterventionsModal = ({
   isAdmin,
   isViewer,
   authUser,
+  interventionsZone,
+  setInterventionsZone,
+  showZoneFilter,
   technicianUnseenSentCount,
   technicianSeenSentAt,
   setTechnicianSeenSentAt,
@@ -70,6 +73,13 @@ const InterventionsModal = ({
 
   const isManager = String(authUser?.role || '') === 'manager';
   const authZone = String(authUser?.zone || '').trim();
+
+  const zones = ['ALL', 'BZV/POOL', 'PNR/KOUILOU', 'UPCN'];
+  const interventionsAll = Array.isArray(interventions) ? interventions : [];
+  const zoneActive = showZoneFilter && interventionsZone && interventionsZone !== 'ALL' ? String(interventionsZone) : '';
+  const interventionsScoped = zoneActive
+    ? interventionsAll.filter((i) => String(i?.zone || '').trim() === zoneActive)
+    : interventionsAll;
 
   return (
     <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${isTechnician ? 'p-0' : 'p-0 sm:p-4'}`}>
@@ -157,13 +167,13 @@ const InterventionsModal = ({
                   const tomorrow = ymdLocal(tomorrowD);
                   const month = String(interventionsMonth || '').trim();
 
-                  const todayCount = interventions.filter((i) => i.plannedDate === today && i.status !== 'done').length;
-                  const tomorrowRaw = interventions.filter((i) => i.plannedDate === tomorrow && i.status !== 'done');
+                  const todayCount = interventionsScoped.filter((i) => i.plannedDate === today && i.status !== 'done').length;
+                  const tomorrowRaw = interventionsScoped.filter((i) => i.plannedDate === tomorrow && i.status !== 'done');
                   const tomorrowCount = tomorrowRaw.length;
                   const tomorrowSentCount = tomorrowRaw.filter((i) => i.status === 'sent').length;
                   const monthCount = month
-                    ? interventions.filter((i) => String(i?.plannedDate || '').slice(0, 7) === month && i.status !== 'done').length
-                    : interventions.filter((i) => i.status !== 'done').length;
+                    ? interventionsScoped.filter((i) => String(i?.plannedDate || '').slice(0, 7) === month && i.status !== 'done').length
+                    : interventionsScoped.filter((i) => i.status !== 'done').length;
 
                   return (
                     <div className="grid grid-cols-3 gap-2 w-full">
@@ -291,6 +301,27 @@ const InterventionsModal = ({
                     </button>
                   </div>
                 )}
+
+                {showZoneFilter && (
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-600 mb-1">Zone</span>
+                    <select
+                      value={interventionsZone}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setInterventionsZone(next);
+                        loadInterventions(interventionsMonth, interventionsStatus, interventionsTechnicianUserId);
+                      }}
+                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                    >
+                      {zones.map((z) => (
+                        <option key={z} value={z}>
+                          {z === 'ALL' ? 'Toutes' : z}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             )}
 
@@ -351,7 +382,7 @@ const InterventionsModal = ({
                   ev.key = getInterventionKey(ev.siteId, ev.plannedDate, ev.epvType);
                 });
 
-                const already = new Set(interventions.map((i) => getInterventionKey(i.siteId, i.plannedDate, i.epvType)));
+                const already = new Set(interventionsScoped.map((i) => getInterventionKey(i.siteId, i.plannedDate, i.epvType)));
 
                 if (plannedEvents.length === 0) {
                   return <div className="text-sm text-gray-600">Aucun EPV trouvé sur ce mois.</div>;
@@ -433,7 +464,7 @@ const InterventionsModal = ({
 
           {(() => {
             const siteById = new Map(sites.map((s) => [String(s.id), s]));
-            const list = interventions
+            const list = interventionsScoped
               .slice()
               .sort((a, b) => String(a.plannedDate || '').localeCompare(String(b.plannedDate || '')));
 

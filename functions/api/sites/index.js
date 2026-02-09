@@ -47,7 +47,7 @@ export async function onRequestGet({ env, data }) {
       if (!isSuperAdmin(data)) {
         stmt = env.DB.prepare('SELECT * FROM sites WHERE zone = ? ORDER BY id_site ASC').bind(z);
       }
-    } else if (role === 'manager' || role === 'viewer') {
+    } else if (role === 'manager') {
       stmt = env.DB.prepare('SELECT * FROM sites WHERE zone = ? ORDER BY id_site ASC').bind(z);
     }
 

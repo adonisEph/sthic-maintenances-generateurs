@@ -125,6 +125,12 @@ const GeneratorMaintenanceApp = () => {
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [calendarZone, setCalendarZone] = useState('ALL');
+  const [interventionsZone, setInterventionsZone] = useState('ALL');
+  const [historyZone, setHistoryZone] = useState('ALL');
+  const [scoringZone, setScoringZone] = useState('ALL');
+  const [sitesZone, setSitesZone] = useState('ALL');
+  const [dashboardZone, setDashboardZone] = useState('ALL');
   const [tabId] = useState(() => {
     try {
       return crypto.randomUUID();
@@ -215,6 +221,9 @@ const GeneratorMaintenanceApp = () => {
   const isViewer = currentRole === 'viewer';
   const isTechnician = currentRole === 'technician';
   const isManager = currentRole === 'manager';
+  const authZone = String(authUser?.zone || '').trim();
+  const isSuperAdmin = isAdmin && authZone === 'BZV/POOL';
+  const showZoneFilter = Boolean(isViewer || isSuperAdmin);
   const canWriteSites = isAdmin || isManager;
   const canImportSites = isAdmin || isManager;
   const canExportExcel = isAdmin || isManager || isViewer;
@@ -3233,8 +3242,12 @@ for (const [key, g] of globalSites.entries()) {
 
   const computeDashboardData = (yyyymm) => {
     const techFilter = String(filterTechnician || 'all');
+    const zoneActive = showZoneFilter && dashboardZone && dashboardZone !== 'ALL' ? String(dashboardZone) : '';
+    const dashboardSites = sites
+      .map(getUpdatedSite)
+      .filter((s) => !zoneActive || String(s?.zone || '').trim() === zoneActive);
 
-    const plannedByEpv = filteredSites
+    const plannedByEpv = dashboardSites
       .filter((s) => s && !s.retired)
       .flatMap((site) => {
         return [
@@ -3255,6 +3268,7 @@ for (const [key, g] of globalSites.entries()) {
 
     const doneByPlannedDate = ficheHistory
       .filter((f) => f && f.status === 'Effectuée' && f.plannedDate && String(f.plannedDate).slice(0, 7) === yyyymm)
+      .filter((f) => !zoneActive || String(f?.zone || '').trim() === zoneActive)
       .filter((f) => techFilter === 'all' || String(f.technician || '') === techFilter);
 
     const plannedByFiches = doneByPlannedDate
@@ -3276,6 +3290,7 @@ for (const [key, g] of globalSites.entries()) {
 
     const completedFichesInMonth = ficheHistory
       .filter((f) => f && f.status === 'Effectuée' && f.dateCompleted && isInMonth(f.dateCompleted, yyyymm))
+      .filter((f) => !zoneActive || String(f?.zone || '').trim() === zoneActive)
       .filter((f) => techFilter === 'all' || String(f.technician || '') === techFilter);
     const contractOk = completedFichesInMonth.filter((f) => f.isWithinContract === true);
     const contractOver = completedFichesInMonth.filter((f) => f.isWithinContract === false);
@@ -3579,7 +3594,13 @@ for (const [key, g] of globalSites.entries()) {
   const technicians = ['all', ...new Set(sites.map(s => s.technician))];
   const filteredSites = sites
     .map(getUpdatedSite)
-    .filter(site => filterTechnician === 'all' || site.technician === filterTechnician);
+    .filter((site) => filterTechnician === 'all' || site.technician === filterTechnician)
+    .filter((site) => {
+      if (!showZoneFilter) return true;
+      const z = String(sitesZone || 'ALL');
+      if (!z || z === 'ALL') return true;
+      return String(site?.zone || '').trim() === z;
+    });
 
   const calendarTechnicianName = (() => {
     const techId = String(calendarSendTechUserId || '').trim();
@@ -3666,9 +3687,13 @@ for (const [key, g] of globalSites.entries()) {
   const calendarFilteredSites = sites
     .map(getUpdatedSite)
     .filter((site) => {
-      if (!calendarTechnicianName) return true;
-      return String(site.technician || '').trim() === calendarTechnicianName;
-    });
+    if (showZoneFilter) {
+      const z = String(calendarZone || 'ALL');
+      if (z && z !== 'ALL' && String(site?.zone || '').trim() !== z) return false;
+    }
+    if (!calendarTechnicianName) return true;
+    return String(site.technician || '').trim() === calendarTechnicianName;
+  });
 
   const interventionsByKey = new Map(
     (Array.isArray(interventions) ? interventions : []).filter(Boolean).map((i) => [getInterventionKey(i.siteId, i.plannedDate, i.epvType), i])
@@ -4846,12 +4871,31 @@ for (const [key, g] of globalSites.entries()) {
 
           <div className="p-2 sm:p-4 md:p-6">
             <div className="max-w-7xl mx-auto">
-            <SitesTechnicianFilter
-              isTechnician={isTechnician}
-              filterTechnician={filterTechnician}
-              onChange={setFilterTechnician}
-              technicians={technicians}
-            />
+            <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+              <div className="flex-1">
+                <SitesTechnicianFilter
+                  isTechnician={isTechnician}
+                  filterTechnician={filterTechnician}
+                  onChange={setFilterTechnician}
+                  technicians={technicians}
+                />
+              </div>
+              {showZoneFilter && (
+                <div className="min-w-[220px]">
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Zone</label>
+                  <select
+                    value={sitesZone}
+                    onChange={(e) => setSitesZone(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white"
+                  >
+                    <option value="ALL">Toutes</option>
+                    <option value="BZV/POOL">BZV/POOL</option>
+                    <option value="PNR/KOUILOU">PNR/KOUILOU</option>
+                    <option value="UPCN">UPCN</option>
+                  </select>
+                </div>
+              )}
+            </div>
               <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 md:mb-6">
           <DashboardHeader
               dashboardMonth={dashboardMonth}
@@ -4871,6 +4915,9 @@ for (const [key, g] of globalSites.entries()) {
               canExportExcel={canExportExcel}
               onExportExcel={handleExportDashboardSummaryExcel}
               exportBusy={exportBusy}
+              dashboardZone={dashboardZone}
+              onDashboardZoneChange={setDashboardZone}
+              showZoneFilter={showZoneFilter}
           />
 
           {(() => {
@@ -5048,6 +5095,10 @@ for (const [key, g] of globalSites.entries()) {
           exportBusy={exportBusy}
           formatDate={formatDate}
           onClose={() => setShowScoring(false)}
+          scoringZone={scoringZone}
+          setScoringZone={setScoringZone}
+          showZoneFilter={showZoneFilter}
+          authUser={authUser}
         />
 
         <InterventionsModal
@@ -5111,6 +5162,9 @@ for (const [key, g] of globalSites.entries()) {
             nhFormError={nhFormError}
             setNhFormError={setNhFormError}
             apiFetchJson={apiFetchJson}
+            interventionsZone={interventionsZone}
+            setInterventionsZone={setInterventionsZone}
+            showZoneFilter={showZoneFilter}
             loadData={loadData}
           />
 
@@ -5397,6 +5451,11 @@ for (const [key, g] of globalSites.entries()) {
             filteredFicheHistory={filteredFicheHistory}
             canMarkCompleted={canMarkCompleted}
             handleMarkAsCompleted={handleMarkAsCompleted}
+            isViewer={isViewer}
+            isAdmin={isAdmin}
+            historyZone={historyZone}
+            setHistoryZone={setHistoryZone}
+            showZoneFilter={showZoneFilter}
             formatDate={formatDate}
           />
 

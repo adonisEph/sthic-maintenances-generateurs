@@ -37,6 +37,8 @@ export async function onRequestGet({ request, env, data, params }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
     if (!requireAdminOrViewer(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
 
+    const role = String(data?.user?.role || '');
+
     const monthId = String(params?.id || '').trim();
     if (!monthId) return json({ error: 'Mois requis.' }, { status: 400 });
 
@@ -50,7 +52,7 @@ export async function onRequestGet({ request, env, data, params }) {
     const qPlanId = String(sp.get('planId') || '').trim();
 
     const zones = (() => {
-      if (isSuperAdmin(data)) {
+      if (isSuperAdmin(data) || role === 'viewer') {
         if (qZone) return [qZone];
         return null; // all zones
       }

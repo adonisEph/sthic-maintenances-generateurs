@@ -25,12 +25,14 @@ export async function onRequestGet({ env, data, params }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
     if (!requireAdminOrViewer(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
 
+    const role = String(data?.user?.role || '');
+
     const monthId = String(params?.id || '').trim();
     if (!monthId) return json({ error: 'Mois requis.' }, { status: 400 });
 
     const today = ymdToday();
 
-    const scopeZone = isSuperAdmin(data) ? null : String(userZone(data) || 'BZV/POOL');
+    const scopeZone = isSuperAdmin(data) || role === 'viewer' ? null : String(userZone(data) || 'BZV/POOL');
 
     const stmt = scopeZone
       ? env.DB.prepare(

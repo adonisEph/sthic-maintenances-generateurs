@@ -5,6 +5,7 @@ function mapRow(row) {
   if (!row) return null;
   return {
     id: row.id,
+    zone: row.site_zone || row.zone || 'BZV/POOL',
     ticketNumber: row.ticket_number,
     siteId: row.site_id,
     siteName: row.site_name,
@@ -48,18 +49,20 @@ export async function onRequestGet({ request, env, data }) {
       binds.push(to);
     }
 
-    if (data.user.role === 'technician') {
+    const role = String(data?.user?.role || '');
+
+    if (role === 'technician') {
       where += ' AND fh.technician = ?';
       binds.push(String(data.user.technicianName || ''));
     }
 
-    if (!isSuperAdmin(data)) {
+    if (!isSuperAdmin(data) && (role === 'manager' || role === 'technician')) {
       where += ' AND s.zone = ?';
       binds.push(String(userZone(data) || 'BZV/POOL'));
     }
 
     const stmt = env.DB.prepare(
-      `SELECT fh.* 
+      `SELECT fh.*, s.zone as site_zone 
       FROM fiche_history fh
       LEFT JOIN sites s ON s.id = fh.site_id
       WHERE ${where}

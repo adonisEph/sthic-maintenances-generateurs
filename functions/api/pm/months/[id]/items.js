@@ -38,6 +38,8 @@ export async function onRequestGet({ request, env, data, params }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
     if (!requireAdminOrViewer(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
 
+    const role = String(data?.user?.role || '');
+
     const monthId = String(params?.id || '').trim();
     if (!monthId) return json({ error: 'Mois requis.' }, { status: 400 });
 
@@ -54,8 +56,8 @@ export async function onRequestGet({ request, env, data, params }) {
     const where = ['month_id = ?'];
     const bind = [monthId];
 
-    // Scope zone: super-admin voit tout, sinon zone du user
-    if (!isSuperAdmin(data)) {
+    // Scope zone: super-admin + viewer voit tout, sinon zone du user
+    if (!isSuperAdmin(data) && role !== 'viewer') {
       where.push("COALESCE(region, zone, '') = ?");
       bind.push(String(userZone(data) || 'BZV/POOL'));
     }
