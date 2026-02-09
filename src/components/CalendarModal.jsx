@@ -447,6 +447,7 @@ const CalendarModal = (props) => {
     setPlanningStats(null);
     
     try {
+      const zoneActive = showZoneFilter && calendarZone && calendarZone !== 'ALL' ? String(calendarZone) : '';
       let list = Array.isArray(sites) ? sites : [];
       try {
         const res = await fetch('/api/sites/all-with-clustering', { credentials: 'include' });
@@ -464,6 +465,10 @@ const CalendarModal = (props) => {
         }
       } catch {
         // ignore
+      }
+
+      if (zoneActive) {
+        list = (Array.isArray(list) ? list : []).filter((s) => String(s?.zone || '').trim() === zoneActive);
       }
 
       const techUsers = (Array.isArray(users) ? users : []).filter((u) => u && u.role === 'technician');

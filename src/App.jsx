@@ -129,7 +129,6 @@ const GeneratorMaintenanceApp = () => {
   const [interventionsZone, setInterventionsZone] = useState('ALL');
   const [historyZone, setHistoryZone] = useState('ALL');
   const [scoringZone, setScoringZone] = useState('ALL');
-  const [sitesZone, setSitesZone] = useState('ALL');
   const [dashboardZone, setDashboardZone] = useState('ALL');
   const [tabId] = useState(() => {
     try {
@@ -3589,7 +3588,14 @@ for (const [key, g] of globalSites.entries()) {
     })
     .sort((a, b) => getDaysUntil(a.epv1) - getDaysUntil(b.epv1));
 
-  const urgentSites = urgentSitesAll.filter(site => filterTechnician === 'all' || site.technician === filterTechnician);
+  const urgentSites = urgentSitesAll
+  .filter((site) => filterTechnician === 'all' || site.technician === filterTechnician)
+  .filter((site) => {
+    if (!showZoneFilter) return true;
+    const z = String(dashboardZone || 'ALL');
+    if (!z || z === 'ALL') return true;
+    return String(site?.zone || '').trim() === z;
+  });
 
   const technicians = ['all', ...new Set(sites.map(s => s.technician))];
   const filteredSites = sites
@@ -3597,7 +3603,7 @@ for (const [key, g] of globalSites.entries()) {
     .filter((site) => filterTechnician === 'all' || site.technician === filterTechnician)
     .filter((site) => {
       if (!showZoneFilter) return true;
-      const z = String(sitesZone || 'ALL');
+      const z = String(dashboardZone || 'ALL');
       if (!z || z === 'ALL') return true;
       return String(site?.zone || '').trim() === z;
     });
@@ -4880,21 +4886,6 @@ for (const [key, g] of globalSites.entries()) {
                   technicians={technicians}
                 />
               </div>
-              {showZoneFilter && (
-                <div className="min-w-[220px]">
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Zone</label>
-                  <select
-                    value={sitesZone}
-                    onChange={(e) => setSitesZone(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white"
-                  >
-                    <option value="ALL">Toutes</option>
-                    <option value="BZV/POOL">BZV/POOL</option>
-                    <option value="PNR/KOUILOU">PNR/KOUILOU</option>
-                    <option value="UPCN">UPCN</option>
-                  </select>
-                </div>
-              )}
             </div>
               <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 md:mb-6">
           <DashboardHeader
