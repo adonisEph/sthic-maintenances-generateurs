@@ -2650,7 +2650,7 @@ for (const [key, g] of globalSites.entries()) {
       try {
         await loadData();
         await loadFicheHistory();
-        if (authUser?.role === 'admin') {
+        if (authUser?.role === 'admin' || authUser?.role === 'manager') {
           await loadTicketNumber();
         }
       } catch {
@@ -5656,7 +5656,8 @@ for (const [key, g] of globalSites.entries()) {
 
         {/* Statistiques */}
         <SitesStats
-          isAdmin={isAdmin}
+          canSetNextTicket={isAdmin || isManager}
+          onSetNextTicket={handleSetNextTicketNumber}
           sitesCount={isTechnician ? filteredSites.length : sites.length}
           urgentSitesCount={urgentSites.length}
           retiredSitesCount={isTechnician ? filteredSites.filter((s) => s.retired).length : sites.filter((s) => s.retired).length}

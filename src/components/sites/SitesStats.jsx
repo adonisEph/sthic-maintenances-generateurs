@@ -2,7 +2,8 @@ import React from 'react';
 import { AlertCircle, Calendar, Activity, CheckCircle } from 'lucide-react';
 
 const SitesStats = ({
-  isAdmin,
+  onSetNextTicket,
+  canSetNextTicket,
   sitesCount,
   urgentSitesCount,
   retiredSitesCount,
@@ -40,7 +41,7 @@ const SitesStats = ({
         </div>
       </div>
 
-      {isAdmin && (
+      {canSetNextTicket && (
         <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
           <div className="flex items-center gap-3">
             <Calendar className="text-blue-600 flex-shrink-0" size={28} />
@@ -48,6 +49,13 @@ const SitesStats = ({
               <p className="text-xs sm:text-sm text-gray-600">Prochain Ticket</p>
               <p className="text-base sm:text-lg font-bold text-gray-800">
                 T{String(ticketNumber).padStart(5, '0')}
+                <button
+                  type="button"
+                  onClick={onSetNextTicket}
+                  className="mt-2 bg-slate-700 text-white px-3 py-1.5 rounded-lg hover:bg-slate-800 text-xs font-semibold"
+                >
+                  Définir
+                </button>
               </p>
             </div>
           </div>
