@@ -17,6 +17,13 @@ const FicheModal = ({
 }) => {
   if (!open || !siteForFiche) return null;
 
+  const ticketPrefix = (() => {
+    const z = String(siteForFiche?.zone || '').trim().toUpperCase();
+    if (z === 'UPCN') return 'N';
+    if (z === 'PNR/KOUILOU') return 'P';
+    return 'T';
+  })();
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full my-8">
@@ -100,7 +107,7 @@ const FicheModal = ({
               </div>
               <div>
                 <p className="text-gray-600 text-xs mb-1">RÉFÉRENCE TICKET</p>
-                <p className="font-bold text-base">T{String(ticketNumber).padStart(5, '0')}</p>
+                <p className="font-bold text-base">{ticketPrefix}{String(ticketNumber).padStart(5, '0')}</p>
               </div>
               <div>
                 <p className="text-gray-600 text-xs mb-1">NOM(S) DE L'INTERVENANT</p>
