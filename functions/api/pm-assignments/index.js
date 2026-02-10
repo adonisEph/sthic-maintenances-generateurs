@@ -9,11 +9,17 @@ function mapRow(row) {
     pmNumber: row.pm_number,
     siteId: row.site_id,
     siteCode: row.site_code,
+    zone: row.zone || null,
     plannedDate: row.planned_date,
     maintenanceType: row.maintenance_type,
     technicianUserId: row.technician_user_id,
     technicianName: row.technician_name,
     status: row.status,
+    pmState: row.pm_state || null,
+    scheduledWoDate: row.scheduled_wo_date || null,
+    closedAt: row.closed_at || null,
+    reprogrammationDate: row.reprogrammation_date || null,
+    reprogrammationStatus: row.reprogrammation_status || null,
     sentAt: row.sent_at || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -41,7 +47,7 @@ export async function onRequestGet({ request, env, data }) {
 
     // Scope zone: admin non-super-admin + manager => zone limitée
     if ((role === 'admin' || role === 'manager') && !isSuperAdmin(data)) {
-      where += ' AND zone = ?';
+      where += ' AND s.zone = ?';
       binds.push(userZone(data));
     }
 
@@ -66,7 +72,15 @@ export async function onRequestGet({ request, env, data }) {
       binds.push(String(technicianUserId));
     }
 
-    const stmt = env.DB.prepare(`SELECT * FROM pm_assignments WHERE ${where} ORDER BY planned_date ASC, pm_number ASC`);
+    const stmt = env.DB.prepare(
+      `SELECT a.*, s.zone AS zone, m.id AS pm_month_id, i.state AS pm_state, i.scheduled_wo_date, i.closed_at, i.reprogrammation_date, i.reprogrammation_status
+       FROM pm_assignments a
+       LEFT JOIN sites s ON s.id = a.site_id
+       LEFT JOIN pm_months m ON m.month = a.month
+       LEFT JOIN pm_items i ON i.month_id = m.id AND i.number = a.pm_number
+       WHERE ${where}
+       ORDER BY a.planned_date ASC, a.pm_number ASC`
+    );
     const res = await stmt.bind(...binds).all();
     const rows = Array.isArray(res?.results) ? res.results : [];
     return json({ assignments: rows.map(mapRow) }, { status: 200 });

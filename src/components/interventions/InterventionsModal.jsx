@@ -71,6 +71,10 @@ const InterventionsModal = ({
 }) => {
   if (!open) return null;
 
+  const [pmAssignments, setPmAssignments] = React.useState([]);
+  const [pmBusy, setPmBusy] = React.useState(false);
+  const [pmError, setPmError] = React.useState('');
+
   const isManager = String(authUser?.role || '') === 'manager';
   const authZone = String(authUser?.zone || '').trim();
 
@@ -80,6 +84,34 @@ const InterventionsModal = ({
   const interventionsScoped = zoneActive
     ? interventionsAll.filter((i) => String(i?.zone || '').trim() === zoneActive)
     : interventionsAll;
+
+  React.useEffect(() => {
+    if (!open) return;
+    if (!isTechnician) return;
+    if (typeof apiFetchJson !== 'function') return;
+    (async () => {
+      setPmError('');
+      setPmBusy(true);
+      try {
+        const month = String(interventionsMonth || '').trim();
+        const mm = month.match(/^\d{4}-\d{2}$/);
+        if (!mm) {
+          setPmAssignments([]);
+          return;
+        }
+        const from = `${month}-01`;
+        const to = `${month}-31`;
+        const qs = new URLSearchParams({ from, to });
+        const data = await apiFetchJson(`/api/pm-assignments?${qs.toString()}`, { method: 'GET' });
+        setPmAssignments(Array.isArray(data?.assignments) ? data.assignments : []);
+      } catch (e) {
+        setPmAssignments([]);
+        setPmError(e?.message || 'Erreur serveur.');
+      } finally {
+        setPmBusy(false);
+      }
+    })();
+  }, [open, isTechnician, apiFetchJson, interventionsMonth]);
 
   return (
     <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${isTechnician ? 'p-0' : 'p-0 sm:p-4'}`}>
@@ -167,13 +199,13 @@ const InterventionsModal = ({
                   const tomorrow = ymdLocal(tomorrowD);
                   const month = String(interventionsMonth || '').trim();
 
-                  const todayCount = interventionsScoped.filter((i) => i.plannedDate === today && i.status !== 'done').length;
-                  const tomorrowRaw = interventionsScoped.filter((i) => i.plannedDate === tomorrow && i.status !== 'done');
+                  const todayCount = interventionsScoped.filter((i) => i.plannedDate === today).length;
+                  const tomorrowRaw = interventionsScoped.filter((i) => i.plannedDate === tomorrow);
                   const tomorrowCount = tomorrowRaw.length;
                   const tomorrowSentCount = tomorrowRaw.filter((i) => i.status === 'sent').length;
                   const monthCount = month
-                    ? interventionsScoped.filter((i) => String(i?.plannedDate || '').slice(0, 7) === month && i.status !== 'done').length
-                    : interventionsScoped.filter((i) => i.status !== 'done').length;
+                    ? interventionsScoped.filter((i) => String(i?.plannedDate || '').slice(0, 7) === month).length
+                    : interventionsScoped.length;
 
                   return (
                     <div className="grid grid-cols-3 gap-2 w-full">
@@ -463,87 +495,6 @@ const InterventionsModal = ({
           )}
 
           {(() => {
-            const siteById = new Map(sites.map((s) => [String(s.id), s]));
-            const list = interventionsScoped
-              .slice()
-              .sort((a, b) => String(a.plannedDate || '').localeCompare(String(b.plannedDate || '')));
-
-            if (isAdmin) {
-              const filtered =
-                interventionsTechnicianUserId && interventionsTechnicianUserId !== 'all'
-                  ? list.filter((i) => String(i.technicianUserId || '') === String(interventionsTechnicianUserId))
-                  : list;
-
-              const groupMap = new Map();
-              filtered.forEach((it) => {
-                const key = String(it.technicianName || 'Sans technicien');
-                if (!groupMap.has(key)) groupMap.set(key, []);
-                groupMap.get(key).push(it);
-              });
-
-              const groups = Array.from(groupMap.entries())
-                .map(([title, items]) => ({ title, items }))
-                .sort((a, b) => String(a.title).localeCompare(String(b.title)));
-
-              return (
-                <div className="space-y-6">
-                  {groups.length === 0 ? (
-                    <div className="text-sm text-gray-600">Aucune intervention.</div>
-                  ) : (
-                    groups.map((g) => (
-                      <div key={g.title}>
-                        <div className="font-semibold text-gray-800 mb-2">
-                          {g.title} ({g.items.length})
-                        </div>
-                        {g.items.length === 0 ? (
-                          <div className="text-sm text-gray-600">Aucune intervention.</div>
-                        ) : (
-                          <div className="space-y-2">
-                            {g.items.map((it) => {
-                              const site = siteById.get(String(it.siteId)) || null;
-                              const statusColor =
-                                it.status === 'done'
-                                  ? 'bg-green-100 text-green-800 border-green-200'
-                                  : it.status === 'sent'
-                                    ? 'bg-blue-100 text-blue-800 border-blue-200'
-                                    : 'bg-amber-100 text-amber-800 border-amber-200';
-                              const wasRetiredPrevMonth = Boolean(
-                                interventionsPrevMonthRetiredSiteIds.has(String(it.siteId)) &&
-                                  String(interventionsMonth || '').trim() &&
-                                  String(it?.plannedDate || '').slice(0, 7) === String(interventionsMonth || '').trim()
-                              );
-                              return (
-                                <div
-                                  key={it.id}
-                                  className="border border-gray-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
-                                >
-                                  <div className="min-w-0">
-                                    <div className="font-semibold text-gray-800 truncate">{site?.nameSite || it.siteId}</div>
-                                    {site?.idSite && <div className="text-xs text-gray-600">ID: {site.idSite}</div>}
-                                    <div className="text-xs text-gray-600">
-                                      {it.epvType} • {formatDate(it.plannedDate)} • {it.technicianName}
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{it.status}</span>
-                                    {wasRetiredPrevMonth && (
-                                      <span className="text-xs px-2 py-1 rounded border font-semibold bg-amber-50 text-amber-900 border-amber-200">
-                                        Justif hors délais (retiré {interventionsPrevMonthKey || 'mois-1'})
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
-              );
-            }
-
             const pad2 = (n) => String(n).padStart(2, '0');
             const ymdLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
             const today = ymdLocal(new Date());
@@ -552,63 +503,170 @@ const InterventionsModal = ({
             const tomorrow = ymdLocal(tomorrowD);
             const month = String(interventionsMonth || '').trim();
 
+            const siteById = new Map((Array.isArray(sites) ? sites : []).map((s) => [String(s.id), s]));
+
             const statusRank = (st) => {
-              if (st === 'sent') return 0;
-              if (st === 'planned') return 1;
-              return 2;
+              const s = String(st || '');
+              if (s === 'sent') return 0;
+              if (s === 'planned') return 1;
+              if (s === 'done') return 2;
+              return 3;
             };
 
-            const todayItems = list
-              .filter((i) => i.plannedDate === today && i.status !== 'done')
-              .slice()
-              .sort((a, b) => statusRank(a.status) - statusRank(b.status));
+            const list = interventionsScoped.slice();
 
-            const tomorrowRaw = list.filter((i) => i.plannedDate === tomorrow && i.status !== 'done');
-            const tomorrowSentCount = tomorrowRaw.filter((i) => i.status === 'sent').length;
-            const tomorrowItems = tomorrowRaw
+            const normalizePmType = (v) =>
+              String(v || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .trim()
+                .toLowerCase()
+                .replace(/\s+/g, '');
+
+            const pmItems = (Array.isArray(pmAssignments) ? pmAssignments : [])
+              .filter(Boolean)
+              .filter((p) => {
+                if (!zoneActive) return true;
+                const z = String(p?.zone || '').trim();
+                return !z || z === zoneActive;
+              })
+              .filter((p) => {
+                const mt = normalizePmType(p?.maintenanceType);
+                return mt === 'fullpmwo' || mt === 'dgservice';
+              })
+              .map((p) => {
+                const mt = normalizePmType(p?.maintenanceType);
+                return {
+                  id: String(p?.id || `pm:${String(p?.pmNumber || '')}`),
+                  kind: 'PM',
+                  maintenanceType: mt,
+                  pmNumber: String(p?.pmNumber || ''),
+                  siteId: String(p?.siteId || ''),
+                  plannedDate: String(p?.plannedDate || '').slice(0, 10),
+                  status: String(p?.pmState || p?.status || ''),
+                  scheduledWoDate: String(p?.scheduledWoDate || '').slice(0, 10),
+                  reprogrammationDate: String(p?.reprogrammationDate || '').slice(0, 10),
+                  closedAt: String(p?.closedAt || '').slice(0, 10)
+                };
+              })
+              .filter((p) => p.siteId && p.plannedDate);
+
+            const interventionKeySet = new Set(
+              list.map((i) => `${String(i?.siteId || '')}|${String(i?.plannedDate || '').slice(0, 10)}|${String(i?.epvType || '')}`)
+            );
+
+            const pmSentLabel = (p) => {
+              if (!p) return '';
+              if (p.maintenanceType === 'dgservice') return 'Vidange Simple';
+              if (p.maintenanceType !== 'fullpmwo') return 'PM';
+              const hasEpv1SameDay = interventionKeySet.has(`${p.siteId}|${p.plannedDate}|EPV1`);
+              return hasEpv1SameDay ? 'PM+Vidange' : 'PM Simple';
+            };
+
+            const pmStatusDisplay = (p) => {
+              const st = String(p?.status || '').trim().toUpperCase();
+              if (st === 'EFFECTUEE' || st === 'DONE' || st === 'CLOSED') {
+                return { label: 'EFFECTUEE', date: p.closedAt || p.plannedDate };
+              }
+              if (st === 'REPROGRAMMEE' || st === 'REPROGRAMMED') {
+                return { label: 'REPROGRAMMEE', date: p.reprogrammationDate || p.plannedDate };
+              }
+              if (st === 'ASSIGNED' || st === 'SENT' || st === 'PLANNED') {
+                return { label: 'ASSIGNED', date: p.scheduledWoDate || p.plannedDate };
+              }
+              return { label: st || 'ASSIGNED', date: p.plannedDate };
+            };
+
+            const monthItems = month
+              ? list.filter((i) => String(i?.plannedDate || '').slice(0, 7) === month)
+              : list;
+
+            const vidangesFiltered =
+              technicianInterventionsTab === 'today'
+                ? list.filter((i) => i.plannedDate === today)
+                : technicianInterventionsTab === 'tomorrow'
+                  ? list.filter((i) => i.plannedDate === tomorrow)
+                  : monthItems;
+
+            const items = [...pmItems, ...vidangesFiltered]
               .slice()
-              .sort((a, b) => statusRank(a.status) - statusRank(b.status));
+              .sort((a, b) => {
+                const da = String(a?.plannedDate || '');
+                const db = String(b?.plannedDate || '');
+                const c = da.localeCompare(db);
+                if (c !== 0) return c;
+                const ra = statusRank(a?.status);
+                const rb = statusRank(b?.status);
+                if (ra !== rb) return ra - rb;
+                return String(a?.siteId || '').localeCompare(String(b?.siteId || ''));
+              });
 
             const renderItem = (it) => {
-              const site = siteById.get(String(it.siteId)) || null;
+              const isPm = String(it?.kind || '') === 'PM';
+              const site = siteById.get(String(it?.siteId || '')) || null;
+
+              if (isPm) {
+                const info = pmStatusDisplay(it);
+                const label = pmSentLabel(it);
+                return (
+                  <div key={it.id} className="border border-gray-200 rounded-lg p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-extrabold px-2 py-1 rounded bg-blue-50 text-blue-800 border border-blue-200">
+                            PM
+                          </span>
+                          <div className="font-semibold text-gray-800 truncate">
+                            {site?.nameSite || it.siteId}
+                            {it?.maintenanceType === 'fullpmwo' ? ' - FullPMWO' : it?.maintenanceType === 'dgservice' ? ' - DG-Service' : ''}
+                          </div>
+                        </div>
+                        {site?.idSite && <div className="text-xs text-gray-600">ID: {site.idSite}</div>}
+                        <div className="text-xs text-gray-600 mt-1">
+                          Statut : {info.label} - {formatDate(info.date)}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <span className="text-xs px-2 py-1 rounded border font-semibold bg-slate-50 text-slate-800 border-slate-200">
+                            Ticket: {String(it?.pmNumber || '').trim() ? `#${String(it.pmNumber).trim()}` : '-'}
+                          </span>
+                          {label ? (
+                            <span className="text-xs px-2 py-1 rounded border font-semibold bg-emerald-50 text-emerald-800 border-emerald-200">
+                              sent • {label}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              const st = String(it?.status || '');
+              const isOverdue = technicianInterventionsTab !== 'month' && st !== 'done' && String(it?.plannedDate || '') < today;
               const statusColor =
-                it.status === 'done'
+                st === 'done'
                   ? 'bg-green-100 text-green-800 border-green-200'
-                  : it.status === 'sent'
+                  : st === 'sent'
                     ? 'bg-blue-100 text-blue-800 border-blue-200'
                     : 'bg-amber-100 text-amber-800 border-amber-200';
-              const wasRetiredPrevMonth = Boolean(
-                interventionsPrevMonthRetiredSiteIds.has(String(it.siteId)) &&
-                  String(interventionsMonth || '').trim() &&
-                  String(it?.plannedDate || '').slice(0, 7) === String(interventionsMonth || '').trim()
-              );
 
-              const canCatchUpInMonth = Boolean(
-                isTechnician && technicianInterventionsTab === 'month' && String(it?.plannedDate || '')
-              );
-              const isOverdueInMonth = Boolean(
-                isTechnician &&
-                  technicianInterventionsTab === 'month' &&
-                  String(it?.plannedDate || '') &&
-                  String(it.plannedDate) < String(today)
-              );
               return (
                 <div key={it.id} className="border border-gray-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="font-semibold text-gray-800 truncate">{site?.nameSite || it.siteId}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-extrabold px-2 py-1 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                        VIDANGES
+                      </span>
+                      <div className="font-semibold text-gray-800 truncate">{site?.nameSite || it.siteId}</div>
+                    </div>
                     {site?.idSite && <div className="text-xs text-gray-600">ID: {site.idSite}</div>}
                     <div className="text-xs text-gray-600">
                       {it.epvType} • {formatDate(it.plannedDate)} • {it.technicianName}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{it.status}</span>
-                    {wasRetiredPrevMonth && (
-                      <span className="text-xs px-2 py-1 rounded border font-semibold bg-amber-50 text-amber-900 border-amber-200">
-                        Justif hors délais (retiré {interventionsPrevMonthKey || 'mois-1'})
-                      </span>
-                    )}
-                    {isOverdueInMonth && (
+                    <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{st}</span>
+                    {isOverdue && (
                       <span className="text-xs px-2 py-1 rounded border font-semibold bg-red-100 text-red-800 border-red-200">
                         RETARD
                       </span>
@@ -630,133 +688,47 @@ const InterventionsModal = ({
                         Mettre à jour NH
                       </button>
                     )}
-                    {it.status !== 'done' &&
-                      (isAdmin || (isTechnician && (technicianInterventionsTab !== 'month' || canCatchUpInMonth))) && (
-                        <button
-                          onClick={() => {
-                            if (isTechnician) {
-                              setCompleteModalIntervention(it);
-                              setCompleteModalSite(site);
-                              setCompleteForm({ nhNow: String(site?.nhEstimated ?? ''), doneDate: today });
-                              setCompleteFormError('');
-                              setCompleteModalOpen(true);
-                              return;
-                            }
-                            handleCompleteIntervention(it.id);
-                          }}
-                          className="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 font-semibold text-sm"
-                        >
-                          Marquer effectuée
-                        </button>
-                      )}
+                    {st !== 'done' && (isAdmin || isTechnician) && (
+                      <button
+                        onClick={() => {
+                          if (isTechnician) {
+                            setCompleteModalIntervention(it);
+                            setCompleteModalSite(site);
+                            setCompleteForm({ nhNow: String(site?.nhEstimated ?? ''), doneDate: today });
+                            setCompleteFormError('');
+                            setCompleteModalOpen(true);
+                            return;
+                          }
+                          handleCompleteIntervention(it.id);
+                        }}
+                        className="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 font-semibold text-sm"
+                      >
+                        Marquer effectuée
+                      </button>
+                    )}
                   </div>
                 </div>
               );
             };
 
-            if (isTechnician) {
-              if (technicianInterventionsTab === 'month') {
-                const prevMonth = (() => {
-                  const raw = String(month || '').trim();
-                  const m = raw.match(/^(\d{4})-(\d{2})$/);
-                  if (!m) return '';
-                  const y = Number(m[1]);
-                  const mm = Number(m[2]);
-                  if (!Number.isFinite(y) || !Number.isFinite(mm) || mm < 1 || mm > 12) return '';
-                  const py = mm === 1 ? y - 1 : y;
-                  const pm = mm === 1 ? 12 : mm - 1;
-                  return `${py}-${String(pm).padStart(2, '0')}`;
-                })();
-
-                const catchUpPrevMonthItems = list
-                  .filter((i) => i && i.status !== 'done')
-                  .filter((i) => {
-                    if (!prevMonth) return false;
-                    return String(i.plannedDate || '').slice(0, 7) === prevMonth;
-                  });
-
-                const monthItems = list
-                  .filter((i) => i && i.status !== 'done')
-                  .filter((i) => {
-                    if (!month) return true;
-                    return String(i.plannedDate || '').slice(0, 7) === month;
-                  });
-
-                const merged = [...catchUpPrevMonthItems, ...monthItems].filter(Boolean);
-
-                const byDate = new Map();
-                merged.forEach((it) => {
-                  const k = String(it.plannedDate || '');
-                  if (!byDate.has(k)) byDate.set(k, []);
-                  byDate.get(k).push(it);
-                });
-
-                const dates = Array.from(byDate.keys()).sort((a, b) => String(a).localeCompare(String(b)));
-                return (
-                  <div className="space-y-6">
-                    {catchUpPrevMonthItems.length > 0 && (
-                      <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2 text-sm">
-                        Rattrapage: <span className="font-semibold">{catchUpPrevMonthItems.length}</span> vidange(s) en retard du mois précédent affichée(s) dans ce mois.
-                      </div>
-                    )}
-                    {dates.length === 0 ? (
-                      <div className="text-sm text-gray-600">Aucune intervention.</div>
-                    ) : (
-                      dates.map((d) => (
-                        <div key={d}>
-                          <div className="font-semibold text-gray-800 mb-2">
-                            {formatDate(d)} ({byDate.get(d).length})
-                          </div>
-                          <div className="space-y-2">{byDate.get(d).map((it) => renderItem(it))}</div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                );
-              }
-
-              const selectedKey = technicianInterventionsTab === 'today' ? 'today' : 'tomorrow';
-              const selected = selectedKey === 'today' ? todayItems : tomorrowItems;
-              const title =
-                selectedKey === 'today'
-                  ? "Aujourd'hui"
-                  : `Demain (${tomorrowItems.length} dont ${tomorrowSentCount} envoyée(s))`;
-              return (
-                <div className="space-y-6">
-                  <div>
-                    <div className="font-semibold text-gray-800 mb-2">{title}</div>
-                    {selected.length === 0 ? (
-                      <div className="text-sm text-gray-600">Aucune intervention.</div>
-                    ) : (
-                      <div className="space-y-2">{selected.map((it) => renderItem(it))}</div>
-                    )}
-                  </div>
-                </div>
-              );
-            }
-
-            const groups = [
-              { key: 'today', title: "Aujourd'hui", items: todayItems },
-              { key: 'tomorrow', title: `Demain (${tomorrowItems.length} dont ${tomorrowSentCount} envoyée(s))`, items: tomorrowItems },
-              { key: 'all', title: 'Toutes', items: list }
-            ];
-
             return (
-              <div className="space-y-6">
-                {groups.map((g) => (
-                  <div key={g.key}>
-                    <div className="font-semibold text-gray-800 mb-2">{g.title}</div>
-                    {g.items.length === 0 ? (
-                      <div className="text-sm text-gray-600">Aucune intervention.</div>
-                    ) : (
-                      <div className="space-y-2">{g.items.map((it) => renderItem(it))}</div>
-                    )}
+              <div className="space-y-3">
+                {pmError && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">
+                    {pmError}
                   </div>
-                ))}
+                )}
+                {pmBusy && (
+                  <div className="text-xs text-gray-600">Chargement PM…</div>
+                )}
+                {items.length === 0 ? (
+                  <div className="text-sm text-gray-600">Aucune intervention.</div>
+                ) : (
+                  <div className="space-y-2">{items.map((it) => renderItem(it))}</div>
+                )}
               </div>
             );
           })()}
-
           <CompleteInterventionModal
             open={completeModalOpen}
             completeModalSite={completeModalSite}
