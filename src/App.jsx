@@ -38,7 +38,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '2.2.1';
+const APP_VERSION = '2.2.4';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const DAILY_NH_UPDATE_STORAGE_KEY = 'gma_daily_nh_update_ymd';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
@@ -1134,6 +1134,7 @@ const GeneratorMaintenanceApp = () => {
 
     const authZone = String(authUser?.zone || '').trim();
     const superAdmin = Boolean(authUser?.role === 'admin' && authZone === 'BZV/POOL');
+    const viewer = Boolean(authUser?.role === 'viewer');
 
     const normalizeZone = (z) =>
       String(z || '')
@@ -1150,7 +1151,7 @@ const GeneratorMaintenanceApp = () => {
         .toUpperCase()
         .replace(/\s+/g, '');
 
-    const scopeZones = superAdmin ? ['BZV/POOL', 'PNR/KOUILOU', 'UPCN'] : authZone ? [authZone] : [];
+    const scopeZones = (superAdmin || viewer) ? ['BZV/POOL', 'PNR/KOUILOU', 'UPCN'] : authZone ? [authZone] : [];
     const scopeZonesNorm = scopeZones.map(normalizeZone).filter(Boolean);
     if (scopeZones.length === 0) {
       setPmRetiredSites(null);
@@ -3286,6 +3287,10 @@ for (const [key, g] of globalSites.entries()) {
       plannedMap.set(String(ev.key), ev);
     });
     const plannedEvents = Array.from(plannedMap.values());
+    const plannedEventsFiltered =
+    techFilter === 'all'
+      ? plannedEvents
+      : plannedEvents.filter((ev) => String(ev?.technician || '') === techFilter);
 
     const completedFichesInMonth = ficheHistory
       .filter((f) => f && f.status === 'Effectuée' && f.dateCompleted && isInMonth(f.dateCompleted, yyyymm))
@@ -3295,9 +3300,9 @@ for (const [key, g] of globalSites.entries()) {
     const contractOver = completedFichesInMonth.filter((f) => f.isWithinContract === false);
 
     const completedKeys = new Set(doneByPlannedDate.map((f) => `${f.siteId}|${f.epvType || ''}|${f.plannedDate}`));
-    const remainingEvents = plannedEvents.filter((ev) => !completedKeys.has(String(ev.key)));
+    const remainingEvents = plannedEventsFiltered.filter((ev) => !completedKeys.has(String(ev.key)));
 
-    return { plannedEvents, remainingEvents, doneByPlannedDate, contractOk, contractOver };
+    return { plannedEvents: plannedEventsFiltered, remainingEvents, doneByPlannedDate, contractOk, contractOver };
   };
 
   const handleExportDashboardSummaryExcel = async () => {
@@ -5462,6 +5467,11 @@ for (const [key, g] of globalSites.entries()) {
           setCurrentMonth={setCurrentMonth}
           isAdmin={isAdmin}
           sites={sites}
+          calendarZone={calendarZone}
+          setCalendarZone={setCalendarZone}
+          showZoneFilter={showZoneFilter}
+          isViewer={isViewer}
+          isSuperAdmin={isSuperAdmin}
           calendarSendTechUserId={calendarSendTechUserId}
           setCalendarSendTechUserId={setCalendarSendTechUserId}
           users={users}
