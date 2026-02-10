@@ -601,6 +601,9 @@ const InterventionsModal = ({
               if (st === 'EFFECTUEE' || st === 'DONE' || st === 'CLOSED') {
                 return { label: 'EFFECTUEE', date: p.closedAt || p.plannedDate };
               }
+              if (st === 'CLOSED COMPLETE' || st === 'CLOSED_COMPLETE' || st === 'CLOSEDCOMPLETE') {
+                return { label: 'EFFECTUEE', date: p.closedAt || p.plannedDate };
+              }
               if (st === 'REPROGRAMMEE' || st === 'REPROGRAMMED') {
                 return { label: 'REPROGRAMMEE', date: p.reprogrammationDate || p.plannedDate };
               }
@@ -633,6 +636,28 @@ const InterventionsModal = ({
             const items = [...pmFiltered, ...vidangesFiltered]
               .slice()
               .sort((a, b) => {
+                const isDone = (x) => {
+                  if (!x) return false;
+                  if (String(x?.kind || '') === 'PM') {
+                    const st = String(x?.status || '').trim().toUpperCase();
+                    return (
+                      st === 'EFFECTUEE' ||
+                      st === 'DONE' ||
+                      st === 'CLOSED' ||
+                      st === 'CLOSED COMPLETE' ||
+                      st === 'CLOSED_COMPLETE' ||
+                      st.includes('CLOSED') ||
+                      st.includes('COMPLETE')
+                    );
+                  }
+                  return String(x?.status || '') === 'done';
+                };
+
+                if (technicianInterventionsTab === 'month') {
+                  const da = isDone(a) ? 1 : 0;
+                  const db = isDone(b) ? 1 : 0;
+                  if (da !== db) return da - db;
+                }
                 const da = String(a?.plannedDate || '');
                 const db = String(b?.plannedDate || '');
                 const c = da.localeCompare(db);
@@ -650,12 +675,24 @@ const InterventionsModal = ({
               if (isPm) {
                 const info = pmStatusDisplay(it);
                 const label = pmSentLabel(it);
+                const isPmDone = String(info?.label || '').toUpperCase() === 'EFFECTUEE';
                 return (
-                  <div key={it.id} className="border border-gray-200 rounded-lg p-3">
+                  <div
+                    key={it.id}
+                    className={`border rounded-lg p-3 ${
+                      isPmDone ? 'border-green-200 bg-green-50' : 'border-gray-200'
+                    }`}
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-extrabold px-2 py-1 rounded bg-blue-50 text-blue-800 border border-blue-200">
+                          <span
+                            className={`text-xs font-extrabold px-2 py-1 rounded border ${
+                              isPmDone
+                                ? 'bg-green-100 text-green-900 border-green-200'
+                                : 'bg-blue-50 text-blue-800 border-blue-200'
+                            }`}
+                          >
                             PM
                           </span>
                           <div className="font-semibold text-gray-800 truncate">
@@ -692,8 +729,15 @@ const InterventionsModal = ({
                     ? 'bg-blue-100 text-blue-800 border-blue-200'
                     : 'bg-amber-100 text-amber-800 border-amber-200';
 
+              const cardTone =
+                st === 'done'
+                  ? 'border-green-200 bg-green-50'
+                  : st === 'sent'
+                    ? 'border-blue-200 bg-blue-50'
+                    : 'border-gray-200';
+
               return (
-                <div key={it.id} className="border border-gray-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div key={it.id} className={`border rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${cardTone}`}>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-extrabold px-2 py-1 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
@@ -766,7 +810,30 @@ const InterventionsModal = ({
                 {items.length === 0 ? (
                   <div className="text-sm text-gray-600">Aucune intervention.</div>
                 ) : (
-                  <div className="space-y-2">{items.map((it) => renderItem(it))}</div>
+                  (() => {
+                    if (technicianInterventionsTab !== 'month') {
+                      return <div className="space-y-2">{items.map((it) => renderItem(it))}</div>;
+                    }
+
+                    const out = [];
+                    let lastDate = '';
+                    items.forEach((it) => {
+                      const d = String(it?.plannedDate || '').slice(0, 10);
+                      if (d && d !== lastDate) {
+                        lastDate = d;
+                        out.push(
+                          <div
+                            key={`h:${d}`}
+                            className="mt-3 mb-1 text-xs font-extrabold text-slate-700 bg-slate-100 border border-slate-200 px-3 py-2 rounded-lg"
+                          >
+                            {formatDate(d)}
+                          </div>
+                        );
+                      }
+                      out.push(renderItem(it));
+                    });
+                    return <div className="space-y-2">{out}</div>;
+                  })()
                 )}
               </div>
             );
