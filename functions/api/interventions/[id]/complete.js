@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../../_utils/db.js';
-import { json, requireAuth, readJson, isoNow, ymdToday, isSuperAdmin, userZone } from '../../_utils/http.js';
+import { json, requireAuth, readJson, isoNow, isSuperAdmin, userZone } from '../../_utils/http.js';
 import { calculateEPVDates } from '../../_utils/calc.js';
 import { nextTicketNumber, formatTicket, touchLastUpdatedAt } from '../../_utils/meta.js';
 
@@ -75,13 +75,14 @@ export async function onRequestPost({ request, env, data, params }) {
       .run();
 
     await env.DB.prepare(
-      "UPDATE interventions SET status = 'done', done_at = ?, updated_at = ? WHERE id = ?"
+      'UPDATE interventions SET status = ?, date_completed = ?, nh_now = ?, updated_at = ? WHERE id = ?'
     )
-      .bind(now, now, id)
+      .bind('done', doneDate, nhNow === null ? null : nhNow, now, id)
       .run();
 
     const tn = await nextTicketNumber(env);
-    const ticketNumber = formatTicket(tn);
+    const ticketZone = String(site?.zone || site?.region || '').trim();
+    const ticketNumber = formatTicket(tn, ticketZone);
 
     const ficheId = `fiche-${id}`;
     const status = 'Effectuée';

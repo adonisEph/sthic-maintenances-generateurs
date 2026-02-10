@@ -19,6 +19,15 @@ export async function touchLastUpdatedAt(env, value = new Date().toISOString()) 
   return value;
 }
 
-export function formatTicket(n) {
-  return `T${String(n).padStart(5, '0')}`;
+export function ticketPrefixFromZone(zone) {
+  const z = String(zone || '').trim().toUpperCase();
+  if (z === 'UPCN') return 'N';
+  if (z === 'PNR/KOUILOU') return 'P';
+  if (z === 'BZV/POOL') return 'T';
+  return 'T';
+}
+
+export function formatTicket(n, zone) {
+  const prefix = ticketPrefixFromZone(zone);
+  return `${prefix}${String(n).padStart(5, '0')}`;
 }

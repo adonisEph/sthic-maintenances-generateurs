@@ -905,7 +905,7 @@ const GeneratorMaintenanceApp = () => {
         return;
       }
 
-      const ok = window.confirm(`Confirmer: prochain ticket = T${String(next).padStart(5, '0')} ?`);
+      const ok = window.confirm(`Confirmer: prochain numéro = ${String(next).padStart(5, '0')} ?`);
       if (!ok) return;
 
       const res = await apiFetchJson('/api/meta/ticket-number/set', {
@@ -2744,7 +2744,8 @@ for (const [key, g] of globalSites.entries()) {
 
       if (isAdmin || isManager) {
         try {
-          const data = await apiFetchJson('/api/meta/ticket-number/next', { method: 'POST', body: JSON.stringify({}) });
+          const z = String(siteForFiche?.zone || '').trim();
+          const data = await apiFetchJson('/api/meta/ticket-number/next', { method: 'POST', body: JSON.stringify({ zone: z }) });
           if (Number.isFinite(Number(data?.ticketNumber))) {
             usedTicketNumber = Number(data.ticketNumber);
             setTicketNumber(usedTicketNumber);
@@ -2760,7 +2761,11 @@ for (const [key, g] of globalSites.entries()) {
 
       const newFiche = {
         id: Date.now(),
-        ticketNumber: `T${String(usedTicketNumber).padStart(5, '0')}`,
+        ticketNumber: `${(() => {
+          const z = String(siteForFiche?.zone || '').trim().toUpperCase();
+          const prefix = z === 'UPCN' ? 'N' : z === 'PNR/KOUILOU' ? 'P' : 'T';
+          return `${prefix}${String(usedTicketNumber).padStart(5, '0')}`;
+        })()}`,
         siteId: siteForFiche.id,
         siteName: siteForFiche.nameSite,
         technician: siteForFiche.technician,
@@ -2816,7 +2821,8 @@ for (const [key, g] of globalSites.entries()) {
       let usedTicketNumber = ticketNumber;
       if (isAdmin) {
         try {
-          const data = await apiFetchJson('/api/meta/ticket-number/next', { method: 'POST', body: JSON.stringify({}) });
+          const z = String(siteForFiche?.zone || '').trim();
+          const data = await apiFetchJson('/api/meta/ticket-number/next', { method: 'POST', body: JSON.stringify({ zone: z }) });
           if (Number.isFinite(Number(data?.ticketNumber))) {
             usedTicketNumber = Number(data.ticketNumber);
             setTicketNumber(usedTicketNumber);
@@ -2863,7 +2869,11 @@ for (const [key, g] of globalSites.entries()) {
       if (isAdmin && Number.isFinite(Number(usedTicketNumber))) {
         const newFiche = {
           id: Date.now(),
-          ticketNumber: `T${String(usedTicketNumber).padStart(5, '0')}`,
+          ticketNumber: `${(() => {
+            const z = String(siteForFiche?.zone || '').trim().toUpperCase();
+            const prefix = z === 'UPCN' ? 'N' : z === 'PNR/KOUILOU' ? 'P' : 'T';
+            return `${prefix}${String(usedTicketNumber).padStart(5, '0')}`;
+          })()}`,
           siteId: siteForFiche.id,
           siteName: siteForFiche.nameSite,
           technician: siteForFiche.technician,

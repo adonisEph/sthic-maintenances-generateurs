@@ -929,7 +929,13 @@ const CalendarModal = (props) => {
 
       const withNumbers = planning.map((it, idx) => {
         const n = allocatedStart > 0 ? allocatedStart + idx : 0;
-        const ticket = n > 0 ? `T${String(n).padStart(5, '0')}` : '';
+        const prefix = (() => {
+          const z = String(it?.zone || it?.region || '').trim().toUpperCase();
+          if (z === 'UPCN') return 'N';
+          if (z === 'PNR/KOUILOU') return 'P';
+          return 'T';
+        })();
+        const ticket = n > 0 ? `${prefix}${String(n).padStart(5, '0')}` : '';
         return {
           ...it,
           shortDescription: String(it?.maintenanceType || ''),
