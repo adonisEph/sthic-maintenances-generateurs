@@ -199,13 +199,46 @@ const InterventionsModal = ({
                   const tomorrow = ymdLocal(tomorrowD);
                   const month = String(interventionsMonth || '').trim();
 
-                  const todayCount = interventionsScoped.filter((i) => i.plannedDate === today).length;
-                  const tomorrowRaw = interventionsScoped.filter((i) => i.plannedDate === tomorrow);
-                  const tomorrowCount = tomorrowRaw.length;
-                  const tomorrowSentCount = tomorrowRaw.filter((i) => i.status === 'sent').length;
-                  const monthCount = month
-                    ? interventionsScoped.filter((i) => String(i?.plannedDate || '').slice(0, 7) === month).length
-                    : interventionsScoped.length;
+                  const normalizePmType = (v) =>
+                    String(v || '')
+                      .normalize('NFD')
+                      .replace(/[\u0300-\u036f]/g, '')
+                      .trim()
+                      .toLowerCase()
+                      .replace(/\s+/g, '');
+
+                  const pmAll = (Array.isArray(pmAssignments) ? pmAssignments : [])
+                    .filter(Boolean)
+                    .filter((p) => {
+                      if (!zoneActive) return true;
+                      const z = String(p?.zone || '').trim();
+                      return !z || z === zoneActive;
+                    })
+                    .filter((p) => {
+                      const mt = normalizePmType(p?.maintenanceType);
+                      return mt === 'fullpmwo' || mt === 'dgservice';
+                    })
+                    .map((p) => ({
+                      plannedDate: String(p?.plannedDate || '').slice(0, 10)
+                    }))
+                    .filter((p) => p.plannedDate);
+
+                  const vidToday = interventionsScoped.filter((i) => i.plannedDate === today);
+                  const vidTomorrow = interventionsScoped.filter((i) => i.plannedDate === tomorrow);
+                  const vidMonth = month
+                    ? interventionsScoped.filter((i) => String(i?.plannedDate || '').slice(0, 7) === month)
+                    : interventionsScoped;
+
+                  const pmTodayCount = pmAll.filter((p) => p.plannedDate === today).length;
+                  const pmTomorrowCount = pmAll.filter((p) => p.plannedDate === tomorrow).length;
+                  const pmMonthCount = month
+                    ? pmAll.filter((p) => String(p?.plannedDate || '').slice(0, 7) === month).length
+                    : pmAll.length;
+
+                  const todayCount = vidToday.length + pmTodayCount;
+                  const tomorrowCount = vidTomorrow.length + pmTomorrowCount;
+                  const tomorrowSentCount = vidTomorrow.filter((i) => i.status === 'sent').length;
+                  const monthCount = vidMonth.length + pmMonthCount;
 
                   return (
                     <div className="grid grid-cols-3 gap-2 w-full">
@@ -588,7 +621,16 @@ const InterventionsModal = ({
                   ? list.filter((i) => i.plannedDate === tomorrow)
                   : monthItems;
 
-            const items = [...pmItems, ...vidangesFiltered]
+            const pmFiltered =
+              technicianInterventionsTab === 'today'
+                ? pmItems.filter((p) => p.plannedDate === today)
+                : technicianInterventionsTab === 'tomorrow'
+                  ? pmItems.filter((p) => p.plannedDate === tomorrow)
+                  : month
+                    ? pmItems.filter((p) => String(p?.plannedDate || '').slice(0, 7) === month)
+                    : pmItems;
+
+            const items = [...pmFiltered, ...vidangesFiltered]
               .slice()
               .sort((a, b) => {
                 const da = String(a?.plannedDate || '');
