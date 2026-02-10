@@ -1,6 +1,6 @@
 import { ensureAdminUser } from '../../_utils/db.js';
 import { json, requireAuth, readJson, isoNow } from '../../_utils/http.js';
-import { formatTicket, touchLastUpdatedAt } from '../../_utils/meta.js';
+import { formatTicket, touchLastUpdatedAt, ticketMetaKeyFromZone } from '../../_utils/meta.js';
 
 export async function onRequestPost({ request, env, data }) {
   try {
@@ -10,6 +10,7 @@ export async function onRequestPost({ request, env, data }) {
     if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const body = await readJson(request);
+    const zone = String(body?.zone || '').trim();
     const next = Number(body?.next);
     if (!Number.isFinite(next) || Math.floor(next) !== next || next < 1) {
       return json({ error: 'Valeur invalide. Fournir un entier >= 1 dans { next }.' }, { status: 400 });
@@ -17,8 +18,9 @@ export async function onRequestPost({ request, env, data }) {
 
     const current = next - 1;
 
+    const key = ticketMetaKeyFromZone(zone);
     await env.DB.prepare('INSERT OR REPLACE INTO meta (meta_key, meta_value) VALUES (?, ?)')
-      .bind('ticket_number', String(current))
+      .bind(key, String(current))
       .run();
 
     await touchLastUpdatedAt(env);
@@ -28,7 +30,7 @@ export async function onRequestPost({ request, env, data }) {
         ok: true,
         current,
         next,
-        nextTicket: formatTicket(next),
+        nextTicket: formatTicket(next, zone),
         setAt: isoNow()
       },
       { status: 200 }

@@ -1,8 +1,37 @@
 export async function nextTicketNumber(env) {
-  const row = await env.DB.prepare('SELECT meta_value FROM meta WHERE meta_key = ?').bind('ticket_number').first();
+  return nextTicketNumberForZone(env, '');
+}
+
+export function ticketMetaKeyFromZone(zone) {
+  const z = String(zone || '').trim().toUpperCase();
+  if (z === 'UPCN') return 'ticket_number_upcn';
+  if (z === 'PNR/KOUILOU') return 'ticket_number_pnr';
+  if (z === 'BZV/POOL') return 'ticket_number';
+  return 'ticket_number';
+}
+
+export async function getTicketCounter(env, zone) {
+  const key = ticketMetaKeyFromZone(zone);
+  await env.DB.prepare('INSERT OR IGNORE INTO meta (meta_key, meta_value) VALUES (?, ?)')
+    .bind(key, '0')
+    .run();
+  const row = await env.DB.prepare('SELECT meta_value FROM meta WHERE meta_key = ?').bind(key).first();
+  const current = Number(row?.meta_value || 0);
+  return Number.isFinite(current) ? current : 0;
+}
+
+export async function nextTicketNumberForZone(env, zone) {
+  const key = ticketMetaKeyFromZone(zone);
+  await env.DB.prepare('INSERT OR IGNORE INTO meta (meta_key, meta_value) VALUES (?, ?)')
+    .bind(key, '0')
+    .run();
+
+  const row = await env.DB.prepare('SELECT meta_value FROM meta WHERE meta_key = ?').bind(key).first();
   const current = Number(row?.meta_value || 0);
   const next = current + 1;
-  await env.DB.prepare('INSERT OR REPLACE INTO meta (meta_key, meta_value) VALUES (?, ?)').bind('ticket_number', String(next)).run();
+  await env.DB.prepare('INSERT OR REPLACE INTO meta (meta_key, meta_value) VALUES (?, ?)')
+    .bind(key, String(next))
+    .run();
   await touchLastUpdatedAt(env);
   return next;
 }

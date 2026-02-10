@@ -1121,7 +1121,7 @@ const PmModal = (props) => {
                   </div>
                 )}
 
-                <div className="border border-gray-200 rounded-xl p-4 mb-5">
+                <div className="mb-5 bg-slate-50 border border-slate-200 rounded-lg p-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1">État</label>

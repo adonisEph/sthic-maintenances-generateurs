@@ -1,6 +1,6 @@
 import { ensureAdminUser } from '../../_utils/db.js';
 import { json, requireAuth, readJson, isoNow } from '../../_utils/http.js';
-import { formatTicket, touchLastUpdatedAt } from '../../_utils/meta.js';
+import { formatTicket, touchLastUpdatedAt, ticketMetaKeyFromZone } from '../../_utils/meta.js';
 
 export async function onRequestPost({ request, env, data }) {
   try {
@@ -14,14 +14,17 @@ export async function onRequestPost({ request, env, data }) {
     }
 
     const body = await readJson(request);
+    const zone = String(body?.zone || '').trim();
     const count = Number(body?.count);
     if (!Number.isFinite(count) || Math.floor(count) !== count || count < 1 || count > 5000) {
       return json({ error: "Requête invalide. Fournir un entier 1..5000 dans { count }." }, { status: 400 });
     }
 
+    const key = ticketMetaKeyFromZone(zone);
+
     // Ensure meta row exists
     await env.DB.prepare('INSERT OR IGNORE INTO meta (meta_key, meta_value) VALUES (?, ?)')
-      .bind('ticket_number', '0')
+      .bind(key, '0')
       .run();
 
     let start = 0;
@@ -32,7 +35,7 @@ export async function onRequestPost({ request, env, data }) {
       attempts += 1;
 
       const row = await env.DB.prepare('SELECT meta_value FROM meta WHERE meta_key = ?')
-        .bind('ticket_number')
+        .bind(key)
         .first();
 
       const current = Number(row?.meta_value || 0);
@@ -46,7 +49,7 @@ export async function onRequestPost({ request, env, data }) {
       const upd = await env.DB.prepare(
         'UPDATE meta SET meta_value = ? WHERE meta_key = ? AND meta_value = ?'
       )
-        .bind(String(end), 'ticket_number', String(current))
+        .bind(String(end), key, String(current))
         .run();
 
       if (Number(upd?.meta?.changes || 0) > 0) {
@@ -66,8 +69,8 @@ export async function onRequestPost({ request, env, data }) {
         start,
         end,
         count,
-        startTicket: formatTicket(start),
-        endTicket: formatTicket(end),
+        startTicket: formatTicket(start, zone),
+        endTicket: formatTicket(end, zone),
         allocatedAt: isoNow()
       },
       { status: 200 }

@@ -1,6 +1,6 @@
 import { ensureAdminUser } from '../../_utils/db.js';
 import { json, requireAuth, isoNow, readJson } from '../../_utils/http.js';
-import { nextTicketNumber, formatTicket } from '../../_utils/meta.js';
+import { nextTicketNumberForZone, formatTicket } from '../../_utils/meta.js';
 
 export async function onRequestPost({ request, env, data }) {
   try {
@@ -12,7 +12,7 @@ export async function onRequestPost({ request, env, data }) {
     const body = await readJson(request);
     const zone = String(body?.zone || '').trim();
 
-    const n = await nextTicketNumber(env);
+    const n = await nextTicketNumberForZone(env, zone);
     return json(
       {
         ticketNumber: n,

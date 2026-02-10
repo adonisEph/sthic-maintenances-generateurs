@@ -1,16 +1,18 @@
 import { ensureAdminUser } from '../../_utils/db.js';
 import { json, requireAuth } from '../../_utils/http.js';
-import { formatTicket, getLastUpdatedAt, touchLastUpdatedAt } from '../../_utils/meta.js';
+import { formatTicket, getLastUpdatedAt, touchLastUpdatedAt, getTicketCounter } from '../../_utils/meta.js';
 
-export async function onRequestGet({ env, data }) {
+export async function onRequestGet({ request, env, data }) {
   try {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
     const role = String(data?.user?.role || '');
     if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
 
-    const row = await env.DB.prepare('SELECT meta_value FROM meta WHERE meta_key = ?').bind('ticket_number').first();
-    const current = Number(row?.meta_value || 0);
+    const url = new URL(request.url);
+    const zone = String(url.searchParams.get('zone') || '').trim();
+
+    const current = await getTicketCounter(env, zone);
     const next = current + 1;
 
     const v = await getLastUpdatedAt(env);
@@ -22,7 +24,7 @@ export async function onRequestGet({ env, data }) {
       {
         current,
         next,
-        nextTicket: formatTicket(next)
+        nextTicket: formatTicket(next, zone)
       },
       { status: 200 }
     );

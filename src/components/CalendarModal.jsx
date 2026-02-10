@@ -910,7 +910,7 @@ const CalendarModal = (props) => {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ count: planning.length })
+          body: JSON.stringify({ count: planning.length, zone: String(calendarZone || '').trim() })
         });
         const allocText = await allocRes.text().catch(() => '');
         const allocData = (() => {

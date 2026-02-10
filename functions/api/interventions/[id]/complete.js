@@ -1,7 +1,7 @@
 import { ensureAdminUser } from '../../_utils/db.js';
 import { json, requireAuth, readJson, isoNow, isSuperAdmin, userZone } from '../../_utils/http.js';
 import { calculateEPVDates } from '../../_utils/calc.js';
-import { nextTicketNumber, formatTicket, touchLastUpdatedAt } from '../../_utils/meta.js';
+import { nextTicketNumberForZone, formatTicket, touchLastUpdatedAt } from '../../_utils/meta.js';
 
 export async function onRequestPost({ request, env, data, params }) {
   try {
@@ -80,8 +80,8 @@ export async function onRequestPost({ request, env, data, params }) {
       .bind('done', doneDate, nhNow === null ? null : nhNow, now, id)
       .run();
 
-    const tn = await nextTicketNumber(env);
     const ticketZone = String(site?.zone || site?.region || '').trim();
+    const tn = await nextTicketNumberForZone(env, ticketZone);
     const ticketNumber = formatTicket(tn, ticketZone);
 
     const ficheId = `fiche-${id}`;

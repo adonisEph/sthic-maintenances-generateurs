@@ -7,8 +7,16 @@ const SitesStats = ({
   sitesCount,
   urgentSitesCount,
   retiredSitesCount,
-  ticketNumber
+  ticketNumber,
+  ticketZone
 }) => {
+  const ticketPrefix = (() => {
+    const z = String(ticketZone || '').trim().toUpperCase();
+    if (z === 'UPCN') return 'N';
+    if (z === 'PNR/KOUILOU') return 'P';
+    return 'T';
+  })();
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
       <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
@@ -48,7 +56,7 @@ const SitesStats = ({
             <div>
               <p className="text-xs sm:text-sm text-gray-600">Prochain Ticket</p>
               <p className="text-base sm:text-lg font-bold text-gray-800">
-                T{String(ticketNumber).padStart(5, '0')}
+                {ticketPrefix}{String(ticketNumber).padStart(5, '0')}
                 <button
                   type="button"
                   onClick={onSetNextTicket}

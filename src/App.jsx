@@ -885,7 +885,9 @@ const GeneratorMaintenanceApp = () => {
 
   const loadTicketNumber = async () => {
     try {
-      const data = await apiFetchJson('/api/meta/ticket-number', { method: 'GET' });
+      const z = String(authUser?.zone || '').trim();
+      const qs = z ? `?zone=${encodeURIComponent(z)}` : '';
+      const data = await apiFetchJson(`/api/meta/ticket-number${qs}`, { method: 'GET' });
       if (Number.isFinite(Number(data?.next))) {
         setTicketNumber(Number(data.next));
       }
@@ -910,7 +912,7 @@ const GeneratorMaintenanceApp = () => {
 
       const res = await apiFetchJson('/api/meta/ticket-number/set', {
         method: 'POST',
-        body: JSON.stringify({ next })
+        body: JSON.stringify({ next, zone: String(authUser?.zone || '').trim() })
       });
 
       await loadTicketNumber();
@@ -5732,6 +5734,7 @@ for (const [key, g] of globalSites.entries()) {
           urgentSitesCount={urgentSites.length}
           retiredSitesCount={isTechnician ? filteredSites.filter((s) => s.retired).length : sites.filter((s) => s.retired).length}
           ticketNumber={ticketNumber}
+          ticketZone={String(authUser?.zone || '').trim()}
         />
 
       </div>
