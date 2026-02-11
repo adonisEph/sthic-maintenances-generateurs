@@ -75,9 +75,9 @@ export async function onRequestPost({ request, env, data, params }) {
       .run();
 
     await env.DB.prepare(
-      'UPDATE interventions SET status = ?, done_at = ?, nh_now = ?, updated_at = ? WHERE id = ?'
+      'UPDATE interventions SET status = ?, done_at = ?, updated_at = ? WHERE id = ?'
     )
-      .bind('done', doneDate, nhNow === null ? null : nhNow, now, id)
+      .bind('done', doneDate, now, id)
       .run();
 
     const ticketZone = String(site?.zone || site?.region || '').trim();
