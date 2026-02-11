@@ -3572,12 +3572,19 @@ for (const [key, g] of globalSites.entries()) {
   };
 
   const getUpdatedSite = (site) => {
+    const retiredRaw = site?.retired;
+    const retired =
+      retiredRaw === true ||
+      retiredRaw === 1 ||
+      retiredRaw === '1' ||
+      String(retiredRaw || '').trim().toLowerCase() === 'true';
     const nhEstimated = calculateEstimatedNH(site.nh2A, site.dateA, site.regime);
     const diffEstimated = calculateDiffNHs(site.nh1DV, nhEstimated);
     const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, nhEstimated);
     
     return {
       ...site,
+      retired,
       nhEstimated,
       diffEstimated,
       epv1: epvDates.epv1,

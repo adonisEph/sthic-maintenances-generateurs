@@ -40,8 +40,18 @@ export async function onRequestPost({ request, env, data }) {
 
       const id = newId();
 
-      const site = await env.DB.prepare('SELECT zone FROM sites WHERE id = ?').bind(siteId).first();
+      const site = await env.DB
+        .prepare('SELECT zone, retired FROM sites WHERE id = ?')
+        .bind(siteId)
+        .first();
+
       const zone = String(site?.zone || 'BZV/POOL');
+      const isRetired = Boolean(site?.retired);
+
+      if (isRetired) {
+        continue;
+      }
+
       if (scopeZone && zone !== scopeZone) {
         continue;
       }

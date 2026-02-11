@@ -278,17 +278,10 @@ const InterventionsModal = ({
                     </div>
                   );
                 })()}
-                <button
-                  type="button"
-                  onClick={() => setShowTechnicianInterventionsFilters((v) => !v)}
-                  className="bg-white text-gray-800 border border-gray-300 px-3 py-2 rounded-lg hover:bg-gray-50 font-semibold text-sm w-full sm:w-auto"
-                >
-                  Filtres
-                </button>
               </div>
             )}
 
-            {(!isTechnician || showTechnicianInterventionsFilters) && (
+            {!isTechnician && (
               <div className={`grid grid-cols-1 ${isAdmin ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-3 items-end`}>
                 <div className="flex flex-col">
                   <span className="text-xs text-gray-600 mb-1">Mois</span>
@@ -830,7 +823,7 @@ const InterventionsModal = ({
                                 setNhFormError('');
                                 setNhModalOpen(true);
                               }}
-                              className="bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm"
+                              className="bg-slate-700 text-white px-2 py-1.5 rounded-lg hover:bg-slate-800 font-semibold text-xs"
                             >
                               Mettre à jour NH
                             </button>
@@ -844,7 +837,7 @@ const InterventionsModal = ({
                                   setCompleteFormError('');
                                   setCompleteModalOpen(true);
                                 }}
-                                className="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 font-semibold text-sm"
+                                className="bg-green-600 text-white px-2 py-1.5 rounded-lg hover:bg-green-700 font-semibold text-xs"
                               >
                                 Marquer effectuée
                               </button>
@@ -885,7 +878,15 @@ const InterventionsModal = ({
                     : 'border-gray-200';
 
               return (
-                <div key={`vid:${it.id}`} className={`border rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${cardTone}`}>
+                <div
+                  key={`vid:${it.id}`}
+                  className={`border rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${cardTone} relative`}
+                >
+                  {st === 'done' && (
+                    <div className="absolute top-2 right-2 text-green-700" title="Effectuée">
+                      <CheckCircle2 size={18} />
+                    </div>
+                  )}
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-extrabold px-2 py-1 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
@@ -920,7 +921,7 @@ const InterventionsModal = ({
                           setNhFormError('');
                           setNhModalOpen(true);
                         }}
-                        className="bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm"
+                        className="bg-slate-700 text-white px-2 py-1.5 rounded-lg hover:bg-slate-800 font-semibold text-xs"
                       >
                         Mettre à jour NH
                       </button>
@@ -943,7 +944,7 @@ const InterventionsModal = ({
                           }
                           handleCompleteIntervention(it.id);
                         }}
-                        className="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 font-semibold text-sm"
+                        className="bg-green-600 text-white px-2 py-1.5 rounded-lg hover:bg-green-700 font-semibold text-xs"
                       >
                         Marquer effectuée
                       </button>
