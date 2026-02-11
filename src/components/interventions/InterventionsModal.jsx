@@ -761,11 +761,14 @@ const InterventionsModal = ({
                   linkedVidange &&
                   String(linkedVidange?.status || '') !== 'done' &&
                   String(linkedVidange?.plannedDate || '').slice(0, 10) < today;
-                const focusVidange = Boolean(linkedVidangeOverdue) || pendingEpv23BySiteId.has(String(it?.siteId || '').trim());
+                const siteId = String(it?.siteId || '').trim();
+                const focusVidange = Boolean(linkedVidangeOverdue) || pendingEpv23BySiteId.has(siteId);
                 const focusPm = Boolean(linkedVidange) && !focusVidange;
+                const canShowPmNhOnly = pmDone && !pendingEpv23BySiteId.has(siteId);
+                const showPmNhOnly = !focusPm && canShowPmNhOnly;
                 return (
                   <div
-                    key={it.id}
+                    key={`pm:${it.id}`}
                     className={`border rounded-lg p-3 relative ${
                       pmDone ? 'border-green-200 bg-green-50' : pmReprog ? 'border-amber-200 bg-amber-50' : 'border-gray-200'
                     }`}
@@ -814,14 +817,14 @@ const InterventionsModal = ({
                           ) : null}
                         </div>
 
-                        {focusPm && isTechnician && site && (
+                        {(isTechnician && site && (focusPm || showPmNhOnly)) && (
                           <div className="mt-3 flex flex-wrap gap-2">
                             <button
                               type="button"
                               onClick={() => {
                                 const offset = Number(site?.nhOffset || 0);
                                 const raw = Math.max(0, Number(site?.nh2A || 0) - offset);
-                                setNhModalIntervention(linkedVidange);
+                                setNhModalIntervention(linkedVidange || it);
                                 setNhModalSite(site);
                                 setNhForm({ nhValue: String(Math.trunc(raw)), readingDate: today });
                                 setNhFormError('');
@@ -831,7 +834,7 @@ const InterventionsModal = ({
                             >
                               Mettre à jour NH
                             </button>
-                            {String(linkedVidange?.status || '') !== 'done' && (
+                            {focusPm && String(linkedVidange?.status || '') !== 'done' && (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -882,7 +885,7 @@ const InterventionsModal = ({
                     : 'border-gray-200';
 
               return (
-                <div key={it.id} className={`border rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${cardTone}`}>
+                <div key={`vid:${it.id}`} className={`border rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${cardTone}`}>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-extrabold px-2 py-1 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
@@ -980,7 +983,7 @@ const InterventionsModal = ({
                         lastDate = d;
                         out.push(
                           <div
-                            key={`h:${d}`}
+                            key={`month_header:${d}`}
                             className="mt-4 mb-2 text-sm font-extrabold text-slate-800 bg-slate-100 border border-slate-200 px-4 py-3 rounded-lg"
                           >
                             {formatDate(d)}

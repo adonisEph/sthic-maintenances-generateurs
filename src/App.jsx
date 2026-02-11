@@ -678,6 +678,7 @@ const GeneratorMaintenanceApp = () => {
             setShowTechnicianInterventionsFilters(false);
             setShowInterventions(true);
             await loadInterventions(interventionsMonth, 'all', 'all');
+            await loadPmAssignments(interventionsMonth);
           }
         }
       } catch (e) {
@@ -4077,6 +4078,132 @@ for (const [key, g] of globalSites.entries()) {
           String(i.sentAt) > String(technicianSeenSentAt || '')
       ).length
     : 0;
+  const technicianPendingTasksCount = (() => {
+  if (!isTechnician) return 0;
+
+  const month = String(interventionsMonth || '').trim();
+  if (!/^\d{4}-\d{2}$/.test(month)) return 0;
+
+  const normalizePmType = (v) =>
+    String(v || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '');
+
+  const isPmDone = (p) => {
+    const st = String(p?.pmState || p?.status || '').trim().toUpperCase();
+    return (
+      st === 'EFFECTUEE' ||
+      st === 'DONE' ||
+      st === 'CLOSED' ||
+      st === 'CLOSED COMPLETE' ||
+      st === 'CLOSED_COMPLETE' ||
+      st === 'CLOSEDCOMPLETE' ||
+      st === 'AWAITING CLOSURE' ||
+      st === 'AWAITING_CLOSURE'
+    );
+  };
+
+  const ymdToDate = (ymd) => {
+    const s = String(ymd || '').slice(0, 10);
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    return new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00`);
+  };
+
+  const daysBetween = (aYmd, bYmd) => {
+    const a = ymdToDate(aYmd);
+    const b = ymdToDate(bYmd);
+    if (!a || !b) return null;
+    const ms = b.getTime() - a.getTime();
+    return Math.round(ms / (24 * 60 * 60 * 1000));
+  };
+
+  const vidangesInMonth = (Array.isArray(interventions) ? interventions : [])
+    .filter(Boolean)
+    .filter((i) => String(i?.plannedDate || '').slice(0, 7) === month);
+
+  const pendingEpv23BySiteId = (() => {
+    const s = new Set();
+    vidangesInMonth.forEach((i) => {
+      if (!i) return;
+      if (String(i?.status || '') === 'done') return;
+      const t = String(i?.epvType || '').trim().toUpperCase();
+      if (t !== 'EPV2' && t !== 'EPV3') return;
+      const sid = String(i?.siteId || '').trim();
+      if (sid) s.add(sid);
+    });
+    return s;
+  })();
+
+  const pmInMonth = (Array.isArray(pmAssignments) ? pmAssignments : [])
+    .filter(Boolean)
+    .filter((p) => String(p?.plannedDate || '').slice(0, 7) === month)
+    .filter((p) => {
+      const mt = normalizePmType(p?.maintenanceType);
+      return mt === 'fullpmwo' || mt === 'dgservice';
+    });
+
+  const pendingPm = pmInMonth.filter((p) => !isPmDone(p));
+
+  const findLinkedEpv1ForPm = (p) => {
+    const mt = normalizePmType(p?.maintenanceType);
+    if (mt !== 'fullpmwo') return null;
+
+    const siteId = String(p?.siteId || '').trim();
+    const pd = String(p?.plannedDate || '').slice(0, 10);
+    if (!siteId || !pd) return null;
+
+    const candidates = vidangesInMonth
+      .filter((i) => String(i?.epvType || '').trim().toUpperCase() === 'EPV1')
+      .filter((i) => String(i?.siteId || '').trim() === siteId)
+      .filter((i) => i?.plannedDate);
+
+    let best = null;
+    let bestAbs = null;
+    candidates.forEach((i) => {
+      const diff = daysBetween(pd, i.plannedDate);
+      if (diff === null) return;
+      const abs = Math.abs(diff);
+      const ok = abs === 0 || (abs >= 2 && abs <= 6);
+      if (!ok) return;
+      if (bestAbs === null || abs < bestAbs) {
+        bestAbs = abs;
+        best = i;
+      }
+    });
+    return best;
+  };
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Dédup: si une PM pending masque son EPV1 linked (focus PM), on retire cet EPV1 du compteur
+  const hiddenVidangeIds = new Set();
+  pendingPm.forEach((p) => {
+    const linked = findLinkedEpv1ForPm(p);
+    if (!linked) return;
+    if (String(linked?.status || '') === 'done') return;
+
+    const linkedOverdue = String(linked?.plannedDate || '').slice(0, 10) < today;
+    const siteId = String(p?.siteId || '').trim();
+    const focusVidange = Boolean(linkedOverdue) || pendingEpv23BySiteId.has(siteId);
+
+    if (!focusVidange && linked?.id) {
+      hiddenVidangeIds.add(String(linked.id));
+    }
+  });
+
+  const pendingVidanges = vidangesInMonth
+    .filter((i) => String(i?.status || '') !== 'done')
+    .filter((i) => {
+      if (String(i?.epvType || '').trim().toUpperCase() !== 'EPV1') return true;
+      return !hiddenVidangeIds.has(String(i?.id || ''));
+    });
+
+  return pendingPm.length + pendingVidanges.length;
+})();
 
   useEffect(() => {
     if (isTechnician && authUser?.technicianName) {
@@ -4124,6 +4251,13 @@ for (const [key, g] of globalSites.entries()) {
         // ignore
       }
       isRefreshing = false;
+      try {
+        if (authUser?.role === 'technician') {
+          await loadPmAssignments(interventionsMonth);
+        }
+      } catch {
+        // ignore
+      }
     };
 
     const checkVersion = async () => {
@@ -4173,7 +4307,7 @@ for (const [key, g] of globalSites.entries()) {
     interventionsStatus,
     interventionsTechnicianUserId
   ]);
-
+  
   const monthToRange = (yyyymm) => {
     const [y, m] = String(yyyymm || '').split('-').map((v) => Number(v));
     if (!y || !m) return null;
@@ -4492,13 +4626,17 @@ for (const [key, g] of globalSites.entries()) {
                   }
                 }
                 await loadInterventions();
+
+                if (authUser?.role === 'technician') {
+                await loadPmAssignments(interventionsMonth);
+}
               }}
               className="relative w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950 flex items-center gap-2 text-base font-semibold"
             >
               <CheckCircle size={18} />
-              {isTechnician && technicianUnseenSentCount > 0 && (
+              {isTechnician && technicianPendingTasksCount > 0 && (
                 <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none">
-                  {technicianUnseenSentCount}
+                  {technicianPendingTasksCount}
                 </span>
               )}
               {isTechnician ? 'Mes interventions' : 'Interventions'}
