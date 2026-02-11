@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../../_utils/db.js';
-import { json, requireAuth, readJson, isoNow, isSuperAdmin, userZone } from '../../_utils/http.js';
+import { json, requireAuth, readJson, isoNow, ymdToday, isSuperAdmin, userZone } from '../../_utils/http.js';
 import { calculateEPVDates } from '../../_utils/calc.js';
 import { nextTicketNumberForZone, formatTicket, touchLastUpdatedAt } from '../../_utils/meta.js';
 
@@ -75,7 +75,7 @@ export async function onRequestPost({ request, env, data, params }) {
       .run();
 
     await env.DB.prepare(
-      'UPDATE interventions SET status = ?, date_completed = ?, nh_now = ?, updated_at = ? WHERE id = ?'
+      'UPDATE interventions SET status = ?, done_at = ?, nh_now = ?, updated_at = ? WHERE id = ?'
     )
       .bind('done', doneDate, nhNow === null ? null : nhNow, now, id)
       .run();

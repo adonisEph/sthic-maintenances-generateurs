@@ -548,6 +548,21 @@ const InterventionsModal = ({
 
             const list = interventionsScoped.slice();
 
+            const pendingEpv23BySiteId = (() => {
+              const s = new Set();
+              list.forEach((i) => {
+                if (!i) return;
+                if (String(i?.kind || '') === 'PM') return;
+                const st = String(i?.status || '');
+                if (st === 'done') return;
+                const t = String(i?.epvType || '').trim().toUpperCase();
+                if (t !== 'EPV2' && t !== 'EPV3') return;
+                const sid = String(i?.siteId || '').trim();
+                if (sid) s.add(sid);
+              });
+              return s;
+            })();
+
             const normalizePmType = (v) =>
               String(v || '')
                 .normalize('NFD')
@@ -742,6 +757,12 @@ const InterventionsModal = ({
                 const pmDone = isPmDone(it);
                 const pmReprog = isPmReprogrammed(it);
                 const linkedVidange = findLinkedVidangeForPm(it);
+                const linkedVidangeOverdue =
+                  linkedVidange &&
+                  String(linkedVidange?.status || '') !== 'done' &&
+                  String(linkedVidange?.plannedDate || '').slice(0, 10) < today;
+                const focusVidange = Boolean(linkedVidangeOverdue) || pendingEpv23BySiteId.has(String(it?.siteId || '').trim());
+                const focusPm = Boolean(linkedVidange) && !focusVidange;
                 return (
                   <div
                     key={it.id}
@@ -793,7 +814,7 @@ const InterventionsModal = ({
                           ) : null}
                         </div>
 
-                        {linkedVidange && isTechnician && site && (
+                        {focusPm && isTechnician && site && (
                           <div className="mt-3 flex flex-wrap gap-2">
                             <button
                               type="button"
@@ -835,6 +856,17 @@ const InterventionsModal = ({
 
               const st = String(it?.status || '');
               const isOverdue = st !== 'done' && String(it?.plannedDate || '') < today;
+
+              const linkedPm = pmItems.find((p) => {
+                if (!p || p.maintenanceType !== 'fullpmwo') return false;
+                const link = findLinkedVidangeForPm(p);
+                return link && String(link?.id) === String(it?.id);
+              });
+              const movedToPm = Boolean(linkedPm);
+              const siteId = String(it?.siteId || '').trim();
+              const focusVidange = Boolean(isOverdue) || pendingEpv23BySiteId.has(siteId);
+
+              if (movedToPm && !focusVidange) return null;
               const statusColor =
                 st === 'done'
                   ? 'bg-green-100 text-green-800 border-green-200'
@@ -871,13 +903,7 @@ const InterventionsModal = ({
                       </span>
                     )}
                     {(() => {
-                      const linkedPm = pmItems.find((p) => {
-                        if (!p || p.maintenanceType !== 'fullpmwo') return false;
-                        const link = findLinkedVidangeForPm(p);
-                        return link && String(link?.id) === String(it?.id);
-                      });
-                      const movedToPm = Boolean(linkedPm);
-                      if (movedToPm) return null;
+                      if (!focusVidange && movedToPm) return null;
                       return (
                         isTechnician && site && (
                       <button
@@ -899,13 +925,7 @@ const InterventionsModal = ({
                       );
                     })()}
                     {(() => {
-                      const linkedPm = pmItems.find((p) => {
-                        if (!p || p.maintenanceType !== 'fullpmwo') return false;
-                        const link = findLinkedVidangeForPm(p);
-                        return link && String(link?.id) === String(it?.id);
-                      });
-                      const movedToPm = Boolean(linkedPm);
-                      if (movedToPm) return null;
+                      if (!focusVidange && movedToPm) return null;
                       return (
                         st !== 'done' && (isAdmin || isTechnician) && (
                       <button
@@ -954,6 +974,8 @@ const InterventionsModal = ({
                     let lastDate = '';
                     items.forEach((it) => {
                       const d = String(it?.plannedDate || '').slice(0, 10);
+                      const el = renderItem(it);
+                      if (!el) return;
                       if (d && d !== lastDate) {
                         lastDate = d;
                         out.push(
@@ -965,7 +987,7 @@ const InterventionsModal = ({
                           </div>
                         );
                       }
-                      out.push(renderItem(it));
+                      out.push(el);
                     });
                     return <div className="space-y-2">{out}</div>;
                   })()
