@@ -53,7 +53,17 @@ export async function onRequestGet({ env, data }) {
 
     const res = await stmt.all();
     const rows = Array.isArray(res?.results) ? res.results : [];
-    return json({ sites: rows.map(mapSiteRow) }, { status: 200 });
+    return json(
+      { sites: rows.map(mapSiteRow) },
+      {
+        status: 200,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          Pragma: 'no-cache',
+          Expires: '0'
+        }
+      }
+    );
   } catch (e) {
     return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
   }

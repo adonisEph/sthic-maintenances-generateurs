@@ -25,7 +25,6 @@ import ScoringModal from './components/scoring/ScoringModal';
 import HistoryModal from './components/history/HistoryModal';
 import UploadBannerModal from './components/fiche/UploadBannerModal';
 import FicheModal from './components/fiche/FicheModal';
-import TechnicianCalendarModal from './components/calendar/TechnicianCalendarModal';
 import DayDetailsModal from './components/calendar/DayDetailsModal';
 
 import {
@@ -38,7 +37,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '2.2.5';
+const APP_VERSION = '2.2.6';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const DAILY_NH_UPDATE_STORAGE_KEY = 'gma_daily_nh_update_ymd';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
@@ -57,7 +56,6 @@ const GeneratorMaintenanceApp = () => {
   const [showFicheModal, setShowFicheModal] = useState(false);
   const [showBannerUpload, setShowBannerUpload] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
-  const [showTechCalendar, setShowTechCalendar] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showInterventions, setShowInterventions] = useState(false);
   const [showScoring, setShowScoring] = useState(false);
@@ -194,10 +192,6 @@ const GeneratorMaintenanceApp = () => {
   const [showDayDetailsModal, setShowDayDetailsModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedDayEvents, setSelectedDayEvents] = useState([]);
-  const [techCalendarMonth, setTechCalendarMonth] = useState(() => new Date().toISOString().slice(0, 7));
-  const [techSelectedDate, setTechSelectedDate] = useState(null);
-  const [techSelectedDayEvents, setTechSelectedDayEvents] = useState([]);
-  const [showTechDayDetailsModal, setShowTechDayDetailsModal] = useState(false);
   const [isBatchFiche, setIsBatchFiche] = useState(false);
   const [batchFicheSites, setBatchFicheSites] = useState([]);
   const [batchFicheIndex, setBatchFicheIndex] = useState(0);
@@ -2634,7 +2628,6 @@ for (const [key, g] of globalSites.entries()) {
       setShowResetConfirm(false);
       setShowDeleteConfirm(false);
       setShowCalendar(false);
-      setShowTechCalendar(false);
       setShowHistory(false);
       setShowFicheModal(false);
       setShowBannerUpload(false);
@@ -2645,9 +2638,6 @@ for (const [key, g] of globalSites.entries()) {
       setSelectedDate(null);
       setSelectedDayEvents([]);
       setShowDayDetailsModal(false);
-      setTechSelectedDate(null);
-      setTechSelectedDayEvents([]);
-      setShowTechDayDetailsModal(false);
       setIsBatchFiche(false);
       setBatchFicheSites([]);
       setBatchFicheIndex(0);
@@ -3695,18 +3685,6 @@ for (const [key, g] of globalSites.entries()) {
     }
   }, [showCalendar, calendarMonthKey, sites]);
 
-  useEffect(() => {
-    if (!showTechCalendar) return;
-    if (!isTechnician) return;
-    (async () => {
-      try {
-        await loadPmAssignments(techCalendarMonth);
-      } catch {
-        // ignore
-      }
-    })();
-  }, [showTechCalendar, isTechnician, techCalendarMonth]);
-
   const calendarFilteredSites = sites
     .map(getUpdatedSite)
     .filter((site) => {
@@ -3931,82 +3909,7 @@ for (const [key, g] of globalSites.entries()) {
     return out;
   })();
 
-  const techCalendarMatchInfoForItem = (it) => {
-    if (!isTechnician) return null;
-    const mt = String(it?.maintenanceType || '').trim();
-    const ticket = it?.pmNumber ? String(it.pmNumber) : '';
-    const siteId = String(it?.siteId || '').trim();
-    const d = String(it?.plannedDate || '').slice(0, 10);
-    if (!siteId || !d) return null;
-
-    const rawSite =
-      (Array.isArray(sites) ? sites : []).find((s) => String(s?.id) === siteId) ||
-      (Array.isArray(sites) ? sites : []).find((s) => String(s?.idSite || '').trim() === siteId) ||
-      null;
-    if (!rawSite) return null;
-
-    const normalizeAnyYmd = (v) => {
-      const s = v == null ? '' : String(v).trim();
-      if (!s) return '';
-      const head = s.slice(0, 10);
-      if (/^\d{4}-\d{2}-\d{2}$/.test(head)) return head;
-      const m = s.match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})/);
-      if (m) return `${m[3]}-${m[2]}-${m[1]}`;
-      return '';
-    };
-
-    const computedSite = getUpdatedSite(rawSite);
-
-    const monthKey = String(techCalendarMonth || '').trim();
-    const plannedYmd = normalizeAnyYmd(d);
-    const plannedShifted = ymdShiftForWorkdays(plannedYmd) || plannedYmd;
-
-    const epv1Raw = normalizeAnyYmd(rawSite?.epv1) || normalizeAnyYmd(computedSite?.epv1);
-    const epv2Raw = normalizeAnyYmd(rawSite?.epv2) || normalizeAnyYmd(computedSite?.epv2);
-    const epv3Raw = normalizeAnyYmd(rawSite?.epv3) || normalizeAnyYmd(computedSite?.epv3);
-
-    const epv1 = ymdShiftForWorkdays(epv1Raw) || epv1Raw;
-    const epv2 = ymdShiftForWorkdays(epv2Raw) || epv2Raw;
-    const epv3 = ymdShiftForWorkdays(epv3Raw) || epv3Raw;
-
-    const epvShiftedAll = [epv1, epv2, epv3].filter((v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')));
-    const epvRawAll = [epv1Raw, epv2Raw, epv3Raw].filter((v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')));
-
-    const hasAnyEpvInMonth = [...epvRawAll, ...epvShiftedAll].some((v) => String(v).slice(0, 7) === monthKey);
-
-    if (mt === 'fullpmwo') {
-      const matchesEpv = epvShiftedAll.includes(plannedShifted);
-      if (matchesEpv) return { kind: 'PM', ticket, label: 'PM et Vidange' };
-      if (!hasAnyEpvInMonth) return { kind: 'PM_SIMPLE', ticket, label: 'PM Simple' };
-      return null;
-    }
-
-    if (mt === 'dgservice') {
-      const matches = [epv2, epv3].includes(plannedShifted);
-      if (matches) return { kind: 'DG', ticket, label: 'Vidange Simple' };
-      return null;
-    }
-
-    return null;
-  };
-
-  const getTechCalendarEventsForDay = (dateStr) => {
-    if (!dateStr) return [];
-    const day = String(dateStr).slice(0, 10);
-    return techCalendarItemsInMonth
-      .filter((it) => String(it?.plannedDate || '').slice(0, 10) === day)
-      .map((it) => {
-        const sid = String(it?.siteId || '').trim();
-        const rawSite =
-          (Array.isArray(sites) ? sites : []).find((s) => String(s?.id) === sid) ||
-          (Array.isArray(sites) ? sites : []).find((s) => String(s?.idSite || '').trim() === sid) ||
-          null;
-        const site = rawSite ? getUpdatedSite(rawSite) : null;
-        const matchInfo = techCalendarMatchInfoForItem(it);
-        return { item: it, site, matchInfo };
-      });
-  };
-
+  
   const techCalendarPmTypeLabel = (it) => {
     const mt = String(it?.maintenanceType || '').trim();
     if (mt === 'fullpmwo') return 'FullPMWO';
@@ -4674,13 +4577,6 @@ for (const [key, g] of globalSites.entries()) {
             </button>
           ) : (
             <button
-              onClick={async () => {
-                setSidebarOpen(false);
-                const m = interventionsMonth || new Date().toISOString().slice(0, 7);
-                setTechCalendarMonth(m);
-                setShowTechCalendar(true);
-                await loadInterventions(m, 'all', 'all');
-              }}
               className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950 flex items-center gap-2 text-base font-semibold"
             >
               <Calendar size={18} />
@@ -5299,30 +5195,6 @@ for (const [key, g] of globalSites.entries()) {
     setUserFormError('');
   }}
 />
-
-        {/* Modal Calendrier (Technicien) */}
-              <TechnicianCalendarModal
-                open={showTechCalendar}
-                isTechnician={isTechnician}
-                techCalendarMonth={techCalendarMonth}
-                setTechCalendarMonth={setTechCalendarMonth}
-                techSelectedDate={techSelectedDate}
-                setTechSelectedDate={setTechSelectedDate}
-                techSelectedDayEvents={techSelectedDayEvents}
-                setTechSelectedDayEvents={setTechSelectedDayEvents}
-                showTechDayDetailsModal={showTechDayDetailsModal}
-                setShowTechDayDetailsModal={setShowTechDayDetailsModal}
-                getTechCalendarEventsForDay={getTechCalendarEventsForDay}
-                techCalendarPmTypeLabel={techCalendarPmTypeLabel}
-                formatDate={formatDate}
-                getDaysUntil={getDaysUntil}
-                onClose={() => {
-                  setShowTechCalendar(false);
-                  setTechSelectedDate(null);
-                  setTechSelectedDayEvents([]);
-                  setShowTechDayDetailsModal(false);
-                }}
-              /> 
 
         {urgentSites.length > 0 && (
           <div className="bg-red-50 border-2 border-red-400 rounded-lg p-3 sm:p-4 md:p-6 mb-4 md:mb-6">

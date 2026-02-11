@@ -12,7 +12,17 @@ export async function onRequestGet({ env, data }) {
       v = await touchLastUpdatedAt(env);
     }
 
-    return json({ version: v }, { status: 200 });
+    return json(
+      { version: v },
+      {
+        status: 200,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          Pragma: 'no-cache',
+          Expires: '0'
+        }
+      }
+    );
   } catch (e) {
     return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
   }

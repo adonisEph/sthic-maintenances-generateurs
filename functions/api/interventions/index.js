@@ -64,7 +64,17 @@ export async function onRequestGet({ request, env, data }) {
     const stmt = env.DB.prepare(`SELECT * FROM interventions WHERE ${where} ORDER BY planned_date ASC`);
     const res = await stmt.bind(...binds).all();
     const rows = Array.isArray(res?.results) ? res.results : [];
-    return json({ interventions: rows.map(mapRow), today: ymdToday() }, { status: 200 });
+    return json(
+      { interventions: rows.map(mapRow), today: ymdToday() },
+      {
+        status: 200,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          Pragma: 'no-cache',
+          Expires: '0'
+        }
+      }
+    );
   } catch (e) {
     return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
   }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle, Download, X } from 'lucide-react';
+import { CheckCircle, CheckCircle2, Download, X } from 'lucide-react';
 import CompleteInterventionModal from './CompleteInterventionModal';
 import NhUpdateModal from './NhUpdateModal';
 
@@ -588,20 +588,50 @@ const InterventionsModal = ({
               list.map((i) => `${String(i?.siteId || '')}|${String(i?.plannedDate || '').slice(0, 10)}|${String(i?.epvType || '')}`)
             );
 
+            const findLinkedVidangeForPm = (p) => {
+              if (!p || !p.siteId || !p.plannedDate) return null;
+              if (p.maintenanceType !== 'fullpmwo') return null;
+              const candidates = list
+                .filter((i) => String(i?.epvType || '') === 'EPV1')
+                .filter((i) => String(i?.siteId || '') === String(p.siteId))
+                .filter((i) => i?.plannedDate);
+              let best = null;
+              let bestAbs = null;
+              candidates.forEach((i) => {
+                const diff = daysBetween(p.plannedDate, i.plannedDate);
+                if (diff === null) return;
+                const abs = Math.abs(diff);
+                const ok = abs === 0 || (abs >= 2 && abs <= 6);
+                if (!ok) return;
+                if (bestAbs === null || abs < bestAbs) {
+                  bestAbs = abs;
+                  best = i;
+                }
+              });
+              return best;
+            };
+
             const pmSentLabel = (p) => {
               if (!p) return '';
               if (p.maintenanceType === 'dgservice') return 'Vidange Simple';
               if (p.maintenanceType !== 'fullpmwo') return 'PM';
-              const hasEpv1SameDay = interventionKeySet.has(`${p.siteId}|${p.plannedDate}|EPV1`);
-              return hasEpv1SameDay ? 'PM+Vidange' : 'PM Simple';
+              const linked = findLinkedVidangeForPm(p);
+              if (linked) return 'PM+Vidange';
+              return 'PM Simple';
             };
 
             const pmStatusDisplay = (p) => {
               const st = String(p?.status || '').trim().toUpperCase();
-              if (st === 'EFFECTUEE' || st === 'DONE' || st === 'CLOSED') {
-                return { label: 'EFFECTUEE', date: p.closedAt || p.plannedDate };
-              }
-              if (st === 'CLOSED COMPLETE' || st === 'CLOSED_COMPLETE' || st === 'CLOSEDCOMPLETE') {
+              if (
+                st === 'EFFECTUEE' ||
+                st === 'DONE' ||
+                st === 'CLOSED' ||
+                st === 'CLOSED COMPLETE' ||
+                st === 'CLOSED_COMPLETE' ||
+                st === 'CLOSEDCOMPLETE' ||
+                st === 'AWAITING CLOSURE' ||
+                st === 'AWAITING_CLOSURE'
+              ) {
                 return { label: 'EFFECTUEE', date: p.closedAt || p.plannedDate };
               }
               if (st === 'REPROGRAMMEE' || st === 'REPROGRAMMED') {
@@ -611,6 +641,40 @@ const InterventionsModal = ({
                 return { label: 'ASSIGNED', date: p.scheduledWoDate || p.plannedDate };
               }
               return { label: st || 'ASSIGNED', date: p.plannedDate };
+            };
+
+            const isPmDone = (p) => {
+              const st = String(p?.status || '').trim().toUpperCase();
+              return (
+                st === 'EFFECTUEE' ||
+                st === 'DONE' ||
+                st === 'CLOSED' ||
+                st === 'CLOSED COMPLETE' ||
+                st === 'CLOSED_COMPLETE' ||
+                st === 'CLOSEDCOMPLETE' ||
+                st === 'AWAITING CLOSURE' ||
+                st === 'AWAITING_CLOSURE'
+              );
+            };
+
+            const isPmReprogrammed = (p) => {
+              const st = String(p?.status || '').trim().toUpperCase();
+              return st === 'REPROGRAMMEE' || st === 'REPROGRAMMED';
+            };
+
+            const ymdToDate = (ymd) => {
+              const s = String(ymd || '').slice(0, 10);
+              const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+              if (!m) return null;
+              return new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00`);
+            };
+
+            const daysBetween = (aYmd, bYmd) => {
+              const a = ymdToDate(aYmd);
+              const b = ymdToDate(bYmd);
+              if (!a || !b) return null;
+              const ms = b.getTime() - a.getTime();
+              return Math.round(ms / (24 * 60 * 60 * 1000));
             };
 
             const monthItems = month
@@ -633,22 +697,22 @@ const InterventionsModal = ({
                     ? pmItems.filter((p) => String(p?.plannedDate || '').slice(0, 7) === month)
                     : pmItems;
 
-            const items = [...pmFiltered, ...vidangesFiltered]
+            const pmFilteredByStatus = (() => {
+              const f = String(interventionsStatus || 'all');
+              if (!f || f === 'all') return pmFiltered;
+              if (f === 'done') return pmFiltered.filter((p) => isPmDone(p));
+              if (f === 'sent') return pmFiltered.filter((p) => String(p?.status || '').trim().toUpperCase() === 'SENT');
+              if (f === 'planned') return pmFiltered.filter((p) => !isPmDone(p) && String(p?.status || '').trim().toUpperCase() !== 'SENT');
+              return pmFiltered;
+            })();
+
+            const items = [...pmFilteredByStatus, ...vidangesFiltered]
               .slice()
               .sort((a, b) => {
                 const isDone = (x) => {
                   if (!x) return false;
                   if (String(x?.kind || '') === 'PM') {
-                    const st = String(x?.status || '').trim().toUpperCase();
-                    return (
-                      st === 'EFFECTUEE' ||
-                      st === 'DONE' ||
-                      st === 'CLOSED' ||
-                      st === 'CLOSED COMPLETE' ||
-                      st === 'CLOSED_COMPLETE' ||
-                      st.includes('CLOSED') ||
-                      st.includes('COMPLETE')
-                    );
+                    return isPmDone(x);
                   }
                   return String(x?.status || '') === 'done';
                 };
@@ -675,22 +739,31 @@ const InterventionsModal = ({
               if (isPm) {
                 const info = pmStatusDisplay(it);
                 const label = pmSentLabel(it);
-                const isPmDone = String(info?.label || '').toUpperCase() === 'EFFECTUEE';
+                const pmDone = isPmDone(it);
+                const pmReprog = isPmReprogrammed(it);
+                const linkedVidange = findLinkedVidangeForPm(it);
                 return (
                   <div
                     key={it.id}
-                    className={`border rounded-lg p-3 ${
-                      isPmDone ? 'border-green-200 bg-green-50' : 'border-gray-200'
+                    className={`border rounded-lg p-3 relative ${
+                      pmDone ? 'border-green-200 bg-green-50' : pmReprog ? 'border-amber-200 bg-amber-50' : 'border-gray-200'
                     }`}
                   >
+                    {pmDone && (
+                      <div className="absolute top-2 right-2 text-green-700" title="Effectuée">
+                        <CheckCircle2 size={18} />
+                      </div>
+                    )}
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <span
                             className={`text-xs font-extrabold px-2 py-1 rounded border ${
-                              isPmDone
+                              pmDone
                                 ? 'bg-green-100 text-green-900 border-green-200'
-                                : 'bg-blue-50 text-blue-800 border-blue-200'
+                                : pmReprog
+                                  ? 'bg-amber-100 text-amber-900 border-amber-200'
+                                  : 'bg-blue-50 text-blue-800 border-blue-200'
                             }`}
                           >
                             PM
@@ -704,6 +777,11 @@ const InterventionsModal = ({
                         <div className="text-xs text-gray-600 mt-1">
                           Statut : {info.label} - {formatDate(info.date)}
                         </div>
+                        {pmReprog && it?.reprogrammationDate && (
+                          <div className="text-xs text-amber-900 mt-1 font-semibold">
+                            Nouvelle date : {formatDate(it.reprogrammationDate)}
+                          </div>
+                        )}
                         <div className="mt-2 flex flex-wrap gap-2">
                           <span className="text-xs px-2 py-1 rounded border font-semibold bg-slate-50 text-slate-800 border-slate-200">
                             Ticket: {String(it?.pmNumber || '').trim() ? `#${String(it.pmNumber).trim()}` : '-'}
@@ -714,6 +792,41 @@ const InterventionsModal = ({
                             </span>
                           ) : null}
                         </div>
+
+                        {linkedVidange && isTechnician && site && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const offset = Number(site?.nhOffset || 0);
+                                const raw = Math.max(0, Number(site?.nh2A || 0) - offset);
+                                setNhModalIntervention(linkedVidange);
+                                setNhModalSite(site);
+                                setNhForm({ nhValue: String(Math.trunc(raw)), readingDate: today });
+                                setNhFormError('');
+                                setNhModalOpen(true);
+                              }}
+                              className="bg-slate-700 text-white px-3 py-2 rounded-lg hover:bg-slate-800 font-semibold text-sm"
+                            >
+                              Mettre à jour NH
+                            </button>
+                            {String(linkedVidange?.status || '') !== 'done' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCompleteModalIntervention(linkedVidange);
+                                  setCompleteModalSite(site);
+                                  setCompleteForm({ nhNow: String(site?.nhEstimated ?? ''), doneDate: today });
+                                  setCompleteFormError('');
+                                  setCompleteModalOpen(true);
+                                }}
+                                className="bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 font-semibold text-sm"
+                              >
+                                Marquer effectuée
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -721,7 +834,7 @@ const InterventionsModal = ({
               }
 
               const st = String(it?.status || '');
-              const isOverdue = technicianInterventionsTab !== 'month' && st !== 'done' && String(it?.plannedDate || '') < today;
+              const isOverdue = st !== 'done' && String(it?.plannedDate || '') < today;
               const statusColor =
                 st === 'done'
                   ? 'bg-green-100 text-green-800 border-green-200'
@@ -753,11 +866,20 @@ const InterventionsModal = ({
                   <div className="flex items-center gap-2">
                     <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{st}</span>
                     {isOverdue && (
-                      <span className="text-xs px-2 py-1 rounded border font-semibold bg-red-100 text-red-800 border-red-200">
+                      <span className="text-xs px-2 py-1 rounded border font-semibold bg-red-50 text-red-800 border-red-200">
                         RETARD
                       </span>
                     )}
-                    {isTechnician && site && (
+                    {(() => {
+                      const linkedPm = pmItems.find((p) => {
+                        if (!p || p.maintenanceType !== 'fullpmwo') return false;
+                        const link = findLinkedVidangeForPm(p);
+                        return link && String(link?.id) === String(it?.id);
+                      });
+                      const movedToPm = Boolean(linkedPm);
+                      if (movedToPm) return null;
+                      return (
+                        isTechnician && site && (
                       <button
                         type="button"
                         onClick={() => {
@@ -773,8 +895,19 @@ const InterventionsModal = ({
                       >
                         Mettre à jour NH
                       </button>
-                    )}
-                    {st !== 'done' && (isAdmin || isTechnician) && (
+                        )
+                      );
+                    })()}
+                    {(() => {
+                      const linkedPm = pmItems.find((p) => {
+                        if (!p || p.maintenanceType !== 'fullpmwo') return false;
+                        const link = findLinkedVidangeForPm(p);
+                        return link && String(link?.id) === String(it?.id);
+                      });
+                      const movedToPm = Boolean(linkedPm);
+                      if (movedToPm) return null;
+                      return (
+                        st !== 'done' && (isAdmin || isTechnician) && (
                       <button
                         onClick={() => {
                           if (isTechnician) {
@@ -791,7 +924,9 @@ const InterventionsModal = ({
                       >
                         Marquer effectuée
                       </button>
-                    )}
+                        )
+                      );
+                    })()}
                   </div>
                 </div>
               );
@@ -824,7 +959,7 @@ const InterventionsModal = ({
                         out.push(
                           <div
                             key={`h:${d}`}
-                            className="mt-3 mb-1 text-xs font-extrabold text-slate-700 bg-slate-100 border border-slate-200 px-3 py-2 rounded-lg"
+                            className="mt-4 mb-2 text-sm font-extrabold text-slate-800 bg-slate-100 border border-slate-200 px-4 py-3 rounded-lg"
                           >
                             {formatDate(d)}
                           </div>

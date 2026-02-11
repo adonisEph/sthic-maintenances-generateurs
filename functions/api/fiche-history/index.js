@@ -72,7 +72,17 @@ export async function onRequestGet({ request, env, data }) {
     const res = await stmt.bind(...binds).all();
     const rows = Array.isArray(res?.results) ? res.results : [];
 
-    return json({ fiches: rows.map(mapRow) }, { status: 200 });
+    return json(
+      { fiches: rows.map(mapRow) },
+      {
+        status: 200,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          Pragma: 'no-cache',
+          Expires: '0'
+        }
+      }
+    );
   } catch (e) {
     return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
   }
