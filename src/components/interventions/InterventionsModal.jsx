@@ -247,11 +247,13 @@ const InterventionsModal = ({
                       plannedDate: String(p?.plannedDate || '').slice(0, 10),
                       isDone: isPmDoneForCount(p)
                     }))
-                    .filter((p) => p.plannedDate && !p.isDone);
+                    .filter((p) => p.plannedDate);
 
-                  const pmTodayCount = pmAll.filter((p) => p.plannedDate === today).length;
-                  const pmTomorrowCount = pmAll.filter((p) => p.plannedDate === tomorrow).length;
-                  const pmMonthCount = month ? pmAll.filter((p) => String(p?.plannedDate || '').slice(0, 7) === month).length : pmAll.length;
+                  const pmTodayCount = pmAll.filter((p) => p.plannedDate === today && !p.isDone).length;
+                  const pmTomorrowCount = pmAll.filter((p) => p.plannedDate === tomorrow && !p.isDone).length;
+
+                  const pmMonthAll = month ? pmAll.filter((p) => String(p?.plannedDate || '').slice(0, 7) === month) : pmAll;
+                  const pmMonthCount = pmMonthAll.length;
 
                   // VIDANGES: non retirées + non effectuées pour Aujourd’hui/Demain
                   const vidToday = interventionsScoped.filter(

@@ -37,7 +37,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '2.2.6';
+const APP_VERSION = '2.2.8';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const DAILY_NH_UPDATE_STORAGE_KEY = 'gma_daily_nh_update_ymd';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
@@ -118,6 +118,7 @@ const GeneratorMaintenanceApp = () => {
   const [accountError, setAccountError] = useState('');
   const [accountSaving, setAccountSaving] = useState(false);
   const [userFormId, setUserFormId] = useState(null);
+  const siteFormAnchorRef = useRef(null);
   const [userForm, setUserForm] = useState({ email: '', role: 'viewer', zone: 'BZV/POOL', technicianName: '', password: '' });
   const [userFormError, setUserFormError] = useState('');
   const [loginEmail, setLoginEmail] = useState('');
@@ -3308,6 +3309,16 @@ for (const [key, g] of globalSites.entries()) {
     return { plannedEvents: plannedEventsFiltered, remainingEvents, doneByPlannedDate, contractOk, contractOver };
   };
 
+  const footerZoneActive =
+  showZoneFilter && dashboardZone && dashboardZone !== 'ALL' ? String(dashboardZone) : '';
+
+  const retiredSitesCountFooterBase = isTechnician ? filteredSites : sites;
+
+  const retiredSitesCountFooter = (Array.isArray(retiredSitesCountFooterBase) ? retiredSitesCountFooterBase : [])
+    .filter((s) => s && s.retired)
+    .filter((s) => !footerZoneActive || String(s?.zone || '').trim() === footerZoneActive)
+    .length;
+
   const handleExportDashboardSummaryExcel = async () => {
     const ok = window.confirm(`Exporter le résumé Dashboard (${dashboardMonth}) en Excel ?`);
     if (!ok) return;
@@ -4128,9 +4139,17 @@ for (const [key, g] of globalSites.entries()) {
     return Math.round(ms / (24 * 60 * 60 * 1000));
   };
 
+  const isRetiredSiteId = (siteId) => {
+    const sid = String(siteId || '').trim();
+    if (!sid) return false;
+    const s = (Array.isArray(sites) ? sites : []).find((x) => String(x?.id || '').trim() === sid);
+    return Boolean(s?.retired);
+  };
+
   const vidangesInMonth = (Array.isArray(interventions) ? interventions : [])
-    .filter(Boolean)
-    .filter((i) => String(i?.plannedDate || '').slice(0, 7) === month);
+  .filter(Boolean)
+  .filter((i) => String(i?.plannedDate || '').slice(0, 7) === month)
+  .filter((i) => !isRetiredSiteId(i?.siteId));
 
   const pendingEpv23BySiteId = (() => {
     const s = new Set();
@@ -4151,7 +4170,8 @@ for (const [key, g] of globalSites.entries()) {
     .filter((p) => {
       const mt = normalizePmType(p?.maintenanceType);
       return mt === 'fullpmwo' || mt === 'dgservice';
-    });
+    })
+    .filter((p) => !isRetiredSiteId(p?.siteId));
 
   const pendingPm = pmInMonth.filter((p) => !isPmDone(p));
 
@@ -5322,7 +5342,6 @@ for (const [key, g] of globalSites.entries()) {
           }}
         />
 
-
         {/* Modale Fiche d'Intervention */}
           <FicheModal
             open={showFicheModal}
@@ -5420,6 +5439,7 @@ for (const [key, g] of globalSites.entries()) {
         />
 
         {/* Formulaire Ajout */}
+        <div ref={siteFormAnchorRef} />
         {showAddForm && canWriteSites && (
           <AddSiteForm
             formData={formData}
@@ -5582,6 +5602,9 @@ for (const [key, g] of globalSites.entries()) {
                                 retired: site.retired
                               });
                               setShowUpdateForm(true);
+                              setTimeout(() => {
+                                siteFormAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                              }, 0);
                             }}
                             className="bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 text-sm font-semibold"
                           >
@@ -5606,6 +5629,9 @@ for (const [key, g] of globalSites.entries()) {
                                 retired: site.retired
                               });
                               setShowEditForm(true);
+                              setTimeout(() => {
+                                siteFormAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                              }, 0);
                             }}
                             className="bg-emerald-600 text-white py-2 rounded-lg hover:bg-emerald-700 text-sm font-semibold"
                           >
@@ -5638,7 +5664,7 @@ for (const [key, g] of globalSites.entries()) {
           onSetNextTicket={handleSetNextTicketNumber}
           sitesCount={isTechnician ? filteredSites.length : sites.length}
           urgentSitesCount={urgentSites.length}
-          retiredSitesCount={isTechnician ? filteredSites.filter((s) => s.retired).length : sites.filter((s) => s.retired).length}
+          retiredSitesCount={retiredSitesCountFooter}
           ticketNumber={ticketNumber}
           ticketZone={String(authUser?.zone || '').trim()}
         />

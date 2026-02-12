@@ -1,6 +1,6 @@
 {
   "name": "generator-maintenance-app",
-  "version": "2.2.6",
+  "version": "2.2.8",
   "description": "Application de gestion de maintenance des générateurs",
   "type": "module",
   "scripts": {
