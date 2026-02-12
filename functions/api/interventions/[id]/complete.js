@@ -1,6 +1,6 @@
 import { ensureAdminUser } from '../../_utils/db.js';
 import { json, requireAuth, readJson, isoNow, ymdToday, isSuperAdmin, userZone } from '../../_utils/http.js';
-import { calculateEPVDates } from '../../_utils/calc.js';
+import { calculateEPVDates, calculateRegime, calculateEstimatedNH, calculateDiffNHs } from '../../_utils/calc.js';
 import { nextTicketNumberForZone, formatTicket, touchLastUpdatedAt } from '../../_utils/meta.js';
 
 export async function onRequestPost({ request, env, data, params }) {
@@ -62,24 +62,35 @@ export async function onRequestPost({ request, env, data, params }) {
     const regime = Number(site.regime || 0);
 
     const nextNh1DV = nhNow;
-    const nextDateDV = doneDate;
-    const nextNh2A = nhNow;
-    const nextDateA = doneDate;
+const nextDateDV = doneDate;
+const nextNh2A = nhNow;
+const nextDateA = doneDate;
 
-    const epvDates = calculateEPVDates(regime, nextNh1DV, nhNow, contractSeuil);
+// Recalcul métier (régime + estimations + diffs)
+const nextRegime = calculateRegime(site.nh1_dv, nextNh2A, site.date_dv, nextDateA);
+const nextNhEstimated = calculateEstimatedNH(nextNh2A, nextDateA, nextRegime);
+const nextDiffNHs = calculateDiffNHs(nextNh1DV, nextNh2A); // = 0
+const nextDiffEstimated = calculateDiffNHs(nextNh1DV, nextNhEstimated);
 
-    await env.DB.prepare(
-      'UPDATE sites SET nh1_dv = ?, date_dv = ?, nh2_a = ?, date_a = ?, nh_estimated = ?, diff_nhs = 0, diff_estimated = 0, updated_at = ? WHERE id = ?'
-    )
-      .bind(nextNh1DV, nextDateDV, nextNh2A, nextDateA, nhNow, now, site.id)
-      .run();
+const epvDates = calculateEPVDates(nextRegime, nextNh1DV, nextNhEstimated, contractSeuil);
 
-    await env.DB.prepare(
-      'UPDATE interventions SET status = ?, done_at = ?, updated_at = ? WHERE id = ?'
-    )
-      .bind('done', doneDate, now, id)
-      .run();
-
+await env.DB.prepare(
+  'UPDATE sites SET nh1_dv = ?, date_dv = ?, nh2_a = ?, date_a = ?, regime = ?, nh_estimated = ?, diff_nhs = ?, diff_estimated = ?, updated_at = ? WHERE id = ?'
+)
+  .bind(
+    nextNh1DV,
+    nextDateDV,
+    nextNh2A,
+    nextDateA,
+    nextRegime,
+    nextNhEstimated,
+    nextDiffNHs,
+    nextDiffEstimated,
+    now,
+    site.id
+  )
+  .run();
+ 
     const ticketZone = String(site?.zone || site?.region || '').trim();
     const tn = await nextTicketNumberForZone(env, ticketZone);
     const ticketNumber = formatTicket(tn, ticketZone);

@@ -207,24 +207,40 @@ const InterventionsModal = ({
                       .toLowerCase()
                       .replace(/\s+/g, '');
 
-                  const pmAll = (Array.isArray(pmAssignments) ? pmAssignments : [])
-                    .filter(Boolean)
-                    .filter((p) => {
-                      if (!zoneActive) return true;
-                      const z = String(p?.zone || '').trim();
-                      return !z || z === zoneActive;
-                    })
-                    .filter((p) => {
-                      const mt = normalizePmType(p?.maintenanceType);
-                      return mt === 'fullpmwo' || mt === 'dgservice';
-                    })
-                    .map((p) => ({
-                      plannedDate: String(p?.plannedDate || '').slice(0, 10)
-                    }))
-                    .filter((p) => p.plannedDate);
+                  const isPmDoneForCount = (p) => {
+                      
+                    const st = String(p?.pmState || p?.status || '').trim().toUpperCase();
+                      return (
+                        st === 'EFFECTUEE' ||
+                        st === 'DONE' ||
+                        st === 'CLOSED' ||
+                        st === 'CLOSED COMPLETE' ||
+                        st === 'CLOSED_COMPLETE' ||
+                        st === 'CLOSEDCOMPLETE' ||
+                        st === 'AWAITING CLOSURE' ||
+                        st === 'AWAITING_CLOSURE'
+                      );
+                    };
 
-                  const vidToday = interventionsScoped.filter((i) => i.plannedDate === today);
-                  const vidTomorrow = interventionsScoped.filter((i) => i.plannedDate === tomorrow);
+                    const pmAll = (Array.isArray(pmAssignments) ? pmAssignments : [])
+                      .filter(Boolean)
+                      .filter((p) => {
+                        if (!zoneActive) return true;
+                        const z = String(p?.zone || '').trim();
+                        return !z || z === zoneActive;
+                      })
+                      .filter((p) => {
+                        const mt = normalizePmType(p?.maintenanceType);
+                        return mt === 'fullpmwo' || mt === 'dgservice';
+                      })
+                      .map((p) => ({
+                        plannedDate: String(p?.plannedDate || '').slice(0, 10),
+                        isDone: isPmDoneForCount(p)
+                      }))
+                      .filter((p) => p.plannedDate && !p.isDone);  
+
+                  const vidToday = interventionsScoped.filter((i) => i.plannedDate === today && String(i?.status || '') !== 'done');
+                  const vidTomorrow = interventionsScoped.filter((i) => i.plannedDate === tomorrow && String(i?.status || '') !== 'done');
                   const vidMonth = month
                     ? interventionsScoped.filter((i) => String(i?.plannedDate || '').slice(0, 7) === month)
                     : interventionsScoped;
@@ -691,16 +707,16 @@ const InterventionsModal = ({
 
             const vidangesFiltered =
               technicianInterventionsTab === 'today'
-                ? list.filter((i) => i.plannedDate === today)
+                ? list.filter((i) => i.plannedDate === today && String(i?.status || '') !== 'done')
                 : technicianInterventionsTab === 'tomorrow'
-                  ? list.filter((i) => i.plannedDate === tomorrow)
+                  ? list.filter((i) => i.plannedDate === tomorrow && String(i?.status || '') !== 'done')
                   : monthItems;
 
             const pmFiltered =
               technicianInterventionsTab === 'today'
-                ? pmItems.filter((p) => p.plannedDate === today)
+                ? pmItems.filter((p) => p.plannedDate === today && !isPmDone(p))
                 : technicianInterventionsTab === 'tomorrow'
-                  ? pmItems.filter((p) => p.plannedDate === tomorrow)
+                  ? pmItems.filter((p) => p.plannedDate === tomorrow && !isPmDone(p))
                   : month
                     ? pmItems.filter((p) => String(p?.plannedDate || '').slice(0, 7) === month)
                     : pmItems;
@@ -970,31 +986,51 @@ const InterventionsModal = ({
                   <div className="text-sm text-gray-600">Aucune intervention.</div>
                 ) : (
                   (() => {
-                    if (technicianInterventionsTab !== 'month') {
-                      return <div className="space-y-2">{items.map((it) => renderItem(it))}</div>;
-                    }
+  if (technicianInterventionsTab !== 'month') {
+    return (
+      <div className="space-y-2">
+        {items.map((it) => {
+          const el = renderItem(it);
+          if (!el) return null;
+          return (
+            <React.Fragment key={`row:${String(it?.kind || '')}:${String(it?.id || '')}`}>
+              {el}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    );
+  }
 
-                    const out = [];
-                    let lastDate = '';
-                    items.forEach((it) => {
-                      const d = String(it?.plannedDate || '').slice(0, 10);
-                      const el = renderItem(it);
-                      if (!el) return;
-                      if (d && d !== lastDate) {
-                        lastDate = d;
-                        out.push(
-                          <div
-                            key={`month_header:${d}`}
-                            className="mt-4 mb-2 text-sm font-extrabold text-slate-800 bg-slate-100 border border-slate-200 px-4 py-3 rounded-lg"
-                          >
-                            {formatDate(d)}
-                          </div>
-                        );
-                      }
-                      out.push(el);
-                    });
-                    return <div className="space-y-2">{out}</div>;
-                  })()
+  const out = [];
+  let lastDate = '';
+
+  items.forEach((it) => {
+    const d = String(it?.plannedDate || '').slice(0, 10);
+    const el = renderItem(it);
+    if (!el) return;
+
+    if (d && d !== lastDate) {
+      lastDate = d;
+      out.push(
+        <div
+          key={`month_header:${d}`}
+          className="mt-4 mb-2 text-sm font-extrabold text-slate-800 bg-slate-100 border border-slate-200 px-4 py-3 rounded-lg"
+        >
+          {formatDate(d)}
+        </div>
+      );
+    }
+
+    out.push(
+      <React.Fragment key={`month_row:${String(it?.kind || '')}:${String(it?.id || '')}:${d}`}>
+        {el}
+      </React.Fragment>
+    );
+  });
+
+  return <div className="space-y-2">{out}</div>;
+})()
                 )}
               </div>
             );
