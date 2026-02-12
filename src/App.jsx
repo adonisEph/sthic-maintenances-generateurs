@@ -3309,16 +3309,6 @@ for (const [key, g] of globalSites.entries()) {
     return { plannedEvents: plannedEventsFiltered, remainingEvents, doneByPlannedDate, contractOk, contractOver };
   };
 
-  const footerZoneActive =
-  showZoneFilter && dashboardZone && dashboardZone !== 'ALL' ? String(dashboardZone) : '';
-
-  const retiredSitesCountFooterBase = isTechnician ? filteredSites : sites;
-
-  const retiredSitesCountFooter = (Array.isArray(retiredSitesCountFooterBase) ? retiredSitesCountFooterBase : [])
-    .filter((s) => s && s.retired)
-    .filter((s) => !footerZoneActive || String(s?.zone || '').trim() === footerZoneActive)
-    .length;
-
   const handleExportDashboardSummaryExcel = async () => {
     const ok = window.confirm(`Exporter le résumé Dashboard (${dashboardMonth}) en Excel ?`);
     if (!ok) return;
@@ -3633,6 +3623,16 @@ for (const [key, g] of globalSites.entries()) {
       if (!z || z === 'ALL') return true;
       return String(site?.zone || '').trim() === z;
     });
+
+    const footerZoneActive =
+      showZoneFilter && dashboardZone && dashboardZone !== 'ALL' ? String(dashboardZone) : '';
+
+    const retiredSitesCountFooterBase = isTechnician ? filteredSites : sites;
+
+    const retiredSitesCountFooter = (Array.isArray(retiredSitesCountFooterBase) ? retiredSitesCountFooterBase : [])
+      .filter((s) => s && s.retired)
+      .filter((s) => !footerZoneActive || String(s?.zone || '').trim() === footerZoneActive)
+      .length;
 
   const calendarTechnicianName = (() => {
     const techId = String(calendarSendTechUserId || '').trim();
