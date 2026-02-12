@@ -191,13 +191,22 @@ const InterventionsModal = ({
             {isTechnician && (
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
                 {(() => {
-                  const pad2 = (n) => String(n).padStart(2, '0');
+                 const pad2 = (n) => String(n).padStart(2, '0');
                   const ymdLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
                   const today = ymdLocal(new Date());
                   const tomorrowD = new Date();
                   tomorrowD.setDate(tomorrowD.getDate() + 1);
                   const tomorrow = ymdLocal(tomorrowD);
                   const month = String(interventionsMonth || '').trim();
+
+                  const siteById = new Map((Array.isArray(sites) ? sites : []).map((s) => [String(s?.id || ''), s]));
+
+                  const isRetiredSiteId = (siteId) => {
+                    const sid = String(siteId || '').trim();
+                    if (!sid) return true;
+                    const s = siteById.get(sid) || null;
+                    return Boolean(s && s.retired);
+                  };
 
                   const normalizePmType = (v) =>
                     String(v || '')
@@ -208,53 +217,61 @@ const InterventionsModal = ({
                       .replace(/\s+/g, '');
 
                   const isPmDoneForCount = (p) => {
-                      
                     const st = String(p?.pmState || p?.status || '').trim().toUpperCase();
-                      return (
-                        st === 'EFFECTUEE' ||
-                        st === 'DONE' ||
-                        st === 'CLOSED' ||
-                        st === 'CLOSED COMPLETE' ||
-                        st === 'CLOSED_COMPLETE' ||
-                        st === 'CLOSEDCOMPLETE' ||
-                        st === 'AWAITING CLOSURE' ||
-                        st === 'AWAITING_CLOSURE'
-                      );
-                    };
+                    return (
+                      st === 'EFFECTUEE' ||
+                      st === 'DONE' ||
+                      st === 'CLOSED' ||
+                      st === 'CLOSED COMPLETE' ||
+                      st === 'CLOSED_COMPLETE' ||
+                      st === 'CLOSEDCOMPLETE' ||
+                      st === 'AWAITING CLOSURE' ||
+                      st === 'AWAITING_CLOSURE'
+                    );
+                  };
 
-                    const pmAll = (Array.isArray(pmAssignments) ? pmAssignments : [])
-                      .filter(Boolean)
-                      .filter((p) => {
-                        if (!zoneActive) return true;
-                        const z = String(p?.zone || '').trim();
-                        return !z || z === zoneActive;
-                      })
-                      .filter((p) => {
-                        const mt = normalizePmType(p?.maintenanceType);
-                        return mt === 'fullpmwo' || mt === 'dgservice';
-                      })
-                      .map((p) => ({
-                        plannedDate: String(p?.plannedDate || '').slice(0, 10),
-                        isDone: isPmDoneForCount(p)
-                      }))
-                      .filter((p) => p.plannedDate && !p.isDone);  
-
-                  const vidToday = interventionsScoped.filter((i) => i.plannedDate === today && String(i?.status || '') !== 'done');
-                  const vidTomorrow = interventionsScoped.filter((i) => i.plannedDate === tomorrow && String(i?.status || '') !== 'done');
-                  const vidMonth = month
-                    ? interventionsScoped.filter((i) => String(i?.plannedDate || '').slice(0, 7) === month)
-                    : interventionsScoped;
+                  // PM: on garde uniquement FullPMWO/DG Service, non retirées, non effectuées
+                  const pmAll = (Array.isArray(pmAssignments) ? pmAssignments : [])
+                    .filter(Boolean)
+                    .filter((p) => {
+                      if (!zoneActive) return true;
+                      const z = String(p?.zone || '').trim();
+                      return !z || z === zoneActive;
+                    })
+                    .filter((p) => {
+                      const mt = normalizePmType(p?.maintenanceType);
+                      return mt === 'fullpmwo' || mt === 'dgservice';
+                    })
+                    .filter((p) => !isRetiredSiteId(p?.siteId))
+                    .map((p) => ({
+                      plannedDate: String(p?.plannedDate || '').slice(0, 10),
+                      isDone: isPmDoneForCount(p)
+                    }))
+                    .filter((p) => p.plannedDate && !p.isDone);
 
                   const pmTodayCount = pmAll.filter((p) => p.plannedDate === today).length;
                   const pmTomorrowCount = pmAll.filter((p) => p.plannedDate === tomorrow).length;
-                  const pmMonthCount = month
-                    ? pmAll.filter((p) => String(p?.plannedDate || '').slice(0, 7) === month).length
-                    : pmAll.length;
+                  const pmMonthCount = month ? pmAll.filter((p) => String(p?.plannedDate || '').slice(0, 7) === month).length : pmAll.length;
+
+                  // VIDANGES: non retirées + non effectuées pour Aujourd’hui/Demain
+                  const vidToday = interventionsScoped.filter(
+                    (i) => i.plannedDate === today && String(i?.status || '') !== 'done' && !isRetiredSiteId(i?.siteId)
+                  );
+                  const vidTomorrow = interventionsScoped.filter(
+                    (i) => i.plannedDate === tomorrow && String(i?.status || '') !== 'done' && !isRetiredSiteId(i?.siteId)
+                  );
+
+                  // Pour le bouton Mois: on exclut seulement les retirées (tu peux garder les effectuées dans “Mois”)
+                  const vidMonthAll = month
+                    ? interventionsScoped.filter((i) => String(i?.plannedDate || '').slice(0, 7) === month)
+                    : interventionsScoped;
+
+                  const vidMonth = vidMonthAll.filter((i) => !isRetiredSiteId(i?.siteId));
 
                   const todayCount = vidToday.length + pmTodayCount;
                   const tomorrowCount = vidTomorrow.length + pmTomorrowCount;
                   const tomorrowSentCount = vidTomorrow.filter((i) => i.status === 'sent').length;
-                  const monthCount = vidMonth.length + pmMonthCount;
+                  const monthCount = vidMonth.length + pmMonthCount; 
 
                   return (
                     <div className="grid grid-cols-3 gap-2 w-full">
@@ -555,7 +572,14 @@ const InterventionsModal = ({
               return 3;
             };
 
-            const list = interventionsScoped.slice();
+            const list = interventionsScoped
+              .slice()
+              .filter((i) => {
+                const sid = String(i?.siteId || '').trim();
+                if (!sid) return false;
+                const s = siteById.get(sid) || null;
+                return !(s && s.retired);
+              });
 
             const pendingEpv23BySiteId = (() => {
               const s = new Set();
@@ -606,7 +630,11 @@ const InterventionsModal = ({
                   closedAt: String(p?.closedAt || '').slice(0, 10)
                 };
               })
-              .filter((p) => p.siteId && p.plannedDate);
+              .filter((p) => {
+                if (!p.siteId || !p.plannedDate) return false;
+                const s = siteById.get(String(p.siteId)) || null;
+                return !(s && s.retired);
+              });
 
             const interventionKeySet = new Set(
               list.map((i) => `${String(i?.siteId || '')}|${String(i?.plannedDate || '').slice(0, 10)}|${String(i?.epvType || '')}`)
@@ -973,7 +1001,7 @@ const InterventionsModal = ({
             };
 
             return (
-              <div className="space-y-3">
+              <div className="space-y-3" key={`tech_tab:${String(technicianInterventionsTab)}:${String(interventionsMonth || '')}`}>
                 {pmError && (
                   <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">
                     {pmError}
