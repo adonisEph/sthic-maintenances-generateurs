@@ -27,10 +27,39 @@ const FicheModal = ({
   const [canvasReady, setCanvasReady] = useState(false);
 
   const signatureOk = useMemo(() => {
-    const nameOk = Boolean(String(signatureTypedName || '').trim());
     const pngOk = Boolean(String(signatureDrawnPng || '').trim().startsWith('data:image/png;base64,'));
-    return nameOk && pngOk;
-  }, [signatureTypedName, signatureDrawnPng]);
+    return pngOk;
+  }, [signatureDrawnPng]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (String(signatureDrawnPng || '').trim().startsWith('data:image/png;base64,')) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/signature_responsable.png', { cache: 'no-cache' });
+        if (!res.ok) return;
+        const blob = await res.blob();
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (cancelled) return;
+          const dataUrl = String(reader.result || '');
+          if (dataUrl.startsWith('data:image/')) {
+            setSignatureDrawnPng(dataUrl);
+            setSignatureTypedName('');
+          }
+        };
+        reader.readAsDataURL(blob);
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, signatureDrawnPng, setSignatureDrawnPng, setSignatureTypedName]);
 
   const ticketPrefix = (() => {
     const z = String(siteForFiche?.zone || '').trim().toUpperCase();
@@ -297,7 +326,6 @@ const FicheModal = ({
                     <div style={{ height: '40px', width: '100%' }} />
                   )}
                 </div>
-                <p className="text-[11px] text-right mt-1">{String(signatureTypedName || '').trim()}</p>
                 <p className="text-xs text-right mt-3">DATE</p>
                 <p className="text-right font-bold">{formatDate(new Date().toISOString())}</p>
               </div>
@@ -306,15 +334,7 @@ const FicheModal = ({
 
           <div className="mt-6 border-t pt-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Nom du responsable (obligatoire)</label>
-                <input
-                  value={String(signatureTypedName || '')}
-                  onChange={(e) => setSignatureTypedName(String(e.target.value || ''))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                  placeholder="Nom et prénom"
-                />
-              </div>
+              <div />
               <div>
                 <div className="flex items-center justify-between gap-3 mb-2">
                   <label className="block text-sm font-semibold text-gray-700">Signature (obligatoire)</label>

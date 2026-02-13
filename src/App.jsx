@@ -701,7 +701,6 @@ const GeneratorMaintenanceApp = () => {
       try {
         await refreshUsers();
       } catch (e) {
-        setUserFormError(e?.message || 'Erreur serveur.');
       }
     })();
   }, [showUsersModal, authUser?.role]);
@@ -709,7 +708,29 @@ const GeneratorMaintenanceApp = () => {
   const loadData = async () => {
     try {
       const data = await apiFetchJson('/api/sites', { method: 'GET' });
-      setSites(Array.isArray(data?.sites) ? data.sites : []);
+      const rows = Array.isArray(data?.sites) ? data.sites : [];
+      const enriched = rows.map((site) => {
+        const retiredRaw = site?.retired;
+        const retired =
+          retiredRaw === true ||
+          retiredRaw === 1 ||
+          retiredRaw === '1' ||
+          String(retiredRaw || '').trim().toLowerCase() === 'true';
+        const nhEstimated = calculateEstimatedNH(site.nh2A, site.dateA, site.regime);
+        const diffEstimated = calculateDiffNHs(site.nh1DV, nhEstimated);
+        const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, nhEstimated);
+        return {
+          ...site,
+          retired,
+          nhEstimated,
+          diffEstimated,
+          epv1: epvDates.epv1,
+          epv2: epvDates.epv2,
+          epv3: epvDates.epv3,
+          daysUntilEPV1: getDaysUntil(epvDates.epv1)
+        };
+      });
+      setSites(enriched);
     } catch (error) {
       setSites([]);
     }

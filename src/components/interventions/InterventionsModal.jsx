@@ -662,9 +662,27 @@ const InterventionsModal = ({
               };
 
               srcSites.forEach((site) => {
-                add(site, 'EPV1', site.epv1);
-                add(site, 'EPV2', site.epv2);
-                add(site, 'EPV3', site.epv3);
+                if (isTechnician) {
+                  const techName = String(authUser?.technicianName || '').trim();
+                  if (techName && String(site?.technician || '').trim() !== techName) return;
+                }
+
+                const epv1 = norm(site?.epv1) || '';
+                const epv2 = norm(site?.epv2) || '';
+                const epv3 = norm(site?.epv3) || '';
+
+                if (epv1 || epv2 || epv3) {
+                  add(site, 'EPV1', epv1);
+                  add(site, 'EPV2', epv2);
+                  add(site, 'EPV3', epv3);
+                  return;
+                }
+
+                const nhEstimated = calculateEstimatedNH(site?.nh2A, site?.dateA, site?.regime);
+                const epvDates = calculateEPVDates(site?.regime, site?.dateA, site?.nh1DV, nhEstimated);
+                add(site, 'EPV1', epvDates?.epv1);
+                add(site, 'EPV2', epvDates?.epv2);
+                add(site, 'EPV3', epvDates?.epv3);
               });
 
               return out;
