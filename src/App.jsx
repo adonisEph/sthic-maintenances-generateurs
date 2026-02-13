@@ -37,7 +37,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '2.2.8';
+const APP_VERSION = '2.3.0';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const DAILY_NH_UPDATE_STORAGE_KEY = 'gma_daily_nh_update_ymd';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
@@ -355,6 +355,14 @@ const GeneratorMaintenanceApp = () => {
         return s;
       };
 
+      const normalizePmType = (v) =>
+        String(v || '')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, '');
+
       const sitesByIdSite = new Map(
         (Array.isArray(sites) ? sites : [])
           .map(getUpdatedSite)
@@ -366,6 +374,7 @@ const GeneratorMaintenanceApp = () => {
       const items = Array.isArray(pmItems) ? pmItems : [];
       const assignments = [];
       for (const it of items) {
+
         const pmNumber = String(it?.number || '').trim();
         if (!pmNumber) continue;
 
@@ -380,6 +389,9 @@ const GeneratorMaintenanceApp = () => {
         const rawDate = normalizeYmd(it?.reprogrammationDate) || normalizeYmd(it?.scheduledWoDate);
         if (!rawDate) continue;
 
+        const mt = normalizePmType(it?.maintenanceType);
+        if (mt !== 'fullpmwo') continue;
+
         const shifted = ymdShiftForWorkdays(rawDate);
         const plannedDate = shifted || rawDate;
         if (String(plannedDate).slice(0, 7) !== month) continue;
@@ -390,7 +402,7 @@ const GeneratorMaintenanceApp = () => {
           siteId: String(site.id),
           siteCode,
           plannedDate,
-          maintenanceType: it?.maintenanceType ? String(it.maintenanceType) : null,
+          maintenanceType: 'FullPMWO',
           technicianUserId: techId,
           technicianName
         });

@@ -38,6 +38,10 @@ export async function onRequestPost({ request, env, data }) {
       if (!pmNumber || !siteId || !plannedDate || !/^\d{4}-\d{2}-\d{2}$/.test(plannedDate)) continue;
       if (!technicianUserId || !technicianName) continue;
 
+      if (String(maintenanceType || '').trim().toLowerCase() !== 'fullpmwo') {
+        continue;
+      }
+
       const id = newId();
 
       const site = await env.DB

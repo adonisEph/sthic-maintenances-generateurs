@@ -194,7 +194,7 @@ const InterventionsModal = ({
                 setNhModalOpen(false);
                 setNhModalIntervention(null);
                 setNhModalSite(null);
-                setNhForm({ nhValue: '', readingDate: '' });
+                setNhForm({ nhValue: '', readingDate: '', reset: false });
                 setNhFormError('');
               }}
               className="hover:bg-emerald-800 p-2 rounded"
@@ -214,12 +214,23 @@ const InterventionsModal = ({
             {isTechnician && (
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
                 {(() => {
-                 const pad2 = (n) => String(n).padStart(2, '0');
-                  const ymdLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-                  const today = ymdLocal(new Date());
+                  const ymdInTimeZone = (d, timeZone) => {
+                    try {
+                      return new Intl.DateTimeFormat('en-CA', {
+                        timeZone,
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit'
+                      }).format(d);
+                    } catch {
+                      return new Date().toISOString().slice(0, 10);
+                    }
+                  };
+
+                  const today = ymdInTimeZone(new Date(), 'Africa/Brazzaville');
                   const tomorrowD = new Date();
                   tomorrowD.setDate(tomorrowD.getDate() + 1);
-                  const tomorrow = ymdLocal(tomorrowD);
+                  const tomorrow = ymdInTimeZone(tomorrowD, 'Africa/Brazzaville');
                   const month = String(interventionsMonth || '').trim();
 
                   const siteById = new Map((Array.isArray(sites) ? sites : []).map((s) => [String(s?.id || ''), s]));
@@ -253,7 +264,7 @@ const InterventionsModal = ({
                     );
                   };
 
-                  // PM: on garde uniquement FullPMWO/DG Service, non retirées, non effectuées
+                  // PM: on garde uniquement FullPMWO, non retirées, non effectuées
                   const pmAll = (Array.isArray(pmAssignments) ? pmAssignments : [])
                     .filter(Boolean)
                     .filter((p) => {
@@ -263,7 +274,7 @@ const InterventionsModal = ({
                     })
                     .filter((p) => {
                       const mt = normalizePmType(p?.maintenanceType);
-                      return mt === 'fullpmwo' || mt === 'dgservice';
+                      return mt === 'fullpmwo';
                     })
                     .filter((p) => !isRetiredSiteId(p?.siteId))
                     .map((p) => ({
@@ -278,20 +289,57 @@ const InterventionsModal = ({
                   const pmMonthAll = month ? pmAll.filter((p) => String(p?.plannedDate || '').slice(0, 7) === month) : pmAll;
                   const pmMonthCount = pmMonthAll.length;
 
-                  // VIDANGES: non retirées + non effectuées pour Aujourd’hui/Demain
-                  const vidToday = interventionsScoped.filter(
-                    (i) => i.plannedDate === today && String(i?.status || '') !== 'done' && !isRetiredSiteId(i?.siteId)
-                  );
-                  const vidTomorrow = interventionsScoped.filter(
-                    (i) => i.plannedDate === tomorrow && String(i?.status || '') !== 'done' && !isRetiredSiteId(i?.siteId)
+                  // VIDANGES: basées sur les EPV calculées depuis les sites (même source que l'affichage)
+                  const interventionsByKey = new Map(
+                    (Array.isArray(interventionsScoped) ? interventionsScoped : [])
+                      .filter(Boolean)
+                      .map((i) => [getInterventionKey(i.siteId, String(i?.plannedDate || '').slice(0, 10), i.epvType), i])
                   );
 
-                  // Pour le bouton Mois: on exclut seulement les retirées (tu peux garder les effectuées dans “Mois”)
-                  const vidMonthAll = month
-                    ? interventionsScoped.filter((i) => String(i?.plannedDate || '').slice(0, 7) === month)
-                    : interventionsScoped;
+                  const norm = (d) => {
+                    const s = String(d || '').slice(0, 10);
+                    return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+                  };
 
-                  const vidMonth = vidMonthAll.filter((i) => !isRetiredSiteId(i?.siteId));
+                  const buildVidangeEventsFromSites = () => {
+                    const out = [];
+                    const srcSites = Array.isArray(sites) ? sites : [];
+
+                    const add = (site, epvType, rawDate) => {
+                      if (!site || site.retired) return;
+                      const src = norm(rawDate);
+                      if (!src) return;
+                      const shifted = typeof ymdShiftForWorkdays === 'function' ? ymdShiftForWorkdays(src) : '';
+                      const plannedDate = String(shifted || src).slice(0, 10);
+
+                      const intervention =
+                        interventionsByKey.get(getInterventionKey(site.id, plannedDate, epvType)) ||
+                        interventionsByKey.get(getInterventionKey(site.id, src, epvType)) ||
+                        null;
+
+                      out.push({
+                        siteId: String(site.id),
+                        plannedDate,
+                        epvType,
+                        status: String(intervention?.status || 'planned')
+                      });
+                    };
+
+                    srcSites.forEach((site) => {
+                      const techName = String(authUser?.technicianName || '').trim();
+                      if (techName && String(site?.technician || '').trim() !== techName) return;
+                      add(site, 'EPV1', site?.epv1);
+                      add(site, 'EPV2', site?.epv2);
+                      add(site, 'EPV3', site?.epv3);
+                    });
+
+                    return out;
+                  };
+
+                  const vidAll = buildVidangeEventsFromSites().filter((v) => !isRetiredSiteId(v?.siteId));
+                  const vidToday = vidAll.filter((v) => v.plannedDate === today && String(v?.status || '') !== 'done');
+                  const vidTomorrow = vidAll.filter((v) => v.plannedDate === tomorrow && String(v?.status || '') !== 'done');
+                  const vidMonth = month ? vidAll.filter((v) => String(v?.plannedDate || '').slice(0, 7) === month) : vidAll;
 
                   const todayCount = vidToday.length + pmTodayCount;
                   const tomorrowCount = vidTomorrow.length + pmTomorrowCount;
@@ -705,7 +753,7 @@ const InterventionsModal = ({
               })
               .filter((p) => {
                 const mt = normalizePmType(p?.maintenanceType);
-                return mt === 'fullpmwo' || mt === 'dgservice';
+                return mt === 'fullpmwo';
               })
               .map((p) => {
                 const mt = normalizePmType(p?.maintenanceType);
@@ -961,6 +1009,34 @@ const InterventionsModal = ({
                           ) : null}
                         </div>
 
+                        {!pmDone && (isAdmin || isManager) && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const ok = window.confirm(
+                                    `Révoquer ce PM envoyé ?\n\nTicket: ${String(it?.pmNumber || '')}\nSite: ${site?.nameSite || it.siteId || ''}\nDate: ${formatDate(String(it?.plannedDate || ''))}`
+                                  );
+                                  if (!ok) return;
+                                  await apiFetchJson('/api/pm-assignments', {
+                                    method: 'DELETE',
+                                    body: JSON.stringify({ id: it?.id || null, pmNumber: it?.pmNumber || null })
+                                  });
+                                  await loadInterventions();
+                                  alert('✅ PM révoqué.');
+                                } catch (e) {
+                                  alert(e?.message || 'Erreur serveur.');
+                                }
+                              }}
+                              className="bg-red-600 text-white px-2 py-1.5 rounded-lg hover:bg-red-700 font-semibold text-xs"
+                              title="Supprimer PM envoyée/plannifiée"
+                            >
+                              Révoquer
+                            </button>
+                          </div>
+                        )}
+
                         {(isTechnician && site && (focusPm || showPmNhOnly)) && (
                           <div className="mt-3 flex flex-wrap gap-2">
                             <button
@@ -1095,6 +1171,32 @@ const InterventionsModal = ({
                         className="bg-green-600 text-white px-2 py-1.5 rounded-lg hover:bg-green-700 font-semibold text-xs"
                       >
                         Marquer effectuée
+                      </button>
+                    )}
+
+                    {!(!focusVidange && movedToPm) && (isAdmin || isManager) && st !== 'done' && it?.intervention?.id && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const ok = window.confirm(
+                              `Révoquer cette vidange envoyée ?\n\nSite: ${site?.nameSite || it.siteId || ''}\nType: ${String(it?.epvType || '')}\nDate: ${formatDate(effectivePlannedDate)}`
+                            );
+                            if (!ok) return;
+                            await apiFetchJson('/api/interventions', {
+                              method: 'DELETE',
+                              body: JSON.stringify({ id: it.intervention.id })
+                            });
+                            await loadInterventions();
+                            alert('✅ Vidange révoquée.');
+                          } catch (e) {
+                            alert(e?.message || 'Erreur serveur.');
+                          }
+                        }}
+                        className="bg-red-600 text-white px-2 py-1.5 rounded-lg hover:bg-red-700 font-semibold text-xs"
+                        title="Supprimer intervention envoyée/plannifiée"
+                      >
+                        Révoquer
                       </button>
                     )}
                   </div>
@@ -1256,6 +1358,10 @@ const InterventionsModal = ({
               setNhForm({ nhValue: '', readingDate: '' });
               setNhFormError('');
             }}
+            onChangeReset={(v) => {
+              setNhForm((prev) => ({ ...(prev || {}), reset: Boolean(v) }));
+              setNhFormError('');
+            }}
             onConfirm={async () => {
               const siteId = nhModalSite?.id;
               if (!siteId) {
@@ -1275,7 +1381,7 @@ const InterventionsModal = ({
               try {
                 const data = await apiFetchJson(`/api/sites/${siteId}/nh`, {
                   method: 'POST',
-                  body: JSON.stringify({ readingDate, nhValue })
+                  body: JSON.stringify({ readingDate, nhValue, reset: Boolean(nhForm?.reset) })
                 });
                 await loadData();
                 await loadInterventions();

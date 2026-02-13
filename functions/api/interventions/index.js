@@ -128,3 +128,43 @@ export async function onRequestPost({ request, env, data }) {
     return json({ error: msg }, { status: 500 });
   }
 }
+
+export async function onRequestDelete({ request, env, data }) {
+  try {
+    await ensureAdminUser(env);
+    if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
+
+    const role = String(data?.user?.role || '');
+    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
+
+    const body = await readJson(request);
+    const id = String(body?.id || '').trim();
+    if (!id) return json({ error: 'ID manquant.' }, { status: 400 });
+
+    const row = await env.DB.prepare('SELECT * FROM interventions WHERE id = ?').bind(id).first();
+    if (!row) return json({ ok: true, deleted: 0 }, { status: 200 });
+
+    if (!isSuperAdmin(data)) {
+      const z = userZone(data);
+      if (String(row.zone || 'BZV/POOL') !== z) {
+        return json({ error: 'Accès interdit.' }, { status: 403 });
+      }
+    }
+
+    if (String(row.status || '') === 'done') {
+      return json({ error: 'Impossible de supprimer une intervention effectuée.' }, { status: 400 });
+    }
+
+    const res = await env.DB.prepare("DELETE FROM interventions WHERE id = ? AND status != 'done'")
+      .bind(id)
+      .run();
+
+    if ((res?.meta?.changes || 0) > 0) {
+      await touchLastUpdatedAt(env);
+    }
+
+    return json({ ok: true, deleted: Number(res?.meta?.changes || 0) }, { status: 200 });
+  } catch (e) {
+    return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
+  }
+}

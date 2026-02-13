@@ -8,6 +8,7 @@ const NhUpdateModal = ({
   nhForm,
   onChangeReadingDate,
   onChangeNhValue,
+  onChangeReset,
   nhFormError,
   isAdmin,
   onClose,
@@ -53,6 +54,19 @@ const NhUpdateModal = ({
                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
               />
             </div>
+          </div>
+
+          <div className="flex items-start gap-2">
+            <input
+              id="nh-reset"
+              type="checkbox"
+              checked={Boolean(nhForm?.reset)}
+              onChange={(e) => onChangeReset(e.target.checked)}
+              className="mt-1"
+            />
+            <label htmlFor="nh-reset" className="text-xs text-gray-700">
+              Reset compteur (à cocher uniquement si le compteur a réellement été remis à zéro / remplacé).
+            </label>
           </div>
 
           {nhFormError && (

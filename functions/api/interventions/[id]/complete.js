@@ -157,7 +157,9 @@ export async function onRequestPost({ request, env, data, params }) {
 
     await touchLastUpdatedAt(env);
 
-    return json({ ok: true, epv: epvDates }, { status: 200 });
+    const updatedSite = await env.DB.prepare('SELECT * FROM sites WHERE id = ?').bind(site.id).first();
+
+    return json({ ok: true, epv: epvDates, site: updatedSite ? { id: updatedSite.id } : null }, { status: 200 });
   } catch (e) {
     return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
   }

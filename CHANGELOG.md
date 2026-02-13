@@ -2,7 +2,7 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
-## [1.0.0] - 2024-12-16
+## [2.3.0] - 2026-02-13
 
 ### ✨ Nouvelle Structure (Version Optimisée)
 
