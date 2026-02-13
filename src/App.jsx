@@ -96,6 +96,8 @@ const GeneratorMaintenanceApp = () => {
   const [bannerImage, setBannerImage] = useState('');
   const [siteForFiche, setSiteForFiche] = useState(null);
   const [ficheContext, setFicheContext] = useState(null);
+  const [signatureTypedName, setSignatureTypedName] = useState('');
+  const [signatureDrawnPng, setSignatureDrawnPng] = useState('');
   const [ficheHistory, setFicheHistory] = useState([]);
   const [authUser, setAuthUser] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
@@ -2687,6 +2689,8 @@ for (const [key, g] of globalSites.entries()) {
     setBatchFicheSites([]);
     setBatchFicheIndex(0);
     setSiteForFiche(site);
+    setSignatureTypedName('');
+    setSignatureDrawnPng('');
     try {
       const today = new Date().toISOString().split('T')[0];
       const candidates = [
@@ -2728,6 +2732,8 @@ for (const [key, g] of globalSites.entries()) {
     setBatchFicheIndex(0);
     setSiteForFiche(uniqueEvents[0].site);
     setFicheContext({ plannedDate: uniqueEvents[0].date || null, epvType: uniqueEvents[0].type || null });
+    setSignatureTypedName('');
+    setSignatureDrawnPng('');
     setShowDayDetailsModal(false);
     setShowBannerUpload(true);
   };
@@ -2735,6 +2741,11 @@ for (const [key, g] of globalSites.entries()) {
   const handlePrintFiche = () => {
     (async () => {
       let usedTicketNumber = ticketNumber;
+
+      if (!String(signatureTypedName || '').trim() || !String(signatureDrawnPng || '').trim().startsWith('data:image/png;base64,')) {
+        alert('Signature responsable obligatoire.');
+        return;
+      }
 
       if (isAdmin || isManager) {
         try {
@@ -2750,32 +2761,27 @@ for (const [key, g] of globalSites.entries()) {
         }
       }
 
+      const ticketNumberFull = buildTicketNumberForFiche(usedTicketNumber);
+      try {
+        await persistFicheHistory(ticketNumberFull);
+      } catch (e) {
+        const msg = String(e?.message || 'Erreur serveur.');
+        if (msg.toLowerCase().includes('déjà sortie') || msg.toLowerCase().includes('deja sortie')) {
+          alert('Fiche déjà sortie pour ce ticket.');
+          return;
+        }
+        alert(msg);
+        return;
+      }
+
       await new Promise((r) => setTimeout(r, 50));
       window.print();
 
-      const newFiche = {
-        id: Date.now(),
-        ticketNumber: `${(() => {
-          const z = String(siteForFiche?.zone || '').trim().toUpperCase();
-          const prefix = z === 'UPCN' ? 'N' : z === 'PNR/KOUILOU' ? 'P' : 'T';
-          return `${prefix}${String(usedTicketNumber).padStart(5, '0')}`;
-        })()}`,
-        siteId: siteForFiche.id,
-        siteName: siteForFiche.nameSite,
-        technician: siteForFiche.technician,
-        dateGenerated: new Date().toISOString(),
-        status: 'En attente',
-        nh1DV: siteForFiche.nh1DV,
-        plannedDate: ficheContext?.plannedDate || null,
-        epvType: ficheContext?.epvType || null,
-        createdBy: authUser?.email || null
-      };
-
-      setFicheHistory((prev) => {
-        const updatedHistory = [newFiche, ...prev];
-        saveFicheHistory(updatedHistory);
-        return updatedHistory;
-      });
+      try {
+        await loadFicheHistory();
+      } catch {
+        // ignore
+      }
 
       if (isAdmin) {
         try {
@@ -2791,6 +2797,8 @@ for (const [key, g] of globalSites.entries()) {
           setBatchFicheIndex(nextIndex);
           setSiteForFiche(batchFicheSites[nextIndex].site);
           setFicheContext({ plannedDate: batchFicheSites[nextIndex].date || null, epvType: batchFicheSites[nextIndex].type || null });
+          setSignatureTypedName('');
+          setSignatureDrawnPng('');
         } else {
           setIsBatchFiche(false);
           setBatchFicheSites([]);
@@ -2799,6 +2807,8 @@ for (const [key, g] of globalSites.entries()) {
           setSiteForFiche(null);
           setBannerImage('');
           setFicheContext(null);
+          setSignatureTypedName('');
+          setSignatureDrawnPng('');
         }
       }
     })();
@@ -2813,7 +2823,13 @@ for (const [key, g] of globalSites.entries()) {
 
     try {
       let usedTicketNumber = ticketNumber;
-      if (isAdmin) {
+
+      if (!String(signatureTypedName || '').trim() || !String(signatureDrawnPng || '').trim().startsWith('data:image/png;base64,')) {
+        alert('Signature responsable obligatoire.');
+        return;
+      }
+
+      if (isAdmin || isManager) {
         try {
           const z = String(siteForFiche?.zone || '').trim();
           const data = await apiFetchJson('/api/meta/ticket-number/next', { method: 'POST', body: JSON.stringify({ zone: z }) });
@@ -2828,6 +2844,19 @@ for (const [key, g] of globalSites.entries()) {
       }
 
       const fileBase = `Fiche_${String(siteForFiche?.nameSite || 'Site').replace(/[^a-z0-9_-]+/gi, '_')}_${new Date().toISOString().slice(0, 10)}`;
+
+      const ticketNumberFull = buildTicketNumberForFiche(usedTicketNumber);
+      try {
+        await persistFicheHistory(ticketNumberFull);
+      } catch (e) {
+        const msg = String(e?.message || 'Erreur serveur.');
+        if (msg.toLowerCase().includes('déjà sortie') || msg.toLowerCase().includes('deja sortie')) {
+          alert('Fiche déjà sortie pour ce ticket.');
+          return;
+        }
+        alert(msg);
+        return;
+      }
 
       await new Promise((r) => setTimeout(r, 80));
 
@@ -2860,31 +2889,13 @@ for (const [key, g] of globalSites.entries()) {
 
       pdf.save(`${fileBase}.pdf`);
 
-      if (isAdmin && Number.isFinite(Number(usedTicketNumber))) {
-        const newFiche = {
-          id: Date.now(),
-          ticketNumber: `${(() => {
-            const z = String(siteForFiche?.zone || '').trim().toUpperCase();
-            const prefix = z === 'UPCN' ? 'N' : z === 'PNR/KOUILOU' ? 'P' : 'T';
-            return `${prefix}${String(usedTicketNumber).padStart(5, '0')}`;
-          })()}`,
-          siteId: siteForFiche.id,
-          siteName: siteForFiche.nameSite,
-          technician: siteForFiche.technician,
-          dateGenerated: new Date().toISOString(),
-          status: 'En attente',
-          nh1DV: siteForFiche.nh1DV,
-          plannedDate: ficheContext?.plannedDate || null,
-          epvType: ficheContext?.epvType || null,
-          createdBy: authUser?.email || null
-        };
+      try {
+        await loadFicheHistory();
+      } catch {
+        // ignore
+      }
 
-        setFicheHistory((prev) => {
-          const updatedHistory = [newFiche, ...prev];
-          saveFicheHistory(updatedHistory);
-          return updatedHistory;
-        });
-
+      if (isAdmin) {
         try {
           await loadTicketNumber();
         } catch {
@@ -2892,12 +2903,14 @@ for (const [key, g] of globalSites.entries()) {
         }
       }
 
-      if (isAdmin && isBatchFiche) {
+      if (isBatchFiche) {
         const nextIndex = batchFicheIndex + 1;
         if (nextIndex < batchFicheSites.length) {
           setBatchFicheIndex(nextIndex);
           setSiteForFiche(batchFicheSites[nextIndex].site);
           setFicheContext({ plannedDate: batchFicheSites[nextIndex].date || null, epvType: batchFicheSites[nextIndex].type || null });
+          setSignatureTypedName('');
+          setSignatureDrawnPng('');
         } else {
           setIsBatchFiche(false);
           setBatchFicheSites([]);
@@ -2906,11 +2919,35 @@ for (const [key, g] of globalSites.entries()) {
           setSiteForFiche(null);
           setBannerImage('');
           setFicheContext(null);
+          setSignatureTypedName('');
+          setSignatureDrawnPng('');
         }
       }
     } catch (e) {
       alert(e?.message || 'Erreur lors de la génération du PDF.');
     }
+  };
+
+  const buildTicketNumberForFiche = (usedTicketNumber) => {
+    const z = String(siteForFiche?.zone || '').trim().toUpperCase();
+    const prefix = z === 'UPCN' ? 'N' : z === 'PNR/KOUILOU' ? 'P' : 'T';
+    return `${prefix}${String(usedTicketNumber).padStart(5, '0')}`;
+  };
+
+  const persistFicheHistory = async (ticketNumberFull) => {
+    await apiFetchJson('/api/fiche-history', {
+      method: 'POST',
+      body: JSON.stringify({
+        ticketNumber: String(ticketNumberFull || '').trim(),
+        siteId: siteForFiche?.id ? String(siteForFiche.id) : '',
+        siteName: String(siteForFiche?.nameSite || '').trim(),
+        technician: String(siteForFiche?.technician || '').trim(),
+        plannedDate: ficheContext?.plannedDate ? String(ficheContext.plannedDate).slice(0, 10) : null,
+        epvType: ficheContext?.epvType ? String(ficheContext.epvType).trim() : null,
+        signatureTypedName: String(signatureTypedName || '').trim(),
+        signatureDrawnPng: String(signatureDrawnPng || '').trim()
+      })
+    });
   };
 
   const goBatchFiche = (delta) => {
@@ -2921,6 +2958,8 @@ for (const [key, g] of globalSites.entries()) {
     setBatchFicheIndex(nextIndex);
     setSiteForFiche(batchFicheSites[nextIndex].site);
     setFicheContext({ plannedDate: batchFicheSites[nextIndex].date || null, epvType: batchFicheSites[nextIndex].type || null });
+    setSignatureTypedName('');
+    setSignatureDrawnPng('');
   };
 
   const handleMarkAsCompleted = (ficheId) => {
@@ -5250,61 +5289,6 @@ for (const [key, g] of globalSites.entries()) {
   }}
 />
 
-        {urgentSites.length > 0 && (
-          <div className="bg-red-50 border-2 border-red-400 rounded-lg p-3 sm:p-4 md:p-6 mb-4 md:mb-6">
-            <h2 className="text-base sm:text-lg md:text-xl font-bold text-red-800 flex items-center gap-2 mb-3 md:mb-4">
-              <AlertCircle size={20} />
-              <span className="hidden sm:inline">ALERTES URGENTES - Vidanges à effectuer ({urgentSites.length})</span>
-              <span className="sm:hidden">URGENT ({urgentSites.length})</span>
-            </h2>
-            <div className="grid gap-2 sm:gap-3">
-              {urgentSites.map(site => {
-                const daysUntil = getDaysUntil(site.epv1);
-                return (
-                  <div key={site.id} className="bg-white rounded-lg p-3 sm:p-4 border-l-4 border-red-600">
-                    <div className="flex flex-col sm:flex-row justify-between gap-2">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-bold text-base sm:text-lg text-gray-800">{site.nameSite}</h3>
-                          <span className="text-xs bg-gray-200 px-2 py-1 rounded">{site.idSite}</span>
-                        </div>
-                        <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                          Technicien: {site.technician} | Régime: {site.regime}H/j | NH updaté: {site.nhEstimated}H | Diff updatée: {site.diffEstimated}H
-                        </p>
-                      </div>
-                      <div className="text-left sm:text-right">
-                        <p className="text-xl sm:text-2xl font-bold text-red-600">
-                          {daysUntil < 0 ? 'RETARD' : daysUntil === 0 ? 'AUJOURD\'HUI' : `${daysUntil}j`}
-                        </p>
-                        <p className="text-xs sm:text-sm text-gray-600">{formatDate(site.epv1)}</p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        <DayDetailsModal
-          open={showDayDetailsModal}
-          selectedDate={selectedDate}
-          selectedDayEvents={selectedDayEvents}
-          setSelectedDayEvents={setSelectedDayEvents}
-          isAdmin={isAdmin}
-          canExportExcel={canExportExcel}
-          canGenerateFiche={canGenerateFiche}
-          exportBusy={exportBusy}
-          handleExportSelectedDayExcel={handleExportSelectedDayExcel}
-          startBatchFicheGeneration={startBatchFicheGeneration}
-          formatDate={formatDate}
-          getDaysUntil={getDaysUntil}
-          onClose={() => {
-            setShowDayDetailsModal(false);
-            setSelectedDayEvents([]);
-          }}
-        />   
-
         {/* Modale Réinitialisation */}
         <ResetConfirmModal
           open={showResetConfirm}
@@ -5339,6 +5323,8 @@ for (const [key, g] of globalSites.entries()) {
             setSiteForFiche(null);
             setBannerImage('');
             setFicheContext(null);
+            setSignatureTypedName('');
+            setSignatureDrawnPng('');
           }}
         />
 
@@ -5348,6 +5334,10 @@ for (const [key, g] of globalSites.entries()) {
             siteForFiche={siteForFiche}
             bannerImage={bannerImage}
             ticketNumber={ticketNumber}
+            signatureTypedName={signatureTypedName}
+            setSignatureTypedName={setSignatureTypedName}
+            signatureDrawnPng={signatureDrawnPng}
+            setSignatureDrawnPng={setSignatureDrawnPng}
             isBatchFiche={isBatchFiche}
             batchFicheIndex={batchFicheIndex}
             batchFicheSites={batchFicheSites}
@@ -5362,6 +5352,8 @@ for (const [key, g] of globalSites.entries()) {
               setBatchFicheSites([]);
               setBatchFicheIndex(0);
               setFicheContext(null);
+              setSignatureTypedName('');
+              setSignatureDrawnPng('');
             }}
             formatDate={formatDate}
           />  

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 
 const FicheModal = ({
@@ -6,6 +6,10 @@ const FicheModal = ({
   siteForFiche,
   bannerImage,
   ticketNumber,
+  signatureTypedName,
+  setSignatureTypedName,
+  signatureDrawnPng,
+  setSignatureDrawnPng,
   isBatchFiche,
   batchFicheIndex,
   batchFicheSites,
@@ -17,12 +21,115 @@ const FicheModal = ({
 }) => {
   if (!open || !siteForFiche) return null;
 
+  const canvasRef = useRef(null);
+  const drawingRef = useRef(false);
+  const lastPointRef = useRef({ x: 0, y: 0 });
+  const [canvasReady, setCanvasReady] = useState(false);
+
+  const signatureOk = useMemo(() => {
+    const nameOk = Boolean(String(signatureTypedName || '').trim());
+    const pngOk = Boolean(String(signatureDrawnPng || '').trim().startsWith('data:image/png;base64,'));
+    return nameOk && pngOk;
+  }, [signatureTypedName, signatureDrawnPng]);
+
   const ticketPrefix = (() => {
     const z = String(siteForFiche?.zone || '').trim().toUpperCase();
     if (z === 'UPCN') return 'N';
     if (z === 'PNR/KOUILOU') return 'P';
     return 'T';
   })();
+
+  const getCanvasPoint = (ev) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const x = (ev.clientX ?? 0) - rect.left;
+    const y = (ev.clientY ?? 0) - rect.top;
+    return { x, y };
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setSignatureDrawnPng('');
+  };
+
+  const commitCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    try {
+      const png = canvas.toDataURL('image/png');
+      setSignatureDrawnPng(png);
+    } catch {
+      setSignatureDrawnPng('');
+    }
+  };
+
+  const startDraw = (ev) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const pt = getCanvasPoint(ev);
+    if (!pt) return;
+    drawingRef.current = true;
+    lastPointRef.current = pt;
+    ev.preventDefault?.();
+  };
+
+  const moveDraw = (ev) => {
+    if (!drawingRef.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const pt = getCanvasPoint(ev);
+    if (!pt) return;
+
+    ctx.strokeStyle = '#111827';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
+    ctx.lineTo(pt.x, pt.y);
+    ctx.stroke();
+    lastPointRef.current = pt;
+    ev.preventDefault?.();
+  };
+
+  const endDraw = (ev) => {
+    if (!drawingRef.current) return;
+    drawingRef.current = false;
+    commitCanvas();
+    ev.preventDefault?.();
+  };
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const w = canvas.clientWidth || 0;
+    const h = canvas.clientHeight || 0;
+    if (w <= 0 || h <= 0) return;
+    canvas.width = Math.max(1, Math.round(w));
+    canvas.height = Math.max(1, Math.round(h));
+    setCanvasReady(true);
+  }, [open, siteForFiche?.id]);
+
+  useEffect(() => {
+    if (!canvasReady) return;
+    if (!signatureDrawnPng) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    };
+    img.src = signatureDrawnPng;
+  }, [canvasReady, signatureDrawnPng]);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
@@ -50,13 +157,15 @@ const FicheModal = ({
             )}
             <button
               onClick={handlePrintFiche}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold w-full sm:w-auto"
+              disabled={!signatureOk}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold w-full sm:w-auto disabled:bg-gray-400"
             >
               Imprimer
             </button>
             <button
               onClick={handleSaveFichePdf}
-              className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold w-full sm:w-auto"
+              disabled={!signatureOk}
+              className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold w-full sm:w-auto disabled:bg-gray-400"
             >
               Enregistrer le PDF
             </button>
@@ -181,9 +290,58 @@ const FicheModal = ({
               </div>
               <div className="border-2 border-gray-800 p-4" style={{ minHeight: '90px' }}>
                 <p className="font-bold mb-3 text-right text-base">SIGNATURE RESPONSABLE</p>
-                <div style={{ height: '45px' }}></div>
+                <div className="flex items-center justify-end" style={{ height: '45px' }}>
+                  {signatureDrawnPng ? (
+                    <img alt="Signature" src={signatureDrawnPng} style={{ height: '40px', maxWidth: '100%' }} />
+                  ) : (
+                    <div style={{ height: '40px', width: '100%' }} />
+                  )}
+                </div>
+                <p className="text-[11px] text-right mt-1">{String(signatureTypedName || '').trim()}</p>
                 <p className="text-xs text-right mt-3">DATE</p>
                 <p className="text-right font-bold">{formatDate(new Date().toISOString())}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 border-t pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Nom du responsable (obligatoire)</label>
+                <input
+                  value={String(signatureTypedName || '')}
+                  onChange={(e) => setSignatureTypedName(String(e.target.value || ''))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  placeholder="Nom et prénom"
+                />
+              </div>
+              <div>
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <label className="block text-sm font-semibold text-gray-700">Signature (obligatoire)</label>
+                  <button
+                    type="button"
+                    onClick={clearCanvas}
+                    className="bg-gray-200 text-gray-800 px-3 py-1 rounded-lg hover:bg-gray-300 font-semibold"
+                  >
+                    Effacer
+                  </button>
+                </div>
+                <div className="border border-gray-300 rounded-lg overflow-hidden bg-white">
+                  <canvas
+                    ref={canvasRef}
+                    style={{ width: '100%', height: '120px', touchAction: 'none' }}
+                    onPointerDown={startDraw}
+                    onPointerMove={moveDraw}
+                    onPointerUp={endDraw}
+                    onPointerCancel={endDraw}
+                    onPointerLeave={endDraw}
+                  />
+                </div>
+                {!signatureOk && (
+                  <div className="text-xs text-red-700 mt-2">
+                    Signature obligatoire (nom + dessin) avant impression / PDF.
+                  </div>
+                )}
               </div>
             </div>
           </div>
