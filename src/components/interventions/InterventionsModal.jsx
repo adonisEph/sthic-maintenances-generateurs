@@ -2,6 +2,7 @@ import React from 'react';
 import { CheckCircle, CheckCircle2, Download, X } from 'lucide-react';
 import CompleteInterventionModal from './CompleteInterventionModal';
 import NhUpdateModal from './NhUpdateModal';
+import { calculateEPVDates, calculateEstimatedNH } from '../../utils/calculations';
 
 const InterventionsModal = ({
   open,
