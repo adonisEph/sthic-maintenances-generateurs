@@ -589,6 +589,12 @@ const InterventionsModal = ({
 
             const siteById = new Map((Array.isArray(sites) ? sites : []).map((s) => [String(s.id), s]));
 
+            const interventionsByKey = new Map(
+              (Array.isArray(interventionsScoped) ? interventionsScoped : [])
+                .filter(Boolean)
+                .map((i) => [getInterventionKey(i.siteId, String(i?.plannedDate || '').slice(0, 10), i.epvType), i])
+            );
+
             const statusRank = (st) => {
               const s = String(st || '');
               if (s === 'sent') return 0;
@@ -620,6 +626,49 @@ const InterventionsModal = ({
               });
               return s;
             })();
+
+            const buildVidangeEventsFromSites = () => {
+              const out = [];
+              const srcSites = Array.isArray(sites) ? sites : [];
+
+              const norm = (d) => {
+                const s = String(d || '').slice(0, 10);
+                return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+              };
+
+              const add = (site, epvType, rawDate) => {
+                if (!site || site.retired) return;
+                const src = norm(rawDate);
+                if (!src) return;
+                const shifted = typeof ymdShiftForWorkdays === 'function' ? ymdShiftForWorkdays(src) : '';
+                const plannedDate = String(shifted || src).slice(0, 10);
+
+                const intervention =
+                  interventionsByKey.get(getInterventionKey(site.id, plannedDate, epvType)) ||
+                  interventionsByKey.get(getInterventionKey(site.id, src, epvType)) ||
+                  null;
+
+                out.push({
+                  id: `epv:${String(site.id)}:${epvType}:${plannedDate}`,
+                  kind: 'EPV',
+                  siteId: String(site.id),
+                  plannedDate,
+                  originalDate: src,
+                  epvType,
+                  technicianName: String(site?.technician || ''),
+                  status: String(intervention?.status || 'planned'),
+                  intervention
+                });
+              };
+
+              srcSites.forEach((site) => {
+                add(site, 'EPV1', site.epv1);
+                add(site, 'EPV2', site.epv2);
+                add(site, 'EPV3', site.epv3);
+              });
+
+              return out;
+            };
 
             const normalizePmType = (v) =>
               String(v || '')
@@ -754,30 +803,25 @@ const InterventionsModal = ({
               return Math.round(ms / (24 * 60 * 60 * 1000));
             };
 
-            const monthItems = month
-              ? list.filter((i) => String(i?.plannedDate || '').slice(0, 7) === month)
-              : list;
+            const allVidangeEvents = buildVidangeEventsFromSites();
+
+            const vidangeByStatus = (() => {
+              const f = String(interventionsStatus || 'all');
+              if (!f || f === 'all') return allVidangeEvents;
+              if (f === 'done') return allVidangeEvents.filter((x) => String(x?.status || '') === 'done');
+              if (f === 'sent') return allVidangeEvents.filter((x) => String(x?.status || '') === 'sent');
+              if (f === 'planned') return allVidangeEvents.filter((x) => String(x?.status || '') !== 'done' && String(x?.status || '') !== 'sent');
+              return allVidangeEvents;
+            })();
 
             const vidangesFiltered =
               technicianInterventionsTab === 'today'
-                ? list.filter((i) => {
-                    const site = siteById.get(String(i?.siteId || '')) || null;
-                    const planned = resolveVidangePlannedDate(i, site, ymdShiftForWorkdays);
-                    return planned === today && String(i?.status || '') !== 'done';
-                  })
+                ? vidangeByStatus.filter((i) => i.plannedDate === today && String(i?.status || '') !== 'done')
                 : technicianInterventionsTab === 'tomorrow'
-                  ? list.filter((i) => {
-                      const site = siteById.get(String(i?.siteId || '')) || null;
-                      const planned = resolveVidangePlannedDate(i, site, ymdShiftForWorkdays);
-                      return planned === tomorrow && String(i?.status || '') !== 'done';
-                    })
+                  ? vidangeByStatus.filter((i) => i.plannedDate === tomorrow && String(i?.status || '') !== 'done')
                   : month
-                    ? list.filter((i) => {
-                        const site = siteById.get(String(i?.siteId || '')) || null;
-                        const planned = resolveVidangePlannedDate(i, site, ymdShiftForWorkdays);
-                        return planned && planned.slice(0, 7) === month;
-                      })
-                    : monthItems;
+                    ? vidangeByStatus.filter((i) => String(i?.plannedDate || '').slice(0, 7) === month)
+                    : vidangeByStatus;
 
             const pmFiltered =
               technicianInterventionsTab === 'today'
@@ -940,13 +984,13 @@ const InterventionsModal = ({
               }
 
               const st = String(it?.status || '');
-              const effectivePlannedDate = resolveVidangePlannedDate(it, site, ymdShiftForWorkdays);
+              const effectivePlannedDate = String(it?.plannedDate || '').slice(0, 10);
               const isOverdue = st !== 'done' && String(effectivePlannedDate || '') < today;
 
               const linkedPm = pmItems.find((p) => {
                 if (!p || p.maintenanceType !== 'fullpmwo') return false;
                 const link = findLinkedVidangeForPm(p);
-                return link && String(link?.id) === String(it?.id);
+                return link && String(link?.id) === String(it?.intervention?.id || it?.id);
               });
               const movedToPm = Boolean(linkedPm);
               const siteId = String(it?.siteId || '').trim();
@@ -1017,14 +1061,18 @@ const InterventionsModal = ({
                       <button
                         onClick={() => {
                           if (isTechnician) {
-                            setCompleteModalIntervention(it);
+                            if (!it?.intervention?.id) {
+                              alert("Intervention non planifiée en base pour cette date. Merci de contacter le Manager.");
+                              return;
+                            }
+                            setCompleteModalIntervention(it.intervention);
                             setCompleteModalSite(site);
                             setCompleteForm({ nhNow: String(site?.nhEstimated ?? ''), doneDate: today });
                             setCompleteFormError('');
                             setCompleteModalOpen(true);
                             return;
                           }
-                          handleCompleteIntervention(it.id);
+                          handleCompleteIntervention(it?.intervention?.id || it.id);
                         }}
                         className="bg-green-600 text-white px-2 py-1.5 rounded-lg hover:bg-green-700 font-semibold text-xs"
                       >
