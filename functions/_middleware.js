@@ -8,6 +8,19 @@ function parseBearerToken(authHeader) {
   return m ? String(m[1] || '').trim() : '';
 }
 
+function parseApiKey(request) {
+  const direct = request.headers.get('X-API-Key');
+  return String(direct || '').trim();
+}
+
+function isValidExternalApiKey(env, apiKey) {
+  const raw = String(env.EXTERNAL_API_KEYS || '').trim();
+  if (!raw) return false;
+  const keys = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  if (keys.length === 0) return false;
+  return keys.includes(String(apiKey || '').trim());
+}
+
 function getAllowedOrigin(request, env) {
   const origin = request.headers.get('Origin');
   if (!origin) return '';
@@ -24,7 +37,7 @@ function withCors(resp, request, env) {
   headers.set('Access-Control-Allow-Origin', allowed);
   headers.set('Vary', 'Origin');
   headers.set('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
-  headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-API-Key');
   headers.set('Access-Control-Max-Age', '86400');
   return new Response(resp.body, { ...resp, headers });
 }
@@ -69,7 +82,7 @@ export async function onRequest(context) {
       headers.set('Access-Control-Allow-Origin', allowed);
       headers.set('Vary', 'Origin');
       headers.set('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
-      headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+      headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-API-Key');
       headers.set('Access-Control-Max-Age', '86400');
     }
     return new Response(null, { status: 204, headers });
@@ -82,6 +95,7 @@ export async function onRequest(context) {
   const bearer = parseBearerToken(request.headers.get('Authorization'));
 
   context.data.user = null;
+  const apiKey = parseApiKey(request);
 
   const secret = env.SESSION_SECRET;
   if (secret) {
@@ -98,6 +112,17 @@ export async function onRequest(context) {
         };
       }
     }
+  }
+
+  // Fallback auth: External API Key
+  if (!context.data.user && apiKey && isValidExternalApiKey(env, apiKey)) {
+    context.data.user = {
+      id: 'external',
+      email: null,
+      role: 'viewer',
+      zone: 'BZV/POOL',
+      technicianName: ''
+    };
   }
 
   const res = await context.next();
