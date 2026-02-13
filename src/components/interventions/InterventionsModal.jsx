@@ -85,6 +85,29 @@ const InterventionsModal = ({
     ? interventionsAll.filter((i) => String(i?.zone || '').trim() === zoneActive)
     : interventionsAll;
 
+  const resolveVidangePlannedDate = (it, site, ymdShiftForWorkdays) => {
+    try {
+      if (!it || String(it?.kind || '') === 'PM') return String(it?.plannedDate || '').slice(0, 10);
+      const t = String(it?.epvType || '').trim().toUpperCase();
+      const raw =
+        t === 'EPV1'
+          ? String(site?.epv1 || '')
+          : t === 'EPV2'
+            ? String(site?.epv2 || '')
+            : t === 'EPV3'
+              ? String(site?.epv3 || '')
+              : '';
+      const src = raw.slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(src)) {
+        const shifted = typeof ymdShiftForWorkdays === 'function' ? ymdShiftForWorkdays(src) : '';
+        return String(shifted || src).slice(0, 10);
+      }
+      return String(it?.plannedDate || '').slice(0, 10);
+    } catch {
+      return String(it?.plannedDate || '').slice(0, 10);
+    }
+  };
+
   React.useEffect(() => {
     if (!open) return;
     if (!isTechnician) return;
@@ -737,10 +760,24 @@ const InterventionsModal = ({
 
             const vidangesFiltered =
               technicianInterventionsTab === 'today'
-                ? list.filter((i) => i.plannedDate === today && String(i?.status || '') !== 'done')
+                ? list.filter((i) => {
+                    const site = siteById.get(String(i?.siteId || '')) || null;
+                    const planned = resolveVidangePlannedDate(i, site, ymdShiftForWorkdays);
+                    return planned === today && String(i?.status || '') !== 'done';
+                  })
                 : technicianInterventionsTab === 'tomorrow'
-                  ? list.filter((i) => i.plannedDate === tomorrow && String(i?.status || '') !== 'done')
-                  : monthItems;
+                  ? list.filter((i) => {
+                      const site = siteById.get(String(i?.siteId || '')) || null;
+                      const planned = resolveVidangePlannedDate(i, site, ymdShiftForWorkdays);
+                      return planned === tomorrow && String(i?.status || '') !== 'done';
+                    })
+                  : month
+                    ? list.filter((i) => {
+                        const site = siteById.get(String(i?.siteId || '')) || null;
+                        const planned = resolveVidangePlannedDate(i, site, ymdShiftForWorkdays);
+                        return planned && planned.slice(0, 7) === month;
+                      })
+                    : monthItems;
 
             const pmFiltered =
               technicianInterventionsTab === 'today'
@@ -776,8 +813,14 @@ const InterventionsModal = ({
                   const db = isDone(b) ? 1 : 0;
                   if (da !== db) return da - db;
                 }
-                const da = String(a?.plannedDate || '');
-                const db = String(b?.plannedDate || '');
+                const sa = String(a?.kind || '') === 'PM' ? siteById.get(String(a?.siteId || '')) || null : siteById.get(String(a?.siteId || '')) || null;
+                const sb = String(b?.kind || '') === 'PM' ? siteById.get(String(b?.siteId || '')) || null : siteById.get(String(b?.siteId || '')) || null;
+                const da = String(a?.kind || '') === 'PM'
+                  ? String(a?.plannedDate || '')
+                  : resolveVidangePlannedDate(a, sa, ymdShiftForWorkdays);
+                const db = String(b?.kind || '') === 'PM'
+                  ? String(b?.plannedDate || '')
+                  : resolveVidangePlannedDate(b, sb, ymdShiftForWorkdays);
                 const c = da.localeCompare(db);
                 if (c !== 0) return c;
                 const ra = statusRank(a?.status);
@@ -897,7 +940,8 @@ const InterventionsModal = ({
               }
 
               const st = String(it?.status || '');
-              const isOverdue = st !== 'done' && String(it?.plannedDate || '') < today;
+              const effectivePlannedDate = resolveVidangePlannedDate(it, site, ymdShiftForWorkdays);
+              const isOverdue = st !== 'done' && String(effectivePlannedDate || '') < today;
 
               const linkedPm = pmItems.find((p) => {
                 if (!p || p.maintenanceType !== 'fullpmwo') return false;
@@ -942,7 +986,7 @@ const InterventionsModal = ({
                     </div>
                     {site?.idSite && <div className="text-xs text-gray-600">ID: {site.idSite}</div>}
                     <div className="text-xs text-gray-600">
-                      {it.epvType} • {formatDate(it.plannedDate)} • {it.technicianName}
+                      {it.epvType} • {formatDate(effectivePlannedDate)} • {it.technicianName}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -952,10 +996,7 @@ const InterventionsModal = ({
                         RETARD
                       </span>
                     )}
-                    {(() => {
-                      if (!focusVidange && movedToPm) return null;
-                      return (
-                        isTechnician && site && (
+                    {!(!focusVidange && movedToPm) && isTechnician && site && (
                       <button
                         type="button"
                         onClick={() => {
@@ -971,13 +1012,8 @@ const InterventionsModal = ({
                       >
                         Mettre à jour NH
                       </button>
-                        )
-                      );
-                    })()}
-                    {(() => {
-                      if (!focusVidange && movedToPm) return null;
-                      return (
-                        st !== 'done' && (isAdmin || isTechnician) && (
+                    )}
+                    {!(!focusVidange && movedToPm) && st !== 'done' && (isAdmin || isTechnician) && (
                       <button
                         onClick={() => {
                           if (isTechnician) {
@@ -994,9 +1030,7 @@ const InterventionsModal = ({
                       >
                         Marquer effectuée
                       </button>
-                        )
-                      );
-                    })()}
+                    )}
                   </div>
                 </div>
               );
@@ -1014,53 +1048,56 @@ const InterventionsModal = ({
                 )}
                 {items.length === 0 ? (
                   <div className="text-sm text-gray-600">Aucune intervention.</div>
+                ) : technicianInterventionsTab !== 'month' ? (
+                  <div className="space-y-2">
+                    {items.map((it) => {
+                      const el = renderItem(it);
+                      if (!el) return null;
+                      return (
+                        <React.Fragment key={`row:${String(it?.kind || '')}:${String(it?.id || '')}`}>
+                          {el}
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
                 ) : (
-                  (() => {
-  if (technicianInterventionsTab !== 'month') {
-    return (
-      <div className="space-y-2">
-        {items.map((it) => {
-          const el = renderItem(it);
-          if (!el) return null;
-          return (
-            <React.Fragment key={`row:${String(it?.kind || '')}:${String(it?.id || '')}`}>
-              {el}
-            </React.Fragment>
-          );
-        })}
-      </div>
-    );
-  }
+                  <div className="space-y-2">
+                    {items.reduce(
+                      (acc, it) => {
+                        const el = renderItem(it);
+                        if (!el) return acc;
 
-  const out = [];
-  let lastDate = '';
+                        const kind = String(it?.kind || '');
+                        const site = siteById.get(String(it?.siteId || '')) || null;
+                        const d =
+                          kind === 'PM'
+                            ? String(it?.plannedDate || '').slice(0, 10)
+                            : resolveVidangePlannedDate(it, site, ymdShiftForWorkdays);
 
-  items.forEach((it) => {
-    const d = String(it?.plannedDate || '').slice(0, 10);
-    const el = renderItem(it);
-    if (!el) return;
+                        const lastDate = acc._lastDate || '';
+                        if (d && d !== lastDate) {
+                          acc._lastDate = d;
+                          acc.nodes.push(
+                            <div
+                              key={`month_header:${d}`}
+                              className="mt-4 mb-2 text-sm font-extrabold text-slate-800 bg-slate-100 border border-slate-200 px-4 py-3 rounded-lg"
+                            >
+                              {formatDate(d)}
+                            </div>
+                          );
+                        }
 
-    if (d && d !== lastDate) {
-      lastDate = d;
-      out.push(
-        <div
-          key={`month_header:${d}`}
-          className="mt-4 mb-2 text-sm font-extrabold text-slate-800 bg-slate-100 border border-slate-200 px-4 py-3 rounded-lg"
-        >
-          {formatDate(d)}
-        </div>
-      );
-    }
+                        acc.nodes.push(
+                          <React.Fragment key={`month_row:${kind}:${String(it?.id || '')}:${d}`}>
+                            {el}
+                          </React.Fragment>
+                        );
 
-    out.push(
-      <React.Fragment key={`month_row:${String(it?.kind || '')}:${String(it?.id || '')}:${d}`}>
-        {el}
-      </React.Fragment>
-    );
-  });
-
-  return <div className="space-y-2">{out}</div>;
-})()
+                        return acc;
+                      },
+                      { nodes: [], _lastDate: '' }
+                    ).nodes}
+                  </div>
                 )}
               </div>
             );

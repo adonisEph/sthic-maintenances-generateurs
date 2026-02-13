@@ -5311,6 +5311,24 @@ for (const [key, g] of globalSites.entries()) {
           />
         )}
 
+        <DayDetailsModal
+          open={showDayDetailsModal}
+          selectedDate={selectedDate}
+          selectedDayEvents={selectedDayEvents}
+          setSelectedDayEvents={setSelectedDayEvents}
+          isAdmin={isAdmin}
+          canExportExcel={canExportExcel}
+          canGenerateFiche={canGenerateFiche}
+          exportBusy={exportBusy}
+          handleExportSelectedDayExcel={handleExportSelectedDayExcel}
+          startBatchFicheGeneration={startBatchFicheGeneration}
+          formatDate={formatDate}
+          getDaysUntil={getDaysUntil}
+          onClose={() => {
+            setShowDayDetailsModal(false);
+          }}
+        />
+
         {/* Modale Upload Bannière */}
         <UploadBannerModal
           open={showBannerUpload}
