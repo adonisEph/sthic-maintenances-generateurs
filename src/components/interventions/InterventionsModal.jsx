@@ -288,7 +288,7 @@ const InterventionsModal = ({
                   const pmTomorrowCount = pmAll.filter((p) => p.plannedDate === tomorrow && !p.isDone).length;
 
                   const pmMonthAll = month ? pmAll.filter((p) => String(p?.plannedDate || '').slice(0, 7) === month) : pmAll;
-                  const pmMonthCount = pmMonthAll.length;
+                  const pmMonthCount = pmMonthAll.filter((p) => !p.isDone).length;
 
                   // VIDANGES: basées sur les EPV calculées depuis les sites (même source que l'affichage)
                   const interventionsByKey = new Map(
@@ -329,18 +329,33 @@ const InterventionsModal = ({
                     srcSites.forEach((site) => {
                       const techName = String(authUser?.technicianName || '').trim();
                       if (techName && String(site?.technician || '').trim() !== techName) return;
-                      add(site, 'EPV1', site?.epv1);
-                      add(site, 'EPV2', site?.epv2);
-                      add(site, 'EPV3', site?.epv3);
-                    });
 
+                      const epv1 = norm(site?.epv1);
+                      const epv2 = norm(site?.epv2);
+                      const epv3 = norm(site?.epv3);
+
+                      if (epv1 || epv2 || epv3) {
+                        add(site, 'EPV1', epv1);
+                        add(site, 'EPV2', epv2);
+                        add(site, 'EPV3', epv3);
+                        return;
+                      }
+
+                      const nhEstimated = calculateEstimatedNH(site?.nh2A, site?.dateA, site?.regime);
+                      const epvDates = calculateEPVDates(site?.regime, site?.dateA, site?.nh1DV, nhEstimated);
+                      add(site, 'EPV1', epvDates?.epv1);
+                      add(site, 'EPV2', epvDates?.epv2);
+                      add(site, 'EPV3', epvDates?.epv3);
+                    });
                     return out;
                   };
 
                   const vidAll = buildVidangeEventsFromSites().filter((v) => !isRetiredSiteId(v?.siteId));
                   const vidToday = vidAll.filter((v) => v.plannedDate === today && String(v?.status || '') !== 'done');
                   const vidTomorrow = vidAll.filter((v) => v.plannedDate === tomorrow && String(v?.status || '') !== 'done');
-                  const vidMonth = month ? vidAll.filter((v) => String(v?.plannedDate || '').slice(0, 7) === month) : vidAll;
+                  const vidMonth = month
+                    ? vidAll.filter((v) => String(v?.plannedDate || '').slice(0, 7) === month && String(v?.status || '') !== 'done')
+                    : vidAll.filter((v) => String(v?.status || '') !== 'done');
 
                   const todayCount = vidToday.length + pmTodayCount;
                   const tomorrowCount = vidTomorrow.length + pmTomorrowCount;
