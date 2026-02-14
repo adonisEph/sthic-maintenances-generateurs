@@ -1,6 +1,7 @@
 import { ensureAdminUser } from '../_utils/db.js';
 import { json, readJson, isoNow, isSuperAdmin, userZone } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
+import { calculateDiffNHs, calculateEstimatedNH, calculateRegime } from '../_utils/calc.js';
 
 function mapSiteRow(row) {
   if (!row) return null;
@@ -68,6 +69,31 @@ export async function onRequestPatch({ request, env, data, params }) {
       seuil: body.seuil != null ? Number(body.seuil) : existing.seuil,
       retired: body.retired != null ? (body.retired ? 1 : 0) : existing.retired
     };
+
+    if (
+      body.nh1DV != null ||
+      body.dateDV != null ||
+      body.nh2A != null ||
+      body.dateA != null ||
+      body.regime == null ||
+      body.nhEstimated == null ||
+      body.diffNHs == null ||
+      body.diffEstimated == null
+    ) {
+      if (Number.isFinite(next.nh1DV) && Number.isFinite(next.nh2A) && next.nh2A < next.nh1DV) {
+        return json({ error: "Le compteur (NH) ne peut pas être inférieur au NH1 DV du site." }, { status: 400 });
+      }
+
+      const regime = calculateRegime(next.nh1DV, next.nh2A, next.dateDV, next.dateA);
+      const nhEstimated = calculateEstimatedNH(next.nh2A, next.dateA, regime);
+      const diffNHs = calculateDiffNHs(next.nh1DV, next.nh2A);
+      const diffEstimated = calculateDiffNHs(next.nh1DV, nhEstimated);
+
+      next.regime = regime;
+      next.nhEstimated = nhEstimated;
+      next.diffNHs = diffNHs;
+      next.diffEstimated = diffEstimated;
+    }
 
     await env.DB.prepare(
       'UPDATE sites SET name_site = ?, id_site = ?, technician = ?, generateur = ?, capacite = ?, kit_vidange = ?, nh1_dv = ?, date_dv = ?, nh2_a = ?, date_a = ?, regime = ?, nh_estimated = ?, diff_nhs = ?, diff_estimated = ?, seuil = ?, retired = ?, updated_at = ? WHERE id = ?'

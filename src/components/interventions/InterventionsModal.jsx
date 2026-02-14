@@ -1179,7 +1179,9 @@ const InterventionsModal = ({
                             }
                             setCompleteModalIntervention(it.intervention);
                             setCompleteModalSite(site);
-                            setCompleteForm({ nhNow: String(site?.nhEstimated ?? ''), doneDate: today });
+                            const offset = Number(site?.nhOffset || 0);
+                            const raw = Math.max(0, Number(site?.nh2A || 0) - offset);
+                            setCompleteForm({ nhNow: String(Math.trunc(raw)), doneDate: today });
                             setCompleteFormError('');
                             setCompleteModalOpen(true);
                             return;

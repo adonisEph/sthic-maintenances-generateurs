@@ -120,36 +120,25 @@ export const useSites = ({ sites, setSites }) => {
       );
       if (!ok) return;
       const nh2 = parseInt(formData.nh2A);
-      const regime = calculateRegime(site.nh1DV, nh2, site.dateDV, formData.dateA);
-      const nhEstimated = calculateEstimatedNH(nh2, formData.dateA, regime);
-      const diffNHs = calculateDiffNHs(site.nh1DV, nh2);
-      const diffEstimated = calculateDiffNHs(site.nh1DV, nhEstimated);
-
-      const data = await apiFetchJson(`/api/sites/${site.id}`, {
-        method: 'PATCH',
+      const data = await apiFetchJson(`/api/sites/${site.id}/nh`, {
+        method: 'POST',
         body: JSON.stringify({
-          nh2A: nh2,
-          dateA: formData.dateA,
-          regime,
-          nhEstimated,
-          diffNHs,
-          diffEstimated,
-          retired: formData.retired
+          readingDate: formData.dateA,
+          nhValue: nh2,
+          reset: false
         })
       });
 
-      if (data?.site?.id) {
-        setSites(
-          (Array.isArray(sites) ? sites : []).map((s) =>
-            String(s.id) === String(data.site.id) ? data.site : s
-          )
-        );
+      await loadData();
+      if (data?.isReset) {
+        alert('⚠️ Reset détecté (compteur revenu à 0 ou inférieur). Historique enregistré et calculs recalculés.');
+      } else {
+        alert('✅ NH mis à jour.');
       }
 
       setShowUpdateForm(false);
       setSelectedSite(null);
       resetForm();
-      alert('✅ Site mis à jour.');
     } catch (e) {
       alert(e?.message || 'Erreur serveur.');
     }

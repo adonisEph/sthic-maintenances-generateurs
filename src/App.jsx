@@ -2,6 +2,7 @@
 import { AlertCircle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users, Menu, ChevronLeft, Trash2, RotateCcw } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 import { useStorage } from './hooks/useStorage';
 import PmModal from './components/PmModal';
 import CalendarModal from './components/CalendarModal';
@@ -2533,32 +2534,28 @@ for (const [key, g] of globalSites.entries()) {
       );
       if (!ok) return;
       const nh2 = parseInt(formData.nh2A);
-      const regime = calculateRegime(site.nh1DV, nh2, site.dateDV, formData.dateA);
-      const nhEstimated = calculateEstimatedNH(nh2, formData.dateA, regime);
-      const diffNHs = calculateDiffNHs(site.nh1DV, nh2);
-      const diffEstimated = calculateDiffNHs(site.nh1DV, nhEstimated);
 
-      const data = await apiFetchJson(`/api/sites/${site.id}`, {
-        method: 'PATCH',
+      const data = await apiFetchJson(`/api/sites/${site.id}/nh`, {
+        method: 'POST',
         body: JSON.stringify({
-          nh2A: nh2,
-          dateA: formData.dateA,
-          regime,
-          nhEstimated,
-          diffNHs,
-          diffEstimated,
-          retired: formData.retired
+          readingDate: formData.dateA,
+          nhValue: nh2,
+          reset: false
         })
       });
 
-      if (data?.site?.id) {
-        setSites(sites.map((s) => (String(s.id) === String(data.site.id) ? data.site : s)));
+      await loadData();
+      await loadInterventions();
+
+      if (data?.isReset) {
+        alert('⚠️ Reset détecté (compteur revenu à 0 ou inférieur). Historique enregistré et calculs recalculés.');
+      } else {
+        alert('✅ NH mis à jour.');
       }
 
       setShowUpdateForm(false);
       setSelectedSite(null);
       setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
-      alert('✅ Site mis à jour.');
     } catch (e) {
       alert(e?.message || 'Erreur serveur.');
     }
@@ -2620,6 +2617,7 @@ for (const [key, g] of globalSites.entries()) {
   const handleDeleteSite = async () => {
     try {
       await apiFetchJson(`/api/sites/${siteToDelete.id}`, { method: 'DELETE' });
+
       const updatedSites = sites.filter(site => String(site.id) !== String(siteToDelete.id));
       setSites(updatedSites);
       setShowDeleteConfirm(false);
@@ -4175,11 +4173,11 @@ for (const [key, g] of globalSites.entries()) {
           String(i.sentAt) > String(technicianSeenSentAt || '')
       ).length
     : 0;
-  const technicianPendingTasksCount = (() => {
-  if (!isTechnician) return 0;
+  const technicianTasksCount = (() => {
+  if (!isTechnician) return { total: 0, remaining: 0 };
 
   const month = String(interventionsMonth || '').trim();
-  if (!/^\d{4}-\d{2}$/.test(month)) return 0;
+  if (!/^\d{4}-\d{2}$/.test(month)) return { total: 0, remaining: 0 };
 
   const normalizePmType = (v) =>
     String(v || '')
@@ -4225,10 +4223,53 @@ for (const [key, g] of globalSites.entries()) {
     return Boolean(s?.retired);
   };
 
-  const vidangesInMonth = (Array.isArray(interventions) ? interventions : [])
-  .filter(Boolean)
-  .filter((i) => String(i?.plannedDate || '').slice(0, 7) === month)
-  .filter((i) => !isRetiredSiteId(i?.siteId));
+  const interventionsByKey = new Map(
+    (Array.isArray(interventions) ? interventions : [])
+      .filter(Boolean)
+      .map((i) => [getInterventionKey(i.siteId, String(i?.plannedDate || '').slice(0, 10), i.epvType), i])
+  );
+
+  const buildVidangeEventsFromSites = () => {
+    const out = [];
+    const list = Array.isArray(sites) ? sites : [];
+    const norm = (d) => {
+      const s = String(d || '').slice(0, 10);
+      return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+    };
+
+    list
+      .filter((site) => site && !site.retired)
+      .forEach((site) => {
+        const pushOne = (epvType, rawDate) => {
+          const src = norm(rawDate);
+          if (!src) return;
+          const shifted = typeof ymdShiftForWorkdays === 'function' ? ymdShiftForWorkdays(src) : '';
+          const plannedDate = String(shifted || src).slice(0, 10);
+          if (String(plannedDate).slice(0, 7) !== month) return;
+
+          const intervention =
+            interventionsByKey.get(getInterventionKey(site.id, plannedDate, epvType)) ||
+            interventionsByKey.get(getInterventionKey(site.id, src, epvType)) ||
+            null;
+
+          out.push({
+            id: intervention?.id || `${site.id}:${epvType}:${plannedDate}`,
+            siteId: String(site.id),
+            plannedDate,
+            epvType,
+            status: String(intervention?.status || 'planned')
+          });
+        };
+
+        pushOne('EPV1', site.epv1);
+        pushOne('EPV2', site.epv2);
+        pushOne('EPV3', site.epv3);
+      });
+
+    return out;
+  };
+
+  const vidangesInMonth = buildVidangeEventsFromSites().filter((v) => !isRetiredSiteId(v?.siteId));
 
   const pendingEpv23BySiteId = (() => {
     const s = new Set();
@@ -4248,7 +4289,7 @@ for (const [key, g] of globalSites.entries()) {
     .filter((p) => String(p?.plannedDate || '').slice(0, 7) === month)
     .filter((p) => {
       const mt = normalizePmType(p?.maintenanceType);
-      return mt === 'fullpmwo' || mt === 'dgservice';
+      return mt === 'fullpmwo';
     })
     .filter((p) => !isRetiredSiteId(p?.siteId));
 
@@ -4290,7 +4331,6 @@ for (const [key, g] of globalSites.entries()) {
   pendingPm.forEach((p) => {
     const linked = findLinkedEpv1ForPm(p);
     if (!linked) return;
-    if (String(linked?.status || '') === 'done') return;
 
     const linkedOverdue = String(linked?.plannedDate || '').slice(0, 10) < today;
     const siteId = String(p?.siteId || '').trim();
@@ -4301,6 +4341,12 @@ for (const [key, g] of globalSites.entries()) {
     }
   });
 
+  const vidangesTotal = vidangesInMonth
+    .filter((i) => {
+      if (String(i?.epvType || '').trim().toUpperCase() !== 'EPV1') return true;
+      return !hiddenVidangeIds.has(String(i?.id || ''));
+    });
+
   const pendingVidanges = vidangesInMonth
     .filter((i) => String(i?.status || '') !== 'done')
     .filter((i) => {
@@ -4308,8 +4354,18 @@ for (const [key, g] of globalSites.entries()) {
       return !hiddenVidangeIds.has(String(i?.id || ''));
     });
 
-  return pendingPm.length + pendingVidanges.length;
+  const pmTotal = pmInMonth.length;
+  const pmRemaining = pendingPm.length;
+  const vidTotal = vidangesTotal.length;
+  const vidRemaining = pendingVidanges.length;
+
+  return {
+    total: pmTotal + vidTotal,
+    remaining: pmRemaining + vidRemaining
+  };
 })();
+
+  const technicianPendingTasksCount = technicianTasksCount.remaining;
 
   useEffect(() => {
     if (isTechnician && authUser?.technicianName) {

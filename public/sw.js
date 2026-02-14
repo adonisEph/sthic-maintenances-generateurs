@@ -32,6 +32,10 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/')) return;
+    if (url.pathname === '/signature_responsable.png') {
+    event.respondWith(fetch(req));
+    return;
+  }
 
   if (req.mode === 'navigate') {
     event.respondWith(

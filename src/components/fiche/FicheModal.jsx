@@ -34,7 +34,7 @@ const FicheModal = ({
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/signature_responsable.png', { cache: 'no-cache' });
+        const res = await fetch(`/signature_responsable.png?v=${Date.now()}`, { cache: 'no-store' });
         if (!res.ok) return;
         const blob = await res.blob();
         const reader = new FileReader();
