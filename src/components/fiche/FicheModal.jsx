@@ -64,31 +64,6 @@ const FicheModal = ({
     return 'T';
   })();
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const w = canvas.clientWidth || 0;
-    const h = canvas.clientHeight || 0;
-    if (w <= 0 || h <= 0) return;
-    canvas.width = Math.max(1, Math.round(w));
-    canvas.height = Math.max(1, Math.round(h));
-    setCanvasReady(true);
-  }, [open, siteForFiche?.id]);
-
-  useEffect(() => {
-    if (!canvasReady) return;
-    if (!signatureDrawnPng) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
-    const img = new Image();
-    img.onload = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    };
-    img.src = signatureDrawnPng;
-  }, [canvasReady, signatureDrawnPng]);
-
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full my-8">
