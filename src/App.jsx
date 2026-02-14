@@ -2857,7 +2857,7 @@ for (const [key, g] of globalSites.entries()) {
     try {
       let usedTicketNumber = ticketNumber;
 
-      if (!String(signatureTypedName || '').trim() || !String(signatureDrawnPng || '').trim().startsWith('data:image/png;base64,')) {
+      if (!String(signatureDrawnPng || '').trim().startsWith('data:image/png;base64,')) {
         alert('Signature responsable obligatoire.');
         return;
       }
