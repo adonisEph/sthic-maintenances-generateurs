@@ -21,10 +21,6 @@ const FicheModal = ({
 }) => {
   if (!open || !siteForFiche) return null;
 
-  const canvasRef = useRef(null);
-  const drawingRef = useRef(false);
-  const lastPointRef = useRef({ x: 0, y: 0 });
-  const [canvasReady, setCanvasReady] = useState(false);
 
   const signatureOk = useMemo(() => {
     const pngOk = Boolean(String(signatureDrawnPng || '').trim().startsWith('data:image/png;base64,'));
@@ -67,73 +63,6 @@ const FicheModal = ({
     if (z === 'PNR/KOUILOU') return 'P';
     return 'T';
   })();
-
-  const getCanvasPoint = (ev) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return null;
-    const rect = canvas.getBoundingClientRect();
-    const x = (ev.clientX ?? 0) - rect.left;
-    const y = (ev.clientY ?? 0) - rect.top;
-    return { x, y };
-  };
-
-  const clearCanvas = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    setSignatureDrawnPng('');
-  };
-
-  const commitCanvas = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    try {
-      const png = canvas.toDataURL('image/png');
-      setSignatureDrawnPng(png);
-    } catch {
-      setSignatureDrawnPng('');
-    }
-  };
-
-  const startDraw = (ev) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const pt = getCanvasPoint(ev);
-    if (!pt) return;
-    drawingRef.current = true;
-    lastPointRef.current = pt;
-    ev.preventDefault?.();
-  };
-
-  const moveDraw = (ev) => {
-    if (!drawingRef.current) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const pt = getCanvasPoint(ev);
-    if (!pt) return;
-
-    ctx.strokeStyle = '#111827';
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
-    ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
-    ctx.lineTo(pt.x, pt.y);
-    ctx.stroke();
-    lastPointRef.current = pt;
-    ev.preventDefault?.();
-  };
-
-  const endDraw = (ev) => {
-    if (!drawingRef.current) return;
-    drawingRef.current = false;
-    commitCanvas();
-    ev.preventDefault?.();
-  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -331,37 +260,25 @@ const FicheModal = ({
               </div>
             </div>
           </div>
-
+                  
           <div className="mt-6 border-t pt-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div />
               <div>
                 <div className="flex items-center justify-between gap-3 mb-2">
                   <label className="block text-sm font-semibold text-gray-700">Signature (obligatoire)</label>
-                  <button
-                    type="button"
-                    onClick={clearCanvas}
-                    className="bg-gray-200 text-gray-800 px-3 py-1 rounded-lg hover:bg-gray-300 font-semibold"
-                  >
-                    Effacer
-                  </button>
                 </div>
                 <div className="border border-gray-300 rounded-lg overflow-hidden bg-white">
-                  <canvas
-                    ref={canvasRef}
-                    style={{ width: '100%', height: '120px', touchAction: 'none' }}
-                    onPointerDown={startDraw}
-                    onPointerMove={moveDraw}
-                    onPointerUp={endDraw}
-                    onPointerCancel={endDraw}
-                    onPointerLeave={endDraw}
-                  />
+                  {signatureDrawnPng ? (
+                    <div className="text-xs text-emerald-700 mt-2 font-semibold">
+                      Signature responsable chargée (PNG).
+                    </div>
+                  ) : (
+                    <div className="text-xs text-red-700 mt-2">
+                      Signature responsable (PNG) introuvable. Vérifier le fichier <code>/signature_responsable.png</code>.
+                    </div>
+                  )}
                 </div>
-                {!signatureOk && (
-                  <div className="text-xs text-red-700 mt-2">
-                    Signature obligatoire (nom + dessin) avant impression / PDF.
-                  </div>
-                )}
               </div>
             </div>
           </div>
