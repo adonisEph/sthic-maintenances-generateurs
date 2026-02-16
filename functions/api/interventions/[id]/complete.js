@@ -65,7 +65,7 @@ export async function onRequestPost({ request, env, data, params }) {
     const nextDateA = doneDate;
 
     // Recalcul métier (régime + estimations + diffs)
-    const nextRegime = calculateRegime(site.nh1_dv, nextNh2A, site.date_dv, nextDateA);
+    const nextRegime = Number.isFinite(Number(site.regime)) ? Number(site.regime) : 0;
     const nextNhEstimated = calculateEstimatedNH(nextNh2A, nextDateA, nextRegime);
     const nextDiffNHs = calculateDiffNHs(nextNh1DV, nextNh2A); // = 0
     const nextDiffEstimated = calculateDiffNHs(nextNh1DV, nextNhEstimated);

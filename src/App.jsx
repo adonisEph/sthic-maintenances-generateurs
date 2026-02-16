@@ -4238,8 +4238,11 @@ for (const [key, g] of globalSites.entries()) {
     };
 
     list
-      .filter((site) => site && !site.retired)
+      .filter((site) => site)
       .forEach((site) => {
+        const updated = typeof getUpdatedSite === 'function' ? getUpdatedSite(site) : site;
+        if (updated?.retired) return;
+
         const pushOne = (epvType, rawDate) => {
           const src = norm(rawDate);
           if (!src) return;
@@ -4261,9 +4264,9 @@ for (const [key, g] of globalSites.entries()) {
           });
         };
 
-        pushOne('EPV1', site.epv1);
-        pushOne('EPV2', site.epv2);
-        pushOne('EPV3', site.epv3);
+        pushOne('EPV1', updated?.epv1);
+        pushOne('EPV2', updated?.epv2);
+        pushOne('EPV3', updated?.epv3);
       });
 
     return out;

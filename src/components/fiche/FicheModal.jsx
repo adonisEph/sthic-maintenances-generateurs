@@ -238,11 +238,15 @@ const FicheModal = ({
               </div>
               <div className="border-2 border-gray-800 p-4" style={{ minHeight: '90px' }}>
                 <p className="font-bold mb-3 text-right text-base">SIGNATURE RESPONSABLE</p>
-                <div className="flex items-center justify-end" style={{ height: '45px' }}>
+                <div className="flex items-center justify-end" style={{ height: '65px' }}>
                   {signatureDrawnPng ? (
-                    <img alt="Signature" src={signatureDrawnPng} style={{ height: '40px', maxWidth: '100%' }} />
+                    <img
+                      alt="Signature"
+                      src={signatureDrawnPng}
+                      style={{ height: '80px', width: '260px', maxWidth: '100%', objectFit: 'contain' }}
+                    />
                   ) : (
-                    <div style={{ height: '40px', width: '100%' }} />
+                    <div style={{ height: '60px', width: '100%' }} />
                   )}
                 </div>
                 <p className="text-xs text-right mt-3">DATE</p>
