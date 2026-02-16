@@ -10,6 +10,9 @@ const InterventionsModal = ({
   isAdmin,
   isViewer,
   authUser,
+  interventionsUiRev,
+  bumpInterventionsUiRev,
+  technicianPendingTasksCount,
   interventionsZone,
   setInterventionsZone,
   showZoneFilter,
@@ -152,9 +155,9 @@ const InterventionsModal = ({
             <div className="min-w-0">
               <h2 className="text-base sm:text-xl font-bold flex items-center gap-2 min-w-0">
                 <span className="min-w-0 truncate">{isTechnician ? 'Mes interventions' : 'Interventions'}</span>
-                {isTechnician && technicianUnseenSentCount > 0 && (
+                {isTechnician && Number(technicianPendingTasksCount || 0) > 0 && (
                   <span className="bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0">
-                    {technicianUnseenSentCount}
+                    {Number(technicianPendingTasksCount || 0)}
                   </span>
                 )}
                 {isViewer && (
@@ -1225,7 +1228,12 @@ const InterventionsModal = ({
             };
 
             return (
-              <div className="space-y-3" key={`tech_tab:${String(technicianInterventionsTab)}:${String(interventionsMonth || '')}`}>
+              <div
+                className="space-y-3"
+                key={`tech_tab:${String(technicianInterventionsTab)}:${String(interventionsMonth || '')}:${String(
+                  interventionsUiRev || 0
+                )}`}
+              >
                 {pmError && (
                   <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">
                     {pmError}
@@ -1405,6 +1413,7 @@ const InterventionsModal = ({
                 });
                 await loadData();
                 await loadInterventions();
+                if (typeof bumpInterventionsUiRev === 'function') bumpInterventionsUiRev();
                 if (data?.isReset) {
                   alert('⚠️ Reset détecté (compteur revenu à 0 ou inférieur). Historique enregistré et calculs recalculés.');
                 } else {

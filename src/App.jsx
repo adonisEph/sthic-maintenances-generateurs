@@ -63,6 +63,7 @@ const GeneratorMaintenanceApp = () => {
   const [scoringMonth, setScoringMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [scoringDetails, setScoringDetails] = useState({ open: false, title: '', kind: '', items: [] });
   const [interventions, setInterventions] = useState([]);
+  const [interventionsUiRev, setInterventionsUiRev] = useState(0);
   const [interventionsMonth, setInterventionsMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [interventionsStatus, setInterventionsStatus] = useState('all');
   const [interventionsTechnicianUserId, setInterventionsTechnicianUserId] = useState('all');
@@ -800,7 +801,8 @@ const GeneratorMaintenanceApp = () => {
     try {
       const { from, to } = monthRange(yyyyMm);
       const qs = new URLSearchParams({ from, to });
-      if (status && status !== 'all') qs.set('status', status);
+      const effectiveStatus = isTechnician ? 'all' : status;
+      if (effectiveStatus && effectiveStatus !== 'all') qs.set('status', effectiveStatus);
       if ((isAdmin || isManager) && technicianUserId && technicianUserId !== 'all') {
         qs.set('technicianUserId', String(technicianUserId));
       }
@@ -812,6 +814,10 @@ const GeneratorMaintenanceApp = () => {
     } finally {
       setInterventionsBusy(false);
     }
+  };
+
+  const bumpInterventionsUiRev = () => {
+    setInterventionsUiRev((v) => Number(v || 0) + 1);
   };
 
   const getInterventionKey = (siteId, plannedDate, epvType) => {
@@ -916,6 +922,7 @@ const GeneratorMaintenanceApp = () => {
       await loadData();
       await loadInterventions();
       await loadFicheHistory();
+      bumpInterventionsUiRev();
       alert('✅ Intervention marquée comme effectuée.');
     } catch (e) {
       alert(e?.message || 'Erreur serveur.');
@@ -5203,6 +5210,9 @@ for (const [key, g] of globalSites.entries()) {
             isAdmin={isAdmin}
             isViewer={isViewer}
             authUser={authUser}
+            interventionsUiRev={interventionsUiRev}
+            bumpInterventionsUiRev={bumpInterventionsUiRev}
+            technicianPendingTasksCount={technicianPendingTasksCount}
             technicianUnseenSentCount={technicianUnseenSentCount}
             technicianSeenSentAt={technicianSeenSentAt}
             setTechnicianSeenSentAt={setTechnicianSeenSentAt}
@@ -5264,343 +5274,44 @@ for (const [key, g] of globalSites.entries()) {
             loadData={loadData}
           />
 
-        <PresenceModal
-  open={showPresenceModal}
-  isAdmin={isAdmin}
-  presenceTab={presenceTab}
-  onSelectSessions={() => setPresenceTab('sessions')}
-  onSelectHistory={async () => {
-    setPresenceTab('history');
-    try {
-      await refreshUsers();
-    } catch {
-      // ignore
-    }
-    await loadAuditLogs();
-  }}
-  users={users}
-  auditUserId={auditUserId}
-  onAuditUserIdChange={(v) => setAuditUserId(v)}
-  auditFrom={auditFrom}
-  onAuditFromChange={(v) => setAuditFrom(v)}
-  auditTo={auditTo}
-  onAuditToChange={(v) => setAuditTo(v)}
-  auditQuery={auditQuery}
-  onAuditQueryChange={(v) => setAuditQuery(v)}
-  auditError={auditError}
-  auditBusy={auditBusy}
-  auditLogs={auditLogs}
-  onSearchAudit={loadAuditLogs}
-  onExportAuditExcel={handleExportAuditExcel}
-  exportBusy={exportBusy}
-  presenceSessions={presenceSessions}
-  onClose={() => setShowPresenceModal(false)}
-/>
-
-        <UsersModal
-  open={showUsersModal}
-  users={users}
-  userForm={userForm}
-  userFormId={userFormId}
-  userFormError={userFormError}
-  onClose={() => {
-    setShowUsersModal(false);
-    setUserFormError('');
-  }}
-  onEditUser={(u) => {
-    setUserFormId(u.id);
-    setUserForm({ email: u.email, role: u.role, zone: u.zone || 'BZV/POOL', technicianName: u.technicianName || '', password: '' });
-    setUserFormError('');
-  }}
-  onDeleteUser={(u) => {
-    (async () => {
-      try {
-        await apiFetchJson(`/api/users/${u.id}`, { method: 'DELETE' });
-        await refreshUsers();
-      } catch (e) {
-        setUserFormError(e?.message || 'Erreur serveur.');
-      }
-    })();
-  }}
-  onChangeUserForm={(next) => {
-    setUserForm(next);
-    setUserFormError('');
-  }}
-  onSave={() => {
-    const email = String(userForm.email || '').trim().toLowerCase();
-    const zone = String(userForm.zone || '').trim();
-    if (!email) {
-      setUserFormError('Email requis.');
-      return;
-    }
-    if (!zone) {
-  setUserFormError('Zone requise.');
-  return;
-}
-    if (!userForm.password) {
-      setUserFormError('Mot de passe requis.');
-      return;
-    }
-
-    (async () => {
-      try {
-        if (userFormId) {
-          await apiFetchJson(`/api/users/${userFormId}`, {
-            method: 'PATCH',
-            body: JSON.stringify({
-              email,
-              role: userForm.role,
-              zone,
-              technicianName: userForm.technicianName || ''
-            })
-          });
-
-          await apiFetchJson(`/api/users/${userFormId}/reset-password`, {
-            method: 'POST',
-            body: JSON.stringify({ password: userForm.password })
-          });
-        } else {
-          await apiFetchJson('/api/users', {
-            method: 'POST',
-            body: JSON.stringify({
-              email,
-              role: userForm.role,
-              zone,
-              technicianName: userForm.technicianName || '',
-              password: userForm.password
-            })
-          });
-        }
-
-        await refreshUsers();
-        setUserFormId(null);
-        setUserForm({ email: '', role: 'viewer', zone: 'BZV/POOL' ,technicianName: '', password: '' });
-        setUserFormError('');
-      } catch (e) {
-        setUserFormError(e?.message || 'Erreur serveur.');
-      }
-    })();
-  }}
-  onReset={() => {
-    setUserFormId(null);
-    setUserForm({ email: '', role: 'viewer', zone: 'BZV/POOL', technicianName: '', password: '' });
-    setUserFormError('');
-  }}
-/>
-
-        {/* Modale Réinitialisation */}
-        <ResetConfirmModal
-          open={showResetConfirm}
-          onResetVidanges={() => handleResetData({ includePm: false })}
-          onResetAll={() => handleResetData({ includePm: true })}
-          onSetNextTicket={handleSetNextTicketNumber}
-          onCancel={() => setShowResetConfirm(false)}
-        />
-
-        {/* Modale Suppression Site */}
-        {showDeleteConfirm && siteToDelete && (
-          <DeleteSiteConfirmModal
-            site={siteToDelete}
-            isAdmin={isAdmin}
-            onConfirm={handleDeleteSite}
-            onCancel={() => {
-              setShowDeleteConfirm(false);
-              setSiteToDelete(null);
-            }}
-          />
-        )}
-
-        <DayDetailsModal
-          open={showDayDetailsModal}
-          selectedDate={selectedDate}
-          selectedDayEvents={selectedDayEvents}
-          setSelectedDayEvents={setSelectedDayEvents}
-          isAdmin={isAdmin}
-          canExportExcel={canExportExcel}
-          canGenerateFiche={canGenerateFiche}
-          exportBusy={exportBusy}
-          handleExportSelectedDayExcel={handleExportSelectedDayExcel}
-          startBatchFicheGeneration={startBatchFicheGeneration}
-          formatDate={formatDate}
-          getDaysUntil={getDaysUntil}
-          onClose={() => {
-            setShowDayDetailsModal(false);
-          }}
-        />
-
-        {/* Modale Upload Bannière */}
-        <UploadBannerModal
-          open={showBannerUpload}
-          handleBannerUpload={handleBannerUpload}
-          onCancel={() => {
-            setShowBannerUpload(false);
-            setIsBatchFiche(false);
-            setBatchFicheSites([]);
-            setBatchFicheIndex(0);
-            setSiteForFiche(null);
-            setBannerImage('');
-            setFicheContext(null);
-            setSignatureTypedName('');
-            setSignatureDrawnPng('');
-          }}
-        />
-
-        {/* Modale Fiche d'Intervention */}
-          <FicheModal
-            open={showFicheModal}
-            siteForFiche={siteForFiche}
-            bannerImage={bannerImage}
-            ticketNumber={ticketNumber}
-            signatureTypedName={signatureTypedName}
-            setSignatureTypedName={setSignatureTypedName}
-            signatureDrawnPng={signatureDrawnPng}
-            setSignatureDrawnPng={setSignatureDrawnPng}
-            isBatchFiche={isBatchFiche}
-            batchFicheIndex={batchFicheIndex}
-            batchFicheSites={batchFicheSites}
-            goBatchFiche={goBatchFiche}
-            handlePrintFiche={handlePrintFiche}
-            handleSaveFichePdf={handleSaveFichePdf}
-            onClose={() => {
-              setShowFicheModal(false);
-              setSiteForFiche(null);
-              setBannerImage('');
-              setIsBatchFiche(false);
-              setBatchFicheSites([]);
-              setBatchFicheIndex(0);
-              setFicheContext(null);
-              setSignatureTypedName('');
-              setSignatureDrawnPng('');
-            }}
-            formatDate={formatDate}
-          />  
-
-        {/* Modal Historique */}
-          <HistoryModal
-            open={showHistory}
-            onClose={() => setShowHistory(false)}
-            historyQuery={historyQuery}
-            setHistoryQuery={setHistoryQuery}
-            historyDateFrom={historyDateFrom}
-            setHistoryDateFrom={setHistoryDateFrom}
-            historyDateTo={historyDateTo}
-            setHistoryDateTo={setHistoryDateTo}
-            historyStatus={historyStatus}
-            setHistoryStatus={setHistoryStatus}
-            historySort={historySort}
-            setHistorySort={setHistorySort}
-            ficheHistory={ficheHistory}
-            filteredFicheHistory={filteredFicheHistory}
-            canMarkCompleted={canMarkCompleted}
-            handleMarkAsCompleted={handleMarkAsCompleted}
-            isViewer={isViewer}
-            isAdmin={isAdmin}
-            historyZone={historyZone}
-            setHistoryZone={setHistoryZone}
-            showZoneFilter={showZoneFilter}
-            formatDate={formatDate}
-          />
-
-        {/* Modal Calendrier */}
-        
-                <CalendarModal
-          showCalendar={showCalendar}
-          appVersion={APP_VERSION}
-          authUser={authUser}
-          isTechnician={isTechnician}
-          setShowCalendar={setShowCalendar}
-          currentMonth={currentMonth}
-          setCurrentMonth={setCurrentMonth}
-          isAdmin={isAdmin}
-          sites={sites}
-          calendarZone={calendarZone}
-          setCalendarZone={setCalendarZone}
-          showZoneFilter={showZoneFilter}
-          isViewer={isViewer}
-          isSuperAdmin={isSuperAdmin}
-          calendarSendTechUserId={calendarSendTechUserId}
-          setCalendarSendTechUserId={setCalendarSendTechUserId}
-          users={users}
-          usersBusy={usersBusy}
-          usersError={usersError}
-          refreshUsers={refreshUsers}
-          handleSendCalendarMonthPlanning={handleSendCalendarMonthPlanning}
-          canExportExcel={canExportExcel}
-          handleExportCalendarMonthExcel={handleExportCalendarMonthExcel}
-          exportBusy={exportBusy}
-          basePlanBusy={basePlanBusy}
-          basePlanErrors={basePlanErrors}
-          basePlanPreview={basePlanPreview}
-          basePlanTargetMonth={basePlanTargetMonth}
-          basePlanBaseRows={basePlanBaseRows}
-          basePlanProgress={basePlanProgress}
-          handleImportBasePlanExcel={handleImportBasePlanExcel}
-          generateBasePlanPreview={generateBasePlanPreview}
-          exportBasePlanPreviewExcel={exportBasePlanPreviewExcel}
-          saveBasePlanToDb={saveBasePlanToDb}
-          deleteBasePlanFromDb={deleteBasePlanFromDb}
-          getEventsForDay={getEventsForDay}
-          getDaysUntil={getDaysUntil}
-          selectedDate={selectedDate}
-          setSelectedDate={setSelectedDate}
-          setSelectedDayEvents={setSelectedDayEvents}
-          setShowDayDetailsModal={setShowDayDetailsModal}
-        />
-
-        {/* Formulaire Ajout */}
-        <div ref={siteFormAnchorRef} />
-        {showAddForm && canWriteSites && (
-          <AddSiteForm
-            formData={formData}
-            setFormData={setFormData}
-            onSubmit={handleAddSite}
-            onClose={() => setShowAddForm(false)}
-            onCancel={() => {
-              setShowAddForm(false);
-              setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
-            }}
-          />
-        )}
-
-        {/* Formulaire MAJ */}
-        {showUpdateForm && selectedSite && canWriteSites && (
-          <UpdateSiteForm
-            selectedSite={selectedSite}
-            formData={formData}
-            setFormData={setFormData}
-            onSubmit={handleUpdateSite}
-            onClose={() => {
-              setShowUpdateForm(false);
-              setSelectedSite(null);
-            }}
-            onCancel={() => {
-              setShowUpdateForm(false);
-              setSelectedSite(null);
-              setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
-            }}
-          />
-        )}
-
-        {/* Formulaire Modifier */}
-        {showEditForm && selectedSite && canWriteSites && (
-          <EditSiteForm
-            selectedSite={selectedSite}
-            formData={formData}
-            setFormData={setFormData}
-            onSubmit={handleEditSite}
-            onClose={() => {
-              setShowEditForm(false);
-              setSelectedSite(null);
-            }}
-            onCancel={() => {
-              setShowEditForm(false);
-              setSelectedSite(null);
-              setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
-            }}
-          />
-        )}
-
         <div className="mb-6">
+          {urgentSites.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
+              <div className="flex items-center gap-2 font-bold text-red-900 mb-3">
+                <AlertCircle size={18} />
+                <span>ALERTES URGENTES - Vidanges à effectuer ({urgentSites.length})</span>
+              </div>
+
+              <div className="space-y-2">
+                {urgentSites.map((site) => {
+                  const days = getDaysUntil(site.epv1);
+                  const label = days === null ? '' : days < 0 ? 'RETARD' : days === 0 ? "AUJOURD'HUI" : `${days}j`;
+                  return (
+                    <div
+                      key={site.id}
+                      className="bg-white rounded-lg border border-red-100 px-4 py-3 flex items-start justify-between gap-4"
+                      style={{ borderLeftWidth: '4px' }}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <div className="font-bold text-gray-900 truncate">{site.nameSite}</div>
+                          <span className="text-xs bg-gray-100 px-2 py-0.5 rounded font-mono border border-gray-200">{site.idSite}</span>
+                        </div>
+                        <div className="text-xs text-gray-600 mt-1">
+                          Technicien: {site.technician} | Régime: {Number(site.regime || 0)}H/J | NH Estimé: {Number.isFinite(Number(site.nhEstimated)) ? `${site.nhEstimated}H` : '-'} | Diff: {Number.isFinite(Number(site.diffEstimated)) ? `${site.diffEstimated}H` : '-'}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col items-end flex-shrink-0">
+                        <div className={days !== null && days < 0 ? 'text-red-700 font-bold' : 'text-gray-700 font-bold'}>{label}</div>
+                        <div className="text-xs text-gray-500 mt-1">{formatDate(site.epv1)}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {filteredSites.length === 0 ? (
             <div className="bg-white rounded-lg shadow-md p-6 text-center text-gray-500">
               Aucun site trouvé. Ajoutez un site ou importez votre Excel.
