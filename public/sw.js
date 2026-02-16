@@ -32,7 +32,12 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/')) return;
-  if (url.pathname === '/signature_responsable.png' || url.pathname === '/assets/signature_responsable.png') {
+  if (
+    url.pathname === '/signature_responsable.png' ||
+    url.pathname === '/signature_responsable.PNG' ||
+    url.pathname === '/assets/signature_responsable.png' ||
+    url.pathname === '/assets/signature_responsable.PNG'
+  ) {
     event.respondWith(fetch(req));
     return;
   }

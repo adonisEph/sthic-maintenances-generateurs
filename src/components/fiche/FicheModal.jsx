@@ -46,7 +46,9 @@ const FicheModal = ({
 
         const blob =
           (await tryFetch('/signature_responsable.png')) ||
+          (await tryFetch('/signature_responsable.PNG')) ||
           (await tryFetch('/assets/signature_responsable.png')) ||
+          (await tryFetch('/assets/signature_responsable.PNG')) ||
           null;
 
         if (!blob) return;

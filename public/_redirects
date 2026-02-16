@@ -1,3 +1,4 @@
 /signature_responsable.png   /signature_responsable.png   200
+/signature_responsable.PNG   /signature_responsable.PNG   200
 /assets/*   /assets/:splat   200
 /*    /index.html   200
