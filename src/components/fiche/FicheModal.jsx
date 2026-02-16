@@ -34,9 +34,22 @@ const FicheModal = ({
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/signature_responsable.png?v=${Date.now()}`, { cache: 'no-store' });
-        if (!res.ok) return;
-        const blob = await res.blob();
+        const v = Date.now();
+
+        const tryFetch = async (path) => {
+          const res = await fetch(`${path}?v=${v}`, { cache: 'no-store' });
+          if (!res.ok) return null;
+          const contentType = String(res.headers.get('content-type') || '').toLowerCase();
+          if (!contentType.startsWith('image/')) return null;
+          return res.blob();
+        };
+
+        const blob =
+          (await tryFetch('/signature_responsable.png')) ||
+          (await tryFetch('/assets/signature_responsable.png')) ||
+          null;
+
+        if (!blob) return;
         const reader = new FileReader();
         reader.onloadend = () => {
           if (cancelled) return;
