@@ -5105,6 +5105,40 @@ for (const [key, g] of globalSites.entries()) {
     })();
   }}
 />
+
+        <CalendarModal
+          showCalendar={showCalendar}
+          appVersion={APP_VERSION}
+          authUser={authUser}
+          isTechnician={isTechnician}
+          setShowCalendar={setShowCalendar}
+          currentMonth={currentMonth}
+          setCurrentMonth={setCurrentMonth}
+          isAdmin={isAdmin}
+          sites={sites}
+          calendarZone={calendarZone}
+          setCalendarZone={setCalendarZone}
+          showZoneFilter={showZoneFilter}
+          calendarSendTechUserId={calendarSendTechUserId}
+          setCalendarSendTechUserId={setCalendarSendTechUserId}
+          users={users}
+          usersBusy={usersBusy}
+          usersError={usersError}
+          refreshUsers={refreshUsers}
+          handleSendCalendarMonthPlanning={handleSendCalendarMonthPlanning}
+          canExportExcel={canExportExcel}
+          handleExportCalendarMonthExcel={handleExportCalendarMonthExcel}
+          exportBusy={exportBusy}
+          getEventsForDay={getEventsForDay}
+          getDaysUntil={getDaysUntil}
+          selectedDate={selectedDate}
+          setSelectedDate={setSelectedDate}
+          setSelectedDayEvents={setSelectedDayEvents}
+          setShowDayDetailsModal={setShowDayDetailsModal}
+          isViewer={isViewer}
+          isSuperAdmin={isSuperAdmin}
+        />
+
                 <PmModal
           showPm={showPm}
           appVersion={APP_VERSION}
