@@ -4165,6 +4165,22 @@ for (const [key, g] of globalSites.entries()) {
     }
   };
 
+  useEffect(() => {
+    if (!showPresenceModal) return;
+    if (!isAdmin) return;
+    if (presenceTab !== 'history') return;
+    if (auditBusy) return;
+    if (Array.isArray(auditLogs) && auditLogs.length > 0) return;
+
+    (async () => {
+      try {
+        await loadAuditLogs();
+      } catch {
+        // ignore
+      }
+    })();
+  }, [showPresenceModal, presenceTab, isAdmin, auditBusy, auditLogs]);
+
   const handleExportAuditExcel = async () => {
     const rows = (Array.isArray(auditLogs) ? auditLogs : []).map((l) => ({
       Date: l?.createdAt || '',
@@ -4826,7 +4842,7 @@ for (const [key, g] of globalSites.entries()) {
             <div className="ml-auto flex items-center">
               <button
                 type="button"
-                onClick={() => setSidebarOpen(true)}
+                onClick={() => setSidebarDockedOpen(!sidebarDockedOpen)}
                 className="hidden md:inline-flex p-2 rounded hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
                 title="Ouvrir le menu"
               >
@@ -4834,7 +4850,7 @@ for (const [key, g] of globalSites.entries()) {
               </button>
               <button
                 type="button"
-                onClick={() => setSidebarOpen(false)}
+                onClick={() => setSidebarOpen(!sidebarOpen)}
                 className="md:hidden p-2 rounded hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
               >
                 <X size={18} />
@@ -5107,6 +5123,8 @@ for (const [key, g] of globalSites.entries()) {
               </div>
             </div>
 
+              <div ref={siteFormAnchorRef} />
+
               {showAddForm && (
                 <AddSiteForm
                   formData={formData}
@@ -5271,7 +5289,14 @@ for (const [key, g] of globalSites.entries()) {
           isAdmin={isAdmin}
           presenceTab={presenceTab}
           onSelectSessions={() => setPresenceTab('sessions')}
-          onSelectHistory={() => setPresenceTab('history')}
+          onSelectHistory={async () => {
+            setPresenceTab('history');
+            try {
+              await loadAuditLogs();
+            } catch {
+              // ignore
+            }
+          }}
           users={users}
           auditUserId={auditUserId}
           onAuditUserIdChange={setAuditUserId}
