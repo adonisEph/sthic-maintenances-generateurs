@@ -112,12 +112,22 @@ export async function onRequestPost({ request, env, data }) {
     const signatureTypedName = String(body?.signatureTypedName || '').trim();
     const signatureDrawnPng = String(body?.signatureDrawnPng || '').trim();
 
+    const hasResponsibleSignature = (value) => {
+      const v = String(value || '').trim();
+      if (!v) return false;
+      if (v.startsWith('data:image/')) return true;
+      if (v.startsWith('blob:')) return true;
+      if (v.startsWith('http://') || v.startsWith('https://')) return true;
+      if (v.startsWith('/')) return true;
+      return false;
+    };
+
     if (!ticketNumber || !siteId || !siteName || !technician) {
       return json({ error: 'Champs requis manquants.' }, { status: 400 });
     }
 
-    // Signature obligatoire (dessin + nom tapé)
-    if (!signatureTypedName || !signatureDrawnPng.startsWith('data:image/png;base64,')) {
+    // Signature obligatoire
+    if (!hasResponsibleSignature(signatureDrawnPng)) {
       return json({ error: 'Signature responsable obligatoire.' }, { status: 400 });
     }
 

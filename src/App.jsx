@@ -2787,7 +2787,17 @@ for (const [key, g] of globalSites.entries()) {
     (async () => {
       let usedTicketNumber = ticketNumber;
 
-      if (!String(signatureDrawnPng || '').trim().startsWith('data:image/png;base64,')) {
+      const hasResponsibleSignature = (value) => {
+        const v = String(value || '').trim();
+        if (!v) return false;
+        if (v.startsWith('data:image/')) return true;
+        if (v.startsWith('blob:')) return true;
+        if (v.startsWith('http://') || v.startsWith('https://')) return true;
+        if (v.startsWith('/')) return true;
+        return false;
+      };
+
+      if (!hasResponsibleSignature(signatureDrawnPng)) {
         alert('Signature responsable obligatoire.');
         return;
       }
@@ -2811,8 +2821,8 @@ for (const [key, g] of globalSites.entries()) {
         await persistFicheHistory(ticketNumberFull);
       } catch (e) {
         const msg = String(e?.message || 'Erreur serveur.');
-        if (msg.toLowerCase().includes('déjà sortie') || msg.toLowerCase().includes('deja sortie')) {
-          alert('Fiche déjà sortie pour ce ticket.');
+        if (msg.toLowerCase().includes('dja sortie') || msg.toLowerCase().includes('deja sortie')) {
+          alert('Fiche dja sortie pour ce ticket.');
           return;
         }
         alert(msg);
@@ -2869,7 +2879,17 @@ for (const [key, g] of globalSites.entries()) {
     try {
       let usedTicketNumber = ticketNumber;
 
-      if (!String(signatureDrawnPng || '').trim().startsWith('data:image/png;base64,')) {
+      const hasResponsibleSignature = (value) => {
+        const v = String(value || '').trim();
+        if (!v) return false;
+        if (v.startsWith('data:image/')) return true;
+        if (v.startsWith('blob:')) return true;
+        if (v.startsWith('http://') || v.startsWith('https://')) return true;
+        if (v.startsWith('/')) return true;
+        return false;
+      };
+
+      if (!hasResponsibleSignature(signatureDrawnPng)) {
         alert('Signature responsable obligatoire.');
         return;
       }

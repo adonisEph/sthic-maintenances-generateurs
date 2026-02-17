@@ -21,10 +21,14 @@ const FicheModal = ({
 }) => {
   if (!open || !siteForFiche) return null;
 
-
   const signatureOk = useMemo(() => {
-    const pngOk = Boolean(String(signatureDrawnPng || '').trim().startsWith('data:image/png;base64,'));
-    return pngOk;
+    const v = String(signatureDrawnPng || '').trim();
+    if (!v) return false;
+    if (v.startsWith('data:image/')) return true;
+    if (v.startsWith('blob:')) return true;
+    if (v.startsWith('http://') || v.startsWith('https://')) return true;
+    if (v.startsWith('/')) return true;
+    return false;
   }, [signatureDrawnPng]);
 
   useEffect(() => {
