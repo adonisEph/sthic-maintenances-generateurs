@@ -5139,6 +5139,62 @@ for (const [key, g] of globalSites.entries()) {
           isSuperAdmin={isSuperAdmin}
         />
 
+        <DayDetailsModal
+          open={showDayDetailsModal}
+          selectedDate={selectedDate}
+          selectedDayEvents={selectedDayEvents}
+          setSelectedDayEvents={setSelectedDayEvents}
+          isAdmin={isAdmin}
+          canExportExcel={canExportExcel}
+          canGenerateFiche={canGenerateFiche}
+          exportBusy={exportBusy}
+          handleExportSelectedDayExcel={handleExportSelectedDayExcel}
+          startBatchFicheGeneration={startBatchFicheGeneration}
+          formatDate={formatDate}
+          getDaysUntil={getDaysUntil}
+          onClose={() => {
+            setShowDayDetailsModal(false);
+          }}
+        />
+
+        <UploadBannerModal
+          open={showBannerUpload}
+          handleBannerUpload={handleBannerUpload}
+          onCancel={() => {
+            setShowBannerUpload(false);
+            setBannerImage('');
+          }}
+        />
+
+        <FicheModal
+          open={showFicheModal}
+          siteForFiche={siteForFiche}
+          bannerImage={bannerImage}
+          ticketNumber={ticketNumber}
+          signatureTypedName={signatureTypedName}
+          setSignatureTypedName={setSignatureTypedName}
+          signatureDrawnPng={signatureDrawnPng}
+          setSignatureDrawnPng={setSignatureDrawnPng}
+          isBatchFiche={isBatchFiche}
+          batchFicheIndex={batchFicheIndex}
+          batchFicheSites={batchFicheSites}
+          goBatchFiche={goBatchFiche}
+          handlePrintFiche={handlePrintFiche}
+          handleSaveFichePdf={handleSaveFichePdf}
+          onClose={() => {
+            setShowFicheModal(false);
+            setSiteForFiche(null);
+            setBannerImage('');
+            setFicheContext(null);
+            setSignatureTypedName('');
+            setSignatureDrawnPng('');
+            setIsBatchFiche(false);
+            setBatchFicheSites([]);
+            setBatchFicheIndex(0);
+          }}
+          formatDate={formatDate}
+        />
+
                 <PmModal
           showPm={showPm}
           appVersion={APP_VERSION}
