@@ -4191,6 +4191,93 @@ for (const [key, g] of globalSites.entries()) {
     if (done) alert('✅ Export Excel généré.');
   };
 
+  const resetUserForm = () => {
+    setUserFormId(null);
+    setUserForm({ email: '', role: 'viewer', zone: 'BZV/POOL', technicianName: '', password: '' });
+    setUserFormError('');
+  };
+
+  const handleEditUser = (u) => {
+    if (!u) return;
+    setUserFormId(String(u.id || ''));
+    setUserForm({
+      email: String(u.email || ''),
+      role: String(u.role || 'viewer'),
+      zone: String(u.zone || 'BZV/POOL'),
+      technicianName: String(u.technicianName || ''),
+      password: ''
+    });
+    setUserFormError('');
+  };
+
+  const handleDeleteUser = async (u) => {
+    try {
+      if (!u?.id) return;
+      const ok = window.confirm(`Confirmer la suppression de l'utilisateur ${String(u.email || '')} ?`);
+      if (!ok) return;
+      await apiFetchJson(`/api/users/${String(u.id)}`, { method: 'DELETE' });
+      await refreshUsers();
+      resetUserForm();
+      alert('✅ Utilisateur supprimé.');
+    } catch (e) {
+      alert(e?.message || 'Erreur serveur.');
+    }
+  };
+
+  const handleSaveUser = async () => {
+    try {
+      if (!isAdmin) return;
+      const email = String(userForm?.email || '').trim();
+      const role = String(userForm?.role || 'viewer').trim();
+      const zone = String(userForm?.zone || '').trim();
+      const technicianName = String(userForm?.technicianName || '').trim();
+      const password = String(userForm?.password || '');
+
+      setUserFormError('');
+      if (!email) {
+        setUserFormError('Email requis.');
+        return;
+      }
+      if (!zone) {
+        setUserFormError('Zone requise.');
+        return;
+      }
+
+      if (userFormId) {
+        await apiFetchJson(`/api/users/${String(userFormId)}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ email, role, zone, technicianName })
+        });
+        if (password) {
+          await apiFetchJson(`/api/users/${String(userFormId)}`, {
+            method: 'POST',
+            body: JSON.stringify({ password })
+          });
+        }
+        await refreshUsers();
+        resetUserForm();
+        alert('✅ Utilisateur mis à jour.');
+        return;
+      }
+
+      if (!password) {
+        setUserFormError('Mot de passe requis.');
+        return;
+      }
+
+      await apiFetchJson('/api/users', {
+        method: 'POST',
+        body: JSON.stringify({ email, role, zone, technicianName, password })
+      });
+      await refreshUsers();
+      resetUserForm();
+      alert('✅ Utilisateur créé.');
+    } catch (e) {
+      const msg = String(e?.message || 'Erreur serveur.');
+      setUserFormError(msg);
+    }
+  };
+
   const technicianUnseenSentCount = isTechnician
     ? (Array.isArray(interventions) ? interventions : []).filter(
         (i) =>
@@ -4739,11 +4826,11 @@ for (const [key, g] of globalSites.entries()) {
             <div className="ml-auto flex items-center">
               <button
                 type="button"
-                onClick={() => setSidebarDockedOpen(false)}
+                onClick={() => setSidebarOpen(true)}
                 className="hidden md:inline-flex p-2 rounded hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
-                title="Réduire le menu"
+                title="Ouvrir le menu"
               >
-                <ChevronLeft size={18} />
+                <Menu size={20} />
               </button>
               <button
                 type="button"
@@ -5019,6 +5106,39 @@ for (const [key, g] of globalSites.entries()) {
                 />
               </div>
             </div>
+
+              {showAddForm && (
+                <AddSiteForm
+                  formData={formData}
+                  setFormData={setFormData}
+                  onSubmit={handleAddSite}
+                  onClose={() => setShowAddForm(false)}
+                  onCancel={() => setShowAddForm(false)}
+                />
+              )}
+
+              {showUpdateForm && (
+                <UpdateSiteForm
+                  selectedSite={selectedSite}
+                  formData={formData}
+                  setFormData={setFormData}
+                  onSubmit={handleUpdateSite}
+                  onClose={() => setShowUpdateForm(false)}
+                  onCancel={() => setShowUpdateForm(false)}
+                />
+              )}
+
+              {showEditForm && (
+                <EditSiteForm
+                  selectedSite={selectedSite}
+                  formData={formData}
+                  setFormData={setFormData}
+                  onSubmit={handleEditSite}
+                  onClose={() => setShowEditForm(false)}
+                  onCancel={() => setShowEditForm(false)}
+                />
+              )}
+
               <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 md:mb-6">
           <DashboardHeader
               dashboardMonth={dashboardMonth}
@@ -5125,6 +5245,94 @@ for (const [key, g] of globalSites.entries()) {
     })();
   }}
 />
+
+        <UsersModal
+          open={showUsersModal}
+          users={users}
+          userForm={userForm}
+          userFormId={userFormId}
+          userFormError={userFormError}
+          onClose={() => {
+            setShowUsersModal(false);
+            resetUserForm();
+          }}
+          onEditUser={handleEditUser}
+          onDeleteUser={handleDeleteUser}
+          onChangeUserForm={(next) => {
+            setUserForm(next);
+            setUserFormError('');
+          }}
+          onSave={handleSaveUser}
+          onReset={resetUserForm}
+        />
+
+        <PresenceModal
+          open={showPresenceModal}
+          isAdmin={isAdmin}
+          presenceTab={presenceTab}
+          onSelectSessions={() => setPresenceTab('sessions')}
+          onSelectHistory={() => setPresenceTab('history')}
+          users={users}
+          auditUserId={auditUserId}
+          onAuditUserIdChange={setAuditUserId}
+          auditFrom={auditFrom}
+          onAuditFromChange={setAuditFrom}
+          auditTo={auditTo}
+          onAuditToChange={setAuditTo}
+          auditQuery={auditQuery}
+          onAuditQueryChange={setAuditQuery}
+          auditError={auditError}
+          auditBusy={auditBusy}
+          auditLogs={auditLogs}
+          onSearchAudit={loadAuditLogs}
+          onExportAuditExcel={handleExportAuditExcel}
+          exportBusy={exportBusy}
+          presenceSessions={presenceSessions}
+          onClose={() => setShowPresenceModal(false)}
+        />
+
+        <ResetConfirmModal
+          open={showResetConfirm}
+          onResetVidanges={() => handleResetData({ includePm: false })}
+          onResetAll={() => handleResetData({ includePm: true })}
+          onSetNextTicket={handleSetNextTicketNumber}
+          onCancel={() => setShowResetConfirm(false)}
+        />
+
+        <HistoryModal
+          open={showHistory}
+          onClose={() => setShowHistory(false)}
+          historyQuery={historyQuery}
+          setHistoryQuery={setHistoryQuery}
+          historyDateFrom={historyDateFrom}
+          setHistoryDateFrom={setHistoryDateFrom}
+          historyDateTo={historyDateTo}
+          setHistoryDateTo={setHistoryDateTo}
+          historyStatus={historyStatus}
+          setHistoryStatus={setHistoryStatus}
+          historySort={historySort}
+          setHistorySort={setHistorySort}
+          historyZone={historyZone}
+          setHistoryZone={setHistoryZone}
+          showZoneFilter={showZoneFilter}
+          ficheHistory={ficheHistory}
+          filteredFicheHistory={filteredFicheHistory}
+          canMarkCompleted={canMarkCompleted}
+          handleMarkAsCompleted={handleMarkAsCompleted}
+          isViewer={isViewer}
+          isAdmin={isAdmin}
+          formatDate={formatDate}
+        />
+
+        <DeleteSiteConfirmModal
+          site={showDeleteConfirm ? siteToDelete : null}
+          isAdmin={isAdmin}
+          onConfirm={handleDeleteSite}
+          onCancel={() => {
+            setShowDeleteConfirm(false);
+            setSiteToDelete(null);
+          }}
+        />
 
         <CalendarModal
           showCalendar={showCalendar}
