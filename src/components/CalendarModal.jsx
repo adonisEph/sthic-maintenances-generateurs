@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Calendar, X, Users, MapPin, Clock, AlertCircle, Download, Sparkles, Activity, Menu, ChevronLeft } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 const CalendarModal = (props) => {
   const {
@@ -51,10 +52,147 @@ const CalendarModal = (props) => {
   const [planningBusy, setPlanningBusy] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
+  const [showIntelligentWizard, setShowIntelligentWizard] = useState(false);
+  const [intelligentTechUserId, setIntelligentTechUserId] = useState('');
+  const [intelligentDoneTechIds, setIntelligentDoneTechIds] = useState(() => new Set());
+  const [intelligentError, setIntelligentError] = useState('');
+  const [intelligentLastStats, setIntelligentLastStats] = useState(null);
+  const [intelligentExportBusy, setIntelligentExportBusy] = useState(false);
+
+  const todayDay = useMemo(() => {
+    try {
+      return Number(
+        new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Africa/Brazzaville',
+          day: '2-digit'
+        }).format(new Date())
+      );
+    } catch {
+      return new Date().getDate();
+    }
+  }, []);
+
+  const isIntelligentDay = todayDay === 23;
+
+  const zoneForIntelligent = useMemo(() => {
+    if (isSuperAdmin) return String(calendarZone || authZone || 'BZV/POOL');
+    if (isManager) return String(authZone || 'BZV/POOL');
+    return String(calendarZone || authZone || 'BZV/POOL');
+  }, [isSuperAdmin, calendarZone, authZone, isManager]);
+
+  const zoneTechnicians = useMemo(() => {
+    const all = (Array.isArray(users) ? users : []).filter((u) => u && u.role === 'technician');
+    const z = String(zoneForIntelligent || '').trim();
+    const scoped = isSuperAdmin && (calendarZone === 'ALL' || !calendarZone) ? all : all.filter((u) => String(u?.zone || '').trim() === z);
+    return scoped
+      .slice()
+      .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')));
+  }, [users, zoneForIntelligent, isSuperAdmin, calendarZone]);
+
+  const targetMonthLabel = useMemo(() => {
+    try {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      const next = new Date(y, m + 1, 1);
+      const pad2 = (n) => String(n).padStart(2, '0');
+      return `${next.getFullYear()}-${pad2(next.getMonth() + 1)}`;
+    } catch {
+      return '';
+    }
+  }, []);
+
+  const todayLabel = useMemo(() => {
+    try {
+      const d = new Date();
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      return `${dd}/${mm}`;
+    } catch {
+      return '';
+    }
+  }, []);
+
+  const exportIntelligentExcel = async () => {
+    setIntelligentExportBusy(true);
+    setIntelligentError('');
+    try {
+      const z = String(zoneForIntelligent || '').trim();
+      if (!z || z === 'ALL') {
+        setIntelligentError('Veuillez sélectionner une zone.');
+        return;
+      }
+      const resp = await fetch(`/api/intelligent-planning/items?month=${encodeURIComponent(targetMonthLabel)}&zone=${encodeURIComponent(z)}`);
+      const raw = await resp.text();
+      const data = raw ? JSON.parse(raw) : null;
+      const items = Array.isArray(data?.items) ? data.items : [];
+      if (!resp.ok) throw new Error(data?.error || 'Erreur export snapshot.');
+      if (items.length === 0) {
+        setIntelligentError('Aucun planning trouvé pour ce mois/zone.');
+        return;
+      }
+
+      const rows = items.map((it) => ({
+        Site: String(it?.siteCode || it?.siteId || ''),
+        'Site Name': String(it?.siteName || ''),
+        Region: String(it?.zone || it?.region || ''),
+        'Short description': String(it?.shortDescription || ''),
+        Number: String(it?.number || ''),
+        'Assigned to': String(it?.assignedTo || ''),
+        'Scheduled WO Date': String(it?.scheduledWoDate || ''),
+        'Date of closing': String(it?.dateOfClosing || ''),
+        State: String(it?.state || ''),
+        EPV2: String(it?.epv2 || ''),
+        EPV3: String(it?.epv3 || ''),
+        'Paire Site': String(it?.pairSiteCode || '')
+      }));
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(wb, ws, 'Planning PM');
+      XLSX.writeFile(wb, `planning_intelligent_${z}_${targetMonthLabel}.xlsx`);
+    } catch (e) {
+      setIntelligentError(e?.message || 'Erreur export.');
+    } finally {
+      setIntelligentExportBusy(false);
+    }
+  };
+
   const generateIntelligentPlanning = async () => {
+    setIntelligentError('');
+    setIntelligentLastStats(null);
+    setShowIntelligentWizard(true);
+  };
+
+  const runIntelligentForTechnician = async () => {
     setPlanningBusy(true);
-    try { alert('Cette fonctionnalité est en cours de refonte.'); }
-    finally { setPlanningBusy(false); }
+    setIntelligentError('');
+    setIntelligentLastStats(null);
+    try {
+      if (!intelligentTechUserId) {
+        setIntelligentError('Veuillez sélectionner un technicien.');
+        return;
+      }
+      const resp = await fetch('/api/intelligent-planning/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ technicianUserId: intelligentTechUserId })
+      });
+      const raw = await resp.text();
+      const data = raw ? JSON.parse(raw) : null;
+      if (!resp.ok) throw new Error(data?.error || 'Erreur génération planning intelligent.');
+
+      setIntelligentDoneTechIds((prev) => {
+        const next = new Set(prev);
+        next.add(String(intelligentTechUserId));
+        return next;
+      });
+      setIntelligentLastStats(data?.stats || null);
+    } catch (e) {
+      setIntelligentError(e?.message || 'Erreur génération planning intelligent.');
+    } finally {
+      setPlanningBusy(false);
+    }
   };
 
   // Clustering functions
@@ -504,6 +642,90 @@ const CalendarModal = (props) => {
                 </div>
               </div>
               <div className="p-3 sm:p-6 space-y-3">
+              {showIntelligentWizard && (isAdmin || isManager) && (
+                <div className="border border-emerald-200 bg-emerald-50 rounded-lg p-3 sm:p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm sm:text-base font-bold text-emerald-900">Planning intelligent (campagne {targetMonthLabel})</div>
+                      <div className="text-xs text-emerald-900/80 mt-1">
+                        Zone: <span className="font-semibold">{String(zoneForIntelligent || '')}</span>
+                      </div>
+                      <div className="text-xs text-emerald-900/70 mt-1">
+                        Aujourd’hui: <span className="font-semibold">{todayLabel}</span> — Mois cible: <span className="font-semibold">{targetMonthLabel}</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowIntelligentWizard(false);
+                        setIntelligentError('');
+                        setIntelligentLastStats(null);
+                      }}
+                      className="p-2 rounded hover:bg-emerald-100 transition-colors"
+                      title="Fermer"
+                    >
+                      <X size={18} className="text-emerald-900" />
+                    </button>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <div className="text-xs font-semibold text-emerald-900 mb-1">Technicien</div>
+                      <select
+                        value={intelligentTechUserId}
+                        onChange={(e) => setIntelligentTechUserId(e.target.value)}
+                        className="w-full border border-emerald-200 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
+                        disabled={planningBusy}
+                      >
+                        <option value="">-- Sélectionner --</option>
+                        {zoneTechnicians.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.technicianName || u.email}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="text-[11px] text-emerald-900/70 mt-1">
+                        Avancement zone: {intelligentDoneTechIds.size}/{zoneTechnicians.length} technicien(s) traités
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      <button
+                        type="button"
+                        onClick={runIntelligentForTechnician}
+                        disabled={planningBusy || !intelligentTechUserId}
+                        className="w-full bg-emerald-700 text-white px-3 py-2 rounded-lg hover:bg-emerald-800 text-sm font-semibold disabled:opacity-60"
+                      >
+                        {planningBusy ? 'Construction...' : 'Déclencher la construction du planning PM'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={exportIntelligentExcel}
+                        disabled={intelligentExportBusy || zoneTechnicians.length === 0 || intelligentDoneTechIds.size !== zoneTechnicians.length}
+                        className="w-full bg-white text-emerald-900 border border-emerald-200 px-3 py-2 rounded-lg hover:bg-emerald-100 text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2"
+                      >
+                        <Download size={16} />
+                        {intelligentExportBusy
+                          ? 'Export...' 
+                          : `Exporter en Excel (Planning PM campagne '${targetMonthLabel}')`}
+                      </button>
+                    </div>
+                  </div>
+
+                  {intelligentError && (
+                    <div className="mt-3 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded p-2">{intelligentError}</div>
+                  )}
+
+                  {intelligentLastStats && (
+                    <div className="mt-3 text-xs text-emerald-900 bg-white border border-emerald-200 rounded p-2">
+                      <div className="font-semibold">Résultat</div>
+                      <div>Sites: {intelligentLastStats.sites} • Visites: {intelligentLastStats.visits} • Cadence: {intelligentLastStats.capacityVisitsPerDay} visite(s)/jour</div>
+                      <div>Jours ouvrés: {intelligentLastStats.workdays} • Snapshot: {intelligentLastStats.snapshotInserted} lignes • Interventions: {intelligentLastStats.interventionsUpserted}</div>
+                    </div>
+                  )}
+                </div>
+              )}
               <div>
                 <div className="grid grid-cols-7 gap-2 mb-2">
                   {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map((day) => (
