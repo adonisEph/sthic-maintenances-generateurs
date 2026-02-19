@@ -4809,6 +4809,7 @@ for (const [key, g] of globalSites.entries()) {
   if (!authUser) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        {renderPwaUpdateBadge()}
         {renderPwaUpdateBanner()}
         <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
           <div className="text-center mb-6">
