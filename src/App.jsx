@@ -530,11 +530,12 @@ const GeneratorMaintenanceApp = () => {
 
   const renderPwaUpdateBadge = () => {
     if (!pwaUpdate?.badge) return null;
+    console.log('PWA badge state:', pwaUpdate);
     return (
       <button
         type="button"
         onClick={() => setPwaUpdate((prev) => ({ ...(prev || {}), available: true, badge: false }))}
-        className="fixed top-3 right-3 z-[70] bg-emerald-700 text-white px-3 py-2 rounded-full shadow-lg text-xs font-bold hover:bg-emerald-800"
+        className="fixed top-4 right-4 z-[9999] bg-emerald-700 text-white px-4 py-3 rounded-full shadow-xl text-sm font-bold hover:bg-emerald-800 ring-2 ring-white"
         title="Nouvelle version disponible"
       >
         MAJ
