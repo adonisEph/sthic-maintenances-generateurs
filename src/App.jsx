@@ -472,6 +472,8 @@ const GeneratorMaintenanceApp = () => {
               onClick={() => {
                 const reg = pwaUpdate?.registration;
                 const waiting = reg?.waiting;
+
+                setPwaUpdate((prev) => ({ ...(prev || {}), available: false, badge: false }));
                 if (!waiting) {
                   try {
                     localStorage.setItem(APP_VERSION_STORAGE_KEY, APP_VERSION);
@@ -530,7 +532,6 @@ const GeneratorMaintenanceApp = () => {
 
   const renderPwaUpdateBadge = () => {
     if (!pwaUpdate?.badge) return null;
-    console.log('PWA badge state:', pwaUpdate);
     return (
       <button
         type="button"
