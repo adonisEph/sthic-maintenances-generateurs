@@ -8,6 +8,22 @@ function pad2(n) {
   return String(n).padStart(2, '0');
 }
 
+async function loadCurrentMonthNonDoneEpv(env, siteId, currentMonth, epvType) {
+  const m = String(currentMonth || '').trim();
+  if (!/^\d{4}-\d{2}$/.test(m)) return null;
+  const from = `${m}-01`;
+  const to = `${m}-31`;
+  const row = await env.DB.prepare(
+    'SELECT planned_date, status FROM interventions WHERE site_id = ? AND epv_type = ? AND planned_date >= ? AND planned_date <= ? ORDER BY planned_date ASC LIMIT 1'
+  )
+    .bind(String(siteId), String(epvType || ''), from, to)
+    .first();
+  if (!row?.planned_date) return null;
+  const st = String(row?.status || '');
+  if (st === 'done') return null;
+  return { plannedDate: String(row.planned_date).slice(0, 10), status: st };
+}
+
 function monthLabel(d) {
   return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}`;
 }
@@ -141,8 +157,10 @@ async function loadTechnician(env, techUserId) {
 
 async function loadSitesForTechnician(env, technicianName, zoneScope) {
   const stmt = zoneScope
-    ? env.DB.prepare('SELECT * FROM sites WHERE zone = ? AND technician = ? AND retired = 0 ORDER BY id_site ASC').bind(zoneScope, technicianName)
-    : env.DB.prepare('SELECT * FROM sites WHERE technician = ? AND retired = 0 ORDER BY id_site ASC').bind(technicianName);
+    ? env.DB.prepare('SELECT * FROM sites WHERE zone = ? AND technician = ? AND (retired = 0 OR (retired = 1 AND updated_at >= ?)) ORDER BY id_site ASC')
+        .bind(zoneScope, technicianName, `${String(ymdToday() || '').slice(0, 7)}-01`)
+    : env.DB.prepare('SELECT * FROM sites WHERE technician = ? AND (retired = 0 OR (retired = 1 AND updated_at >= ?)) ORDER BY id_site ASC')
+        .bind(technicianName, `${String(ymdToday() || '').slice(0, 7)}-01`);
   const res = await stmt.all();
   const rows = Array.isArray(res?.results) ? res.results : [];
   return rows.map((r) => ({
@@ -150,7 +168,9 @@ async function loadSitesForTechnician(env, technicianName, zoneScope) {
     idSite: String(r.id_site || ''),
     nameSite: String(r.name_site || ''),
     zone: normalizeZone(r.zone || 'BZV/POOL'),
-    regime: Number(r.regime || 0)
+    regime: Number(r.regime || 0),
+    retired: Boolean(r.retired),
+    updatedAt: String(r.updated_at || '')
   }));
 }
 
@@ -215,6 +235,21 @@ function computeEpvDatesFromBase(epv1Ymd, regime, holidaySet) {
   const d2 = shiftForWorkdaysAndHolidays(ymdAddDays(d1, delta), holidaySet);
   const d3 = shiftForWorkdaysAndHolidays(ymdAddDays(d2, delta), holidaySet);
   return { epv1: d1, epv2: d2, epv3: d3 };
+}
+
+function nextWorkdayWithSlot(startYmd, holidaySet, capacityVisitsPerDay, occupancyByDate) {
+  let cur = shiftForWorkdaysAndHolidays(startYmd, holidaySet);
+  if (!cur) return '';
+
+  for (let guard = 0; guard < 80; guard += 1) {
+    const used = Number(occupancyByDate.get(cur) || 0);
+    if (used < capacityVisitsPerDay) {
+      return cur;
+    }
+    cur = shiftForWorkdaysAndHolidays(ymdAddDays(cur, 1), holidaySet);
+    if (!cur) return '';
+  }
+  return cur;
 }
 
 async function upsertPlanSnapshot(env, { month, zone, items, createdBy }) {
@@ -411,48 +446,56 @@ export async function onRequestPost({ request, env, data }) {
       return json({ error: 'Aucun jour ouvré disponible (jours fériés/weekends).' }, { status: 400 });
     }
 
+    const occupancyByDate = new Map();
     const assignments = [];
-    let dayIdx = 0;
-    let daySlotsUsed = 0;
 
+    // Assign per visit with anti-conflict capacity enforcement. Highest regime keeps earliest slots.
+    let fallbackWorkdayIdx = 0;
     for (const v of visits) {
-      if (dayIdx >= workdays.length) {
-        // overflow: keep last day
-        dayIdx = workdays.length - 1;
-      }
-
-      if (daySlotsUsed >= capacityVisitsPerDay) {
-        dayIdx += 1;
-        daySlotsUsed = 0;
-        if (dayIdx >= workdays.length) {
-          dayIdx = workdays.length - 1;
-        }
-      }
-
-      const visitDate = workdays[dayIdx];
-      daySlotsUsed += 1;
+      const fallback = workdays[Math.min(fallbackWorkdayIdx, workdays.length - 1)];
 
       // Determine base EPV1 using rollover rule
       const urgentSite = siteById.get(String(v.urgentSiteId));
       const urgentRegime = Number(urgentSite?.regime || v.urgentRegime || 0);
 
-      // If EPV1 exists in current month and not done -> EPV2 becomes EPV1 target, EPV3 becomes EPV2 target
-      let baseEpv1 = '';
+      // Rollover cases:
+      // Case 1: EPV1 non-done only => EPV2->EPV1 target, EPV3->EPV2 target
+      // Case 2: EPV1 + EPV2 non-done => EPV3->EPV1 target, EPV2 recomputed
+      let preferredEpv1 = '';
       let forcedEpv2 = '';
-      const nonDoneEpv1 = await loadCurrentMonthNonDoneEpv1(env, v.urgentSiteId, currentMonth);
-      if (nonDoneEpv1) {
+
+      const nonDoneEpv1 = await loadCurrentMonthNonDoneEpv(env, v.urgentSiteId, currentMonth, 'EPV1');
+      const nonDoneEpv2 = await loadCurrentMonthNonDoneEpv(env, v.urgentSiteId, currentMonth, 'EPV2');
+
+      if (nonDoneEpv1 && nonDoneEpv2) {
+        const cmEpv3 = await loadCurrentMonthEpvDate(env, v.urgentSiteId, currentMonth, 'EPV3');
+        if (cmEpv3) {
+          preferredEpv1 = cmEpv3;
+        }
+      } else if (nonDoneEpv1) {
         const cmEpv2 = await loadCurrentMonthEpvDate(env, v.urgentSiteId, currentMonth, 'EPV2');
         const cmEpv3 = await loadCurrentMonthEpvDate(env, v.urgentSiteId, currentMonth, 'EPV3');
         if (cmEpv2) {
-          baseEpv1 = cmEpv2;
+          preferredEpv1 = cmEpv2;
           forcedEpv2 = cmEpv3 || '';
         }
       }
 
-      const computed = computeEpvDatesFromBase(baseEpv1 || visitDate, urgentRegime, holidays);
-      const epv1 = computed.epv1;
+      const seed = preferredEpv1 || fallback;
+      const initialEpv1 = shiftForWorkdaysAndHolidays(seed, holidays);
+
+      // Anti-conflict: if too many visits already on that day, push to next available workday
+      const epv1 = nextWorkdayWithSlot(initialEpv1, holidays, capacityVisitsPerDay, occupancyByDate) || initialEpv1;
+      occupancyByDate.set(epv1, Number(occupancyByDate.get(epv1) || 0) + 1);
+
+      const computed = computeEpvDatesFromBase(epv1, urgentRegime, holidays);
       const epv2 = forcedEpv2 ? shiftForWorkdaysAndHolidays(forcedEpv2, holidays) : computed.epv2;
       const epv3 = computeEpvDatesFromBase(epv2, urgentRegime, holidays).epv3;
+
+      // Move fallback pointer when we filled a day
+      if (Number(occupancyByDate.get(epv1) || 0) >= capacityVisitsPerDay) {
+        fallbackWorkdayIdx += 1;
+      }
 
       for (const sid of v.sites) {
         const s = siteById.get(String(sid));

@@ -37,8 +37,11 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '2.3.0';
+const APP_VERSION = '2.3.5';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
+const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
+const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
+const APP_VERSION_FORCE_AFTER_DAYS = 7;
 const DAILY_NH_UPDATE_STORAGE_KEY = 'gma_daily_nh_update_ymd';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
 const SPLASH_MIN_MS = 4250;
@@ -93,7 +96,15 @@ const GeneratorMaintenanceApp = () => {
   const [exportBusy, setExportBusy] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportStep, setExportStep] = useState('');
-  const [pwaUpdate, setPwaUpdate] = useState({ available: false, registration: null, requested: false, forced: false });
+  const [pwaUpdate, setPwaUpdate] = useState({
+    available: false,
+    registration: null,
+    requested: false,
+    forced: false,
+    badge: false,
+    currentVersion: APP_VERSION,
+    serverVersion: ''
+  });
   const [bannerImage, setBannerImage] = useState('');
   const [siteForFiche, setSiteForFiche] = useState(null);
   const [ficheContext, setFicheContext] = useState(null);
@@ -449,7 +460,11 @@ const GeneratorMaintenanceApp = () => {
         <div className="max-w-3xl mx-auto bg-white border border-emerald-200 shadow-lg rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="min-w-0">
             <div className="font-bold text-gray-900">Nouvelle version disponible</div>
-            <div className="text-sm text-gray-600">Clique sur “Mettre à jour” pour appliquer la mise à jour.</div>
+            <div className="text-sm text-gray-600">
+              Version actuelle : <span className="font-semibold">{String(pwaUpdate?.currentVersion || APP_VERSION)}</span>
+              {' • '}
+              Nouvelle version : <span className="font-semibold">{String(pwaUpdate?.serverVersion || '')}</span>
+            </div>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
             <button
@@ -462,6 +477,11 @@ const GeneratorMaintenanceApp = () => {
                     localStorage.setItem(APP_VERSION_STORAGE_KEY, APP_VERSION);
                   } catch (e) {
                   }
+                  try {
+                    localStorage.removeItem(APP_VERSION_DISMISSED_KEY);
+                    localStorage.removeItem(APP_VERSION_SNOOZED_AT_KEY);
+                  } catch (e) {
+                  }
                   window.location.reload();
                   return;
                 }
@@ -469,6 +489,10 @@ const GeneratorMaintenanceApp = () => {
                   try {
                     localStorage.setItem(APP_VERSION_STORAGE_KEY, APP_VERSION);
                   } catch (e) {
+                  }
+                  try {
+                    waiting.postMessage({ type: 'CLEAR_CACHES' });
+                  } catch {
                   }
                   waiting.postMessage({ type: 'SKIP_WAITING' });
                 } catch {
@@ -484,15 +508,37 @@ const GeneratorMaintenanceApp = () => {
             <button
               type="button"
               onClick={() => {
-                setPwaUpdate({ available: false, registration: null, requested: false, forced: false });
+                try {
+                  if (pwaUpdate?.serverVersion) {
+                    localStorage.setItem(APP_VERSION_DISMISSED_KEY, String(pwaUpdate.serverVersion));
+                    localStorage.setItem(APP_VERSION_SNOOZED_AT_KEY, String(Date.now()));
+                  }
+                } catch (e) {
+                }
+                setPwaUpdate((prev) => ({ ...(prev || {}), available: false, forced: false, badge: true }));
               }}
               className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 font-semibold w-full sm:w-auto"
             >
               Plus tard
             </button>
+
           </div>
         </div>
       </div>
+    );
+  };
+
+  const renderPwaUpdateBadge = () => {
+    if (!pwaUpdate?.badge) return null;
+    return (
+      <button
+        type="button"
+        onClick={() => setPwaUpdate((prev) => ({ ...(prev || {}), available: true, badge: false }))}
+        className="fixed top-3 right-3 z-[70] bg-emerald-700 text-white px-3 py-2 rounded-full shadow-lg text-xs font-bold hover:bg-emerald-800"
+        title="Nouvelle version disponible"
+      >
+        MAJ
+      </button>
     );
   };
 
@@ -574,11 +620,72 @@ const GeneratorMaintenanceApp = () => {
     try {
       const seen = localStorage.getItem(APP_VERSION_STORAGE_KEY);
       if (seen !== APP_VERSION) {
-        setPwaUpdate((prev) => ({ ...(prev || {}), available: true, forced: true }));
+        localStorage.setItem(APP_VERSION_STORAGE_KEY, APP_VERSION);
       }
     } catch (e) {
       // ignore
     }
+  }, []);
+
+  useEffect(() => {
+    let canceled = false;
+
+    const cmp = (a, b) => {
+      const pa = String(a || '0.0.0').split('.').map((x) => Number(x) || 0);
+      const pb = String(b || '0.0.0').split('.').map((x) => Number(x) || 0);
+      for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
+        const da = pa[i] || 0;
+        const db = pb[i] || 0;
+        if (da !== db) return da > db ? 1 : -1;
+      }
+      return 0;
+    };
+
+    (async () => {
+      try {
+        const resp = await fetch(`/app-version.json?ts=${Date.now()}`, { cache: 'no-store' });
+        const raw = await resp.text();
+        const data = raw ? JSON.parse(raw) : null;
+
+        const serverVersion = String(data?.version || '').trim();
+        if (!serverVersion) return;
+
+        const currentVersion = APP_VERSION;
+        const hasNew = cmp(serverVersion, currentVersion) > 0;
+        if (!hasNew) return;
+
+        let dismissedFor = '';
+        let snoozedAt = 0;
+        try {
+          dismissedFor = String(localStorage.getItem(APP_VERSION_DISMISSED_KEY) || '').trim();
+          snoozedAt = Number(localStorage.getItem(APP_VERSION_SNOOZED_AT_KEY) || 0);
+        } catch (e) {
+        }
+
+        const msSinceSnooze = snoozedAt > 0 ? Date.now() - snoozedAt : 0;
+        const forceAfterMs = APP_VERSION_FORCE_AFTER_DAYS * 24 * 60 * 60 * 1000;
+        const force = snoozedAt > 0 && msSinceSnooze >= forceAfterMs;
+
+        const dismissedThisVersion = dismissedFor && dismissedFor === serverVersion;
+
+        if (canceled) return;
+
+        setPwaUpdate((prev) => ({
+          ...(prev || {}),
+          currentVersion,
+          serverVersion,
+          available: force || !dismissedThisVersion,
+          badge: !force && dismissedThisVersion,
+          forced: Boolean(force)
+        }));
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => {
+      canceled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -3178,9 +3285,9 @@ for (const [key, g] of globalSites.entries()) {
           const zoneRaw = row['Zone'] || row['zone'] || row['ZONE'] || '';
           const zone = String(zoneRaw || '').trim().toUpperCase();
           const normalizedZone =
-  zone === 'BZV/POOL' || zone === 'PNR/KOUILOU' || zone === 'UPCN'
-    ? zone
-    : '';
+          zone === 'BZV/POOL' || zone === 'PNR/KOUILOU' || zone === 'UPCN'
+            ? zone
+            : '';
 
           importedSites.push({
             id: Date.now() + index,
@@ -4773,8 +4880,9 @@ for (const [key, g] of globalSites.entries()) {
     );
   }
 
-  return (
+return (
     <div className="min-h-[100svh] bg-gray-50 md:min-h-screen">
+      {renderPwaUpdateBadge()}
       {renderPwaUpdateBanner()}
       {exportBusy && (
         <div className="fixed inset-0 z-[60] bg-black/30 flex items-center justify-center p-4">
@@ -4924,7 +5032,7 @@ for (const [key, g] of globalSites.entries()) {
 
                 if (authUser?.role === 'technician') {
                 await loadPmAssignments(interventionsMonth);
-}
+                }
               }}
               className="relative w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950 flex items-center gap-2 text-base font-semibold"
             >
@@ -5213,56 +5321,56 @@ for (const [key, g] of globalSites.entries()) {
         />  
 
         <AccountModal
-  open={showAccountModal}
-  email={authUser?.email || ''}
-  accountForm={accountForm}
-  onChange={(next) => {
-    setAccountForm(next);
-    setAccountError('');
-  }}
-  accountError={accountError}
-  accountSaving={accountSaving}
-  onClose={() => {
-    setShowAccountModal(false);
-    setAccountForm({ password: '', confirm: '' });
-    setAccountError('');
-  }}
-  onSave={() => {
-    (async () => {
-      try {
-        if (accountSaving) return;
-        const password = String(accountForm.password || '');
-        const confirm = String(accountForm.confirm || '');
-        if (!password) {
-          setAccountError('Veuillez saisir un mot de passe.');
-          return;
-        }
-        if (password.length < 6) {
-          setAccountError('Mot de passe trop court (min 6 caractères).');
-          return;
-        }
-        if (password !== confirm) {
-          setAccountError('Les mots de passe ne correspondent pas.');
-          return;
-        }
-        setAccountSaving(true);
-        setAccountError('');
-        await apiFetchJson('/api/auth/change-password', {
-          method: 'POST',
-          body: JSON.stringify({ password })
-        });
-        setShowAccountModal(false);
-        setAccountForm({ password: '', confirm: '' });
-        setAccountError('');
-        alert('✅ Mot de passe mis à jour.');
-      } catch (e) {
-        setAccountError(e?.message || 'Erreur serveur.');
-      } finally {
-        setAccountSaving(false);
-      }
-    })();
-  }}
-/>
+          open={showAccountModal}
+          email={authUser?.email || ''}
+          accountForm={accountForm}
+          onChange={(next) => {
+            setAccountForm(next);
+            setAccountError('');
+          }}
+          accountError={accountError}
+          accountSaving={accountSaving}
+          onClose={() => {
+            setShowAccountModal(false);
+            setAccountForm({ password: '', confirm: '' });
+            setAccountError('');
+          }}
+          onSave={() => {
+            (async () => {
+              try {
+                if (accountSaving) return;
+                const password = String(accountForm.password || '');
+                const confirm = String(accountForm.confirm || '');
+                if (!password) {
+                  setAccountError('Veuillez saisir un mot de passe.');
+                  return;
+                }
+                if (password.length < 6) {
+                  setAccountError('Mot de passe trop court (min 6 caractères).');
+                  return;
+                }
+                if (password !== confirm) {
+                  setAccountError('Les mots de passe ne correspondent pas.');
+                  return;
+                }
+                setAccountSaving(true);
+                setAccountError('');
+                await apiFetchJson('/api/auth/change-password', {
+                  method: 'POST',
+                  body: JSON.stringify({ password })
+                });
+                setShowAccountModal(false);
+                setAccountForm({ password: '', confirm: '' });
+                setAccountError('');
+                alert('✅ Mot de passe mis à jour.');
+              } catch (e) {
+                setAccountError(e?.message || 'Erreur serveur.');
+              } finally {
+                setAccountSaving(false);
+              }
+            })();
+          }}
+        />
 
         <UsersModal
           open={showUsersModal}
@@ -5448,7 +5556,7 @@ for (const [key, g] of globalSites.entries()) {
           formatDate={formatDate}
         />
 
-                <PmModal
+        <PmModal
           showPm={showPm}
           appVersion={APP_VERSION}
           canUsePm={canUsePm}
@@ -5547,7 +5655,7 @@ for (const [key, g] of globalSites.entries()) {
           authUser={authUser}
         />
 
-        <InterventionsModal
+          <InterventionsModal
             open={showInterventions}
             isTechnician={isTechnician}
             isAdmin={isAdmin}

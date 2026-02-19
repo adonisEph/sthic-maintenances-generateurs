@@ -1,4 +1,4 @@
-const CACHE = 'gmga-pwa-v7';
+const CACHE = 'gmga-pwa-v8';
 const CORE_ASSETS = ['/', '/index.html', '/manifest.webmanifest', '/icon-192.svg', '/icon-512.svg'];
 
 self.addEventListener('install', (event) => {
@@ -13,6 +13,14 @@ self.addEventListener('message', (event) => {
   const data = event?.data;
   if (data && data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+  if (data && data.type === 'CLEAR_CACHES') {
+    event.waitUntil(
+      caches
+        .keys()
+        .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+        .then(() => true)
+    );
   }
 });
 
