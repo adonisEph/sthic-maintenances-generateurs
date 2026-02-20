@@ -24,6 +24,21 @@ async function loadCurrentMonthNonDoneEpv(env, siteId, currentMonth, epvType) {
   return { plannedDate: String(row.planned_date).slice(0, 10), status: st };
 }
 
+async function loadNextNonDoneEpvDate(env, siteId, fromYmd, epvType) {
+  const from = String(fromYmd || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return '';
+  const row = await env.DB.prepare(
+    'SELECT planned_date, status FROM interventions WHERE site_id = ? AND epv_type = ? AND planned_date >= ? ORDER BY planned_date ASC LIMIT 1'
+  )
+    .bind(String(siteId), String(epvType || ''), from)
+    .first();
+  if (!row?.planned_date) return '';
+  const st = String(row?.status || '');
+  if (st === 'done') return '';
+  const d = String(row?.planned_date || '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : '';
+}
+
 function monthLabel(d) {
   return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}`;
 }
@@ -237,13 +252,14 @@ function computeEpvDatesFromBase(epv1Ymd, regime, holidaySet) {
   return { epv1: d1, epv2: d2, epv3: d3 };
 }
 
-function nextWorkdayWithSlot(startYmd, holidaySet, capacityVisitsPerDay, occupancyByDate) {
+function nextWorkdayWithSlot(startYmd, holidaySet, capacitySitesPerDay, requiredSlots, occupancyByDate) {
   let cur = shiftForWorkdaysAndHolidays(startYmd, holidaySet);
   if (!cur) return '';
 
   for (let guard = 0; guard < 80; guard += 1) {
     const used = Number(occupancyByDate.get(cur) || 0);
-    if (used < capacityVisitsPerDay) {
+    const req = Math.max(1, Math.round(Number(requiredSlots || 1)));
+    if (used + req <= capacitySitesPerDay) {
       return cur;
     }
     cur = shiftForWorkdaysAndHolidays(ymdAddDays(cur, 1), holidaySet);
@@ -440,7 +456,9 @@ export async function onRequestPost({ request, env, data }) {
 
     visits.sort((a, b) => (b.urgentRegime - a.urgentRegime) || String(a.urgentSiteId).localeCompare(String(b.urgentSiteId)));
 
-    const capacityVisitsPerDay = sites.length >= 21 ? 2 : 1;
+    // Terrain cadence is expressed in number of sites per day (not number of "visits").
+    // A paired visit consumes 2 slots.
+    const capacitySitesPerDay = sites.length >= 21 ? 2 : 1;
     const workdays = buildWorkdays(targetMonth, holidays);
     if (workdays.length === 0) {
       return json({ error: 'Aucun jour ouvré disponible (jours fériés/weekends).' }, { status: 400 });
@@ -468,32 +486,34 @@ export async function onRequestPost({ request, env, data }) {
       const nonDoneEpv2 = await loadCurrentMonthNonDoneEpv(env, v.urgentSiteId, currentMonth, 'EPV2');
 
       if (nonDoneEpv1 && nonDoneEpv2) {
-        const cmEpv3 = await loadCurrentMonthEpvDate(env, v.urgentSiteId, currentMonth, 'EPV3');
-        if (cmEpv3) {
-          preferredEpv1 = cmEpv3;
-        }
+        const curMonthFrom = `${String(currentMonth).slice(0, 7)}-01`;
+        const nextEpv3 = await loadNextNonDoneEpvDate(env, v.urgentSiteId, curMonthFrom, 'EPV3');
+        if (nextEpv3) preferredEpv1 = nextEpv3;
       } else if (nonDoneEpv1) {
-        const cmEpv2 = await loadCurrentMonthEpvDate(env, v.urgentSiteId, currentMonth, 'EPV2');
-        const cmEpv3 = await loadCurrentMonthEpvDate(env, v.urgentSiteId, currentMonth, 'EPV3');
-        if (cmEpv2) {
-          preferredEpv1 = cmEpv2;
-          forcedEpv2 = cmEpv3 || '';
+        const curMonthFrom = `${String(currentMonth).slice(0, 7)}-01`;
+        const nextEpv2 = await loadNextNonDoneEpvDate(env, v.urgentSiteId, curMonthFrom, 'EPV2');
+        const nextEpv3 = await loadNextNonDoneEpvDate(env, v.urgentSiteId, curMonthFrom, 'EPV3');
+        if (nextEpv2) {
+          preferredEpv1 = nextEpv2;
+          forcedEpv2 = nextEpv3 || '';
         }
       }
 
       const seed = preferredEpv1 || fallback;
       const initialEpv1 = shiftForWorkdaysAndHolidays(seed, holidays);
 
-      // Anti-conflict: if too many visits already on that day, push to next available workday
-      const epv1 = nextWorkdayWithSlot(initialEpv1, holidays, capacityVisitsPerDay, occupancyByDate) || initialEpv1;
-      occupancyByDate.set(epv1, Number(occupancyByDate.get(epv1) || 0) + 1);
+      // Anti-conflict: cadence enforcement by number of sites planned that day.
+      // A pair consumes 2 slots; a single-site visit consumes 1 slot.
+      const requiredSlots = Array.isArray(v.sites) ? v.sites.length : 1;
+      const epv1 = nextWorkdayWithSlot(initialEpv1, holidays, capacitySitesPerDay, requiredSlots, occupancyByDate) || initialEpv1;
+      occupancyByDate.set(epv1, Number(occupancyByDate.get(epv1) || 0) + requiredSlots);
 
       const computed = computeEpvDatesFromBase(epv1, urgentRegime, holidays);
       const epv2 = forcedEpv2 ? shiftForWorkdaysAndHolidays(forcedEpv2, holidays) : computed.epv2;
       const epv3 = computeEpvDatesFromBase(epv2, urgentRegime, holidays).epv3;
 
       // Move fallback pointer when we filled a day
-      if (Number(occupancyByDate.get(epv1) || 0) >= capacityVisitsPerDay) {
+      if (Number(occupancyByDate.get(epv1) || 0) >= capacitySitesPerDay) {
         fallbackWorkdayIdx += 1;
       }
 
@@ -586,7 +606,7 @@ export async function onRequestPost({ request, env, data }) {
         stats: {
           sites: sites.length,
           visits: visits.length,
-          capacityVisitsPerDay,
+          capacitySitesPerDay,
           workdays: workdays.length,
           snapshotInserted: snapshotRes.inserted,
           interventionsUpserted: interventionsRes.inserted
