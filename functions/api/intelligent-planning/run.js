@@ -1,6 +1,7 @@
 import { ensureAdminUser } from '../_utils/db.js';
 import { json, requireAuth, readJson, isoNow, newId, ymdToday, isSuperAdmin, userZone } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
+import { calculateEstimatedNH, calculateEPVDates } from '../_utils/calc.js';
 
 const SEUIL = 250;
 
@@ -8,35 +9,19 @@ function pad2(n) {
   return String(n).padStart(2, '0');
 }
 
-async function loadCurrentMonthNonDoneEpv(env, siteId, currentMonth, epvType) {
-  const m = String(currentMonth || '').trim();
-  if (!/^\d{4}-\d{2}$/.test(m)) return null;
-  const from = `${m}-01`;
-  const to = `${m}-31`;
-  const row = await env.DB.prepare(
-    'SELECT planned_date, status FROM interventions WHERE site_id = ? AND epv_type = ? AND planned_date >= ? AND planned_date <= ? ORDER BY planned_date ASC LIMIT 1'
-  )
-    .bind(String(siteId), String(epvType || ''), from, to)
-    .first();
-  if (!row?.planned_date) return null;
-  const st = String(row?.status || '');
-  if (st === 'done') return null;
-  return { plannedDate: String(row.planned_date).slice(0, 10), status: st };
-}
+function clampToMonthWorkday(ymd, workdays) {
+  const src = String(ymd || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(src)) return workdays?.[0] || '';
+  if (!Array.isArray(workdays) || workdays.length === 0) return '';
 
-async function loadNextNonDoneEpvDate(env, siteId, fromYmd, epvType) {
-  const from = String(fromYmd || '').slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return '';
-  const row = await env.DB.prepare(
-    'SELECT planned_date, status FROM interventions WHERE site_id = ? AND epv_type = ? AND planned_date >= ? ORDER BY planned_date ASC LIMIT 1'
-  )
-    .bind(String(siteId), String(epvType || ''), from)
-    .first();
-  if (!row?.planned_date) return '';
-  const st = String(row?.status || '');
-  if (st === 'done') return '';
-  const d = String(row?.planned_date || '').slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : '';
+  if (src <= workdays[0]) return workdays[0];
+  if (src >= workdays[workdays.length - 1]) return workdays[workdays.length - 1];
+
+  // Find first workday >= src
+  for (let i = 0; i < workdays.length; i += 1) {
+    if (workdays[i] >= src) return workdays[i];
+  }
+  return workdays[workdays.length - 1];
 }
 
 function monthLabel(d) {
@@ -127,6 +112,19 @@ function normalizeZone(z) {
     .replace(/\s+/g, ' ');
 }
 
+async function hasNonDoneEpvInMonth(env, siteId, monthYyyyMm, epvType) {
+  const m = String(monthYyyyMm || '').trim();
+  if (!/^\d{4}-\d{2}$/.test(m)) return false;
+  const from = `${m}-01`;
+  const to = `${m}-31`;
+  const row = await env.DB.prepare(
+    'SELECT 1 as one FROM interventions WHERE site_id = ? AND epv_type = ? AND planned_date >= ? AND planned_date <= ? AND status != \'done\' LIMIT 1'
+  )
+    .bind(String(siteId), String(epvType || ''), from, to)
+    .first();
+  return Boolean(row?.one);
+}
+
 function normStr(v) {
   const s = String(v ?? '').trim();
   return s;
@@ -184,6 +182,9 @@ async function loadSitesForTechnician(env, technicianName, zoneScope) {
     nameSite: String(r.name_site || ''),
     zone: normalizeZone(r.zone || 'BZV/POOL'),
     regime: Number(r.regime || 0),
+    nh1DV: Number(r.nh1_dv || 0),
+    nh2A: Number(r.nh2_a || 0),
+    dateA: String(r.date_a || '').slice(0, 10),
     retired: Boolean(r.retired),
     updatedAt: String(r.updated_at || '')
   }));
@@ -207,35 +208,20 @@ async function loadPairs(env, technicianUserId) {
   return map;
 }
 
-async function loadCurrentMonthNonDoneEpv1(env, siteId, currentMonth) {
-  // currentMonth: YYYY-MM
-  const m = String(currentMonth || '').trim();
-  if (!/^\d{4}-\d{2}$/.test(m)) return null;
-  const from = `${m}-01`;
-  const to = `${m}-31`;
-  const row = await env.DB.prepare(
-    "SELECT planned_date, status FROM interventions WHERE site_id = ? AND epv_type = 'EPV1' AND planned_date >= ? AND planned_date <= ? ORDER BY planned_date ASC LIMIT 1"
-  )
-    .bind(String(siteId), from, to)
-    .first();
-  if (!row?.planned_date) return null;
-  const st = String(row?.status || '');
-  if (st === 'done') return null;
-  return { plannedDate: String(row.planned_date).slice(0, 10), status: st };
-}
+function findSlotInMonth(workdays, startIdx, requiredSlots, capacitySitesPerDay, occupancyByDate) {
+  const idx0 = Math.max(0, Math.round(Number(startIdx || 0)));
+  const req = Math.max(1, Math.round(Number(requiredSlots || 1)));
 
-async function loadCurrentMonthEpvDate(env, siteId, currentMonth, epvType) {
-  const m = String(currentMonth || '').trim();
-  if (!/^\d{4}-\d{2}$/.test(m)) return '';
-  const from = `${m}-01`;
-  const to = `${m}-31`;
-  const row = await env.DB.prepare(
-    'SELECT planned_date FROM interventions WHERE site_id = ? AND epv_type = ? AND planned_date >= ? AND planned_date <= ? ORDER BY planned_date ASC LIMIT 1'
-  )
-    .bind(String(siteId), String(epvType || ''), from, to)
-    .first();
-  const d = String(row?.planned_date || '').slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : '';
+  for (let i = idx0; i < workdays.length; i += 1) {
+    const d = workdays[i];
+    const used = Number(occupancyByDate.get(d) || 0);
+    if (used + req <= capacitySitesPerDay) {
+      return { date: d, idx: i };
+    }
+  }
+
+  // Exceptional case: force last workday even if it exceeds cadence.
+  return { date: workdays[workdays.length - 1], idx: workdays.length - 1 };
 }
 
 function intervalDays(regime) {
@@ -464,58 +450,65 @@ export async function onRequestPost({ request, env, data }) {
       return json({ error: 'Aucun jour ouvré disponible (jours fériés/weekends).' }, { status: 400 });
     }
 
+    const workdayIndex = new Map(workdays.map((d, idx) => [d, idx]));
+
     const occupancyByDate = new Map();
     const assignments = [];
 
-    // Assign per visit with anti-conflict capacity enforcement. Highest regime keeps earliest slots.
-    let fallbackWorkdayIdx = 0;
-    for (const v of visits) {
-      const fallback = workdays[Math.min(fallbackWorkdayIdx, workdays.length - 1)];
+    // Cursor to guarantee continuous placement: always keep filling earliest available workday.
+    let workdayCursorIdx = 0;
 
-      // Determine base EPV1 using rollover rule
+    // Assign per visit with anti-conflict capacity enforcement strictly inside the target month.
+    // Highest regime keeps earliest slots.
+    for (const v of visits) {
+      // Determine base EPV1 from the SiteCard-equivalent calculated EPV dates (source of truth).
       const urgentSite = siteById.get(String(v.urgentSiteId));
       const urgentRegime = Number(urgentSite?.regime || v.urgentRegime || 0);
 
-      // Rollover cases:
-      // Case 1: EPV1 non-done only => EPV2->EPV1 target, EPV3->EPV2 target
-      // Case 2: EPV1 + EPV2 non-done => EPV3->EPV1 target, EPV2 recomputed
-      let preferredEpv1 = '';
-      let forcedEpv2 = '';
+      const nhEstimated = calculateEstimatedNH(Number(urgentSite?.nh2A || 0), String(urgentSite?.dateA || ''), urgentRegime);
+      const calculated = calculateEPVDates(urgentRegime, Number(urgentSite?.nh1DV || 0), nhEstimated, SEUIL);
 
-      const nonDoneEpv1 = await loadCurrentMonthNonDoneEpv(env, v.urgentSiteId, currentMonth, 'EPV1');
-      const nonDoneEpv2 = await loadCurrentMonthNonDoneEpv(env, v.urgentSiteId, currentMonth, 'EPV2');
+      // Règle B (sans dates interventions comme source):
+      // On ne lit que l'existence d'EPV1/EPV2 non réalisées sur le mois courant pour déclencher les scénarios.
+      const nonDoneEpv1 = await hasNonDoneEpvInMonth(env, v.urgentSiteId, currentMonth, 'EPV1');
+      const nonDoneEpv2 = await hasNonDoneEpvInMonth(env, v.urgentSiteId, currentMonth, 'EPV2');
 
-      if (nonDoneEpv1 && nonDoneEpv2) {
-        const curMonthFrom = `${String(currentMonth).slice(0, 7)}-01`;
-        const nextEpv3 = await loadNextNonDoneEpvDate(env, v.urgentSiteId, curMonthFrom, 'EPV3');
-        if (nextEpv3) preferredEpv1 = nextEpv3;
-      } else if (nonDoneEpv1) {
-        const curMonthFrom = `${String(currentMonth).slice(0, 7)}-01`;
-        const nextEpv2 = await loadNextNonDoneEpvDate(env, v.urgentSiteId, curMonthFrom, 'EPV2');
-        const nextEpv3 = await loadNextNonDoneEpvDate(env, v.urgentSiteId, curMonthFrom, 'EPV3');
-        if (nextEpv2) {
-          preferredEpv1 = nextEpv2;
-          forcedEpv2 = nextEpv3 || '';
-        }
-      }
+      // Case 1: EPV1 + EPV2 non réalisés => EPV3 calculé devient seed (EPV1 du mois cible), EPV2 sera recalculé après placement.
+      // Case 2: EPV1 seul non réalisé => EPV2 calculé devient seed (EPV1 du mois cible) et EPV3 calculé devient EPV2 forcé.
+      const preferredSeed = nonDoneEpv1 && nonDoneEpv2 ? calculated?.epv3 : nonDoneEpv1 ? calculated?.epv2 : calculated?.epv1;
+      const forcedEpv2Seed = nonDoneEpv1 && !nonDoneEpv2 ? calculated?.epv3 : '';
 
-      const seed = preferredEpv1 || fallback;
-      const initialEpv1 = shiftForWorkdaysAndHolidays(seed, holidays);
+      // Seed is EPV1 computed (SiteCard). If invalid/outside month => clamp inside month.
+      const rawSeed = String(preferredSeed || '').slice(0, 10);
+      const seeded = clampToMonthWorkday(rawSeed, workdays);
+      const startIdx = Number(workdayIndex.get(seeded) ?? 0);
+
+      const effectiveStartIdx = Math.min(startIdx, workdayCursorIdx);
 
       // Anti-conflict: cadence enforcement by number of sites planned that day.
       // A pair consumes 2 slots; a single-site visit consumes 1 slot.
       const requiredSlots = Array.isArray(v.sites) ? v.sites.length : 1;
-      const epv1 = nextWorkdayWithSlot(initialEpv1, holidays, capacitySitesPerDay, requiredSlots, occupancyByDate) || initialEpv1;
+      const slot = findSlotInMonth(workdays, effectiveStartIdx, requiredSlots, capacitySitesPerDay, occupancyByDate);
+      const epv1 = slot.date;
       occupancyByDate.set(epv1, Number(occupancyByDate.get(epv1) || 0) + requiredSlots);
 
-      const computed = computeEpvDatesFromBase(epv1, urgentRegime, holidays);
-      const epv2 = forcedEpv2 ? shiftForWorkdaysAndHolidays(forcedEpv2, holidays) : computed.epv2;
-      const epv3 = computeEpvDatesFromBase(epv2, urgentRegime, holidays).epv3;
-
-      // Move fallback pointer when we filled a day
-      if (Number(occupancyByDate.get(epv1) || 0) >= capacitySitesPerDay) {
-        fallbackWorkdayIdx += 1;
+      // Advance cursor to next not-full day to prevent unexplained gaps.
+      for (let i = workdayCursorIdx; i < workdays.length; i += 1) {
+        const d = workdays[i];
+        const used = Number(occupancyByDate.get(d) || 0);
+        if (used < capacitySitesPerDay) {
+          workdayCursorIdx = i;
+          break;
+        }
+        workdayCursorIdx = Math.min(i + 1, workdays.length - 1);
       }
+
+      // Compute EPV2/EPV3 from the placed EPV1, but keep them displayed within target month.
+      // If EPV2 is forced (case EPV1 seul non réalisé), we use the calculated EPV3 as EPV2 and recompute EPV3 from there.
+      const computed = computeEpvDatesFromBase(epv1, urgentRegime, holidays);
+      const forcedEpv2 = forcedEpv2Seed ? clampToMonthWorkday(shiftForWorkdaysAndHolidays(forcedEpv2Seed, holidays), workdays) : '';
+      const epv2 = forcedEpv2 || clampToMonthWorkday(computed.epv2, workdays);
+      const epv3 = clampToMonthWorkday(computeEpvDatesFromBase(epv2, urgentRegime, holidays).epv3, workdays);
 
       for (const sid of v.sites) {
         const s = siteById.get(String(sid));
@@ -541,7 +534,8 @@ export async function onRequestPost({ request, env, data }) {
     const covered = new Set(assignments.map((a) => String(a.siteId)));
     for (const s of sites) {
       if (covered.has(String(s.id))) continue;
-      const epv = computeEpvDatesFromBase(workdays[workdays.length - 1], Number(s.regime || 0), holidays);
+      const last = workdays[workdays.length - 1];
+      const epv = computeEpvDatesFromBase(last, Number(s.regime || 0), holidays);
       assignments.push({
         siteId: String(s.id),
         siteCode: s.idSite,
@@ -550,9 +544,9 @@ export async function onRequestPost({ request, env, data }) {
         zone: s.zone,
         assignedTo: tech.technicianName,
         technicianUserId,
-        scheduledWoDate: epv.epv1,
-        epv2: epv.epv2,
-        epv3: epv.epv3,
+        scheduledWoDate: clampToMonthWorkday(epv.epv1, workdays),
+        epv2: clampToMonthWorkday(epv.epv2, workdays),
+        epv3: clampToMonthWorkday(epv.epv3, workdays),
         pairSiteId: '',
         pairSiteCode: ''
       });
