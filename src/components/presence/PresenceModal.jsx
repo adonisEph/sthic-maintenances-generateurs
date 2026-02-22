@@ -228,7 +228,7 @@ const PresenceModal = ({
                         <div className="text-right">
                           <div
                             className={`text-xs px-2 py-1 rounded inline-block ${
-                              isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'
+                              isActive ? 'bg-sky-100 text-sky-800' : 'bg-gray-100 text-gray-700'
                             }`}
                           >
                             {isActive ? 'Actif' : 'Inactif'}

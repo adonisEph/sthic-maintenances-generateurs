@@ -1,6 +1,12 @@
 import { ensureAdminUser } from '../../_utils/db.js';
 import { json, requireAuth, isSuperAdmin, userZone } from '../../_utils/http.js';
 
+function normalizeZone(z) {
+  return String(z || '')
+    .trim()
+    .toUpperCase();
+}
+
 function mapSiteRow(row) {
   if (!row) return null;
   return {
@@ -45,6 +51,8 @@ export async function onRequestGet({ env, data, params }) {
     const technicianName = String(user.technician_name || '').trim();
     if (!technicianName) return json({ error: 'Nom technicien manquant.' }, { status: 400 });
 
+    const technicianEmail = String(user.email || '').trim();
+
     const z = userZone(data);
 
     if (!isSuperAdmin(data)) {
@@ -52,13 +60,27 @@ export async function onRequestGet({ env, data, params }) {
       if (String(techZone) !== String(z)) return json({ error: 'Accès interdit.' }, { status: 403 });
     }
 
-    const stmt = isSuperAdmin(data)
-      ? env.DB.prepare('SELECT * FROM sites WHERE technician = ? ORDER BY id_site ASC').bind(technicianName)
-      : env.DB.prepare('SELECT * FROM sites WHERE zone = ? AND technician = ? ORDER BY id_site ASC').bind(z, technicianName);
+    const stmt = env.DB.prepare(
+      `SELECT * FROM sites
+       WHERE TRIM(technician) = TRIM(?) COLLATE NOCASE
+          OR (TRIM(?) != '' AND TRIM(technician) = TRIM(?) COLLATE NOCASE)
+       ORDER BY id_site ASC`
+    ).bind(technicianName, technicianEmail, technicianEmail);
 
     const res = await stmt.all();
     const rows = Array.isArray(res?.results) ? res.results : [];
-    return json(rows.map(mapSiteRow), { status: 200 });
+
+    if (isSuperAdmin(data)) {
+      return json(rows.map(mapSiteRow), { status: 200 });
+    }
+
+    const zn = normalizeZone(z || 'BZV/POOL');
+    const filtered = rows.filter((r) => {
+      const siteZone = r?.zone == null || String(r.zone).trim() === '' ? z : r.zone;
+      return normalizeZone(siteZone || 'BZV/POOL') === zn;
+    });
+
+    return json(filtered.map(mapSiteRow), { status: 200 });
   } catch (e) {
     return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
   }

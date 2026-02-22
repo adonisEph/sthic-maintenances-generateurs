@@ -20,10 +20,10 @@ const CompleteInterventionModal = ({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-lg w-full overflow-hidden">
-        <div className="flex justify-between items-center p-4 border-b bg-green-700 text-white">
+        <div className="flex justify-between items-center p-4 border-b bg-indigo-700 text-white">
           <div className="font-bold">Valider l'intervention</div>
           <div className="flex items-center gap-3">
-            <button onClick={onClose} className="hover:bg-green-800 p-2 rounded">
+            <button onClick={onClose} className="hover:bg-indigo-800 p-2 rounded">
               <X size={18} />
             </button>
           </div>
@@ -73,7 +73,7 @@ const CompleteInterventionModal = ({
           </button>
           <button
             onClick={onConfirm}
-            className={`bg-green-700 text-white px-4 py-2 rounded-lg hover:bg-green-800 font-semibold ${isAdmin ? 'w-full sm:w-auto' : ''}`}
+            className={`bg-indigo-700 text-white px-4 py-2 rounded-lg hover:bg-indigo-800 font-semibold ${isAdmin ? 'w-full sm:w-auto' : ''}`}
           >
             Confirmer
           </button>

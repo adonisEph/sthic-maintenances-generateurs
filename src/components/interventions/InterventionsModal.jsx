@@ -596,9 +596,16 @@ const InterventionsModal = ({
                         </div>
                         <div className="flex items-center gap-2">
                           {already.has(ev.key) ? (
-                            <span className="text-xs bg-green-100 text-green-800 border border-green-200 px-2 py-1 rounded font-semibold">
+                            <span className="text-xs bg-sky-100 text-sky-800 border border-sky-200 px-2 py-1 rounded font-semibold">
                               Déjà planifiée
                             </span>
+                          ) : (
+                            <span className="text-xs bg-amber-100 text-amber-800 border border-amber-200 px-2 py-1 rounded font-semibold">
+                              Non planifiée
+                            </span>
+                          )}
+                          {already.has(ev.key) ? (
+                            <></>
                           ) : (
                             (() => {
                               const selectedTechId =
