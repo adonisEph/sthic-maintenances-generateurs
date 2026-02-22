@@ -4776,7 +4776,7 @@ for (const [key, g] of globalSites.entries()) {
         {renderPwaUpdateBadge()}
         {renderPwaUpdateBanner()}
         <div
-          className="absolute inset-0 pointer-events-none"
+          className="absolute inset-0 pointer-events-none z-0"
           aria-hidden="true"
         >
           <div className="absolute -top-16 -left-16 w-72 h-72 rounded-full bg-indigo-200/40 blur-3xl" />
@@ -4808,7 +4808,7 @@ for (const [key, g] of globalSites.entries()) {
             <Plus size={44} />
           </div>
         </div>
-        <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+        <div className="relative z-10 bg-white rounded-lg shadow-xl max-w-md w-full p-6">
           <div className="text-center mb-6">
             <div className="w-16 h-16 mx-auto bg-indigo-600 rounded-full flex items-center justify-center text-white mb-4">
               <Activity size={28} />
