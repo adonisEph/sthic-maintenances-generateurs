@@ -889,12 +889,12 @@ const PmModal = (props) => {
                 key: 'closed',
                 title: 'Closed Complete',
                 value: Number(counts.closed || 0),
-                className: 'bg-teal-50 border-teal-200 hover:bg-teal-100',
-                titleClassName: 'text-teal-900',
-                valueClassName: 'text-teal-900',
-                hintClassName: 'text-teal-800',
+                className: 'bg-indigo-50 border-indigo-200 hover:bg-indigo-100',
+                titleClassName: 'text-indigo-900',
+                valueClassName: 'text-indigo-900',
+                hintClassName: 'text-indigo-800',
                 Icon: BadgeCheck,
-                iconClassName: 'text-teal-700',
+                iconClassName: 'text-indigo-700',
                 onClick: () => {
                   setPmFilterState('closed');
                   setPmFilterReprog('all');
@@ -991,12 +991,12 @@ const PmModal = (props) => {
                 {pmDetails?.open && (
                   <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
                     <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[90vh]">
-                      <div className="flex justify-between items-center p-4 border-b bg-teal-800 text-white">
+                      <div className="flex justify-between items-center p-4 border-b bg-indigo-800 text-white">
                         <div className="font-bold">Détails PM — {pmDetails?.title || ''}</div>
                         <button
                           type="button"
                           onClick={() => setPmDetails({ open: false, title: '', items: [] })}
-                          className="hover:bg-teal-900 p-2 rounded"
+                          className="hover:bg-indigo-900 p-2 rounded"
                         >
                           <X size={18} />
                         </button>
@@ -1058,7 +1058,7 @@ const PmModal = (props) => {
                 {pmRejectedModalOpen && (
                   <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
                     <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[90vh]">
-                      <div className="flex justify-between items-center p-4 border-b bg-teal-800 text-white">
+                      <div className="flex justify-between items-center p-4 border-b bg-indigo-800 text-white">
                         <div className="font-bold">Reprogrammations rejetées</div>
                         <button
                           type="button"
@@ -1066,7 +1066,7 @@ const PmModal = (props) => {
                             setPmRejectedModalOpen(false);
                             setPmRejectedDateFilter('');
                           }}
-                          className="hover:bg-teal-900 p-2 rounded"
+                          className="hover:bg-indigo-900 p-2 rounded"
                         >
                           <X size={18} />
                         </button>
@@ -1319,7 +1319,7 @@ const PmModal = (props) => {
                                     <button
                                       type="button"
                                       onClick={() => handlePmOpenReprog(it)}
-                                      className="bg-teal-700 text-white px-3 py-1.5 rounded-lg hover:bg-teal-800 text-xs font-semibold"
+                                      className="bg-indigo-700 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-800 text-xs font-semibold"
                                       disabled={pmBusy}
                                     >
                                       Reprogrammer
@@ -1338,7 +1338,7 @@ const PmModal = (props) => {
                 {pmReprogOpen && pmReprogItem && (
                   <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
                     <div className="bg-white rounded-lg shadow-xl max-w-lg w-full overflow-hidden">
-                      <div className="flex justify-between items-center p-4 border-b bg-teal-800 text-white">
+                      <div className="flex justify-between items-center p-4 border-b bg-indigo-800 text-white">
                         <div className="font-bold">Reprogrammation (PM)</div>
                         <button
                           onClick={() => {
@@ -1347,7 +1347,7 @@ const PmModal = (props) => {
                             setPmReprogForm({ date: '', status: '', reason: '' });
                             setPmReprogError('');
                           }}
-                          className="hover:bg-teal-900 p-2 rounded"
+                          className="hover:bg-indigo-900 p-2 rounded"
                         >
                           <X size={18} />
                         </button>
@@ -1426,7 +1426,7 @@ const PmModal = (props) => {
                         </button>
                         <button
                           onClick={handlePmSaveReprog}
-                          className="bg-teal-800 text-white px-4 py-2 rounded-lg hover:bg-teal-900 font-semibold"
+                          className="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-900 font-semibold"
                           disabled={pmReprogSaving}
                         >
                           Enregistrer
