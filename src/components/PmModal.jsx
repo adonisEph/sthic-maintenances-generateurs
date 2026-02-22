@@ -1,5 +1,5 @@
 import React from 'react';
-import { TrendingUp, X, Upload, Download, Trash2, RotateCcw, Activity, Menu, ChevronLeft } from 'lucide-react';
+import { TrendingUp, X, Upload, Download, Trash2, RotateCcw, Activity, Menu, ChevronLeft, ListChecks, BadgeCheck, Clock, UserCheck } from 'lucide-react';
 
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
 
@@ -213,19 +213,19 @@ const PmModal = (props) => {
       : pmRetiredItemsAll;
 
   return (
-    <div className="fixed inset-0 bg-emerald-950/60 flex items-center justify-center z-50 p-0 sm:p-0">
+    <div className="fixed inset-0 bg-indigo-950/60 flex items-center justify-center z-50 p-0 sm:p-0">
       <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-none sm:max-w-none sm:max-h-[100vh] sm:h-[100vh]">
         <div className="flex-1 overflow-hidden">
           <div className="flex flex-col lg:flex-row h-full min-h-0">
             {sidebarOpen && (
-              <div className="lg:w-72 w-full flex-shrink-0 bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 text-white border-emerald-900/60 border-b-4 border-b-emerald-400/30 lg:border-b-0 lg:border-r-4 lg:border-r-emerald-400/30 overflow-y-auto">
-                <div className="flex items-center gap-2 px-4 py-3 border-b border-emerald-900/60">
+              <div className="lg:w-72 w-full flex-shrink-0 bg-gradient-to-b from-indigo-950 via-indigo-900 to-indigo-950 text-white border-indigo-900/60 border-b-4 border-b-sky-400/30 lg:border-b-0 lg:border-r-4 lg:border-r-sky-400/30 overflow-y-auto">
+                <div className="flex items-center gap-2 px-4 py-3 border-b border-indigo-900/60">
                   <Activity size={20} className="text-slate-100/90" />
                   <div className="text-lg font-bold text-slate-100 leading-tight">Navigation</div>
                   <button
                     type="button"
                     onClick={() => setSidebarOpen(false)}
-                    className="ml-auto p-2 rounded hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                    className="ml-auto p-2 rounded hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
                     title="Masquer le menu"
                   >
                     <ChevronLeft size={18} />
@@ -255,7 +255,7 @@ const PmModal = (props) => {
                       onClick={async () => {
                         await refreshPmAll(pmMonth);
                       }}
-                      className="w-full bg-emerald-600 text-white px-3 py-2 rounded-lg hover:bg-emerald-700 text-sm font-semibold"
+                      className="w-full bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 text-sm font-semibold"
                       disabled={pmBusy}
                     >
                       Rafraîchir
@@ -264,7 +264,7 @@ const PmModal = (props) => {
                     <button
                       type="button"
                       onClick={handlePmExportExcel}
-                      className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                      className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
                       disabled={pmBusy}
                     >
                       <Download size={16} />
@@ -289,7 +289,7 @@ const PmModal = (props) => {
                     <button
                       type="button"
                       onClick={handlePmExportReprogExcel}
-                      className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                      className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
                       disabled={pmBusy || exportBusy}
                     >
                       <Download size={16} />
@@ -327,7 +327,7 @@ const PmModal = (props) => {
                       <button
                         type="button"
                         onClick={handleSendPmMonthPlanning}
-                        className="w-full bg-emerald-600 text-white px-3 py-2 rounded-lg hover:bg-emerald-700 text-sm font-semibold disabled:bg-gray-100 disabled:text-gray-400"
+                        className="w-full bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 text-sm font-semibold disabled:bg-gray-100 disabled:text-gray-400"
                         disabled={!pmSendTechUserId || pmBusy || pmSendBusy}
                       >
                         Envoyer planning PM
@@ -339,7 +339,7 @@ const PmModal = (props) => {
                           setPmRejectedDateFilter('');
                           setPmRejectedModalOpen(true);
                         }}
-                        className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                        className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
                         disabled={pmBusy}
                       >
                         Voir reprog rejetées
@@ -361,7 +361,7 @@ const PmModal = (props) => {
                     <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Actions</div>
                     <div className="flex flex-col">
                       <label
-                        className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-emerald-400/70 focus-within:ring-offset-2 focus-within:ring-offset-emerald-950 ${
+                        className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-sky-400/70 focus-within:ring-offset-2 focus-within:ring-offset-indigo-950 ${
                           pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
                         }`}
                       >
@@ -377,7 +377,7 @@ const PmModal = (props) => {
                       </label>
 
                       <label
-                        className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-emerald-400/70 focus-within:ring-offset-2 focus-within:ring-offset-emerald-950 ${
+                        className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-sky-400/70 focus-within:ring-offset-2 focus-within:ring-offset-indigo-950 ${
                           pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
                         }`}
                       >
@@ -393,7 +393,7 @@ const PmModal = (props) => {
                       </label>
 
                       <label
-                        className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-emerald-400/70 focus-within:ring-offset-2 focus-within:ring-offset-emerald-950 ${
+                        className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-sky-400/70 focus-within:ring-offset-2 focus-within:ring-offset-indigo-950 ${
                           pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
                         }`}
                       >
@@ -413,7 +413,7 @@ const PmModal = (props) => {
                           <button
                             type="button"
                             onClick={() => setPmPurgeOpen((v) => !v)}
-                            className="text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                            className="text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
                             disabled={pmBusy || pmPurgeBusy}
                           >
                             <Trash2 size={16} />
@@ -503,7 +503,7 @@ const PmModal = (props) => {
                                     onClick={async () => {
                                       await pmRunPurge({ dryRun: true });
                                     }}
-                                    className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                                    className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
                                     disabled={pmBusy || pmPurgeBusy}
                                   >
                                     Prévisualiser (dry-run)
@@ -516,7 +516,7 @@ const PmModal = (props) => {
                           <button
                             type="button"
                             onClick={() => handlePmReset('imports')}
-                            className="text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                            className="text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
                             disabled={pmBusy || pmResetBusy}
                           >
                             <Trash2 size={16} />
@@ -526,7 +526,7 @@ const PmModal = (props) => {
                           <button
                             type="button"
                             onClick={() => handlePmReset('all')}
-                            className="text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                            className="text-left px-3 py-2 rounded-lg hover:bg-white/10 font-semibold text-sm disabled:opacity-60 flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
                             disabled={pmBusy || pmResetBusy}
                           >
                             <RotateCcw size={16} />
@@ -548,7 +548,7 @@ const PmModal = (props) => {
                       <button
                         type="button"
                         onClick={() => setSidebarOpen(true)}
-                        className="p-2 rounded hover:bg-gray-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                        className="p-2 rounded hover:bg-gray-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                         title="Afficher le menu"
                       >
                         <Menu size={20} className="text-gray-700" />
@@ -573,7 +573,7 @@ const PmModal = (props) => {
                       setPmError('');
                       setPmNotice('');
                     }}
-                    className="p-2 rounded hover:bg-gray-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                    className="p-2 rounded hover:bg-gray-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                   >
                     <X size={20} className="text-gray-700" />
                   </button>
@@ -591,7 +591,7 @@ const PmModal = (props) => {
               )}
 
               {pmNotice && !pmError && (
-                <div className="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 rounded-lg text-sm">
+                <div className="mb-4 bg-indigo-50 border border-indigo-200 text-indigo-900 px-4 py-3 rounded-lg text-sm">
                   {pmNotice}
                 </div>
               )}
@@ -600,7 +600,7 @@ const PmModal = (props) => {
                 <div className="mb-4">
                   <div className="text-xs text-gray-700 mb-1">Import retour client: {pmClientStep || '…'}</div>
                   <div className="w-full bg-gray-200 rounded h-2 overflow-hidden">
-                    <div className="bg-emerald-600 h-2" style={{ width: `${pmClientProgress}%` }} />
+                    <div className="bg-indigo-600 h-2" style={{ width: `${pmClientProgress}%` }} />
                   </div>
                 </div>
               )}
@@ -609,7 +609,7 @@ const PmModal = (props) => {
                 <div className="mb-4">
                   <div className="text-xs text-gray-700 mb-1">Import planning PM global: {pmGlobalStep || '…'}</div>
                   <div className="w-full bg-gray-200 rounded h-2 overflow-hidden">
-                    <div className="bg-emerald-600 h-2" style={{ width: `${pmGlobalProgress}%` }} />
+                    <div className="bg-indigo-600 h-2" style={{ width: `${pmGlobalProgress}%` }} />
                   </div>
 
                 </div>
@@ -844,7 +844,7 @@ const PmModal = (props) => {
             });
 
             const badgeForBucket = (bucket) => {
-              if (bucket === 'closed') return { cls: 'bg-emerald-50 text-emerald-800 border-emerald-200' };
+              if (bucket === 'closed') return { cls: 'bg-sky-50 text-sky-800 border-sky-200' };
               if (bucket === 'wip') return { cls: 'bg-blue-50 text-blue-800 border-blue-200' };
               if (bucket === 'awaiting') return { cls: 'bg-amber-50 text-amber-800 border-amber-200' };
               return { cls: 'bg-slate-50 text-slate-800 border-slate-200' };
@@ -873,9 +873,12 @@ const PmModal = (props) => {
                 key: 'total',
                 title: 'Total',
                 value: Number(counts.total || 0),
-                className: 'bg-red-700 border-red-800 hover:bg-red-800',
-                titleClassName: 'text-white/90',
-                valueClassName: 'text-white',
+                className: 'bg-indigo-50 border-indigo-200 hover:bg-indigo-100',
+                titleClassName: 'text-indigo-900',
+                valueClassName: 'text-indigo-900',
+                hintClassName: 'text-indigo-800',
+                Icon: ListChecks,
+                iconClassName: 'text-indigo-700',
                 onClick: () => {
                   setPmFilterState('all');
                   setPmFilterReprog('all');
@@ -886,9 +889,12 @@ const PmModal = (props) => {
                 key: 'closed',
                 title: 'Closed Complete',
                 value: Number(counts.closed || 0),
-                className: 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100',
-                titleClassName: 'text-gray-700',
-                valueClassName: 'text-gray-900',
+                className: 'bg-teal-50 border-teal-200 hover:bg-teal-100',
+                titleClassName: 'text-teal-900',
+                valueClassName: 'text-teal-900',
+                hintClassName: 'text-teal-800',
+                Icon: BadgeCheck,
+                iconClassName: 'text-teal-700',
                 onClick: () => {
                   setPmFilterState('closed');
                   setPmFilterReprog('all');
@@ -899,9 +905,12 @@ const PmModal = (props) => {
                 key: 'wip',
                 title: 'Work in progress',
                 value: Number(counts.wip || 0),
-                className: 'bg-rose-100 border-rose-200 hover:bg-rose-200',
-                titleClassName: 'text-gray-700',
-                valueClassName: 'text-gray-900',
+                className: 'bg-sky-50 border-sky-200 hover:bg-sky-100',
+                titleClassName: 'text-sky-900',
+                valueClassName: 'text-sky-900',
+                hintClassName: 'text-sky-800',
+                Icon: Activity,
+                iconClassName: 'text-sky-700',
                 onClick: () => {
                   setPmFilterState('wip');
                   setPmFilterReprog('all');
@@ -912,9 +921,12 @@ const PmModal = (props) => {
                 key: 'awaiting',
                 title: 'Awaiting Closure',
                 value: Number(counts.awaiting || 0),
-                className: 'bg-white border-gray-200 hover:bg-gray-50',
-                titleClassName: 'text-gray-700',
-                valueClassName: 'text-gray-900',
+                className: 'bg-amber-50 border-amber-200 hover:bg-amber-100',
+                titleClassName: 'text-amber-900',
+                valueClassName: 'text-amber-900',
+                hintClassName: 'text-amber-800',
+                Icon: Clock,
+                iconClassName: 'text-amber-700',
                 onClick: () => {
                   setPmFilterState('awaiting');
                   setPmFilterReprog('all');
@@ -925,9 +937,12 @@ const PmModal = (props) => {
                 key: 'assigned',
                 title: 'Assigned',
                 value: Number(counts.assigned || 0),
-                className: 'bg-amber-200 border-amber-300 hover:bg-amber-300',
-                titleClassName: 'text-gray-700',
-                valueClassName: 'text-gray-900',
+                className: 'bg-violet-50 border-violet-200 hover:bg-violet-100',
+                titleClassName: 'text-violet-900',
+                valueClassName: 'text-violet-900',
+                hintClassName: 'text-violet-800',
+                Icon: UserCheck,
+                iconClassName: 'text-violet-700',
                 onClick: () => {
                   setPmFilterState('assigned');
                   setPmFilterReprog('all');
@@ -939,8 +954,11 @@ const PmModal = (props) => {
                 title: 'Reprogrammation',
                 value: Number(counts.reprog || 0),
                 className: 'bg-slate-50 border-slate-200 hover:bg-slate-100',
-                titleClassName: 'text-gray-700',
-                valueClassName: 'text-gray-900',
+                titleClassName: 'text-slate-900',
+                valueClassName: 'text-slate-900',
+                hintClassName: 'text-slate-700',
+                Icon: RotateCcw,
+                iconClassName: 'text-slate-700',
                 onClick: () => {
                   setPmFilterState('all');
                   setPmFilterReprog('any');
@@ -960,8 +978,12 @@ const PmModal = (props) => {
                       className={`${c.className} border rounded-xl p-3 text-left`}
                       disabled={pmBusy}
                     >
-                      <div className={`text-[11px] font-semibold ${c.titleClassName || 'text-gray-700'}`}>{c.title}</div>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className={`text-[11px] font-semibold ${c.titleClassName || 'text-gray-700'}`}>{c.title}</div>
+                        {c.Icon ? <c.Icon size={18} className={`${c.iconClassName || 'text-slate-600'} flex-shrink-0`} /> : null}
+                      </div>
                       <div className={`text-2xl font-bold mt-1 ${c.valueClassName || 'text-gray-900'}`}>{c.value}</div>
+                      <div className={`text-[11px] mt-2 ${c.hintClassName || 'text-gray-600'}`}>Clique pour voir les sites</div>
                     </button>
                   ))}
                 </div>
@@ -1442,7 +1464,7 @@ const PmModal = (props) => {
                             const kind = String(imp?.kind || '').toLowerCase();
                             const kindBadge =
                               kind === 'planning' || kind === 'client'
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                ? 'bg-sky-50 text-sky-800 border-sky-200'
                                 : kind === 'noc'
                                   ? 'bg-purple-50 text-purple-800 border-purple-200'
                                   : 'bg-gray-50 text-gray-800 border-gray-200';

@@ -457,7 +457,7 @@ const GeneratorMaintenanceApp = () => {
     if (!pwaUpdate?.available) return null;
     return (
       <div className="fixed bottom-4 left-0 right-0 z-[70] px-4">
-        <div className="max-w-3xl mx-auto bg-white border border-emerald-200 shadow-lg rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="max-w-3xl mx-auto bg-white border border-indigo-200 shadow-lg rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="min-w-0">
             <div className="font-bold text-gray-900">Nouvelle version disponible</div>
             <div className="text-sm text-gray-600">
@@ -503,7 +503,7 @@ const GeneratorMaintenanceApp = () => {
                 }
                 setPwaUpdate((prev) => ({ ...(prev || {}), requested: true, forced: false }));
               }}
-              className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold w-full sm:w-auto"
+              className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-semibold w-full sm:w-auto"
             >
               Mettre à jour
             </button>
@@ -536,7 +536,7 @@ const GeneratorMaintenanceApp = () => {
       <button
         type="button"
         onClick={() => setPwaUpdate((prev) => ({ ...(prev || {}), available: true, badge: false }))}
-        className="fixed top-4 right-4 z-[9999] bg-emerald-700 text-white px-4 py-3 rounded-full shadow-xl text-sm font-bold hover:bg-emerald-800 ring-2 ring-white"
+        className="fixed top-4 right-4 z-[9999] bg-indigo-600 text-white px-4 py-3 rounded-full shadow-xl text-sm font-bold hover:bg-indigo-700 ring-2 ring-white"
         title="Nouvelle version disponible"
       >
         MAJ
@@ -4780,7 +4780,7 @@ for (const [key, g] of globalSites.entries()) {
       <div className="min-h-screen bg-gray-50 p-4 flex items-center justify-center">
         <div className="bg-white w-full max-w-md rounded-xl shadow-lg p-6">
           <div className="flex flex-col items-center text-center gap-3">
-            <div className="bg-emerald-700 text-white rounded-2xl p-4">
+            <div className="bg-indigo-600 text-white rounded-2xl p-4">
               <Activity size={28} />
             </div>
             <div className="font-bold text-gray-900 text-lg">Gestion Maintenance & Vidanges</div>
@@ -4799,7 +4799,7 @@ for (const [key, g] of globalSites.entries()) {
               }}
             />
             <div className="mt-3 flex items-center gap-2 text-gray-500 text-sm">
-              <div className="w-2 h-2 bg-emerald-600 rounded-full animate-pulse" />
+              <div className="w-2 h-2 bg-teal-500 rounded-full animate-pulse" />
               Chargement…
             </div>
           </div>
@@ -4936,12 +4936,12 @@ return (
       <div className="flex min-h-[100svh] md:min-h-screen">
         {sidebarOpen && (
           <div
-            className="fixed inset-0 bg-emerald-950/60 z-40 md:hidden"
+            className="fixed inset-0 bg-indigo-900/35 z-40 md:hidden"
             onClick={() => setSidebarOpen(false)}
           />
         )}
         <div
-          className={`bg-emerald-950 bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 text-white border-emerald-900/60 border-r-4 border-r-emerald-400/30 flex flex-col p-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:pt-20 gap-1 fixed md:sticky top-0 left-0 h-[100svh] md:h-screen overflow-y-auto z-50 md:z-auto transform transition-transform md:translate-x-0 md:transition-[width,padding,transform] ${
+          className={`bg-indigo-950 bg-gradient-to-b from-indigo-950 via-indigo-900 to-indigo-950 text-white border-indigo-900/60 border-r-4 border-r-sky-400/30 flex flex-col p-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:pt-20 gap-1 fixed md:sticky top-0 left-0 h-[100svh] md:h-screen overflow-y-auto z-50 md:z-auto transform transition-transform md:translate-x-0 md:transition-[width,padding,transform] ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           } ${
             sidebarDockedOpen ? 'md:w-64 md:p-4' : 'md:w-0 md:p-0 md:border-r-0 md:overflow-hidden'
@@ -4954,7 +4954,7 @@ return (
               <button
                 type="button"
                 onClick={() => setSidebarDockedOpen(!sidebarDockedOpen)}
-                className="hidden md:inline-flex p-2 rounded hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                className="hidden md:inline-flex p-2 rounded hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
                 title="Ouvrir le menu"
               >
                 <Menu size={20} />
@@ -4962,7 +4962,7 @@ return (
               <button
                 type="button"
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="md:hidden p-2 rounded hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                className="md:hidden p-2 rounded hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
               >
                 <X size={18} />
               </button>
@@ -4999,14 +4999,14 @@ return (
                   }
                 }
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
             >
               <Calendar size={18} />
               Calendrier
             </button>
           ) : (
             <button
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
             >
               <Calendar size={18} />
               Calendrier
@@ -5037,7 +5037,7 @@ return (
                 await loadPmAssignments(interventionsMonth);
                 }
               }}
-              className="relative w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950 flex items-center gap-2 text-base font-semibold"
+              className="relative w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
             >
               <CheckCircle size={18} />
               {isTechnician && technicianPendingTasksCount > 0 && (
@@ -5059,7 +5059,7 @@ return (
                 setShowScoring(true);
                 await loadInterventions(nextMonth, 'all', 'all');
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
             >
               <TrendingUp size={18} />
               Scoring
@@ -5088,7 +5088,7 @@ return (
                 const m = pmMonth || new Date().toISOString().slice(0, 7);
                 await refreshPmAll(m);
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
             >
               <TrendingUp size={18} />
               Maintenances (PM)
@@ -5100,7 +5100,7 @@ return (
               setSidebarOpen(false);
               setShowHistory(true);
             }}
-            className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950 flex items-center gap-2 text-base font-semibold"
+            className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
           >
             <Activity size={18} />
             Historique
@@ -5112,7 +5112,7 @@ return (
                 setSidebarOpen(false);
                 setShowResetConfirm(true);
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
             >
               <X size={18} />
               Réinitialiser
@@ -5125,7 +5125,7 @@ return (
                 setSidebarOpen(false);
                 setShowUsersModal(true);
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
             >
               <Users size={18} />
               Utilisateurs
@@ -5138,7 +5138,7 @@ return (
                 setSidebarOpen(false);
                 setShowPresenceModal(true);
               }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950 flex items-center gap-2 text-base font-semibold"
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
             >
               <Activity size={18} />
               Présence
@@ -5907,7 +5907,7 @@ return (
                                 siteFormAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                               }, 0);
                             }}
-                            className="bg-emerald-600 text-white py-2 rounded-lg hover:bg-emerald-700 text-sm font-semibold"
+                            className="bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 text-sm font-semibold"
                           >
                             Modifier
                           </button>

@@ -17,15 +17,15 @@ const UsersModal = ({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-slate-700 text-white">
+    <div className="fixed inset-0 bg-indigo-900/35 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl max-w-6xl w-full max-h-[92vh] overflow-hidden flex flex-col">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gradient-to-r from-indigo-600 via-sky-600 to-teal-600 text-white">
           <h2 className="text-xl font-bold flex items-center gap-2">
             <Users size={22} />
             Gestion des utilisateurs
           </h2>
           <div className="flex items-center gap-3">
-            <button onClick={onClose} className="hover:bg-slate-800 p-2 rounded">
+            <button onClick={onClose} className="hover:bg-white/10 p-2 rounded">
               <X size={20} />
             </button>
           </div>

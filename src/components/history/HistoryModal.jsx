@@ -35,15 +35,15 @@ const HistoryModal = ({
       : listAll;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4">
-      <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:h-auto sm:max-w-4xl sm:max-h-[90vh] sm:rounded-lg">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-amber-600 text-white">
+    <div className="fixed inset-0 bg-indigo-900/35 flex items-center justify-center z-50 p-0 sm:p-4">
+      <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:h-auto sm:max-w-6xl sm:max-h-[92vh] sm:rounded-xl">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gradient-to-r from-indigo-600 via-sky-600 to-teal-600 text-white">
           <h2 className="text-xl font-bold flex items-center gap-2">
             <Activity size={24} />
             Historique des Fiches d'Intervention
           </h2>
           <div className="flex items-center gap-3">
-            <button onClick={onClose} className="hover:bg-amber-700 p-2 rounded">
+            <button onClick={onClose} className="hover:bg-white/10 p-2 rounded">
               <X size={20} />
             </button>
           </div>

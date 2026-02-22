@@ -99,7 +99,7 @@ const SiteCard = ({ site, canWriteSites, onUpdate, onEdit, onDelete }) => {
           {canWriteSites && (
             <button
               onClick={onEdit}
-              className="bg-emerald-600 text-white py-2 rounded-lg hover:bg-emerald-700 text-sm font-semibold"
+              className="bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 text-sm font-semibold"
             >
               Modifier
             </button>

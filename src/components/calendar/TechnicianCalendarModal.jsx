@@ -22,9 +22,9 @@ const TechnicianCalendarModal = ({
 
   return (
     <>
-      <div className="fixed inset-0 bg-emerald-950/60 flex items-center justify-center z-50 p-0 sm:p-4">
+      <div className="fixed inset-0 bg-indigo-950/60 flex items-center justify-center z-50 p-0 sm:p-4">
         <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-6xl sm:max-h-[90vh]">
-          <div className="flex items-start justify-between gap-3 px-3 py-3 sm:p-4 border-b border-emerald-900/60 bg-emerald-800 text-white">
+          <div className="flex items-start justify-between gap-3 px-3 py-3 sm:p-4 border-b border-indigo-900/60 bg-indigo-800 text-white">
             <div className="min-w-0 flex items-center gap-2">
               <Calendar size={24} className="flex-shrink-0" />
               <h2 className="text-base sm:text-xl font-bold min-w-0">
@@ -159,9 +159,9 @@ const TechnicianCalendarModal = ({
       </div>
 
       {showTechDayDetailsModal && open && isTechnician && (
-        <div className="fixed inset-0 bg-emerald-950/60 flex items-center justify-center z-50 p-0 sm:p-4">
+        <div className="fixed inset-0 bg-indigo-950/60 flex items-center justify-center z-50 p-0 sm:p-4">
           <div className="bg-white rounded-none sm:rounded-lg shadow-xl sm:max-w-3xl sm:max-h-[90vh] w-full h-[100svh] max-h-[100svh] max-w-none overflow-hidden flex flex-col">
-            <div className="flex justify-between items-center p-4 border-b border-emerald-900/60 bg-emerald-800 text-white">
+            <div className="flex justify-between items-center p-4 border-b border-indigo-900/60 bg-indigo-800 text-white">
               <div className="font-bold">Détails du {techSelectedDate ? formatDate(techSelectedDate) : ''}</div>
               <button
                 onClick={() => {
@@ -209,7 +209,7 @@ const TechnicianCalendarModal = ({
                               </span>
                               {matchInfo?.label && (
                                 <span
-                                  className={`text-xs px-2 py-1 rounded border font-semibold ${matchInfo.kind === 'PM' || matchInfo.kind === 'PM_SIMPLE' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-800 border-slate-200'}`}
+                                  className={`text-xs px-2 py-1 rounded border font-semibold ${matchInfo.kind === 'PM' || matchInfo.kind === 'PM_SIMPLE' ? 'bg-sky-50 text-sky-800 border-sky-200' : 'bg-slate-50 text-slate-800 border-slate-200'}`}
                                 >
                                   {matchInfo.label}
                                 </span>

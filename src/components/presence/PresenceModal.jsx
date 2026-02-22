@@ -141,7 +141,7 @@ const PresenceModal = ({
                   type="button"
                   onClick={onExportAuditExcel}
                   disabled={auditBusy || auditList.length === 0 || exportBusy}
-                  className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 font-semibold disabled:bg-gray-400"
+                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-semibold disabled:bg-gray-400"
                 >
                   Export Excel
                 </button>

@@ -24,6 +24,13 @@ function clampToMonthWorkday(ymd, workdays) {
   return workdays[workdays.length - 1];
 }
 
+function dateIfInTargetMonth(ymd, targetMonthYyyyMm, holidaySet) {
+  const shifted = shiftForWorkdaysAndHolidays(String(ymd || '').slice(0, 10), holidaySet);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(shifted)) return '';
+  if (!String(targetMonthYyyyMm || '').trim()) return '';
+  return shifted.startsWith(`${targetMonthYyyyMm}-`) ? shifted : '';
+}
+
 function monthLabel(d) {
   return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}`;
 }
@@ -503,12 +510,14 @@ export async function onRequestPost({ request, env, data }) {
         workdayCursorIdx = Math.min(i + 1, workdays.length - 1);
       }
 
-      // Compute EPV2/EPV3 from the placed EPV1, but keep them displayed within target month.
+      // Compute EPV2/EPV3 from the placed EPV1.
+      // IMPORTANT: if EPV2/EPV3 are outside the target month, we leave them empty.
       // If EPV2 is forced (case EPV1 seul non réalisé), we use the calculated EPV3 as EPV2 and recompute EPV3 from there.
       const computed = computeEpvDatesFromBase(epv1, urgentRegime, holidays);
-      const forcedEpv2 = forcedEpv2Seed ? clampToMonthWorkday(shiftForWorkdaysAndHolidays(forcedEpv2Seed, holidays), workdays) : '';
-      const epv2 = forcedEpv2 || clampToMonthWorkday(computed.epv2, workdays);
-      const epv3 = clampToMonthWorkday(computeEpvDatesFromBase(epv2, urgentRegime, holidays).epv3, workdays);
+      const forcedEpv2 = forcedEpv2Seed ? dateIfInTargetMonth(forcedEpv2Seed, targetMonth, holidays) : '';
+      const epv2Base = forcedEpv2 || dateIfInTargetMonth(computed.epv2, targetMonth, holidays);
+      const epv3 = epv2Base ? dateIfInTargetMonth(computeEpvDatesFromBase(epv2Base, urgentRegime, holidays).epv3, targetMonth, holidays) : '';
+      const epv2 = epv2Base;
 
       for (const sid of v.sites) {
         const s = siteById.get(String(sid));
@@ -545,8 +554,8 @@ export async function onRequestPost({ request, env, data }) {
         assignedTo: tech.technicianName,
         technicianUserId,
         scheduledWoDate: clampToMonthWorkday(epv.epv1, workdays),
-        epv2: clampToMonthWorkday(epv.epv2, workdays),
-        epv3: clampToMonthWorkday(epv.epv3, workdays),
+        epv2: '',
+        epv3: '',
         pairSiteId: '',
         pairSiteCode: ''
       });

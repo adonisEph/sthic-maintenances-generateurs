@@ -268,7 +268,7 @@ const FicheModal = ({
                 </div>
                 <div className="border border-gray-300 rounded-lg overflow-hidden bg-white">
                   {signatureDrawnPng ? (
-                    <div className="text-xs text-emerald-700 mt-2 font-semibold">
+                    <div className="text-xs text-indigo-700 mt-2 font-semibold">
                       Signature responsable chargée (PNG).
                     </div>
                   ) : (

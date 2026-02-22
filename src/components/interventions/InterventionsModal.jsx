@@ -149,7 +149,7 @@ const InterventionsModal = ({
             : 'h-[100svh] max-w-none max-h-[100svh] rounded-none sm:h-auto sm:max-w-5xl sm:max-h-[90vh] sm:rounded-lg'
         }`}
       >
-        <div className="flex items-start justify-between gap-3 px-3 py-3 sm:p-4 border-b bg-emerald-700 text-white">
+        <div className="flex items-start justify-between gap-3 px-3 py-3 sm:p-4 border-b bg-indigo-700 text-white">
           <div className="min-w-0 flex items-center gap-2">
             <CheckCircle size={24} className="flex-shrink-0" />
             <div className="min-w-0">
@@ -201,7 +201,7 @@ const InterventionsModal = ({
                 setNhForm({ nhValue: '', readingDate: '', reset: false });
                 setNhFormError('');
               }}
-              className="hover:bg-emerald-800 p-2 rounded"
+              className="hover:bg-indigo-800 p-2 rounded"
             >
               <X size={20} />
             </button>
@@ -372,7 +372,7 @@ const InterventionsModal = ({
                         onClick={() => setTechnicianInterventionsTab('today')}
                         className={`${
                           technicianInterventionsTab === 'today'
-                            ? 'bg-emerald-700 text-white'
+                            ? 'bg-indigo-700 text-white'
                             : 'bg-white text-gray-800 border border-gray-300'
                         } px-3 py-2 rounded-lg font-semibold text-xs sm:text-sm w-full whitespace-nowrap`}
                       >
@@ -383,7 +383,7 @@ const InterventionsModal = ({
                         onClick={() => setTechnicianInterventionsTab('tomorrow')}
                         className={`${
                           technicianInterventionsTab === 'tomorrow'
-                            ? 'bg-emerald-700 text-white'
+                            ? 'bg-indigo-700 text-white'
                             : 'bg-white text-gray-800 border border-gray-300'
                         } px-3 py-2 rounded-lg font-semibold text-xs sm:text-sm w-full whitespace-nowrap`}
                       >
@@ -394,7 +394,7 @@ const InterventionsModal = ({
                         onClick={() => setTechnicianInterventionsTab('month')}
                         className={`${
                           technicianInterventionsTab === 'month'
-                            ? 'bg-emerald-700 text-white'
+                            ? 'bg-indigo-700 text-white'
                             : 'bg-white text-gray-800 border border-gray-300'
                         } px-3 py-2 rounded-lg font-semibold text-xs sm:text-sm w-full whitespace-nowrap`}
                       >
@@ -626,7 +626,7 @@ const InterventionsModal = ({
                                   </select>
                                   <button
                                     onClick={() => handlePlanIntervention({ ...ev, technicianUserId: selectedTechId })}
-                                    className="bg-emerald-700 text-white px-3 py-2 rounded-lg hover:bg-emerald-800 font-semibold text-sm disabled:bg-gray-400 disabled:hover:bg-gray-400"
+                                    className="bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 font-semibold text-sm disabled:bg-gray-400 disabled:hover:bg-gray-400"
                                     disabled={!selectedTechId}
                                     title={!selectedTechId ? 'Sélectionner un technicien' : ''}
                                   >
@@ -1022,7 +1022,7 @@ const InterventionsModal = ({
                             Ticket: {String(it?.pmNumber || '').trim() ? `#${String(it.pmNumber).trim()}` : '-'}
                           </span>
                           {label ? (
-                            <span className="text-xs px-2 py-1 rounded border font-semibold bg-emerald-50 text-emerald-800 border-emerald-200">
+                            <span className="text-xs px-2 py-1 rounded border font-semibold bg-sky-50 text-sky-800 border-sky-200">
                               sent • {label}
                             </span>
                           ) : null}
@@ -1138,7 +1138,7 @@ const InterventionsModal = ({
                   )}
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-extrabold px-2 py-1 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                      <span className="text-xs font-extrabold px-2 py-1 rounded bg-sky-50 text-sky-800 border border-sky-200">
                         VIDANGES
                       </span>
                       <div className="font-semibold text-gray-800 truncate">{site?.nameSite || it.siteId}</div>

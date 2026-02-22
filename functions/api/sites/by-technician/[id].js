@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../../_utils/db.js';
-import { json, requireAdmin, requireAuth, isSuperAdmin, userZone } from '../../_utils/http.js';
+import { json, requireAuth, isSuperAdmin, userZone } from '../../_utils/http.js';
 
 function mapSiteRow(row) {
   if (!row) return null;
@@ -30,7 +30,9 @@ export async function onRequestGet({ env, data, params }) {
   try {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
-    if (!requireAdmin(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
+
+    const role = String(data?.user?.role || '');
+    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const userId = String(params?.id || '').trim();
     if (!userId) return json({ error: 'ID technicien requis.' }, { status: 400 });
@@ -38,10 +40,18 @@ export async function onRequestGet({ env, data, params }) {
     const user = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
     if (!user) return json({ error: 'Technicien introuvable.' }, { status: 404 });
 
+    if (String(user?.role || '') !== 'technician') return json({ error: 'Technicien invalide.' }, { status: 400 });
+
     const technicianName = String(user.technician_name || '').trim();
     if (!technicianName) return json({ error: 'Nom technicien manquant.' }, { status: 400 });
 
     const z = userZone(data);
+
+    if (!isSuperAdmin(data)) {
+      const techZone = String(user?.zone || 'BZV/POOL');
+      if (String(techZone) !== String(z)) return json({ error: 'Accès interdit.' }, { status: 403 });
+    }
+
     const stmt = isSuperAdmin(data)
       ? env.DB.prepare('SELECT * FROM sites WHERE technician = ? ORDER BY id_site ASC').bind(technicianName)
       : env.DB.prepare('SELECT * FROM sites WHERE zone = ? AND technician = ? ORDER BY id_site ASC').bind(z, technicianName);

@@ -336,14 +336,14 @@ const CalendarModal = (props) => {
         <div className="flex-1 overflow-hidden">
           <div className="flex flex-col lg:flex-row h-full min-h-0">
             {sidebarOpen && (
-              <div className="lg:w-[280px] w-full flex-shrink-0 bg-gradient-to-b from-emerald-950 via-emerald-900 to-emerald-950 text-white border-emerald-900/60 overflow-y-auto border-r-4 border-r-emerald-400/30">
-                <div className="flex items-center gap-2 px-4 py-3 border-b border-emerald-900/60">
+              <div className="lg:w-[280px] w-full flex-shrink-0 bg-gradient-to-b from-indigo-950 via-indigo-900 to-indigo-950 text-white border-indigo-900/60 overflow-y-auto border-r-4 border-r-sky-400/30">
+                <div className="flex items-center gap-2 px-4 py-3 border-b border-indigo-900/60">
                   <Activity size={20} className="text-slate-100/90" />
                   <div className="text-lg font-bold text-slate-100 leading-tight">Navigation</div>
                   <button
                     type="button"
                     onClick={() => setSidebarOpen(false)}
-                    className="ml-auto p-2 rounded hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                    className="ml-auto p-2 rounded hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
                     title="Masquer le menu"
                   >
                     <ChevronLeft size={18} />
@@ -356,7 +356,7 @@ const CalendarModal = (props) => {
                     <button
                       type="button"
                       onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
-                      className="bg-white/10 hover:bg-white/15 text-white border border-white/10 px-2 py-2 rounded-lg w-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                      className="bg-white/10 hover:bg-white/15 text-white border border-white/10 px-2 py-2 rounded-lg w-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
                     >
                       ←
                     </button>
@@ -368,7 +368,7 @@ const CalendarModal = (props) => {
                     <button
                       type="button"
                       onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
-                      className="bg-white/10 hover:bg-white/15 text-white border border-white/10 px-2 py-2 rounded-lg w-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                      className="bg-white/10 hover:bg-white/15 text-white border border-white/10 px-2 py-2 rounded-lg w-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
                     >
                       →
                     </button>
@@ -395,7 +395,7 @@ const CalendarModal = (props) => {
                     <button
                       type="button"
                       onClick={handleExportCalendarMonthExcel}
-                      className="mt-3 w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                      className="mt-3 w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
                       disabled={exportBusy}
                     >
                       <Download size={16} />
@@ -448,7 +448,7 @@ const CalendarModal = (props) => {
                               // ignore
                             }
                           }}
-                          className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                          className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
                         >
                           Recharger les techniciens
                         </button>
@@ -457,7 +457,7 @@ const CalendarModal = (props) => {
                       <button
                         type="button"
                         onClick={handleSendCalendarMonthPlanning}
-                        className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                        className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
                         disabled={!calendarSendTechUserId || usersBusy}
                       >
                         Envoyer planning du mois
@@ -473,7 +473,7 @@ const CalendarModal = (props) => {
                       <button
                         type="button"
                         onClick={() => setShowClustering(!showClustering)}
-                        className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                        className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
                       >
                         <Users size={16} />
                         {showClustering ? 'Masquer le clustering' : 'Clustering sites'}
@@ -482,7 +482,7 @@ const CalendarModal = (props) => {
                       <button
                         type="button"
                         onClick={generateIntelligentPlanning}
-                        className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                        className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
                         disabled={planningBusy}
                       >
                         <Sparkles size={16} />
@@ -557,14 +557,14 @@ const CalendarModal = (props) => {
                                 key={site.id}
                                 onClick={() => togglePair(site.id)}
                                 className={`bg-white/10 rounded p-2 text-xs cursor-pointer transition-colors border border-transparent ${
-                                  isPaired ? 'bg-emerald-800/60 border-emerald-400/60' : isFirst ? 'bg-amber-900/40 border-amber-500' : 'hover:bg-white/15 border-white/10'
+                                  isPaired ? 'bg-teal-800/60 border-teal-400/60' : isFirst ? 'bg-amber-900/40 border-amber-500' : 'hover:bg-white/15 border-white/10'
                                 }`}
                               >
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-2">
                                     <div
                                       className={`w-2 h-2 rounded-full ${
-                                        isPaired ? 'bg-emerald-200' : isFirst ? 'bg-amber-400' : 'bg-white/40'
+                                        isPaired ? 'bg-teal-200' : isFirst ? 'bg-amber-400' : 'bg-white/40'
                                       }`}
                                     />
                                     <span className="font-semibold">{site.code}</span> - {site.name}
@@ -576,7 +576,7 @@ const CalendarModal = (props) => {
                                 </div>
                                 <div className="text-white/60 mt-1">{site.region || site.zone} • Dernière vidange: {site.lastVidange}</div>
                                 {pairedWith && (
-                                  <div className="text-emerald-200 mt-1 text-xs">⚭ Jumelé avec: {pairedWith.code} - {pairedWith.name}</div>
+                                  <div className="text-teal-200 mt-1 text-xs">⚭ Jumelé avec: {pairedWith.code} - {pairedWith.name}</div>
                                 )}
                               </div>
                             );
@@ -585,7 +585,7 @@ const CalendarModal = (props) => {
                         <div className="flex gap-2">
                           <button
                             type="button"
-                            className="flex-1 bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 text-sm font-semibold disabled:opacity-60"
+                            className="flex-1 bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700 text-sm font-semibold disabled:opacity-60"
                             onClick={saveClustering}
                             disabled={clusteringBusy || selectedPairs.size === 0}
                           >
@@ -593,14 +593,14 @@ const CalendarModal = (props) => {
                           </button>
                           <button
                             type="button"
-                            className="flex-1 bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-950"
+                            className="flex-1 bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
                             onClick={() => setSelectedPairs(new Map())}
                           >
                             Réinitialiser
                           </button>
                         </div>
                         {selectedPairs.size > 0 && (
-                          <div className="text-xs text-green-400 bg-green-900/20 border border-green-800 rounded p-2">
+                          <div className="text-xs text-teal-200 bg-teal-900/20 border border-teal-800 rounded p-2">
                             {selectedPairs.size / 2} paire(s) configurée(s)
                           </div>
                         )}
@@ -621,7 +621,7 @@ const CalendarModal = (props) => {
                       <button
                         type="button"
                         onClick={() => setSidebarOpen(true)}
-                        className="p-2 rounded hover:bg-gray-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                        className="p-2 rounded hover:bg-gray-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                         title="Afficher le menu"
                       >
                         <Menu size={20} className="text-gray-700" />
@@ -635,7 +635,7 @@ const CalendarModal = (props) => {
                   </div>
                   <button
                     onClick={() => setShowCalendar(false)}
-                    className="p-2 rounded hover:bg-gray-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                    className="p-2 rounded hover:bg-gray-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                   >
                     <X size={20} className="text-gray-700" />
                   </button>
@@ -643,14 +643,14 @@ const CalendarModal = (props) => {
               </div>
               <div className="p-3 sm:p-6 space-y-3">
               {showIntelligentWizard && (isAdmin || isManager) && (
-                <div className="border border-emerald-200 bg-emerald-50 rounded-lg p-3 sm:p-4">
+                <div className="border border-indigo-200 bg-indigo-50 rounded-lg p-3 sm:p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-sm sm:text-base font-bold text-emerald-900">Planning intelligent (campagne {targetMonthLabel})</div>
-                      <div className="text-xs text-emerald-900/80 mt-1">
+                      <div className="text-sm sm:text-base font-bold text-indigo-900">Planning intelligent (campagne {targetMonthLabel})</div>
+                      <div className="text-xs text-indigo-900/80 mt-1">
                         Zone: <span className="font-semibold">{String(zoneForIntelligent || '')}</span>
                       </div>
-                      <div className="text-xs text-emerald-900/70 mt-1">
+                      <div className="text-xs text-indigo-900/70 mt-1">
                         Aujourd’hui: <span className="font-semibold">{todayLabel}</span> — Mois cible: <span className="font-semibold">{targetMonthLabel}</span>
                       </div>
                     </div>
@@ -661,20 +661,20 @@ const CalendarModal = (props) => {
                         setIntelligentError('');
                         setIntelligentLastStats(null);
                       }}
-                      className="p-2 rounded hover:bg-emerald-100 transition-colors"
+                      className="p-2 rounded hover:bg-indigo-100 transition-colors"
                       title="Fermer"
                     >
-                      <X size={18} className="text-emerald-900" />
+                      <X size={18} className="text-indigo-900" />
                     </button>
                   </div>
 
                   <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
-                      <div className="text-xs font-semibold text-emerald-900 mb-1">Technicien</div>
+                      <div className="text-xs font-semibold text-indigo-900 mb-1">Technicien</div>
                       <select
                         value={intelligentTechUserId}
                         onChange={(e) => setIntelligentTechUserId(e.target.value)}
-                        className="w-full border border-emerald-200 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
+                        className="w-full border border-indigo-200 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
                         disabled={planningBusy}
                       >
                         <option value="">-- Sélectionner --</option>
@@ -684,7 +684,7 @@ const CalendarModal = (props) => {
                           </option>
                         ))}
                       </select>
-                      <div className="text-[11px] text-emerald-900/70 mt-1">
+                      <div className="text-[11px] text-indigo-900/70 mt-1">
                         Avancement zone: {intelligentDoneTechIds.size}/{zoneTechnicians.length} technicien(s) traités
                       </div>
                     </div>
@@ -694,7 +694,7 @@ const CalendarModal = (props) => {
                         type="button"
                         onClick={runIntelligentForTechnician}
                         disabled={planningBusy || !intelligentTechUserId}
-                        className="w-full bg-emerald-700 text-white px-3 py-2 rounded-lg hover:bg-emerald-800 text-sm font-semibold disabled:opacity-60"
+                        className="w-full bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 text-sm font-semibold disabled:opacity-60"
                       >
                         {planningBusy ? 'Construction...' : 'Déclencher la construction du planning PM'}
                       </button>
@@ -702,12 +702,16 @@ const CalendarModal = (props) => {
                       <button
                         type="button"
                         onClick={exportIntelligentExcel}
-                        disabled={intelligentExportBusy || zoneTechnicians.length === 0 || intelligentDoneTechIds.size !== zoneTechnicians.length}
-                        className="w-full bg-white text-emerald-900 border border-emerald-200 px-3 py-2 rounded-lg hover:bg-emerald-100 text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2"
+                        disabled={
+                          intelligentExportBusy ||
+                          zoneTechnicians.length === 0 ||
+                          intelligentDoneTechIds.size !== zoneTechnicians.length
+                        }
+                        className="w-full bg-white text-indigo-900 border border-indigo-200 px-3 py-2 rounded-lg hover:bg-indigo-50 text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2"
                       >
                         <Download size={16} />
                         {intelligentExportBusy
-                          ? 'Export...' 
+                          ? 'Export...'
                           : `Exporter en Excel (Planning PM campagne '${targetMonthLabel}')`}
                       </button>
                     </div>
@@ -718,7 +722,7 @@ const CalendarModal = (props) => {
                   )}
 
                   {intelligentLastStats && (
-                    <div className="mt-3 text-xs text-emerald-900 bg-white border border-emerald-200 rounded p-2">
+                    <div className="mt-3 text-xs text-indigo-900 bg-white border border-indigo-200 rounded p-2">
                       <div className="font-semibold">Résultat</div>
                       <div>Sites: {intelligentLastStats.sites} • Visites: {intelligentLastStats.visits} • Cadence: {intelligentLastStats.capacityVisitsPerDay} visite(s)/jour</div>
                       <div>Jours ouvrés: {intelligentLastStats.workdays} • Snapshot: {intelligentLastStats.snapshotInserted} lignes • Interventions: {intelligentLastStats.interventionsUpserted}</div>
