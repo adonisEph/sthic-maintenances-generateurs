@@ -37,7 +37,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '3.0.0';
+const APP_VERSION = '3.0.1';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -473,6 +473,32 @@ const GeneratorMaintenanceApp = () => {
                 const reg = pwaUpdate?.registration;
                 const waiting = reg?.waiting;
 
+                const hardReloadForUpdate = async () => {
+                  try {
+                    if ('serviceWorker' in navigator) {
+                      const regs = await navigator.serviceWorker.getRegistrations();
+                      await Promise.all((regs || []).map((r) => r.unregister().catch(() => false)));
+                    }
+                  } catch {
+                    // ignore
+                  }
+                  try {
+                    if ('caches' in window) {
+                      const keys = await caches.keys();
+                      await Promise.all((keys || []).map((k) => caches.delete(k).catch(() => false)));
+                    }
+                  } catch {
+                    // ignore
+                  }
+                  try {
+                    const base = `${window.location.origin}${window.location.pathname}`;
+                    const next = `${base}?update=${Date.now()}`;
+                    window.location.replace(next);
+                  } catch {
+                    window.location.reload();
+                  }
+                };
+
                 setPwaUpdate((prev) => ({ ...(prev || {}), available: false, badge: false }));
                 if (!waiting) {
                   try {
@@ -484,7 +510,7 @@ const GeneratorMaintenanceApp = () => {
                     localStorage.removeItem(APP_VERSION_SNOOZED_AT_KEY);
                   } catch (e) {
                   }
-                  window.location.reload();
+                  hardReloadForUpdate();
                   return;
                 }
                 try {
@@ -498,7 +524,7 @@ const GeneratorMaintenanceApp = () => {
                   }
                   waiting.postMessage({ type: 'SKIP_WAITING' });
                 } catch {
-                  window.location.reload();
+                  hardReloadForUpdate();
                   return;
                 }
                 setPwaUpdate((prev) => ({ ...(prev || {}), requested: true, forced: false }));
@@ -4746,9 +4772,42 @@ for (const [key, g] of globalSites.entries()) {
 
   if (!authUser) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 relative overflow-hidden">
         {renderPwaUpdateBadge()}
         {renderPwaUpdateBanner()}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          aria-hidden="true"
+        >
+          <div className="absolute -top-16 -left-16 w-72 h-72 rounded-full bg-indigo-200/40 blur-3xl" />
+          <div className="absolute -bottom-20 -right-20 w-72 h-72 rounded-full bg-sky-200/40 blur-3xl" />
+          <div className="absolute inset-0 grid grid-cols-4 sm:grid-cols-6 gap-10 place-items-center opacity-[0.08] text-indigo-700">
+            <Activity size={44} />
+            <Calendar size={44} />
+            <Upload size={44} />
+            <Download size={44} />
+            <Users size={44} />
+            <TrendingUp size={44} />
+            <Filter size={44} />
+            <Edit size={44} />
+            <CheckCircle size={44} />
+            <RotateCcw size={44} />
+            <Trash2 size={44} />
+            <Plus size={44} />
+            <Activity size={44} />
+            <Calendar size={44} />
+            <Upload size={44} />
+            <Download size={44} />
+            <Users size={44} />
+            <TrendingUp size={44} />
+            <Filter size={44} />
+            <Edit size={44} />
+            <CheckCircle size={44} />
+            <RotateCcw size={44} />
+            <Trash2 size={44} />
+            <Plus size={44} />
+          </div>
+        </div>
         <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
           <div className="text-center mb-6">
             <div className="w-16 h-16 mx-auto bg-indigo-600 rounded-full flex items-center justify-center text-white mb-4">
