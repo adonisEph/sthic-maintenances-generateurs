@@ -33,7 +33,11 @@ export async function onRequestPost({ env, data }) {
     const z = userZone(data);
     const selectStmt = isSuperAdmin(data)
       ? env.DB.prepare('SELECT id, nh2_a, date_a, regime, nh1_dv, retired FROM sites')
-      : env.DB.prepare('SELECT id, nh2_a, date_a, regime, nh1_dv, retired FROM sites WHERE zone = ?').bind(z);
+      : env.DB
+          .prepare(
+            "SELECT id, nh2_a, date_a, regime, nh1_dv, retired FROM sites WHERE zone = ? OR zone IS NULL OR TRIM(zone) = ''"
+          )
+          .bind(z);
 
     const res = await selectStmt.all();
     const rows = Array.isArray(res?.results) ? res.results : [];
@@ -50,8 +54,6 @@ export async function onRequestPost({ env, data }) {
     );
 
     for (const row of rows) {
-      if (row?.retired) continue;
-
       const prevDateA = String(row?.date_a || '').slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(prevDateA)) {
         skippedNoDateA += 1;

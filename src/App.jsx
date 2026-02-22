@@ -37,7 +37,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '3.0.1';
+const APP_VERSION = '3.0.3';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -713,6 +713,52 @@ const GeneratorMaintenanceApp = () => {
     await storage.set(DAILY_NH_UPDATE_STORAGE_KEY, todayYmd);
     return res;
   };
+
+  useEffect(() => {
+    if (!authUser?.id) return;
+
+    let active = true;
+    let busy = false;
+    let intervalId = null;
+    let onFocus = null;
+    let onVisibility = null;
+
+    const tick = async () => {
+      if (!active) return;
+      if (busy) return;
+      busy = true;
+      try {
+        const res = await runDailyNhUpdate();
+        if (res && res.ok && !res.skipped) {
+          await loadData();
+        }
+      } catch {
+        // ignore
+      } finally {
+        busy = false;
+      }
+    };
+
+    tick();
+    intervalId = window.setInterval(tick, 2 * 60 * 1000);
+    onFocus = () => tick();
+    onVisibility = () => {
+      if (document.visibilityState === 'visible') tick();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      active = false;
+      try {
+        if (intervalId) window.clearInterval(intervalId);
+        if (onFocus) window.removeEventListener('focus', onFocus);
+        if (onVisibility) document.removeEventListener('visibilitychange', onVisibility);
+      } catch {
+        // ignore
+      }
+    };
+  }, [authUser?.id]);
 
   const refreshUsers = async () => {
     setUsersBusy(true);
@@ -4808,6 +4854,14 @@ for (const [key, g] of globalSites.entries()) {
             <Plus size={44} />
           </div>
         </div>
+        <div
+          className="absolute inset-0 pointer-events-none z-[1]"
+          aria-hidden="true"
+          style={{
+            background:
+              'radial-gradient(circle at center, rgba(249,250,251,0.98) 0%, rgba(249,250,251,0.88) 32%, rgba(249,250,251,0.55) 52%, rgba(249,250,251,0.00) 78%)'
+          }}
+        />
         <div className="relative z-10 bg-white rounded-lg shadow-xl max-w-md w-full p-6">
           <div className="text-center mb-6">
             <div className="w-16 h-16 mx-auto bg-indigo-600 rounded-full flex items-center justify-center text-white mb-4">
