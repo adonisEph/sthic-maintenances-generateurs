@@ -37,7 +37,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '2.3.6';
+const APP_VERSION = '3.0.0';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -545,92 +545,11 @@ const GeneratorMaintenanceApp = () => {
   };
 
   useEffect(() => {
-    const onUpdate = (e) => {
-      const reg = e?.detail?.registration || null;
-      if (!reg) return;
-      setPwaUpdate((prev) => ({ ...(prev || {}), available: true, registration: reg, forced: false }));
-    };
-    window.addEventListener('pwa:update', onUpdate);
-    return () => window.removeEventListener('pwa:update', onUpdate);
-  }, []);
+    let canceled = false;
 
-  useEffect(() => {
-    if (!('serviceWorker' in navigator)) return;
-    let reg = null;
-    let onUpdateFound = null;
+    let intervalId = null;
     let onFocus = null;
     let onVisibility = null;
-
-    (async () => {
-      try {
-        reg = await navigator.serviceWorker.getRegistration();
-        if (!reg) return;
-
-        if (reg.waiting) {
-          setPwaUpdate((prev) => ({ ...(prev || {}), available: true, registration: reg, forced: false }));
-        }
-
-        onUpdateFound = () => {
-          try {
-            const installing = reg?.installing;
-            if (!installing) return;
-            installing.addEventListener('statechange', () => {
-              if (installing.state === 'installed' && navigator.serviceWorker.controller) {
-                setPwaUpdate((prev) => ({ ...(prev || {}), available: true, registration: reg, forced: false }));
-              }
-            });
-          } catch {
-            // ignore
-          }
-        };
-
-        reg.addEventListener('updatefound', onUpdateFound);
-
-        onFocus = () => {
-          try {
-            reg?.update?.();
-          } catch {
-            // ignore
-          }
-        };
-        onVisibility = () => {
-          try {
-            if (document.visibilityState === 'visible') reg?.update?.();
-          } catch {
-            // ignore
-          }
-        };
-        window.addEventListener('focus', onFocus);
-        document.addEventListener('visibilitychange', onVisibility);
-      } catch {
-        // ignore
-      }
-    })();
-
-    return () => {
-      try {
-        if (reg && onUpdateFound) reg.removeEventListener('updatefound', onUpdateFound);
-        if (onFocus) window.removeEventListener('focus', onFocus);
-        if (onVisibility) document.removeEventListener('visibilitychange', onVisibility);
-      } catch {
-        // ignore
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    try {
-      const seen = localStorage.getItem(APP_VERSION_STORAGE_KEY);
-      if (seen !== APP_VERSION) {
-        localStorage.setItem(APP_VERSION_STORAGE_KEY, APP_VERSION);
-      }
-    } catch (e) {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    let canceled = false;
 
     const cmp = (a, b) => {
       const pa = String(a || '0.0.0').split('.').map((x) => Number(x) || 0);
@@ -643,7 +562,7 @@ const GeneratorMaintenanceApp = () => {
       return 0;
     };
 
-    (async () => {
+    const checkServerVersion = async () => {
       try {
         const resp = await fetch(`/app-version.json?ts=${Date.now()}`, { cache: 'no-store' });
         const raw = await resp.text();
@@ -683,10 +602,27 @@ const GeneratorMaintenanceApp = () => {
       } catch {
         // ignore
       }
-    })();
+    };
+
+    checkServerVersion();
+
+    onFocus = () => checkServerVersion();
+    onVisibility = () => {
+      if (document.visibilityState === 'visible') checkServerVersion();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    intervalId = window.setInterval(checkServerVersion, 5 * 60 * 1000);
 
     return () => {
       canceled = true;
+      try {
+        if (intervalId) window.clearInterval(intervalId);
+        if (onFocus) window.removeEventListener('focus', onFocus);
+        if (onVisibility) document.removeEventListener('visibilitychange', onVisibility);
+      } catch {
+        // ignore
+      }
     };
   }, []);
 
