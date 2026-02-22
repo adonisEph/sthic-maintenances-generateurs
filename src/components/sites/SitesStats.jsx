@@ -21,7 +21,7 @@ const SitesStats = ({
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
       <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
         <div className="flex items-center gap-3">
-          <CheckCircle className="text-green-600 flex-shrink-0" size={28} />
+          <CheckCircle className="text-indigo-600 flex-shrink-0" size={28} />
           <div>
             <p className="text-xs sm:text-sm text-gray-600">Total Sites</p>
             <p className="text-xl sm:text-2xl font-bold text-gray-800">{sitesCount}</p>

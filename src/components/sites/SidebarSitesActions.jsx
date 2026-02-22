@@ -55,7 +55,7 @@ const SidebarSitesActions = ({
               <div className="text-[11px] text-gray-600 mb-1">{importStep || 'Import…'} ({importProgress}%)</div>
               <div className="w-full h-2 bg-gray-200 rounded">
                 <div
-                  className="h-2 bg-green-600 rounded"
+                  className="h-2 bg-sky-500 rounded"
                   style={{ width: `${Math.max(0, Math.min(100, Number(importProgress) || 0))}%` }}
                 />
               </div>

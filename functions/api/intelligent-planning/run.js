@@ -175,19 +175,30 @@ async function loadTechnician(env, techUserId) {
   };
 }
 
-async function loadSitesForTechnician(env, technicianName, zoneScope) {
-  const stmt = zoneScope
-    ? env.DB.prepare('SELECT * FROM sites WHERE zone = ? AND technician = ? AND (retired = 0 OR (retired = 1 AND updated_at >= ?)) ORDER BY id_site ASC')
-        .bind(zoneScope, technicianName, `${String(ymdToday() || '').slice(0, 7)}-01`)
-    : env.DB.prepare('SELECT * FROM sites WHERE technician = ? AND (retired = 0 OR (retired = 1 AND updated_at >= ?)) ORDER BY id_site ASC')
-        .bind(technicianName, `${String(ymdToday() || '').slice(0, 7)}-01`);
+async function loadSitesForTechnician(env, technicianName, technicianEmail, zoneScope) {
+  const cutoff = `${String(ymdToday() || '').slice(0, 7)}-01`;
+  const stmt = env.DB.prepare(
+    `SELECT * FROM sites
+     WHERE (TRIM(technician) = TRIM(?) COLLATE NOCASE OR (TRIM(?) != '' AND TRIM(technician) = TRIM(?) COLLATE NOCASE))
+       AND (retired = 0 OR (retired = 1 AND updated_at >= ?))
+     ORDER BY id_site ASC`
+  ).bind(String(technicianName || ''), String(technicianEmail || ''), String(technicianEmail || ''), cutoff);
+
   const res = await stmt.all();
   const rows = Array.isArray(res?.results) ? res.results : [];
-  return rows.map((r) => ({
+
+  const zoneFiltered = zoneScope
+    ? rows.filter((r) => {
+        const siteZone = r?.zone == null || String(r.zone).trim() === '' ? zoneScope : r.zone;
+        return normalizeZone(siteZone || 'BZV/POOL') === normalizeZone(zoneScope || 'BZV/POOL');
+      })
+    : rows;
+
+  return zoneFiltered.map((r) => ({
     id: String(r.id),
     idSite: String(r.id_site || ''),
     nameSite: String(r.name_site || ''),
-    zone: normalizeZone(r.zone || 'BZV/POOL'),
+    zone: normalizeZone((r?.zone == null || String(r.zone).trim() === '' ? zoneScope : r.zone) || 'BZV/POOL'),
     regime: Number(r.regime || 0),
     nh1DV: Number(r.nh1_dv || 0),
     nh2A: Number(r.nh2_a || 0),
@@ -418,7 +429,7 @@ export async function onRequestPost({ request, env, data }) {
     // Load holidays for target month and a bit after (to cover EPV2/EPV3 shifts)
     const holidays = await loadHolidays(env, `${targetMonth}-01`, ymdAddDays(`${targetMonth}-01`, 120));
 
-    const sites = await loadSitesForTechnician(env, tech.technicianName, scopeZone);
+    const sites = await loadSitesForTechnician(env, tech.technicianName, tech.email, scopeZone);
     if (sites.length === 0) {
       return json({ error: 'Aucun site affecté à ce technicien.' }, { status: 400 });
     }

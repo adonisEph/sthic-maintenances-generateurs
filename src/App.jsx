@@ -4815,7 +4815,7 @@ for (const [key, g] of globalSites.entries()) {
         {renderPwaUpdateBanner()}
         <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
           <div className="text-center mb-6">
-            <div className="w-16 h-16 mx-auto bg-cyan-600 rounded-full flex items-center justify-center text-white mb-4">
+            <div className="w-16 h-16 mx-auto bg-indigo-600 rounded-full flex items-center justify-center text-white mb-4">
               <Activity size={28} />
             </div>
             <h1 className="text-2xl font-bold text-gray-800">Gestion Maintenance & Vidanges</h1>
@@ -4864,7 +4864,7 @@ for (const [key, g] of globalSites.entries()) {
 
             <button
               type="submit"
-              className="w-full bg-cyan-600 text-white py-2 rounded-lg hover:bg-cyan-700 font-semibold"
+              className="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 font-semibold"
             >
               Se connecter
             </button>

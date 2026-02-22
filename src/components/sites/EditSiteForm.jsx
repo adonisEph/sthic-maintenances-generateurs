@@ -95,7 +95,7 @@ const EditSiteForm = ({ selectedSite, formData, setFormData, onSubmit, onClose, 
       <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 mt-4">
         <button
           onClick={onSubmit}
-          className="bg-green-600 text-white px-4 sm:px-6 py-2 rounded-lg hover:bg-green-700 text-sm sm:text-base"
+          className="bg-indigo-600 text-white px-4 sm:px-6 py-2 rounded-lg hover:bg-indigo-700 text-sm sm:text-base"
         >
           Enregistrer
         </button>
