@@ -103,7 +103,9 @@ export async function onRequestPost({ request, env, data }) {
           await createNotification(env, {
             userId: tid,
             title: 'Planning Vidanges assigné',
-            body: derivedMonth ? `Mois: ${derivedMonth}` : 'Un planning de vidanges a été assigné.',
+            body: derivedMonth
+              ? `Assigné par ${String(data?.user?.email || '').trim() || 'un manager'} • Mois: ${derivedMonth}`
+              : `Assigné par ${String(data?.user?.email || '').trim() || 'un manager'} • Un planning de vidanges a été assigné.`,
             kind: 'EPV_ASSIGNED',
             refId: derivedMonth || null,
             zone: scopeZone || null

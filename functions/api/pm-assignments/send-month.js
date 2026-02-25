@@ -131,7 +131,9 @@ export async function onRequestPost({ request, env, data }) {
           await createNotification(env, {
             userId: tid,
             title: 'Planning PM assigné',
-            body: derivedMonth ? `Mois: ${derivedMonth}` : 'Un planning PM a été assigné.',
+            body: derivedMonth
+              ? `Assigné par ${String(data?.user?.email || '').trim() || 'un manager'} • Mois: ${derivedMonth}`
+              : `Assigné par ${String(data?.user?.email || '').trim() || 'un manager'} • Un planning PM a été assigné.`,
             kind: 'PM_ASSIGNED',
             refId: derivedMonth || null,
             zone: scopeZone || null

@@ -129,17 +129,22 @@ const TechnicianCalendarModal = ({
                         {eventsForDay.length > 0 && (
                           <div className="text-xs space-y-1 mt-1">
                             {eventsForDay.slice(0, 2).map((ev) => {
-                              const daysUntil = typeof getDaysUntil === 'function' ? getDaysUntil(dateStr) : null;
-                              const color = daysUntil !== null && daysUntil <= 3 ? 'bg-red-500' : daysUntil !== null && daysUntil <= 7 ? 'bg-orange-500' : 'bg-green-500';
+                              const st = String(ev?.item?.status || '').trim().toLowerCase();
+                              const color = st === 'done' ? 'bg-green-600' : st === 'sent' ? 'bg-blue-600' : 'bg-amber-600';
                               const ticket = String(ev?.item?.pmNumber || '').trim();
                               const typeLabel = typeof techCalendarPmTypeLabel === 'function' ? techCalendarPmTypeLabel(ev?.item) : '';
+                              const siteLabel =
+                                ev?.site?.nameSite ||
+                                String(ev?.item?.siteCode || '').trim() ||
+                                String(ev?.item?.siteId || '').trim() ||
+                                '-';
                               return (
                                 <div
                                   key={`${ev?.site?.id || ev?.item?.id}`}
                                   className={`${color} text-white px-1 rounded flex items-start gap-1`}
                                 >
                                   <span className="min-w-0 flex-1 whitespace-pre-line leading-tight break-words">
-                                    {ev?.site?.nameSite || ev?.item?.siteId || '-'}
+                                    {siteLabel}
                                   </span>
                                   <span className="ml-auto text-[10px] font-bold opacity-90">
                                     {typeLabel}{ticket ? `:${ticket}` : ''}
@@ -207,6 +212,11 @@ const TechnicianCalendarModal = ({
                           : 'bg-amber-100 text-amber-800 border-amber-200';
                     const ticket = String(it?.pmNumber || '').trim();
                     const typeLabel = techCalendarPmTypeLabel(it);
+                    const siteLabel =
+                      site?.nameSite ||
+                      String(it?.siteCode || '').trim() ||
+                      String(it?.siteId || '').trim() ||
+                      '-';
                     return (
                       <div
                         key={String(it?.id || `${site?.id}-${it?.plannedDate}-${it?.maintenanceType}`)}
@@ -215,9 +225,9 @@ const TechnicianCalendarModal = ({
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="font-semibold text-gray-800 whitespace-pre-line leading-tight break-words">
-                              {site?.nameSite || it?.siteId || '-'}
+                              {siteLabel}
                             </div>
-                            {site?.idSite && <div className="text-xs text-gray-600">ID: {site.idSite}</div>}
+                            {site?.idSite && <div className="text-xs text-gray-600">Code site: {site.idSite}</div>}
                             <div className="text-xs text-gray-600">
                               {typeLabel} • {formatDate(it?.plannedDate)} • {String(it?.technicianName || '')}
                             </div>

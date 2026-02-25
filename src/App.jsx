@@ -1,10 +1,11 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
-import { AlertCircle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users, Menu, ChevronLeft, Trash2, RotateCcw } from 'lucide-react';
+import { AlertCircle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users, Menu, ChevronLeft, Trash2, RotateCcw, Bell } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { useStorage } from './hooks/useStorage';
 import PmModal from './components/PmModal';
+import NotificationsModal from './components/notifications/NotificationsModal.jsx';
 import CalendarModal from './components/CalendarModal';
 import AddSiteForm from './components/sites/AddSiteForm';
 import UpdateSiteForm from './components/sites/UpdateSiteForm';
@@ -38,7 +39,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '3.1.1';
+const APP_VERSION = '3.3.3';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -54,6 +55,8 @@ const GeneratorMaintenanceApp = () => {
   const [sites, setSites] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showUpdateForm, setShowUpdateForm] = useState(false);
+  const [showNotificationsModal, setShowNotificationsModal] = useState(false);
+  const [notificationsToast, setNotificationsToast] = useState('');
   const [showEditForm, setShowEditForm] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -190,6 +193,8 @@ const GeneratorMaintenanceApp = () => {
   const [pmFilterZone, setPmFilterZone] = useState('all');
   const [pmFilterFrom, setPmFilterFrom] = useState('');
   const [pmFilterTo, setPmFilterTo] = useState('');
+  const [pmFilterNocAddedFrom, setPmFilterNocAddedFrom] = useState('');
+  const [pmFilterNocAddedTo, setPmFilterNocAddedTo] = useState('');
   const [pmFilterReprog, setPmFilterReprog] = useState('all');
   const [pmSearch, setPmSearch] = useState('');
   const [pmReprogExportDate, setPmReprogExportDate] = useState('');
@@ -1002,6 +1007,32 @@ const GeneratorMaintenanceApp = () => {
       if (!event?.data) return;
       if (event.data.type === 'PUSH_NOTIFICATION') {
         loadNotificationsUnreadCount();
+
+        // mini toast in-app
+        setNotificationsToast('Nouvelle notification reçue');
+        window.setTimeout(() => setNotificationsToast(''), 3500);
+      
+        // beep simple (si possible)
+        try {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) {
+            const ctx = new AudioCtx();
+            const o = ctx.createOscillator();
+            const g = ctx.createGain();
+            o.type = 'sine';
+            o.frequency.value = 880;
+            g.gain.value = 0.05;
+            o.connect(g);
+            g.connect(ctx.destination);
+            o.start();
+            window.setTimeout(() => {
+              o.stop();
+              ctx.close();
+            }, 180);
+          }
+        } catch {
+          // ignore
+        }
       }
     };
     try {
@@ -2983,15 +3014,17 @@ const GeneratorMaintenanceApp = () => {
         setPmNocProgress(100);
         setPmNocStep('Terminé');
 
+        const autoAdded = Number(res?.createdMissing || 0);
+        const notFound = Number(res?.missingNotCreated || 0);
         const msg =
-          Number(res?.missing || 0) > 0
-            ? `✅ Import NOC terminé. Mis à jour: ${res?.updated || 0} • Introuvables dans le planning: ${res?.missing || 0}`
+          autoAdded > 0 || notFound > 0
+            ? `✅ Import NOC terminé. Mis à jour: ${res?.updated || 0} • Ajoutés auto (NOC): ${autoAdded} • Introuvables: ${notFound}`
             : `✅ Import NOC terminé. Mis à jour: ${res?.updated || 0}`;
         setPmNotice(msg);
 
-        if (Number(res?.missing || 0) > 0) {
+        if (autoAdded > 0 || notFound > 0) {
           alert(
-            `✅ Import NOC terminé.\n\nMis à jour: ${res?.updated || 0}\nIntrouvables dans le planning: ${res?.missing || 0}`
+            `✅ Import NOC terminé.\n\nMis à jour: ${res?.updated || 0}\nAjoutés auto (NOC): ${autoAdded}\nIntrouvables: ${notFound}`
           );
         } else {
           alert(`✅ Import NOC terminé. Mis à jour: ${res?.updated || 0}`);
@@ -5308,6 +5341,13 @@ return (
     <div className="min-h-[100svh] bg-gray-50 md:min-h-screen">
       {renderPwaUpdateBadge()}
       {renderPwaUpdateBanner()}
+
+      {notificationsToast && (
+        <div className="fixed top-3 right-3 z-[70] bg-slate-900 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-semibold">
+          {notificationsToast}
+        </div>
+      )}
+
       {exportBusy && (
         <div className="fixed inset-0 z-[60] bg-black/30 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-5">
@@ -5639,7 +5679,25 @@ return (
                     )}
                   </div>
                 </div>
+
                 <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowNotificationsModal(true)}
+                      className="relative bg-white text-slate-800 border border-gray-200 px-3 py-2 rounded-lg hover:bg-gray-50 text-sm font-semibold inline-flex items-center gap-2"
+                      title="Notifications"
+                    >
+                      <Bell size={18} />
+                      Notifications
+                      <span
+                        className={`ml-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                          notificationsUnreadCount > 0 ? 'bg-red-600 text-white' : 'bg-white text-slate-700 border border-slate-200'
+                        }`}
+                      >
+                        {Number(notificationsUnreadCount || 0)}
+                      </span>
+                    </button>
+
                   <button
                     onClick={() => {
                       setAccountForm({ password: '', confirm: '' });
@@ -6070,6 +6128,10 @@ return (
           setPmFilterFrom={setPmFilterFrom}
           pmFilterTo={pmFilterTo}
           setPmFilterTo={setPmFilterTo}
+          pmFilterNocAddedFrom={pmFilterNocAddedFrom}
+          setPmFilterNocAddedFrom={setPmFilterNocAddedFrom}
+          pmFilterNocAddedTo={pmFilterNocAddedTo}
+          setPmFilterNocAddedTo={setPmFilterNocAddedTo}
           pmFilterState={pmFilterState}
           setPmFilterState={setPmFilterState}
           pmFilterSource={pmFilterSource}
@@ -6196,6 +6258,13 @@ return (
             setInterventionsZone={setInterventionsZone}
             showZoneFilter={showZoneFilter}
             loadData={loadData}
+          />
+
+          <NotificationsModal
+            open={showNotificationsModal}
+            onClose={() => setShowNotificationsModal(false)}
+            apiFetchJson={apiFetchJson}
+            onMarkedRead={loadNotificationsUnreadCount}
           />
 
         <div className="mb-6">

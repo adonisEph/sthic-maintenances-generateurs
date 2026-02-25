@@ -1,5 +1,6 @@
 import React from 'react';
 import { TrendingUp, X, Upload, Download, Trash2, RotateCcw, Activity, Menu, ChevronLeft, ListChecks, BadgeCheck, Clock, UserCheck } from 'lucide-react';
+import TodayPlannedActivitiesModal from './TodayPlannedActivitiesModal';
 
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
 
@@ -54,6 +55,10 @@ const PmModal = (props) => {
     setPmFilterFrom,
     pmFilterTo,
     setPmFilterTo,
+    pmFilterNocAddedFrom,
+    setPmFilterNocAddedFrom,
+    pmFilterNocAddedTo,
+    setPmFilterNocAddedTo,
     pmFilterState,
     setPmFilterState,
     pmFilterSource,
@@ -93,6 +98,7 @@ const PmModal = (props) => {
   const [pmPurgeDryRun, setPmPurgeDryRun] = React.useState(true);
   const [pmPurgeZones, setPmPurgeZones] = React.useState([]);
   const [pmPurgeResult, setPmPurgeResult] = React.useState(null);
+  const [pmTodayActivitiesOpen, setPmTodayActivitiesOpen] = React.useState(false);
 
   const pmIsSuperAdmin = Boolean(props?.isSuperAdmin);
 
@@ -594,107 +600,54 @@ const PmModal = (props) => {
               <div className="mb-4 bg-white border border-slate-200 rounded-lg p-4">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div className="text-sm font-semibold text-slate-900">Activités planifiées du jour</div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (typeof loadPmTodayActivities === 'function') loadPmTodayActivities();
-                    }}
-                    className="text-xs font-semibold px-2 py-1 rounded border border-slate-200 bg-slate-50 text-slate-900 hover:bg-slate-100 disabled:opacity-60"
-                    disabled={pmBusy || pmTodayActivitiesBusy || typeof loadPmTodayActivities !== 'function'}
-                    title={typeof loadPmTodayActivities === 'function' ? 'Rafraîchir' : 'Chargement non disponible'}
-                  >
-                    Rafraîchir
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPmTodayActivitiesOpen(true);
+                        if (typeof loadPmTodayActivities === 'function') loadPmTodayActivities();
+                      }}
+                      className="text-xs font-semibold px-2 py-1 rounded border border-indigo-200 bg-indigo-50 text-indigo-900 hover:bg-indigo-100 disabled:opacity-60"
+                      disabled={pmBusy}
+                      title="Ouvrir"
+                    >
+                      Ouvrir
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (typeof loadPmTodayActivities === 'function') loadPmTodayActivities();
+                      }}
+                      className="text-xs font-semibold px-2 py-1 rounded border border-slate-200 bg-slate-50 text-slate-900 hover:bg-slate-100 disabled:opacity-60"
+                      disabled={pmBusy || pmTodayActivitiesBusy || typeof loadPmTodayActivities !== 'function'}
+                      title={typeof loadPmTodayActivities === 'function' ? 'Rafraîchir' : 'Chargement non disponible'}
+                    >
+                      Rafraîchir
+                    </button>
+                  </div>
                 </div>
 
-                {pmTodayActivitiesBusy && (
-                  <div className="mt-2 text-xs text-slate-600">Chargement…</div>
-                )}
-
-                {(() => {
-                  const today = String(pmTodayActivities?.today || '').slice(0, 10);
-                  const pmToday = Array.isArray(pmTodayActivities?.pmItems) ? pmTodayActivities.pmItems : [];
-                  const intToday = Array.isArray(pmTodayActivities?.interventions) ? pmTodayActivities.interventions : [];
-                  const hasAny = pmToday.length > 0 || intToday.length > 0;
-
-                  if (!pmTodayActivities || (!hasAny && !pmTodayActivitiesBusy)) {
-                    return <div className="mt-2 text-xs text-slate-600">Aucune activité chargée.</div>;
-                  }
-
-                  return (
-                    <div className="mt-3">
-                      <div className="text-xs text-slate-600 mb-2">
-                        Date: <span className="font-semibold text-slate-900">{today || '-'}</span> • PM: <span className="font-semibold text-slate-900">{pmToday.length}</span> • Vidanges: <span className="font-semibold text-slate-900">{intToday.length}</span>
-                      </div>
-
-                      {pmToday.length > 0 && (
-                        <div className="mb-3">
-                          <div className="text-xs font-semibold text-slate-800 mb-1">PM</div>
-                          <div className="overflow-auto border border-slate-200 rounded-lg">
-                            <table className="min-w-[900px] w-full text-xs">
-                              <thead className="bg-slate-50">
-                                <tr className="text-left text-slate-700 border-b border-slate-200">
-                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">Ticket</th>
-                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">État</th>
-                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">Site</th>
-                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">Zone</th>
-                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">Type</th>
-                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">Assigné à</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {pmToday.map((it, idx) => {
-                                  const siteLabel = [it?.siteName, it?.siteCode].filter(Boolean).join(' - ');
-                                  return (
-                                    <tr key={it?.id || it?.number || idx} className={`border-b border-slate-100 ${idx % 2 === 1 ? 'bg-white' : 'bg-slate-50'}`}>
-                                      <td className="px-2 py-2 font-semibold text-slate-900 whitespace-nowrap">{it?.number || '-'}</td>
-                                      <td className="px-2 py-2 text-slate-900 whitespace-nowrap">{it?.state || '-'}</td>
-                                      <td className="px-2 py-2 text-slate-900 max-w-[320px] truncate" title={siteLabel}>{siteLabel || '-'}</td>
-                                      <td className="px-2 py-2 text-slate-900 whitespace-nowrap">{it?.zone || '-'}</td>
-                                      <td className="px-2 py-2 text-slate-900 whitespace-nowrap">{it?.maintenanceType || '-'}</td>
-                                      <td className="px-2 py-2 text-slate-900 max-w-[220px] truncate" title={String(it?.assignedTo || '')}>{it?.assignedTo || '-'}</td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      )}
-
-                      {intToday.length > 0 && (
-                        <div>
-                          <div className="text-xs font-semibold text-slate-800 mb-1">Vidanges</div>
-                          <div className="overflow-auto border border-slate-200 rounded-lg">
-                            <table className="min-w-[700px] w-full text-xs">
-                              <thead className="bg-slate-50">
-                                <tr className="text-left text-slate-700 border-b border-slate-200">
-                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">Site</th>
-                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">Zone</th>
-                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">Type</th>
-                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">Technicien</th>
-                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">Statut</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {intToday.map((it, idx) => (
-                                  <tr key={it?.id || idx} className={`border-b border-slate-100 ${idx % 2 === 1 ? 'bg-white' : 'bg-slate-50'}`}>
-                                    <td className="px-2 py-2 text-slate-900 whitespace-nowrap">{it?.siteId || '-'}</td>
-                                    <td className="px-2 py-2 text-slate-900 whitespace-nowrap">{it?.zone || '-'}</td>
-                                    <td className="px-2 py-2 text-slate-900 whitespace-nowrap">{it?.epvType || '-'}</td>
-                                    <td className="px-2 py-2 text-slate-900 whitespace-nowrap">{it?.technicianName || '-'}</td>
-                                    <td className="px-2 py-2 text-slate-900 whitespace-nowrap">{it?.status || '-'}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
+                <div className="mt-2 text-xs text-slate-600">
+                  {(() => {
+                    const today = String(pmTodayActivities?.today || '').slice(0, 10);
+                    const pmToday = Array.isArray(pmTodayActivities?.pmItems) ? pmTodayActivities.pmItems : [];
+                    const intToday = Array.isArray(pmTodayActivities?.interventions) ? pmTodayActivities.interventions : [];
+                    if (pmTodayActivitiesBusy) return 'Chargement…';
+                    if (!pmTodayActivities) return 'Aucune activité chargée.';
+                    return `Date: ${today || '-'} • PM: ${pmToday.length} • Vidanges: ${intToday.length}`;
+                  })()}
+                </div>
               </div>
+
+              <TodayPlannedActivitiesModal
+                open={pmTodayActivitiesOpen}
+                onClose={() => setPmTodayActivitiesOpen(false)}
+                busy={pmTodayActivitiesBusy}
+                todayActivities={pmTodayActivities}
+                onRefresh={() => {
+                  if (typeof loadPmTodayActivities === 'function') loadPmTodayActivities();
+                }}
+              />
 
               {pmError && (
                 <div className="mb-4 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">
@@ -882,6 +835,8 @@ const PmModal = (props) => {
             const search = String(pmSearch || '').trim().toLowerCase();
             const dateFrom = normalizeYmd(pmFilterFrom);
             const dateTo = normalizeYmd(pmFilterTo);
+            const nocAddedFrom = normalizeYmd(pmFilterNocAddedFrom);
+            const nocAddedTo = normalizeYmd(pmFilterNocAddedTo);
             const reprogFilter = String(pmFilterReprog || 'all');
             const sourceFilter = String(pmFilterSource || 'all');
 
@@ -929,6 +884,12 @@ const PmModal = (props) => {
               if (sourceFilter && sourceFilter !== 'all') {
                 if (sourceFilter === 'noc' && String(it?.createdSource || '') !== 'noc') return false;
               }
+              if (nocAddedFrom || nocAddedTo) {
+                const d = normalizeYmd(it?.lastNocImportAt);
+                if (!d) return false;
+                if (nocAddedFrom && d < nocAddedFrom) return false;
+                if (nocAddedTo && d > nocAddedTo) return false;
+              }
               if (reprogFilter && reprogFilter !== 'all') {
                 const st = effectiveReprogStatus(it);
                 if (reprogFilter === 'any' && !st) return false;
@@ -949,9 +910,8 @@ const PmModal = (props) => {
                   it?.reprogrammationReason,
                   it?.reprogrammationStatus
                 ]
-                  .filter(Boolean)
-                  .join(' ')
-                  .toLowerCase();
+                  .map((v) => String(v || '').toLowerCase())
+                  .join(' ');
                 if (!hay.includes(search)) return false;
               }
               return true;
@@ -1363,6 +1323,28 @@ const PmModal = (props) => {
                     </div>
 
                     <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">Ajout NOC du</label>
+                      <input
+                        type="date"
+                        value={pmFilterNocAddedFrom}
+                        onChange={(e) => setPmFilterNocAddedFrom(String(e.target.value || ''))}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        disabled={pmBusy}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">Ajout NOC au</label>
+                      <input
+                        type="date"
+                        value={pmFilterNocAddedTo}
+                        onChange={(e) => setPmFilterNocAddedTo(String(e.target.value || ''))}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        disabled={pmBusy}
+                      />
+                    </div>
+
+                    <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1">Reprogrammation</label>
                       <select
                         value={pmFilterReprog}
@@ -1405,6 +1387,8 @@ const PmModal = (props) => {
                         setPmSearch('');
                         setPmFilterFrom('');
                         setPmFilterTo('');
+                        setPmFilterNocAddedFrom('');
+                        setPmFilterNocAddedTo('');
                         setPmFilterReprog('all');
                       }}
                       className="bg-gray-200 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-300 text-sm font-semibold"
@@ -1427,6 +1411,7 @@ const PmModal = (props) => {
                           <th className="px-3 py-2 font-semibold whitespace-nowrap">Ticket</th>
                           <th className="px-3 py-2 font-semibold whitespace-nowrap">État</th>
                           <th className="px-3 py-2 font-semibold whitespace-nowrap">Date planifiée</th>
+                          <th className="px-3 py-2 font-semibold whitespace-nowrap">Ajout NOC</th>
                           <th className="px-3 py-2 font-semibold whitespace-nowrap">Site</th>
                           <th className="px-3 py-2 font-semibold whitespace-nowrap">Zone</th>
                           <th className="px-3 py-2 font-semibold whitespace-nowrap">Type</th>
@@ -1441,7 +1426,7 @@ const PmModal = (props) => {
                       <tbody>
                         {tableFiltered.length === 0 ? (
                           <tr>
-                            <td className="px-4 py-4 text-gray-600" colSpan={isAdmin ? 12 : 11}>
+                            <td className="px-4 py-4 text-gray-600" colSpan={isAdmin ? 13 : 12}>
                               Aucun ticket pour ces filtres.
                             </td>
                           </tr>
@@ -1450,6 +1435,7 @@ const PmModal = (props) => {
                             const bucket = bucketForState(it?.state);
                             const badge = badgeForBucket(bucket);
                             const sched = it?.scheduledWoDate ? String(it.scheduledWoDate).slice(0, 10) : '';
+                            const nocAdded = it?.lastNocImportAt ? String(it.lastNocImportAt).slice(0, 10) : '';
                             const closed = it?.closedAt ? String(it.closedAt).slice(0, 10) : '';
                             const reprogStatus = effectiveReprogStatus(it);
                             const reprog = it?.reprogrammationDate ? String(it.reprogrammationDate).slice(0, 10) : '';
@@ -1465,6 +1451,7 @@ const PmModal = (props) => {
                                   </span>
                                 </td>
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{sched || '-'}</td>
+                                <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{nocAdded || '-'}</td>
                                 <td className="px-3 py-2 text-slate-900 max-w-[260px] whitespace-pre-line leading-tight break-words" title={siteLabel || ''}>{siteLabel || '-'}</td>
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.zone || '-'}</td>
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.maintenanceType || '-'}</td>

@@ -46,7 +46,9 @@ export async function onRequestPost({ request, env, data, params }) {
     let updated = 0;
     let missing = 0;
     let createdMissing = 0;
+    let missingNotCreated = 0;
     const missingNumbers = [];
+    const notCreatedNumbers = [];
 
     await env.DB.prepare(
       'INSERT INTO pm_imports (id, month_id, kind, imported_at, filename, row_count, created_by_user_id, created_by_email) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
@@ -110,6 +112,7 @@ export async function onRequestPost({ request, env, data, params }) {
 
       const missingChunk = chunk.filter((r) => !existingSet.has(r.number));
       if (missingChunk.length > 0) {
+        const missingChunkNumbers = missingChunk.map((r) => String(r?.number || '').trim()).filter(Boolean);
         const siteCodes = Array.from(
           new Set(
             missingChunk
@@ -120,13 +123,9 @@ export async function onRequestPost({ request, env, data, params }) {
         const siteMap = new Map();
         if (siteCodes.length > 0) {
           const inSites = siteCodes.map(() => '?').join(',');
-          const stmt = scopeZone
-            ? env.DB.prepare(
-                `SELECT id_site, name_site, technician, zone FROM sites WHERE zone = ? AND id_site IN (${inSites})`
-              ).bind(scopeZone, ...siteCodes)
-            : env.DB.prepare(
-                `SELECT id_site, name_site, technician, zone FROM sites WHERE id_site IN (${inSites})`
-              ).bind(...siteCodes);
+          const stmt = env.DB.prepare(
+            `SELECT id_site, name_site, technician, zone FROM sites WHERE id_site IN (${inSites})`
+          ).bind(...siteCodes);
           const resSites = await stmt.all();
           for (const s of resSites?.results || []) {
             const k = String(s?.id_site || '').trim();
@@ -150,7 +149,7 @@ export async function onRequestPost({ request, env, data, params }) {
             z,
             z,
             r.shortDescription,
-            null,
+            'FullPMWO',
             r.scheduledWoDate,
             r.assignedTo || (s?.technician ? String(s.technician) : null),
             'noc',
@@ -168,7 +167,33 @@ export async function onRequestPost({ request, env, data, params }) {
           `) VALUES ${insertPmValues}`;
 
         const res = await env.DB.prepare(insertPmSql).bind(...insertPmArgs).run();
-        createdMissing += Number(res?.meta?.changes || 0);
+
+        // Vérifie réellement quels tickets manquants ont été créés (INSERT OR IGNORE peut ne rien insérer)
+        if (missingChunkNumbers.length > 0) {
+          const inNow = missingChunkNumbers.map(() => '?').join(',');
+          const createdNow = scopeZone
+            ? await env.DB.prepare(
+                `SELECT number FROM pm_items WHERE month_id = ? AND COALESCE(region, zone, '') = ? AND number IN (${inNow})`
+              )
+                .bind(monthId, scopeZone, ...missingChunkNumbers)
+                .all()
+            : await env.DB.prepare(
+                `SELECT number FROM pm_items WHERE month_id = ? AND number IN (${inNow})`
+              )
+                .bind(monthId, ...missingChunkNumbers)
+                .all();
+
+          const createdSet = new Set((createdNow?.results || []).map((r) => String(r?.number || '').trim()).filter(Boolean));
+          const createdCount = createdSet.size;
+          createdMissing += createdCount;
+          const notCreatedCount = Math.max(0, missingChunkNumbers.length - createdCount);
+          missingNotCreated += notCreatedCount;
+          if (notCreatedCount > 0) {
+            for (const n of missingChunkNumbers) {
+              if (!createdSet.has(n) && notCreatedNumbers.length < 50) notCreatedNumbers.push(n);
+            }
+          }
+        }
       }
 
       const insertValues = chunk.map(() => '(?, ?, ?, ?, ?, ?)').join(',');
@@ -221,8 +246,10 @@ export async function onRequestPost({ request, env, data, params }) {
         ok: true,
         updated,
         missing,
+        missingNotCreated,
         createdMissing,
-        missingNumbers
+        missingNumbers,
+        notCreatedNumbers
       },
       { status: 200 }
     );
