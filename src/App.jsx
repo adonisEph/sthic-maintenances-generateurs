@@ -1168,6 +1168,14 @@ const GeneratorMaintenanceApp = () => {
     }
   };
 
+  const normalizePmType = (v) =>
+    String(v || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '');
+
   const techCalendarPmTypeLabel = (item) => {
     const mt = normalizePmType(item?.maintenanceType);
     if (mt === 'fullpmwo') return 'PM';
