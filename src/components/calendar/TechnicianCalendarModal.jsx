@@ -20,6 +20,15 @@ const TechnicianCalendarModal = ({
 }) => {
   if (!open || !isTechnician) return null;
 
+  const safeGetEvents = (dateStr) => {
+    try {
+      return typeof getTechCalendarEventsForDay === 'function' ? getTechCalendarEventsForDay(dateStr) : [];
+    } catch (e) {
+      console.error('[TechnicianCalendarModal] getTechCalendarEventsForDay failed', e);
+      return [];
+    }
+  };
+
   return (
     <>
       <div className="fixed inset-0 bg-indigo-950/60 flex items-center justify-center z-50 p-0 sm:p-4">
@@ -67,89 +76,98 @@ const TechnicianCalendarModal = ({
 
             <div className="grid grid-cols-7 gap-2">
               {(() => {
-                const m = String(techCalendarMonth || '').trim();
-                const mm = m.match(/^(\d{4})-(\d{2})$/);
-                const year = mm ? Number(mm[1]) : new Date().getFullYear();
-                const month = mm ? Number(mm[2]) - 1 : new Date().getMonth();
-                const firstDay = new Date(year, month, 1);
-                const lastDay = new Date(year, month + 1, 0);
-                const startDay = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
-                const days = [];
+                try {
+                  const m = String(techCalendarMonth || '').trim();
+                  const mm = m.match(/^(\d{4})-(\d{2})$/);
+                  const year = mm ? Number(mm[1]) : new Date().getFullYear();
+                  const month = mm ? Number(mm[2]) - 1 : new Date().getMonth();
+                  const firstDay = new Date(year, month, 1);
+                  const lastDay = new Date(year, month + 1, 0);
+                  const startDay = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
+                  const days = [];
 
-                for (let i = 0; i < startDay; i++) {
-                  days.push(<div key={`empty-${i}`} className="h-24 bg-gray-50 rounded" />);
-                }
-
-                const pad2 = (n) => String(n).padStart(2, '0');
-                const ymd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-                const todayStr = ymd(new Date());
-
-                for (let day = 1; day <= lastDay.getDate(); day++) {
-                  const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                  const dow = new Date(`${dateStr}T00:00:00`).getDay();
-                  const isWeekend = dow === 0 || dow === 6;
-
-                  if (isWeekend) {
-                    days.push(
-                      <div
-                        key={day}
-                        className="h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full bg-slate-200/70 border-gray-300"
-                      />
-                    );
-                    continue;
+                  for (let i = 0; i < startDay; i++) {
+                    days.push(<div key={`empty-${i}`} className="h-24 bg-gray-50 rounded" />);
                   }
 
-                  const eventsForDay = getTechCalendarEventsForDay(dateStr);
-                  const isToday = todayStr === dateStr;
-                  const isSelected = techSelectedDate === dateStr;
+                  const pad2 = (n) => String(n).padStart(2, '0');
+                  const ymd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+                  const todayStr = ymd(new Date());
 
-                  days.push(
-                    <button
-                      key={day}
-                      type="button"
-                      onClick={() => {
-                        const ev = getTechCalendarEventsForDay(dateStr);
-                        setTechSelectedDate(dateStr);
-                        setTechSelectedDayEvents(ev);
-                        setShowTechDayDetailsModal(true);
-                      }}
-                      className={`h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full hover:bg-gray-50 ${isToday ? 'border-blue-500 bg-blue-50' : 'border-gray-300'} ${isSelected ? 'ring-2 ring-cyan-500' : ''}`}
-                    >
-                      <div className="text-sm font-semibold text-gray-700">{day}</div>
-                      {eventsForDay.length > 0 && (
-                        <div className="text-xs space-y-1 mt-1">
-                          {eventsForDay.slice(0, 2).map((ev) => {
-                            const daysUntil = getDaysUntil(dateStr);
-                            const color = daysUntil <= 3 ? 'bg-red-500' : daysUntil <= 7 ? 'bg-orange-500' : 'bg-green-500';
-                            const ticket = String(ev?.item?.pmNumber || '').trim();
-                            const typeLabel = techCalendarPmTypeLabel(ev?.item);
-                            return (
-                              <div
-                                key={`${ev?.site?.id || ev?.item?.id}`}
-                                className={`${color} text-white px-1 rounded flex items-start gap-1`}
-                              >
-                                <span className="min-w-0 flex-1 whitespace-pre-line leading-tight break-words">
-                                  {ev?.site?.nameSite || ev?.item?.siteId || '-'}
-                                </span>
-                                <span className="ml-auto text-[10px] font-bold opacity-90">
-                                  {typeLabel}{ticket ? `:${ticket}` : ''}
-                                  {ev?.matchInfo?.label
-                                    ? ` • ${ev.matchInfo.label === 'PM Simple' ? 'PM' : ev.matchInfo.label === 'PM et Vidange' ? 'PM+V' : 'V'}`
-                                    : ''}
-                                </span>
-                              </div>
-                            );
-                          })}
-                          {eventsForDay.length > 2 && (
-                            <div className="text-gray-600 text-center">+{eventsForDay.length - 2}</div>
-                          )}
-                        </div>
-                      )}
-                    </button>
+                  for (let day = 1; day <= lastDay.getDate(); day++) {
+                    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    const dow = new Date(`${dateStr}T00:00:00`).getDay();
+                    const isWeekend = dow === 0 || dow === 6;
+
+                    if (isWeekend) {
+                      days.push(
+                        <div
+                          key={day}
+                          className="h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full bg-slate-200/70 border-gray-300"
+                        />
+                      );
+                      continue;
+                    }
+
+                    const eventsForDay = safeGetEvents(dateStr);
+                    const isToday = todayStr === dateStr;
+                    const isSelected = techSelectedDate === dateStr;
+
+                    days.push(
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => {
+                          const ev = safeGetEvents(dateStr);
+                          setTechSelectedDate(dateStr);
+                          setTechSelectedDayEvents(ev);
+                          setShowTechDayDetailsModal(true);
+                        }}
+                        className={`h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full hover:bg-gray-50 ${isToday ? 'border-blue-500 bg-blue-50' : 'border-gray-300'} ${isSelected ? 'ring-2 ring-cyan-500' : ''}`}
+                      >
+                        <div className="text-sm font-semibold text-gray-700">{day}</div>
+                        {eventsForDay.length > 0 && (
+                          <div className="text-xs space-y-1 mt-1">
+                            {eventsForDay.slice(0, 2).map((ev) => {
+                              const daysUntil = typeof getDaysUntil === 'function' ? getDaysUntil(dateStr) : null;
+                              const color = daysUntil !== null && daysUntil <= 3 ? 'bg-red-500' : daysUntil !== null && daysUntil <= 7 ? 'bg-orange-500' : 'bg-green-500';
+                              const ticket = String(ev?.item?.pmNumber || '').trim();
+                              const typeLabel = typeof techCalendarPmTypeLabel === 'function' ? techCalendarPmTypeLabel(ev?.item) : '';
+                              return (
+                                <div
+                                  key={`${ev?.site?.id || ev?.item?.id}`}
+                                  className={`${color} text-white px-1 rounded flex items-start gap-1`}
+                                >
+                                  <span className="min-w-0 flex-1 whitespace-pre-line leading-tight break-words">
+                                    {ev?.site?.nameSite || ev?.item?.siteId || '-'}
+                                  </span>
+                                  <span className="ml-auto text-[10px] font-bold opacity-90">
+                                    {typeLabel}{ticket ? `:${ticket}` : ''}
+                                    {ev?.matchInfo?.label
+                                      ? ` • ${ev.matchInfo.label === 'PM Simple' ? 'PM' : ev.matchInfo.label === 'PM et Vidange' ? 'PM+V' : 'V'}`
+                                      : ''}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                            {eventsForDay.length > 2 && (
+                              <div className="text-gray-600 text-center">+{eventsForDay.length - 2}</div>
+                            )}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  }
+
+                  return days;
+                } catch (e) {
+                  console.error('[TechnicianCalendarModal] render failed', e);
+                  return (
+                    <div className="col-span-7 bg-red-50 border border-red-200 text-red-800 rounded-lg p-3 text-sm">
+                      Erreur lors de l'affichage du calendrier. Ouvre la console (F12) et copie l'erreur affichée.
+                    </div>
                   );
                 }
-
-                return days;
               })()}
             </div>
           </div>
