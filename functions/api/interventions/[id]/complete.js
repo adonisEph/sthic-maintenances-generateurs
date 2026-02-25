@@ -1,7 +1,8 @@
 import { ensureAdminUser } from '../../_utils/db.js';
-import { json, requireAuth, readJson, isoNow, ymdToday, isSuperAdmin, userZone } from '../../_utils/http.js';
-import { calculateEPVDates, calculateRegime, calculateEstimatedNH, calculateDiffNHs } from '../../_utils/calc.js';
+import { json, requireAuth, readJson, isoNow, isSuperAdmin, userZone, ymdToday } from '../../_utils/http.js';
 import { nextTicketNumberForZone, formatTicket, touchLastUpdatedAt } from '../../_utils/meta.js';
+import { calculateEstimatedNH, calculateDiffNHs, calculateEPVDates } from '../../_utils/calc.js';
+import { createNotification, loadPushSubscriptionsForUsers, fanoutWebPushNoPayload } from '../../_utils/notifications.js';
 
 export async function onRequestPost({ request, env, data, params }) {
   try {
@@ -158,6 +159,47 @@ export async function onRequestPost({ request, env, data, params }) {
     await touchLastUpdatedAt(env);
 
     const updatedSite = await env.DB.prepare('SELECT * FROM sites WHERE id = ?').bind(site.id).first();
+
+    try {
+      const siteZone = String(site?.zone || 'BZV/POOL');
+
+      const viewersRes = await env.DB.prepare("SELECT id FROM users WHERE role = 'viewer'").all();
+      const viewerIds = (Array.isArray(viewersRes?.results) ? viewersRes.results : []).map((r) => String(r?.id || '')).filter(Boolean);
+
+      const managersRes = await env.DB.prepare("SELECT id FROM users WHERE role = 'manager' AND zone = ?").bind(siteZone).all();
+      const managerIds = (Array.isArray(managersRes?.results) ? managersRes.results : []).map((r) => String(r?.id || '')).filter(Boolean);
+
+      const adminsRes = await env.DB.prepare("SELECT id, zone FROM users WHERE role = 'admin'").all();
+      const adminRows = Array.isArray(adminsRes?.results) ? adminsRes.results : [];
+      const adminIds = adminRows
+        .filter((r) => {
+          const z = String(r?.zone || 'BZV/POOL');
+          if (z === 'BZV/POOL') return true;
+          return z === siteZone;
+        })
+        .map((r) => String(r?.id || ''))
+        .filter(Boolean);
+
+      const recipients = Array.from(new Set([...viewerIds, ...managerIds, ...adminIds])).filter(Boolean);
+      const title = 'Vidange effectuée';
+      const bodyTxt = `${String(site?.name_site || '') || 'Site'} (${String(site?.id_site || '').trim() || site.id}) - ${doneDate}`;
+
+      for (const uid of recipients) {
+        await createNotification(env, {
+          userId: uid,
+          title,
+          body: bodyTxt,
+          kind: 'EPV_DONE',
+          refId: String(id),
+          zone: siteZone
+        });
+      }
+
+      const subs = await loadPushSubscriptionsForUsers(env, recipients);
+      await fanoutWebPushNoPayload(env, subs);
+    } catch {
+      // ignore notifications failures
+    }
 
     return json({ ok: true, epv: epvDates, site: updatedSite ? { id: updatedSite.id } : null }, { status: 200 });
   } catch (e) {

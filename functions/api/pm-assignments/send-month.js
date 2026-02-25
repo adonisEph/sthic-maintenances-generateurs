@@ -1,6 +1,7 @@
 import { ensureAdminUser } from '../_utils/db.js';
 import { json, requireAuth, isSuperAdmin, readJson, isoNow, newId, userZone } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
+import { createNotification, loadPushSubscriptionsForUsers, fanoutWebPushNoPayload } from '../_utils/notifications.js';
 
 export async function onRequestPost({ request, env, data }) {
   try {
@@ -24,6 +25,9 @@ export async function onRequestPost({ request, env, data }) {
     let updated = 0;
     let sent = 0;
 
+    const notifiedTechIds = new Set();
+    let derivedMonth = '';
+
     for (const it of assignments) {
       const month = String(it?.month || '').trim();
       const pmNumber = String(it?.pmNumber || '').trim();
@@ -37,6 +41,8 @@ export async function onRequestPost({ request, env, data }) {
       if (!month || !/^\d{4}-\d{2}$/.test(month)) continue;
       if (!pmNumber || !siteId || !plannedDate || !/^\d{4}-\d{2}-\d{2}$/.test(plannedDate)) continue;
       if (!technicianUserId || !technicianName) continue;
+
+      if (!derivedMonth) derivedMonth = month;
 
       if (String(maintenanceType || '').trim().toLowerCase() !== 'fullpmwo') {
         continue;
@@ -110,11 +116,32 @@ export async function onRequestPost({ request, env, data }) {
 
       if (row?.status === 'sent') {
         sent += 1;
+        notifiedTechIds.add(String(technicianUserId));
       }
     }
 
     if (created > 0 || updated > 0) {
       await touchLastUpdatedAt(env);
+    }
+
+    try {
+      const techIds = Array.from(notifiedTechIds).filter(Boolean);
+      if (techIds.length > 0) {
+        for (const tid of techIds) {
+          await createNotification(env, {
+            userId: tid,
+            title: 'Planning PM assigné',
+            body: derivedMonth ? `Mois: ${derivedMonth}` : 'Un planning PM a été assigné.',
+            kind: 'PM_ASSIGNED',
+            refId: derivedMonth || null,
+            zone: scopeZone || null
+          });
+        }
+        const subs = await loadPushSubscriptionsForUsers(env, techIds);
+        await fanoutWebPushNoPayload(env, subs);
+      }
+    } catch {
+      // ignore push failures
     }
 
     return json({ ok: true, created, updated, sent }, { status: 200 });

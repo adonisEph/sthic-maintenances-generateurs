@@ -1,6 +1,7 @@
 import { ensureAdminUser } from '../_utils/db.js';
 import { json, requireAuth, readJson, isoNow, newId, isSuperAdmin, userZone } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
+import { createNotification, loadPushSubscriptionsForUsers, fanoutWebPushNoPayload } from '../_utils/notifications.js';
 
 export async function onRequestPost({ request, env, data }) {
   try {
@@ -23,6 +24,9 @@ export async function onRequestPost({ request, env, data }) {
     let updated = 0;
     let sent = 0;
 
+    const notifiedTechIds = new Set();
+    let derivedMonth = '';
+
     for (const it of interventions) {
       const siteId = String(it?.siteId || '');
       const plannedDate = String(it?.plannedDate || '');
@@ -32,6 +36,10 @@ export async function onRequestPost({ request, env, data }) {
 
       if (!siteId || !plannedDate || !epvType || !technicianName || !technicianUserId) {
         continue;
+      }
+
+      if (!derivedMonth && /^\d{4}-\d{2}-\d{2}$/.test(plannedDate)) {
+        derivedMonth = String(plannedDate).slice(0, 7);
       }
 
       const id = newId();
@@ -80,11 +88,32 @@ export async function onRequestPost({ request, env, data }) {
 
       if (row?.status === 'sent') {
         sent += 1;
+        notifiedTechIds.add(String(technicianUserId));
       }
     }
 
     if (created > 0 || updated > 0) {
       await touchLastUpdatedAt(env);
+    }
+
+    try {
+      const techIds = Array.from(notifiedTechIds).filter(Boolean);
+      if (techIds.length > 0) {
+        for (const tid of techIds) {
+          await createNotification(env, {
+            userId: tid,
+            title: 'Planning Vidanges assigné',
+            body: derivedMonth ? `Mois: ${derivedMonth}` : 'Un planning de vidanges a été assigné.',
+            kind: 'EPV_ASSIGNED',
+            refId: derivedMonth || null,
+            zone: scopeZone || null
+          });
+        }
+        const subs = await loadPushSubscriptionsForUsers(env, techIds);
+        await fanoutWebPushNoPayload(env, subs);
+      }
+    } catch {
+      // ignore push failures
     }
 
     return json({ ok: true, created, updated, sent }, { status: 200 });

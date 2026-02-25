@@ -45,12 +45,19 @@ const PmModal = (props) => {
     pmRetiredSites,
     pmItems,
     pmImports,
+    pmTodayActivities,
+    pmTodayActivitiesBusy,
+    loadPmTodayActivities,
     pmSearch,
     setPmSearch,
-    pmFilterDate,
-    setPmFilterDate,
+    pmFilterFrom,
+    setPmFilterFrom,
+    pmFilterTo,
+    setPmFilterTo,
     pmFilterState,
     setPmFilterState,
+    pmFilterSource,
+    setPmFilterSource,
     pmFilterType,
     setPmFilterType,
     pmFilterZone,
@@ -584,6 +591,111 @@ const PmModal = (props) => {
                 Tickets du mois: <span className="font-semibold">{Array.isArray(pmItems) ? pmItems.length : 0}</span>
               </div>
 
+              <div className="mb-4 bg-white border border-slate-200 rounded-lg p-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="text-sm font-semibold text-slate-900">Activités planifiées du jour</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (typeof loadPmTodayActivities === 'function') loadPmTodayActivities();
+                    }}
+                    className="text-xs font-semibold px-2 py-1 rounded border border-slate-200 bg-slate-50 text-slate-900 hover:bg-slate-100 disabled:opacity-60"
+                    disabled={pmBusy || pmTodayActivitiesBusy || typeof loadPmTodayActivities !== 'function'}
+                    title={typeof loadPmTodayActivities === 'function' ? 'Rafraîchir' : 'Chargement non disponible'}
+                  >
+                    Rafraîchir
+                  </button>
+                </div>
+
+                {pmTodayActivitiesBusy && (
+                  <div className="mt-2 text-xs text-slate-600">Chargement…</div>
+                )}
+
+                {(() => {
+                  const today = String(pmTodayActivities?.today || '').slice(0, 10);
+                  const pmToday = Array.isArray(pmTodayActivities?.pmItems) ? pmTodayActivities.pmItems : [];
+                  const intToday = Array.isArray(pmTodayActivities?.interventions) ? pmTodayActivities.interventions : [];
+                  const hasAny = pmToday.length > 0 || intToday.length > 0;
+
+                  if (!pmTodayActivities || (!hasAny && !pmTodayActivitiesBusy)) {
+                    return <div className="mt-2 text-xs text-slate-600">Aucune activité chargée.</div>;
+                  }
+
+                  return (
+                    <div className="mt-3">
+                      <div className="text-xs text-slate-600 mb-2">
+                        Date: <span className="font-semibold text-slate-900">{today || '-'}</span> • PM: <span className="font-semibold text-slate-900">{pmToday.length}</span> • Vidanges: <span className="font-semibold text-slate-900">{intToday.length}</span>
+                      </div>
+
+                      {pmToday.length > 0 && (
+                        <div className="mb-3">
+                          <div className="text-xs font-semibold text-slate-800 mb-1">PM</div>
+                          <div className="overflow-auto border border-slate-200 rounded-lg">
+                            <table className="min-w-[900px] w-full text-xs">
+                              <thead className="bg-slate-50">
+                                <tr className="text-left text-slate-700 border-b border-slate-200">
+                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">Ticket</th>
+                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">État</th>
+                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">Site</th>
+                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">Zone</th>
+                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">Type</th>
+                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">Assigné à</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {pmToday.map((it, idx) => {
+                                  const siteLabel = [it?.siteName, it?.siteCode].filter(Boolean).join(' - ');
+                                  return (
+                                    <tr key={it?.id || it?.number || idx} className={`border-b border-slate-100 ${idx % 2 === 1 ? 'bg-white' : 'bg-slate-50'}`}>
+                                      <td className="px-2 py-2 font-semibold text-slate-900 whitespace-nowrap">{it?.number || '-'}</td>
+                                      <td className="px-2 py-2 text-slate-900 whitespace-nowrap">{it?.state || '-'}</td>
+                                      <td className="px-2 py-2 text-slate-900 max-w-[320px] truncate" title={siteLabel}>{siteLabel || '-'}</td>
+                                      <td className="px-2 py-2 text-slate-900 whitespace-nowrap">{it?.zone || '-'}</td>
+                                      <td className="px-2 py-2 text-slate-900 whitespace-nowrap">{it?.maintenanceType || '-'}</td>
+                                      <td className="px-2 py-2 text-slate-900 max-w-[220px] truncate" title={String(it?.assignedTo || '')}>{it?.assignedTo || '-'}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {intToday.length > 0 && (
+                        <div>
+                          <div className="text-xs font-semibold text-slate-800 mb-1">Vidanges</div>
+                          <div className="overflow-auto border border-slate-200 rounded-lg">
+                            <table className="min-w-[700px] w-full text-xs">
+                              <thead className="bg-slate-50">
+                                <tr className="text-left text-slate-700 border-b border-slate-200">
+                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">Site</th>
+                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">Zone</th>
+                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">Type</th>
+                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">Technicien</th>
+                                  <th className="px-2 py-2 font-semibold whitespace-nowrap">Statut</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {intToday.map((it, idx) => (
+                                  <tr key={it?.id || idx} className={`border-b border-slate-100 ${idx % 2 === 1 ? 'bg-white' : 'bg-slate-50'}`}>
+                                    <td className="px-2 py-2 text-slate-900 whitespace-nowrap">{it?.siteId || '-'}</td>
+                                    <td className="px-2 py-2 text-slate-900 whitespace-nowrap">{it?.zone || '-'}</td>
+                                    <td className="px-2 py-2 text-slate-900 whitespace-nowrap">{it?.epvType || '-'}</td>
+                                    <td className="px-2 py-2 text-slate-900 whitespace-nowrap">{it?.technicianName || '-'}</td>
+                                    <td className="px-2 py-2 text-slate-900 whitespace-nowrap">{it?.status || '-'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
               {pmError && (
                 <div className="mb-4 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">
                   {pmError}
@@ -768,8 +880,10 @@ const PmModal = (props) => {
             const zoneOptions = uniqueSorted(items.map((it) => it?.zone));
 
             const search = String(pmSearch || '').trim().toLowerCase();
-            const dateFilter = normalizeYmd(pmFilterDate);
+            const dateFrom = normalizeYmd(pmFilterFrom);
+            const dateTo = normalizeYmd(pmFilterTo);
             const reprogFilter = String(pmFilterReprog || 'all');
+            const sourceFilter = String(pmFilterSource || 'all');
 
             const normReprogStatus = (s) => {
               const v = String(s || '').trim().toLowerCase();
@@ -804,9 +918,16 @@ const PmModal = (props) => {
               if (pmFilterZone && pmFilterZone !== 'all') {
                 if (String(it?.zone || '').trim() !== String(pmFilterZone)) return false;
               }
-              if (dateFilter) {
+              if (dateFrom) {
                 const sched = normalizeYmd(it?.scheduledWoDate);
-                if (sched !== dateFilter) return false;
+                if (sched && sched < dateFrom) return false;
+              }
+              if (dateTo) {
+                const sched = normalizeYmd(it?.scheduledWoDate);
+                if (sched && sched > dateTo) return false;
+              }
+              if (sourceFilter && sourceFilter !== 'all') {
+                if (sourceFilter === 'noc' && String(it?.createdSource || '') !== 'noc') return false;
               }
               if (reprogFilter && reprogFilter !== 'all') {
                 const st = effectiveReprogStatus(it);
@@ -1144,7 +1265,7 @@ const PmModal = (props) => {
                 )}
 
                 <div className="mb-5 bg-slate-50 border border-slate-200 rounded-lg p-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1">État</label>
                       <select
@@ -1196,6 +1317,19 @@ const PmModal = (props) => {
                     </div>
 
                     <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">Source</label>
+                      <select
+                        value={pmFilterSource}
+                        onChange={(e) => setPmFilterSource(String(e.target.value || 'all'))}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        disabled={pmBusy}
+                      >
+                        <option value="all">Toutes</option>
+                        <option value="noc">Créés par NOC</option>
+                      </select>
+                    </div>
+
+                    <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1">Recherche</label>
                       <input
                         value={pmSearch}
@@ -1207,11 +1341,22 @@ const PmModal = (props) => {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1">Date planifiée (jour)</label>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">Du</label>
                       <input
                         type="date"
-                        value={pmFilterDate}
-                        onChange={(e) => setPmFilterDate(String(e.target.value || ''))}
+                        value={pmFilterFrom}
+                        onChange={(e) => setPmFilterFrom(String(e.target.value || ''))}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        disabled={pmBusy}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">Au</label>
+                      <input
+                        type="date"
+                        value={pmFilterTo}
+                        onChange={(e) => setPmFilterTo(String(e.target.value || ''))}
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                         disabled={pmBusy}
                       />
@@ -1236,16 +1381,30 @@ const PmModal = (props) => {
 
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-3">
                     <div className="text-xs text-gray-600">
-                      Affichés: <span className="font-semibold text-gray-900">{tableFiltered.length}</span> / {items.length}
+                      {(() => {
+                        const nocCount = (Array.isArray(items) ? items : []).filter((it) => String(it?.createdSource || '') === 'noc').length;
+                        return (
+                          <>
+                            Affichés: <span className="font-semibold text-gray-900">{tableFiltered.length}</span> / {items.length}
+                            {nocCount > 0 && (
+                              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold">
+                                NOC: {nocCount}
+                              </span>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                     <button
                       type="button"
                       onClick={() => {
                         setPmFilterState('all');
+                        setPmFilterSource('all');
                         setPmFilterType('all');
                         setPmFilterZone('all');
                         setPmSearch('');
-                        setPmFilterDate('');
+                        setPmFilterFrom('');
+                        setPmFilterTo('');
                         setPmFilterReprog('all');
                       }}
                       className="bg-gray-200 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-300 text-sm font-semibold"

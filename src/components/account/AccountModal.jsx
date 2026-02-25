@@ -6,6 +6,9 @@ const AccountModal = ({
   email,
   accountForm,
   onChange,
+  notificationsUnreadCount,
+  pushEnabled,
+  onEnablePush,
   accountError,
   accountSaving,
   onClose,
@@ -41,6 +44,32 @@ const AccountModal = ({
                 readOnly
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-700"
               />
+            </div>
+
+            <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+              <div className="text-sm font-semibold text-gray-800">Notifications</div>
+              <div className="text-xs text-gray-600 mt-1">
+                Statut :{' '}
+                <span className="font-semibold">{pushEnabled ? 'Activées' : 'Désactivées'}</span>
+                {Number.isFinite(Number(notificationsUnreadCount)) && (
+                  <>
+                    {' • '}Non lues : <span className="font-semibold">{Number(notificationsUnreadCount || 0)}</span>
+                  </>
+                )}
+              </div>
+              {!pushEnabled && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (typeof onEnablePush !== 'function') return;
+                    await onEnablePush();
+                  }}
+                  className="mt-2 bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 font-semibold text-sm"
+                  disabled={accountSaving}
+                >
+                  Activer les notifications
+                </button>
+              )}
             </div>
 
             <div>

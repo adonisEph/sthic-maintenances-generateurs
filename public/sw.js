@@ -76,3 +76,51 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
+self.addEventListener('push', (event) => {
+  event.waitUntil(
+    (async () => {
+      const title = 'Nouvelle notification';
+      const options = {
+        body: 'Une nouvelle activité vous a été assignée ou mise à jour.',
+        icon: '/icon-192.svg',
+        badge: '/icon-192.svg',
+        data: { url: '/' }
+      };
+
+      try {
+        const clients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+        for (const c of clients) {
+          try {
+            c.postMessage({ type: 'PUSH_NOTIFICATION' });
+          } catch {
+            // ignore
+          }
+        }
+      } catch {
+        // ignore
+      }
+
+      await self.registration.showNotification(title, options);
+    })()
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event?.notification?.data && event.notification.data.url) || '/';
+  event.waitUntil(
+    (async () => {
+      const allClients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+      for (const client of allClients) {
+        if (client.url && client.url.includes(url) && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(url);
+      }
+      return undefined;
+    })()
+  );
+});

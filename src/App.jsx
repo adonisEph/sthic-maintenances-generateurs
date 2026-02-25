@@ -26,6 +26,7 @@ import HistoryModal from './components/history/HistoryModal';
 import UploadBannerModal from './components/fiche/UploadBannerModal';
 import FicheModal from './components/fiche/FicheModal';
 import DayDetailsModal from './components/calendar/DayDetailsModal';
+import TechnicianCalendarModal from './components/calendar/TechnicianCalendarModal';
 
 import {
   calculateRegime,
@@ -37,11 +38,11 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '3.0.3';
+const APP_VERSION = '3.1.1';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
-const APP_VERSION_FORCE_AFTER_DAYS = 7;
+const APP_VERSION_FORCE_AFTER_DAYS = 0;
 const DAILY_NH_UPDATE_STORAGE_KEY = 'gma_daily_nh_update_ymd';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
 const SPLASH_MIN_MS = 4250;
@@ -105,6 +106,8 @@ const GeneratorMaintenanceApp = () => {
     currentVersion: APP_VERSION,
     serverVersion: ''
   });
+  const [notificationsUnreadCount, setNotificationsUnreadCount] = useState(0);
+  const [pushEnabled, setPushEnabled] = useState(false);
   const [bannerImage, setBannerImage] = useState('');
   const [siteForFiche, setSiteForFiche] = useState(null);
   const [ficheContext, setFicheContext] = useState(null);
@@ -143,6 +146,10 @@ const GeneratorMaintenanceApp = () => {
   const [historyZone, setHistoryZone] = useState('ALL');
   const [scoringZone, setScoringZone] = useState('ALL');
   const [dashboardZone, setDashboardZone] = useState('ALL');
+  const [techCalendarMonth, setTechCalendarMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [techSelectedDate, setTechSelectedDate] = useState('');
+  const [techSelectedDayEvents, setTechSelectedDayEvents] = useState([]);
+  const [showTechDayDetailsModal, setShowTechDayDetailsModal] = useState(false);
   const [tabId] = useState(() => {
     try {
       return crypto.randomUUID();
@@ -164,6 +171,8 @@ const GeneratorMaintenanceApp = () => {
   const [pmImports, setPmImports] = useState([]);
   const [pmDashboard, setPmDashboard] = useState(null);
   const [pmBusy, setPmBusy] = useState(false);
+  const [pmTodayActivities, setPmTodayActivities] = useState(null);
+  const [pmTodayActivitiesBusy, setPmTodayActivitiesBusy] = useState(false);
   const [pmError, setPmError] = useState('');
   const [pmNotice, setPmNotice] = useState('');
   const [pmNocProgress, setPmNocProgress] = useState(0);
@@ -179,7 +188,8 @@ const GeneratorMaintenanceApp = () => {
   const [pmFilterState, setPmFilterState] = useState('all');
   const [pmFilterType, setPmFilterType] = useState('all');
   const [pmFilterZone, setPmFilterZone] = useState('all');
-  const [pmFilterDate, setPmFilterDate] = useState('');
+  const [pmFilterFrom, setPmFilterFrom] = useState('');
+  const [pmFilterTo, setPmFilterTo] = useState('');
   const [pmFilterReprog, setPmFilterReprog] = useState('all');
   const [pmSearch, setPmSearch] = useState('');
   const [pmReprogExportDate, setPmReprogExportDate] = useState('');
@@ -191,6 +201,7 @@ const GeneratorMaintenanceApp = () => {
   const [pmReprogForm, setPmReprogForm] = useState({ date: '', status: '', reason: '' });
   const [pmReprogError, setPmReprogError] = useState('');
   const [pmReprogSaving, setPmReprogSaving] = useState(false);
+  const [pmFilterSource, setPmFilterSource] = useState('all'); 
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [calendarSendTechUserId, setCalendarSendTechUserId] = useState('');
   const [pmSendTechUserId, setPmSendTechUserId] = useState('');
@@ -270,6 +281,91 @@ const GeneratorMaintenanceApp = () => {
       throw new Error(msg);
     }
     return data;
+  };
+
+  const safeSetAppBadge = async (count) => {
+    try {
+      if (!('setAppBadge' in navigator)) return;
+      const c = Number(count || 0);
+      if (c > 0) {
+        await navigator.setAppBadge(c);
+        return;
+      }
+      if ('clearAppBadge' in navigator) {
+        await navigator.clearAppBadge();
+      }
+    } catch {
+    }
+  };
+
+  const loadNotificationsUnreadCount = async () => {
+    try {
+      const res = await apiFetchJson('/api/notifications/unread-count', { method: 'GET' });
+      const c = Number(res?.unreadCount || 0);
+      setNotificationsUnreadCount(c);
+      await safeSetAppBadge(c);
+      return c;
+    } catch {
+      return 0;
+    }
+  };
+
+  const base64UrlToUint8Array = (b64url) => {
+    const src = String(b64url || '').trim();
+    if (!src) return null;
+    try {
+      const padding = '='.repeat((4 - (src.length % 4)) % 4);
+      const base64 = (src + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const raw = atob(base64);
+      const out = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i += 1) out[i] = raw.charCodeAt(i);
+      return out;
+    } catch {
+      return null;
+    }
+  };
+
+  const ensurePushSubscription = async () => {
+    if (!('serviceWorker' in navigator)) return false;
+    if (!('PushManager' in window)) return false;
+    if (!('Notification' in window)) return false;
+    if (Notification.permission !== 'granted') return false;
+
+    const registration = await navigator.serviceWorker.ready;
+    const existing = await registration.pushManager.getSubscription();
+    if (existing) {
+      setPushEnabled(true);
+      return true;
+    }
+
+    const vapid = await apiFetchJson('/api/push/vapid-public-key', { method: 'GET' });
+    const publicKey = String(vapid?.publicKey || '').trim();
+    const appServerKey = base64UrlToUint8Array(publicKey);
+    if (!appServerKey) return false;
+
+    const sub = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appServerKey });
+    await apiFetchJson('/api/push/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ subscription: sub, userAgent: navigator.userAgent })
+    });
+    setPushEnabled(true);
+    return true;
+  };
+
+  const requestPushPermissionAndSubscribe = async () => {
+    if (!('Notification' in window)) return false;
+    if (!('serviceWorker' in navigator)) return false;
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') {
+        setPushEnabled(false);
+        return false;
+      }
+      return await ensurePushSubscription();
+    } catch {
+      setPushEnabled(false);
+      return false;
+    }
   };
 
   const handleSendCalendarMonthPlanning = async () => {
@@ -456,7 +552,7 @@ const GeneratorMaintenanceApp = () => {
   const renderPwaUpdateBanner = () => {
     if (!pwaUpdate?.available) return null;
     return (
-      <div className="fixed bottom-4 left-0 right-0 z-[70] px-4">
+      <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4">
         <div className="max-w-3xl mx-auto bg-white border border-indigo-200 shadow-lg rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="min-w-0">
             <div className="font-bold text-gray-900">Nouvelle version disponible</div>
@@ -533,23 +629,6 @@ const GeneratorMaintenanceApp = () => {
             >
               Mettre à jour
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                try {
-                  if (pwaUpdate?.serverVersion) {
-                    localStorage.setItem(APP_VERSION_DISMISSED_KEY, String(pwaUpdate.serverVersion));
-                    localStorage.setItem(APP_VERSION_SNOOZED_AT_KEY, String(Date.now()));
-                  }
-                } catch (e) {
-                }
-                setPwaUpdate((prev) => ({ ...(prev || {}), available: false, forced: false, badge: true }));
-              }}
-              className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 font-semibold w-full sm:w-auto"
-            >
-              Plus tard
-            </button>
-
           </div>
         </div>
       </div>
@@ -561,7 +640,7 @@ const GeneratorMaintenanceApp = () => {
     return (
       <button
         type="button"
-        onClick={() => setPwaUpdate((prev) => ({ ...(prev || {}), available: true, badge: false }))}
+        onClick={() => setPwaUpdate((prev) => ({ ...(prev || {}), available: true, badge: false, forced: true}))}
         className="fixed top-4 right-4 z-[9999] bg-indigo-600 text-white px-4 py-3 rounded-full shadow-xl text-sm font-bold hover:bg-indigo-700 ring-2 ring-white"
         title="Nouvelle version disponible"
       >
@@ -621,9 +700,9 @@ const GeneratorMaintenanceApp = () => {
           ...(prev || {}),
           currentVersion,
           serverVersion,
-          available: force || !dismissedThisVersion,
-          badge: !force && dismissedThisVersion,
-          forced: Boolean(force)
+          available: true,
+          badge: false,
+          forced: true
         }));
       } catch {
         // ignore
@@ -802,6 +881,56 @@ const GeneratorMaintenanceApp = () => {
     };
   }, [authUser?.id]);
 
+  useEffect(() => {
+    if (!authUser?.id) return;
+
+    let disposed = false;
+    let intervalId = null;
+    let onFocus = null;
+    let onSwMessage = null;
+
+    (async () => {
+      try {
+        await loadNotificationsUnreadCount();
+        if (Notification?.permission === 'granted') {
+          await ensurePushSubscription();
+        } else {
+          setPushEnabled(false);
+        }
+      } catch {
+      }
+    })();
+
+    intervalId = window.setInterval(() => {
+      if (disposed) return;
+      loadNotificationsUnreadCount();
+    }, 60 * 1000);
+
+    onFocus = () => loadNotificationsUnreadCount();
+    window.addEventListener('focus', onFocus);
+
+    onSwMessage = (event) => {
+      if (!event?.data) return;
+      if (event.data.type === 'PUSH_NOTIFICATION') {
+        loadNotificationsUnreadCount();
+      }
+    };
+    try {
+      navigator.serviceWorker?.addEventListener?.('message', onSwMessage);
+    } catch {
+    }
+
+    return () => {
+      disposed = true;
+      try {
+        if (intervalId) window.clearInterval(intervalId);
+        if (onFocus) window.removeEventListener('focus', onFocus);
+        if (onSwMessage) navigator.serviceWorker?.removeEventListener?.('message', onSwMessage);
+      } catch {
+      }
+    };
+  }, [authUser?.id]);
+
   const refreshUsers = async () => {
     setUsersBusy(true);
     setUsersError('');
@@ -949,6 +1078,117 @@ const GeneratorMaintenanceApp = () => {
       setPmAssignmentsBusy(false);
     }
   };
+
+  const techCalendarPmTypeLabel = (item) => {
+    const mt = normalizePmType(item?.maintenanceType);
+    if (mt === 'fullpmwo') return 'PM';
+    const epv = String(item?.epvType || '').trim().toUpperCase();
+    if (epv === 'EPV1') return 'V1';
+    if (epv === 'EPV2') return 'V2';
+    if (epv === 'EPV3') return 'V3';
+    return 'V';
+  };
+
+  const getTechCalendarEventsForDay = (ymd) => {
+    const dateStr = String(ymd || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return [];
+    const monthKey = String(dateStr).slice(0, 7);
+  
+    const siteById = new Map((Array.isArray(sites) ? sites : []).map((s) => [String(s?.id || ''), s]));
+  
+    const interventionsMap = new Map(
+      (Array.isArray(interventions) ? interventions : [])
+        .filter(Boolean)
+        .map((i) => [
+          `${String(i?.siteId || '')}|${String(i?.plannedDate || '').slice(0, 10)}|${String(i?.epvType || '')}`,
+          i
+        ])
+    );
+    
+    const pmItems = (Array.isArray(pmAssignments) ? pmAssignments : [])
+    .filter(Boolean)
+    .filter((p) => String(p?.plannedDate || '').slice(0, 10) === dateStr)
+    .filter((p) => normalizePmType(p?.maintenanceType) === 'fullpmwo');
+
+    const buildVidangesFromSitesForDay = () => {
+      const out = [];
+      const list = Array.isArray(sites) ? sites : [];
+      const norm = (d) => {
+        const s = String(d || '').slice(0, 10);
+        return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+      };
+      
+      list
+        .filter(Boolean)
+        .forEach((site) => {
+          const updated = typeof getUpdatedSite === 'function' ? getUpdatedSite(site) : site;
+          if (updated?.retired) return;
+  
+          const pushOne = (epvType, rawDate) => {
+            const src = norm(rawDate);
+            if (!src) return;
+            const shifted = typeof ymdShiftForWorkdays === 'function' ? ymdShiftForWorkdays(src) : '';
+            const plannedDate = String(shifted || src).slice(0, 10);
+            if (String(plannedDate).slice(0, 7) !== monthKey) return;
+            if (plannedDate !== dateStr) return;
+  
+            const k1 = `${String(site.id)}|${plannedDate}|${String(epvType || '')}`;
+            const k2 = `${String(site.id)}|${src}|${String(epvType || '')}`;
+            const intervention = interventionsMap.get(k1) || interventionsMap.get(k2) || null;
+  
+            out.push({
+              id: intervention?.id || `${site.id}:${epvType}:${plannedDate}`,
+              siteId: String(site.id),
+              plannedDate,
+              maintenanceType: 'VIDANGE',
+              epvType,
+              status: String(intervention?.status || 'planned'),
+              technicianName: String(site?.technician || '')
+            });
+          };
+  
+          pushOne('EPV1', updated?.epv1);
+          pushOne('EPV2', updated?.epv2);
+          pushOne('EPV3', updated?.epv3);
+        });
+  
+      return out;
+    };
+  
+    const vidangeItems = buildVidangesFromSitesForDay();
+ 
+    const pmSiteIds = new Set(pmItems.map((p) => String(p?.siteId || '').trim()).filter(Boolean));
+    const vidSiteIds = new Set(vidangeItems.map((v) => String(v?.siteId || '').trim()).filter(Boolean));
+  
+    const decorate = (it) => {
+      const sid = String(it?.siteId || '').trim();
+      const hasPm = pmSiteIds.has(sid);
+      const hasVid = vidSiteIds.has(sid);
+      const matchInfo =
+        hasPm && hasVid
+          ? { kind: 'PM_VIDANGE', label: 'PM et Vidange' }
+          : hasPm
+            ? { kind: 'PM_SIMPLE', label: 'PM Simple' }
+            : hasVid
+              ? { kind: 'VIDANGE', label: 'Vidange' }
+              : null;
+  
+      return {
+        item: it,
+        site: siteById.get(sid) || null,
+        matchInfo
+      };
+    };
+  
+    return [...pmItems, ...vidangeItems]
+      .map(decorate)
+      .sort((a, b) => {
+        const sa = String(a?.site?.nameSite || a?.item?.siteId || '');
+        const sb = String(b?.site?.nameSite || b?.item?.siteId || '');
+        return sa.localeCompare(sb);
+      });
+  };
+
 
   const loadInterventions = async (
     yyyyMm = interventionsMonth,
@@ -1254,10 +1494,50 @@ const GeneratorMaintenanceApp = () => {
     return found?.id ? String(found.id) : '';
   };
 
-  const loadPmItems = async (monthId) => {
-    const data = await apiFetchJson(`/api/pm/months/${monthId}/items`, { method: 'GET' });
+  const loadPmItems = async (monthId, opts = {}) => {
+    const mId = String(monthId || '').trim();
+    if (!mId) return;
+
+    const q = opts?.q != null ? String(opts.q || '').trim() : String(pmSearch || '').trim();
+    const state = opts?.state != null ? String(opts.state || '').trim() : String(pmFilterState || '').trim();
+    const from = opts?.from != null ? String(opts.from || '').trim() : String(pmFilterFrom || '').trim();
+    const to = opts?.to != null ? String(opts.to || '').trim() : String(pmFilterTo || '').trim();
+    const reprog = opts?.reprog != null ? String(opts.reprog || '').trim() : String(pmFilterReprog || '').trim();
+
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (state && state !== 'all') params.set('state', state);
+    if (from) params.set('from', String(from).slice(0, 10));
+    if (to) params.set('to', String(to).slice(0, 10));
+
+    if (reprog && reprog !== 'all') {
+      if (reprog === 'any') params.set('reprog', 'only');
+      else params.set('reprogStatus', String(reprog).toUpperCase());
+    }
+
+    const qs = params.toString();
+    const url = `/api/pm/months/${mId}/items${qs ? `?${qs}` : ''}`;
+
+    const data = await apiFetchJson(url, { method: 'GET' });
     setPmItems(Array.isArray(data?.items) ? data.items : []);
   };
+
+    useEffect(() => {
+      if (!showPm) return;
+      if (!pmMonthId) return;
+      loadPmTodayActivities(pmMonthId);
+    }, [showPm, pmMonthId]);
+
+    useEffect(() => {
+    if (!showPm) return;
+    if (!pmMonthId) return;
+
+    const t = setTimeout(() => {
+      loadPmItems(pmMonthId);
+    }, 350);
+
+    return () => clearTimeout(t);
+  }, [showPm, pmMonthId, pmFilterState, pmFilterFrom, pmFilterTo, pmFilterReprog, pmSearch]);
 
   const handlePmOpenReprog = (it) => {
     if (!isAdmin && !isManager) return;
@@ -1331,7 +1611,21 @@ const GeneratorMaintenanceApp = () => {
     setPmDashboard(data || null);
   };
 
-    const refreshPmRetiredSites = async (monthId, yyyymm) => {
+  const loadPmTodayActivities = async (monthIdParam) => {
+    const mId = String(monthIdParam || pmMonthId || '').trim();
+    if (!mId) return;
+    try {
+      setPmTodayActivitiesBusy(true);
+      const data = await apiFetchJson(`/api/pm/months/${mId}/today-activities`, { method: 'GET' });
+      setPmTodayActivities(data || null);
+    } catch (e) {
+      setPmTodayActivities(null);
+    } finally {
+      setPmTodayActivitiesBusy(false);
+    }
+  };
+
+  const refreshPmRetiredSites = async (monthId, yyyymm) => {
     const mId = String(monthId || '').trim();
     const month = String(yyyymm || '').trim();
     if (!mId || !month) {
@@ -1367,11 +1661,11 @@ const GeneratorMaintenanceApp = () => {
 
     const normalizeType = (t) => String(t || '').trim().toLowerCase().replace(/\s+/g, '');
     const isFullPmwo = (maintenanceType, shortDescription) => {
-    const v1 = normalizeType(maintenanceType);
-    const v2 = normalizeType(shortDescription);
-    const isFull = (v) => v === 'fullpmwo' || v.includes('fullpmwo') || v === 'epv1' || v.includes('epv1');
-    return isFull(v1) || isFull(v2);
-  };
+      const v1 = normalizeType(maintenanceType);
+      const v2 = normalizeType(shortDescription);
+      const isFull = (v) => v === 'fullpmwo' || v.includes('fullpmwo') || v === 'epv1' || v.includes('epv1');
+      return isFull(v1) || isFull(v2);
+    };
 
     const [globalRes, clientRes] = await Promise.all([
       apiFetchJson(`/api/pm/months/${mId}/global-items`, { method: 'GET' }),
@@ -1384,42 +1678,42 @@ const GeneratorMaintenanceApp = () => {
     // Global: ensemble de sites (par zone scope)
     const globalSites = new Map();
     for (const it of globalItemsRaw) {
-    const siteCode = normalizeSiteCode(it?.siteCode);
-    const zone = normalizeZone(it?.zone || it?.region || '');
-    if (!siteCode || !zone) continue;
-    if (!scopeZonesNorm.includes(zone)) continue;
+      const siteCode = normalizeSiteCode(it?.siteCode);
+      const zone = normalizeZone(it?.zone || it?.region || '');
+      if (!siteCode || !zone) continue;
+      if (!scopeZonesNorm.includes(zone)) continue;
 
-    const key = `${zone}|${siteCode}`;
-  if (!globalSites.has(key)) {
-    globalSites.set(key, {
-      siteCode,
-      siteName: String(it?.siteName || '').trim(),
-      zone,
-      maintenanceType: it?.maintenanceType || ''
-    });
-  }
-}
+      const key = `${zone}|${siteCode}`;
+      if (!globalSites.has(key)) {
+        globalSites.set(key, {
+          siteCode,
+          siteName: String(it?.siteName || '').trim(),
+          zone,
+          maintenanceType: it?.maintenanceType || ''
+        });
+      }
+    }
 
     // Client: ensemble de sites FullPMWO (par zone scope)
     const clientSites = new Set();
     for (const it of clientItemsRaw) {
       const siteCode = normalizeSiteCode(it?.siteCode);
       const zone = normalizeZone(it?.zone || it?.region || '');
-    if (!siteCode || !zone) continue;
-    if (!scopeZonesNorm.includes(zone)) continue;
+      if (!siteCode || !zone) continue;
+      if (!scopeZonesNorm.includes(zone)) continue;
 
-    if (!isFullPmwo(it?.maintenanceType, it?.shortDescription)) continue;
+      if (!isFullPmwo(it?.maintenanceType, it?.shortDescription)) continue;
 
-    const key = `${zone}|${siteCode}`;
-    clientSites.add(key);
-  }
+      const key = `${zone}|${siteCode}`;
+      clientSites.add(key);
+    }
 
     // Retirés = globalSites - clientSites (par siteCode)
-const items = [];
-for (const [key, g] of globalSites.entries()) {
-  if (clientSites.has(key)) continue;
-  items.push(g);
-}
+    const items = [];
+    for (const [key, g] of globalSites.entries()) {
+      if (clientSites.has(key)) continue;
+      items.push(g);
+    }
 
     items.sort(
       (a, b) =>
@@ -1529,8 +1823,13 @@ for (const [key, g] of globalSites.entries()) {
       if (pmFilterZone && pmFilterZone !== 'all') {
         if (String(it?.zone || '').trim() !== String(pmFilterZone)) return false;
       }
-      if (pmFilterDate) {
-        if (!dateEq(it?.scheduledWoDate, pmFilterDate)) return false;
+      if (pmFilterFrom) {
+        const d = it?.scheduledWoDate ? String(it.scheduledWoDate).slice(0, 10) : '';
+        if (d && d < String(pmFilterFrom).slice(0, 10)) return false;
+      }
+      if (pmFilterTo) {
+        const d = it?.scheduledWoDate ? String(it.scheduledWoDate).slice(0, 10) : '';
+        if (d && d > String(pmFilterTo).slice(0, 10)) return false;
       }
       if (pmFilterReprog && pmFilterReprog !== 'all') {
         const st = effectiveReprogStatus(it);
@@ -1658,10 +1957,22 @@ for (const [key, g] of globalSites.entries()) {
     }
     const s = String(value || '').trim();
     if (!s) return '';
-    const m = s.match(/(\d{4})[-/](\d{2})[-/](\d{2})/);
-    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    const m1 = s.match(/(\d{4})[-/](\d{2})[-/](\d{2})/);
+    if (m1) {
+      const dd = m1[1];
+      const mm = m1[2];
+      const yyyy = m1[3];
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
     const fr = s.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-    if (fr) return `${fr[3]}-${fr[2]}-${fr[1]}`;
+    if (fr) {
+      const dd = fr[1];
+      const mm = fr[2];
+      const yyyy = fr[3];
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
     return '';
   };
 
@@ -1716,8 +2027,15 @@ for (const [key, g] of globalSites.entries()) {
 
           const rawSiteCode = String(pmGet(row, 'Site', 'Site (id)', 'Site id', 'Site Code') || '').trim();
           const rawSiteName = String(pmGet(row, 'Site Name', 'Site name', 'Name Site', 'Nom du site') || '').trim();
-          const rawRegion = String(pmGet(row, 'Region', 'Région', 'Zone') || '').trim();
-          const rawZone = String(pmGet(row, 'Zone', 'zone', 'Region', 'region') || '').trim();
+
+          let siteCode = rawSiteCode;
+          let siteName = rawSiteName;
+
+          const resolved = findSite(rawSiteCode, rawSiteName || rawSiteCode);
+          if (resolved?.idSite) {
+            siteCode = String(resolved.idSite).trim();
+            if (!siteName) siteName = String(resolved?.nameSite || '').trim();
+          }
 
           const assignedTo = String(pmGet(row, 'Assigned to', 'Assigned To', 'NOM TECHNICIEN', 'Nom Technicien') || '').trim();
           const shortDescription = String(pmGet(row, 'Short description', 'Short Description', 'Description') || '').trim();
@@ -1728,13 +2046,13 @@ for (const [key, g] of globalSites.entries()) {
 
           const pairGroup = String(pmGet(row, 'PairGroup', 'Pair Group', 'Paire', 'Paire Site', 'Pair Site') || '').trim();
 
-          if (!rawSiteCode && !rawSiteName) continue;
+          if (!siteCode && !siteName) continue;
 
           rows.push({
             siteCode: rawSiteCode,
             siteName: rawSiteName,
-            region: rawRegion,
-            zone: rawZone,
+            region: String(pmGet(row, 'Region', 'region') || '').trim(),
+            zone: String(pmGet(row, 'Zone', 'zone', 'Region', 'region') || '').trim(),
             assignedTo,
             shortDescription,
             scheduledWoDate,
@@ -2540,9 +2858,16 @@ for (const [key, g] of globalSites.entries()) {
         for (const row of Array.isArray(jsonData) ? jsonData : []) {
           const number = String(pmGet(row, 'Number') || '').trim();
           if (!number) continue;
+
           const state = String(pmGet(row, 'State') || '').trim();
           const closedAt = pmNormalizeDate(pmGet(row, 'Closed', 'Date of closing'));
-          rows.push({ number, state, closedAt });
+
+          const siteCode = String(pmGet(row, 'Site') || '').trim();
+          const shortDescription = String(pmGet(row, 'Short description') || '').trim();
+          const scheduledWoDate = pmNormalizeDate(pmGet(row, 'Scheduled WO Date', 'Scheduled Wo Date'));
+          const assignedTo = String(pmGet(row, 'Assigned to', 'Assigned To') || '').trim();
+
+          rows.push({ number, state, closedAt, siteCode, shortDescription, scheduledWoDate, assignedTo });
         }
 
         const res = await apiFetchJson(`/api/pm/months/${monthId}/noc-import`, {
@@ -3929,30 +4254,6 @@ for (const [key, g] of globalSites.entries()) {
     }
   })();
 
-  const interventionsPrevMonthKey = (() => {
-    const raw = String(interventionsMonth || '').trim();
-    const m = raw.match(/^(\d{4})-(\d{2})$/);
-    if (!m) return '';
-    const y = Number(m[1]);
-    const mm = Number(m[2]);
-    if (!Number.isFinite(y) || !Number.isFinite(mm) || mm < 1 || mm > 12) return '';
-    const py = mm === 1 ? y - 1 : y;
-    const pm = mm === 1 ? 12 : mm - 1;
-    return `${py}-${String(pm).padStart(2, '0')}`;
-  })();
-
-  const interventionsPrevMonthRetiredSiteIds = (() => {
-    try {
-      if (!interventionsPrevMonthKey) return new Set();
-      const raw = localStorage.getItem(`retired_sites_snapshot:${interventionsPrevMonthKey}`);
-      const arr = raw ? JSON.parse(raw) : [];
-      if (!Array.isArray(arr)) return new Set();
-      return new Set(arr.map((v) => String(v)).filter(Boolean));
-    } catch {
-      return new Set();
-    }
-  })();
-
   useEffect(() => {
     if (!showCalendar) return;
     try {
@@ -3970,13 +4271,13 @@ for (const [key, g] of globalSites.entries()) {
   const calendarFilteredSites = sites
     .map(getUpdatedSite)
     .filter((site) => {
-    if (showZoneFilter) {
-      const z = String(calendarZone || 'ALL');
-      if (z && z !== 'ALL' && String(site?.zone || '').trim() !== z) return false;
-    }
-    if (!calendarTechnicianName) return true;
-    return String(site.technician || '').trim() === calendarTechnicianName;
-  });
+      if (showZoneFilter) {
+        const z = String(calendarZone || 'ALL');
+        if (z && z !== 'ALL' && String(site?.zone || '').trim() !== z) return false;
+      }
+      if (!calendarTechnicianName) return true;
+      return String(site.technician || '').trim() === calendarTechnicianName;
+    });
 
   const interventionsByKey = new Map(
     (Array.isArray(interventions) ? interventions : []).filter(Boolean).map((i) => [getInterventionKey(i.siteId, i.plannedDate, i.epvType), i])
@@ -4142,98 +4443,6 @@ for (const [key, g] of globalSites.entries()) {
       }
     })();
   }, [showCalendar, authUser?.role, currentMonth]);
-
-  useEffect(() => {
-    if (!showPm) return;
-    if (!isAdmin) return;
-    (async () => {
-      try {
-        await refreshUsers();
-      } catch (e) {
-        // ignore
-      }
-    })();
-  }, [showPm, isAdmin]);
-
-  const handleLogin = (e) => {
-    e.preventDefault();
-
-    const email = String(loginEmail || '').trim().toLowerCase();
-    if (!email) {
-      setLoginError('Veuillez saisir votre email.');
-      return;
-    }
-
-    if (!loginPassword) {
-      setLoginError('Veuillez saisir le mot de passe.');
-      return;
-    }
-
-    (async () => {
-      try {
-        const data = await apiFetchJson('/api/auth/login', {
-          method: 'POST',
-          body: JSON.stringify({ email, password: loginPassword })
-        });
-
-        if (data?.user?.email) {
-          setAuthUser(data.user);
-          setLoginError('');
-          setShowAccountModal(false);
-          setAccountForm({ password: '', confirm: '' });
-          setAccountError('');
-          await loadData();
-          await loadFicheHistory();
-          if (data?.user?.role === 'admin') {
-            await loadTicketNumber();
-          }
-          if (data?.user?.role === 'technician') {
-            setInterventionsStatus('all');
-            setInterventionsTechnicianUserId('all');
-            setTechnicianInterventionsTab('tomorrow');
-            setShowTechnicianInterventionsFilters(false);
-            setShowInterventions(true);
-            await loadInterventions(interventionsMonth, 'all', 'all');
-          }
-        } else {
-          setLoginError('Email ou mot de passe incorrect.');
-        }
-      } catch (err) {
-        setLoginError(err?.message || 'Erreur serveur.');
-      }
-    })();
-  };
-
-  const handleLogout = () => {
-    setShowUsersModal(false);
-    setShowAccountModal(false);
-    setShowPresenceModal(false);
-    setShowCalendar(false);
-    setShowHistory(false);
-    setShowFicheModal(false);
-    setShowInterventions(false);
-    setShowScoring(false);
-    setShowPm(false);
-    setScoringDetails({ open: false, title: '', kind: '', items: [] });
-    setAuthUser(null);
-    setSites([]);
-    setFicheHistory([]);
-    setInterventions([]);
-    setLoginEmail('');
-    setLoginPassword('');
-    setLoginError('');
-    setAccountForm({ password: '', confirm: '' });
-    setAccountError('');
-    setAccountSaving(false);
-
-    (async () => {
-      try {
-        await apiFetchJson('/api/auth/logout', { method: 'POST' });
-      } catch (e) {
-        // ignore
-      }
-    })();
-  };
 
   useEffect(() => {
     if (!authUser?.email) return;
@@ -5097,6 +5306,25 @@ return (
             </button>
           ) : (
             <button
+              onClick={async () => {
+                setSidebarOpen(false);
+                setShowCalendar(true);
+                try {
+                  setTechCalendarMonth(interventionsMonth);
+                } catch {
+                  // ignore
+                }
+                try {
+                  await loadInterventions();
+                } catch {
+                  // ignore
+                }
+                try {
+                  await loadPmAssignments(interventionsMonth);
+                } catch {
+                  // ignore
+                }
+              }}
               className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
             >
               <Calendar size={18} />
@@ -5422,6 +5650,9 @@ return (
             setAccountForm(next);
             setAccountError('');
           }}
+          notificationsUnreadCount={notificationsUnreadCount}
+          pushEnabled={pushEnabled}
+          onEnablePush={requestPushPermissionAndSubscribe}
           accountError={accountError}
           accountSaving={accountSaving}
           onClose={() => {
@@ -5561,38 +5792,58 @@ return (
           }}
         />
 
-        <CalendarModal
-          showCalendar={showCalendar}
-          appVersion={APP_VERSION}
-          authUser={authUser}
-          isTechnician={isTechnician}
-          setShowCalendar={setShowCalendar}
-          currentMonth={currentMonth}
-          setCurrentMonth={setCurrentMonth}
-          isAdmin={isAdmin}
-          sites={sites}
-          calendarZone={calendarZone}
-          setCalendarZone={setCalendarZone}
-          showZoneFilter={showZoneFilter}
-          calendarSendTechUserId={calendarSendTechUserId}
-          setCalendarSendTechUserId={setCalendarSendTechUserId}
-          users={users}
-          usersBusy={usersBusy}
-          usersError={usersError}
-          refreshUsers={refreshUsers}
-          handleSendCalendarMonthPlanning={handleSendCalendarMonthPlanning}
-          canExportExcel={canExportExcel}
-          handleExportCalendarMonthExcel={handleExportCalendarMonthExcel}
-          exportBusy={exportBusy}
-          getEventsForDay={getEventsForDay}
-          getDaysUntil={getDaysUntil}
-          selectedDate={selectedDate}
-          setSelectedDate={setSelectedDate}
-          setSelectedDayEvents={setSelectedDayEvents}
-          setShowDayDetailsModal={setShowDayDetailsModal}
-          isViewer={isViewer}
-          isSuperAdmin={isSuperAdmin}
-        />
+        {isTechnician ? (
+          <TechnicianCalendarModal
+            open={showCalendar}
+            isTechnician={isTechnician}
+            techCalendarMonth={techCalendarMonth}
+            setTechCalendarMonth={setTechCalendarMonth}
+            techSelectedDate={techSelectedDate}
+            setTechSelectedDate={setTechSelectedDate}
+            techSelectedDayEvents={techSelectedDayEvents}
+            setTechSelectedDayEvents={setTechSelectedDayEvents}
+            showTechDayDetailsModal={showTechDayDetailsModal}
+            setShowTechDayDetailsModal={setShowTechDayDetailsModal}
+            getTechCalendarEventsForDay={getTechCalendarEventsForDay}
+            techCalendarPmTypeLabel={techCalendarPmTypeLabel}
+            formatDate={formatDate}
+            getDaysUntil={getDaysUntil}
+            onClose={() => setShowCalendar(false)}
+          />
+        ) : (
+          <CalendarModal
+            showCalendar={showCalendar}
+            appVersion={APP_VERSION}
+            authUser={authUser}
+            isTechnician={isTechnician}
+            setShowCalendar={setShowCalendar}
+            currentMonth={currentMonth}
+            setCurrentMonth={setCurrentMonth}
+            isAdmin={isAdmin}
+            sites={sites}
+            calendarZone={calendarZone}
+            setCalendarZone={setCalendarZone}
+            showZoneFilter={showZoneFilter}
+            calendarSendTechUserId={calendarSendTechUserId}
+            setCalendarSendTechUserId={setCalendarSendTechUserId}
+            users={users}
+            usersBusy={usersBusy}
+            usersError={usersError}
+            refreshUsers={refreshUsers}
+            handleSendCalendarMonthPlanning={handleSendCalendarMonthPlanning}
+            canExportExcel={canExportExcel}
+            handleExportCalendarMonthExcel={handleExportCalendarMonthExcel}
+            exportBusy={exportBusy}
+            getEventsForDay={getEventsForDay}
+            getDaysUntil={getDaysUntil}
+            selectedDate={selectedDate}
+            setSelectedDate={setSelectedDate}
+            setSelectedDayEvents={setSelectedDayEvents}
+            setShowDayDetailsModal={setShowDayDetailsModal}
+            isViewer={isViewer}
+            isSuperAdmin={isSuperAdmin}
+          />
+        )}
 
         <DayDetailsModal
           open={showDayDetailsModal}
@@ -5694,10 +5945,14 @@ return (
           pmImports={pmImports}
           pmSearch={pmSearch}
           setPmSearch={setPmSearch}
-          pmFilterDate={pmFilterDate}
-          setPmFilterDate={setPmFilterDate}
+          pmFilterFrom={pmFilterFrom}
+          setPmFilterFrom={setPmFilterFrom}
+          pmFilterTo={pmFilterTo}
+          setPmFilterTo={setPmFilterTo}
           pmFilterState={pmFilterState}
           setPmFilterState={setPmFilterState}
+          pmFilterSource={pmFilterSource}
+          setPmFilterSource={setPmFilterSource}
           pmFilterType={pmFilterType}
           setPmFilterType={setPmFilterType}
           pmFilterZone={pmFilterZone}
@@ -5719,6 +5974,9 @@ return (
           pmReprogSaving={pmReprogSaving}
           handlePmOpenReprog={handlePmOpenReprog}
           handlePmSaveReprog={handlePmSaveReprog}
+          pmTodayActivities={pmTodayActivities}
+          pmTodayActivitiesBusy={pmTodayActivitiesBusy}
+          loadPmTodayActivities={() => loadPmTodayActivities(pmMonthId)}
           formatDate={formatDate}
           apiFetchJson={apiFetchJson}
           isSuperAdmin={Boolean(authUser?.role === 'admin' && authUser?.zone === 'BZV/POOL')}

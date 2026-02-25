@@ -13,6 +13,13 @@ function chunkArray(arr, size) {
   return out;
 }
 
+function normalizeYmd(v) {
+  const s = String(v ?? '').trim();
+  if (!s) return null;
+  const ymd = s.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? ymd : null;
+}
+
 export async function onRequestPost({ request, env, data, params }) {
   try {
     await ensureAdminUser(env);
@@ -38,6 +45,7 @@ export async function onRequestPost({ request, env, data, params }) {
 
     let updated = 0;
     let missing = 0;
+    let createdMissing = 0;
     const missingNumbers = [];
 
     await env.DB.prepare(
@@ -62,7 +70,11 @@ export async function onRequestPost({ request, env, data, params }) {
       cleanedRows.push({
         number,
         state: normStr(r?.state),
-        closedAt: normStr(r?.closedAt)
+        closedAt: normStr(r?.closedAt),
+        siteCode: normStr(r?.siteCode),
+        shortDescription: normStr(r?.shortDescription),
+        scheduledWoDate: normalizeYmd(r?.scheduledWoDate),
+        assignedTo: normStr(r?.assignedTo)
       });
     }
 
@@ -96,6 +108,69 @@ export async function onRequestPost({ request, env, data, params }) {
         }
       }
 
+      const missingChunk = chunk.filter((r) => !existingSet.has(r.number));
+      if (missingChunk.length > 0) {
+        const siteCodes = Array.from(
+          new Set(
+            missingChunk
+              .map((r) => String(r?.siteCode || '').trim())
+              .filter(Boolean)
+          )
+        );
+        const siteMap = new Map();
+        if (siteCodes.length > 0) {
+          const inSites = siteCodes.map(() => '?').join(',');
+          const stmt = scopeZone
+            ? env.DB.prepare(
+                `SELECT id_site, name_site, technician, zone FROM sites WHERE zone = ? AND id_site IN (${inSites})`
+              ).bind(scopeZone, ...siteCodes)
+            : env.DB.prepare(
+                `SELECT id_site, name_site, technician, zone FROM sites WHERE id_site IN (${inSites})`
+              ).bind(...siteCodes);
+          const resSites = await stmt.all();
+          for (const s of resSites?.results || []) {
+            const k = String(s?.id_site || '').trim();
+            if (!k) continue;
+            siteMap.set(k, s);
+          }
+        }
+
+        const insertPmValues = missingChunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(',');
+        const insertPmArgs = [];
+        for (const r of missingChunk) {
+          const code = String(r?.siteCode || '').trim();
+          const s = code ? siteMap.get(code) : null;
+          const z = scopeZone || String(s?.zone || '').trim() || null;
+          insertPmArgs.push(
+            newId(),
+            monthId,
+            r.number,
+            code || null,
+            s?.name_site ? String(s.name_site) : null,
+            z,
+            z,
+            r.shortDescription,
+            null,
+            r.scheduledWoDate,
+            r.assignedTo || (s?.technician ? String(s.technician) : null),
+            'noc',
+            r.state || 'Assigned',
+            r.closedAt,
+            now,
+            now,
+            now
+          );
+        }
+
+        const insertPmSql =
+          `INSERT OR IGNORE INTO pm_items (` +
+          `id, month_id, number, site_code, site_name, region, zone, short_description, maintenance_type, scheduled_wo_date, assigned_to, created_source, state, closed_at, last_noc_import_at, created_at, updated_at` +
+          `) VALUES ${insertPmValues}`;
+
+        const res = await env.DB.prepare(insertPmSql).bind(...insertPmArgs).run();
+        createdMissing += Number(res?.meta?.changes || 0);
+      }
+
       const insertValues = chunk.map(() => '(?, ?, ?, ?, ?, ?)').join(',');
       const insertArgs = [];
       for (const r of chunk) {
@@ -107,17 +182,22 @@ export async function onRequestPost({ request, env, data, params }) {
         .bind(...insertArgs)
         .run();
 
-      const updValues = chunk.map(() => '(?, ?, ?)').join(',');
+      const updValues = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(',');
       const updArgs = [];
       for (const r of chunk) {
-        updArgs.push(r.number, r.state, r.closedAt);
+        updArgs.push(r.number, r.state, r.closedAt, r.siteCode, r.shortDescription, r.scheduledWoDate, r.assignedTo);
       }
 
       const updSql =
-        `WITH upd(number, state, closed_at) AS (VALUES ${updValues})\n` +
+        `WITH upd(number, state, closed_at, site_code, short_description, scheduled_wo_date, assigned_to) AS (VALUES ${updValues})\n` +
         ` UPDATE pm_items\n` +
         ` SET state = COALESCE((SELECT state FROM upd WHERE upd.number = pm_items.number), state),\n` +
         `     closed_at = COALESCE((SELECT closed_at FROM upd WHERE upd.number = pm_items.number), closed_at),\n` +
+        `     site_code = COALESCE(NULLIF(TRIM(pm_items.site_code), ''), (SELECT site_code FROM upd WHERE upd.number = pm_items.number)),\n` +
+        `     short_description = COALESCE(NULLIF(TRIM(pm_items.short_description), ''), (SELECT short_description FROM upd WHERE upd.number = pm_items.number)),\n` +
+        `     scheduled_wo_date = COALESCE(NULLIF(TRIM(pm_items.scheduled_wo_date), ''), (SELECT scheduled_wo_date FROM upd WHERE upd.number = pm_items.number)),\n` +
+        `     assigned_to = COALESCE(NULLIF(TRIM(pm_items.assigned_to), ''), (SELECT assigned_to FROM upd WHERE upd.number = pm_items.number)),\n` +
+        `     created_source = COALESCE(NULLIF(TRIM(pm_items.created_source), ''), 'noc'),\n` +
         `     last_noc_import_at = ?,\n` +
         `     updated_at = ?\n` +
         ` WHERE month_id = ? AND number IN (SELECT number FROM upd)` +
@@ -141,6 +221,7 @@ export async function onRequestPost({ request, env, data, params }) {
         ok: true,
         updated,
         missing,
+        createdMissing,
         missingNumbers
       },
       { status: 200 }

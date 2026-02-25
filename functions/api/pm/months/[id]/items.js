@@ -21,6 +21,7 @@ function mapItemRow(r) {
     maintenanceType: r.maintenance_type,
     scheduledWoDate: r.scheduled_wo_date,
     assignedTo: r.assigned_to,
+    createdSource: r.created_source,
     state: r.state,
     closedAt: r.closed_at,
     reprogrammationDate: r.reprogrammation_date,
@@ -77,8 +78,23 @@ export async function onRequestGet({ request, env, data, params }) {
     }
 
     if (state && state !== 'all') {
-      where.push('state = ?');
-      bind.push(state);
+      const st = String(state || '').trim().toLowerCase();
+      if (st === 'closed') {
+        where.push('(state = ? OR state = ?)');
+        bind.push('Closed Complete', 'Closed');
+      } else if (st === 'awaiting') {
+        where.push('(state = ? OR state = ?)');
+        bind.push('Awaiting Closure', 'Awaiting');
+      } else if (st === 'wip') {
+        where.push('(state = ? OR state = ?)');
+        bind.push('Work in progress', 'WIP');
+      } else if (st === 'assigned') {
+        where.push('state = ?');
+        bind.push('Assigned');
+      } else {
+        where.push('state = ?');
+        bind.push(state);
+      }
     }
 
     if (reprog === 'only') {

@@ -137,6 +137,36 @@ function normStr(v) {
   return s;
 }
 
+function sitePriorityTuple(site) {
+  const regime = Number(site?.regime || 0);
+  const nh2A = Number(site?.nh2A || 0);
+  const nh1DV = Number(site?.nh1DV || 0);
+  const diffHours = nh2A - nh1DV;
+  const retired = Boolean(site?.retired);
+
+  // Primary: active sites that have reached or exceeded the threshold are top priority.
+  const urgentActive = !retired && diffHours >= SEUIL;
+
+  // Secondary: active sites must always be prioritized over sites retired during the current month.
+  const active = !retired;
+
+  // Tertiary: among same bucket, more diff hours first, then higher regime.
+  return {
+    urgentActive: urgentActive ? 1 : 0,
+    active: active ? 1 : 0,
+    diffHours,
+    regime
+  };
+}
+
+function comparePriorityTupleDesc(a, b) {
+  if (a.urgentActive !== b.urgentActive) return b.urgentActive - a.urgentActive;
+  if (a.active !== b.active) return b.active - a.active;
+  if (a.diffHours !== b.diffHours) return b.diffHours - a.diffHours;
+  if (a.regime !== b.regime) return b.regime - a.regime;
+  return 0;
+}
+
 function is23rd(todayYmd) {
   const m = String(todayYmd || '').match(/^\d{4}-\d{2}-(\d{2})$/);
   if (!m) return false;
@@ -447,18 +477,37 @@ export async function onRequestPost({ request, env, data }) {
       const pairedId = pairsMap.get(sid);
       if (pairedId && siteById.has(String(pairedId)) && !visited.has(String(pairedId))) {
         const s2 = siteById.get(String(pairedId));
-        const urgentRegime = Math.max(Number(s.regime || 0), Number(s2?.regime || 0));
-        const urgentSiteId = Number(s.regime || 0) >= Number(s2?.regime || 0) ? sid : String(pairedId);
-        visits.push({ sites: [sid, String(pairedId)], urgentRegime, urgentSiteId });
+
+        const p1 = sitePriorityTuple(s);
+        const p2 = sitePriorityTuple(s2);
+        const urgentSiteId = comparePriorityTupleDesc(p1, p2) <= 0 ? sid : String(pairedId);
+        const urgentSite = urgentSiteId === sid ? s : s2;
+
+        visits.push({
+          sites: [sid, String(pairedId)],
+          urgentRegime: Number(urgentSite?.regime || 0),
+          urgentSiteId,
+          priority: sitePriorityTuple(urgentSite)
+        });
         visited.add(sid);
         visited.add(String(pairedId));
       } else {
-        visits.push({ sites: [sid], urgentRegime: Number(s.regime || 0), urgentSiteId: sid });
+        visits.push({
+          sites: [sid],
+          urgentRegime: Number(s.regime || 0),
+          urgentSiteId: sid,
+          priority: sitePriorityTuple(s)
+        });
         visited.add(sid);
       }
     }
 
-    visits.sort((a, b) => (b.urgentRegime - a.urgentRegime) || String(a.urgentSiteId).localeCompare(String(b.urgentSiteId)));
+    visits.sort((a, b) => {
+      const pa = a?.priority || sitePriorityTuple(siteById.get(String(a?.urgentSiteId)));
+      const pb = b?.priority || sitePriorityTuple(siteById.get(String(b?.urgentSiteId)));
+      const cmp = comparePriorityTupleDesc(pa, pb);
+      return cmp || String(a.urgentSiteId).localeCompare(String(b.urgentSiteId));
+    });
 
     // Terrain cadence is expressed in number of sites per day (not number of "visits").
     // A paired visit consumes 2 slots.
