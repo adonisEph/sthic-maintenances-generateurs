@@ -283,6 +283,95 @@ const GeneratorMaintenanceApp = () => {
     return data;
   };
 
+  const handleLogin = (e) => {
+    if (e?.preventDefault) e.preventDefault();
+
+    const email = String(loginEmail || '').trim();
+    const password = String(loginPassword || '');
+
+    setLoginError('');
+
+    if (!email) {
+      setLoginError('Veuillez saisir votre email.');
+      return;
+    }
+    if (!password) {
+      setLoginError('Veuillez saisir le mot de passe.');
+      return;
+    }
+
+    (async () => {
+      try {
+        const data = await apiFetchJson('/api/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({ email, password })
+        });
+
+        if (data?.user?.email) {
+          setAuthUser(data.user);
+          setLoginError('');
+
+          try {
+            await loadData();
+          } catch {
+            // ignore
+          }
+          try {
+            await loadFicheHistory();
+          } catch {
+            // ignore
+          }
+          try {
+            await loadInterventions(interventionsMonth, 'all', 'all');
+          } catch {
+            // ignore
+          }
+          try {
+            if (data?.user?.role === 'technician') {
+              await loadPmAssignments(interventionsMonth);
+            }
+          } catch {
+            // ignore
+          }
+        } else {
+          setLoginError('Email ou mot de passe incorrect.');
+        }
+      } catch (err) {
+        setLoginError(err?.message || 'Erreur serveur.');
+      }
+    })();
+  };
+
+  const handleLogout = () => {
+    setShowUsersModal(false);
+    setShowAccountModal(false);
+    setShowPresenceModal(false);
+    setShowCalendar(false);
+    setShowHistory(false);
+    setShowFicheModal(false);
+    setShowInterventions(false);
+    setShowScoring(false);
+    setShowPm(false);
+
+    setAuthUser(null);
+    setSites([]);
+    setFicheHistory([]);
+    setInterventions([]);
+    setPmAssignments([]);
+
+    setLoginEmail('');
+    setLoginPassword('');
+    setLoginError('');
+
+    (async () => {
+      try {
+        await apiFetchJson('/api/auth/logout', { method: 'POST' });
+      } catch {
+        // ignore
+      }
+    })();
+  };
+
   const safeSetAppBadge = async (count) => {
     try {
       if (!('setAppBadge' in navigator)) return;
