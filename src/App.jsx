@@ -4343,6 +4343,30 @@ const GeneratorMaintenanceApp = () => {
     }
   })();
 
+  const interventionsPrevMonthKey = (() => {
+    const raw = String(interventionsMonth || '').trim();
+    const m = raw.match(/^(\d{4})-(\d{2})$/);
+    if (!m) return '';
+    const y = Number(m[1]);
+    const mm = Number(m[2]);
+    if (!Number.isFinite(y) || !Number.isFinite(mm) || mm < 1 || mm > 12) return '';
+    const py = mm === 1 ? y - 1 : y;
+    const pm = mm === 1 ? 12 : mm - 1;
+    return `${py}-${String(pm).padStart(2, '0')}`;
+  })();
+
+  const interventionsPrevMonthRetiredSiteIds = (() => {
+    try {
+      if (!interventionsPrevMonthKey) return new Set();
+      const raw = localStorage.getItem(`retired_sites_snapshot:${interventionsPrevMonthKey}`);
+      const arr = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(arr)) return new Set();
+      return new Set(arr.map((v) => String(v)).filter(Boolean));
+    } catch {
+      return new Set();
+    }
+  })();
+
   useEffect(() => {
     if (!showCalendar) return;
     try {
