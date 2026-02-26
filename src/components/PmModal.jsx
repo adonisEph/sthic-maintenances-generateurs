@@ -551,28 +551,6 @@ const PmModal = (props) => {
     return 'other';
   };
 
-  const recapNormReprogStatus = (s) => {
-    const v = String(s || '').trim().toLowerCase();
-    if (!v) return '';
-    if (v === 'approved') return 'APPROVED';
-    if (v === 'rejected') return 'REJECTED';
-    if (v === 'pending') return 'PENDING';
-    if (v === 'approved' || v === 'ok' || v === 'yes' || v === 'oui' || v === 'validee' || v === 'validée' || v === 'approuvee' || v === 'approuvée') return 'APPROVED';
-    if (v === 'rejected' || v === 'ko' || v === 'no' || v === 'non' || v === 'rejete' || v === 'rejeté' || v === 'rejetee' || v === 'rejetée' || v === 'refusee' || v === 'refusée') return 'REJECTED';
-    if (v === 'pending' || v === 'attente' || v === 'en attente' || v === 'waiting') return 'PENDING';
-    return '';
-  };
-
-  const recapEffectiveReprogStatus = (it) => {
-    const explicit = recapNormReprogStatus(it?.reprogrammationStatus);
-    if (explicit) return explicit;
-    const hasDate = !!String(it?.reprogrammationDate || '').trim();
-    const hasReason = !!String(it?.reprogrammationReason || '').trim();
-    if (hasDate) return 'APPROVED';
-    if (hasReason) return 'PENDING';
-    return '';
-  };
-
   const recapStats = (() => {
     const total = recapFullItemsAll.length;
     const byState = { closed: 0, awaiting: 0, wip: 0, assigned: 0, other: 0 };
