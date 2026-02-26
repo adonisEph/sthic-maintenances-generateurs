@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Activity, X, RotateCcw, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -16,6 +16,24 @@ const TodayPlannedActivitiesModal = ({
   const intToday = Array.isArray(todayActivities?.interventions) ? todayActivities.interventions : [];
 
   const [selectedDate, setSelectedDate] = useState(today || '');
+
+  useEffect(() => {
+    const d = String(today || '').slice(0, 10);
+    if (!d) return;
+    setSelectedDate((prev) => {
+      const p = String(prev || '').slice(0, 10);
+      return p ? p : d;
+    });
+  }, [today]);
+
+  useEffect(() => {
+    const d = String(selectedDate || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
+    if (typeof onRefresh !== 'function') return;
+    if (busy) return;
+    onRefresh(d);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate]);
 
   const [filterLabel, setFilterLabel] = useState('all');
   const [filterZone, setFilterZone] = useState('all');
@@ -263,7 +281,7 @@ const TodayPlannedActivitiesModal = ({
             </div>
           </div>
 
-          {!busy && rows.length > 0 && (
+          {!busy && todayActivities && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">Type</label>

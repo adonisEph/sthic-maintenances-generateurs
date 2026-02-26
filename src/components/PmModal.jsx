@@ -1293,29 +1293,18 @@ const PmModal = (props) => {
 
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1">Date planifiée du jour</label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          let ymd;
-                          try {
-                            ymd = new Intl.DateTimeFormat('en-CA', {
-                              timeZone: 'Africa/Brazzaville',
-                              year: 'numeric',
-                              month: '2-digit',
-                              day: '2-digit'
-                            }).format(new Date());
-                          } catch {
-                            ymd = new Date().toISOString().slice(0, 10);
-                          }
-                          setPmFilterFrom(String(ymd || '').slice(0, 10));
-                          setPmFilterTo(String(ymd || '').slice(0, 10));
+                      <input
+                        type="date"
+                        value={pmFilterFrom && pmFilterFrom === pmFilterTo ? pmFilterFrom : ''}
+                        onChange={(e) => {
+                          const d = String(e.target.value || '').slice(0, 10);
+                          setPmFilterFrom(d);
+                          setPmFilterTo(d);
                         }}
-                        className="w-full border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 px-3 py-2 rounded-lg text-sm font-semibold disabled:opacity-60"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                         disabled={pmBusy}
-                        title="Afficher les tickets planifiés aujourd'hui (Scheduled WO Date)"
-                      >
-                        Aujourd'hui
-                      </button>
+                        title="Choisir un jour (Scheduled WO Date)"
+                      />
                     </div>
 
                     <div>

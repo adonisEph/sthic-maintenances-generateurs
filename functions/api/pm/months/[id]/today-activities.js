@@ -54,9 +54,6 @@ export async function onRequestGet({ request, env, data, params }) {
 
     const role = String(data?.user?.role || '');
 
-    const monthId = String(params?.id || '').trim();
-    if (!monthId) return json({ error: 'Mois requis.' }, { status: 400 });
-
     const url = new URL(request.url);
     const dateParam = String(url.searchParams.get('date') || '').trim();
     const chosenDate = /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : '';
@@ -68,11 +65,11 @@ export async function onRequestGet({ request, env, data, params }) {
 
     const pmStmt = scopeZone
       ? env.DB.prepare(
-          "SELECT p.*, u.zone as assigned_to_zone FROM pm_items p LEFT JOIN users u ON u.technician_name = p.assigned_to WHERE p.month_id = ? AND COALESCE(p.region, p.zone, '') = ? AND substr(p.scheduled_wo_date, 1, 10) = ? ORDER BY p.scheduled_wo_date ASC, p.number ASC"
-        ).bind(monthId, scopeZone, today)
+          "SELECT p.*, u.zone as assigned_to_zone FROM pm_items p LEFT JOIN users u ON u.technician_name = p.assigned_to WHERE COALESCE(p.region, p.zone, '') = ? AND substr(p.scheduled_wo_date, 1, 10) = ? ORDER BY p.scheduled_wo_date ASC, p.number ASC"
+        ).bind(scopeZone, today)
       : env.DB.prepare(
-          'SELECT p.*, u.zone as assigned_to_zone FROM pm_items p LEFT JOIN users u ON u.technician_name = p.assigned_to WHERE p.month_id = ? AND substr(p.scheduled_wo_date, 1, 10) = ? ORDER BY p.scheduled_wo_date ASC, p.number ASC'
-        ).bind(monthId, today);
+          'SELECT p.*, u.zone as assigned_to_zone FROM pm_items p LEFT JOIN users u ON u.technician_name = p.assigned_to WHERE substr(p.scheduled_wo_date, 1, 10) = ? ORDER BY p.scheduled_wo_date ASC, p.number ASC'
+        ).bind(today);
 
     const intStmt = scopeZone
       ? env.DB.prepare(
