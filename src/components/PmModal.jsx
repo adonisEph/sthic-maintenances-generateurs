@@ -245,7 +245,10 @@ const PmModal = (props) => {
     if (isManager && !pmIsSuperAdmin && !isViewer) {
       const z = String(it?.zone || it?.region || '').trim();
       const az = String(authZone || '').trim();
-      if (az && z && z !== az) return false;
+      if (az) {
+        if (!z) return false;
+        if (z !== az) return false;
+      }
     }
     return true;
   });
