@@ -234,8 +234,24 @@ const PmModal = (props) => {
     return `${yyyy}-${mm}`;
   })();
 
+  const shiftYyyyMm = (yyyymm, deltaMonths) => {
+    const s = normalizeYyyyMm(yyyymm);
+    if (!s) return '';
+    const [y, m] = s.split('-').map((x) => Number(x));
+    if (!Number.isFinite(y) || !Number.isFinite(m)) return '';
+    const d = new Date(y, m - 1, 1);
+    d.setMonth(d.getMonth() + Number(deltaMonths || 0));
+    const yyyy = String(d.getFullYear());
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    return `${yyyy}-${mm}`;
+  };
+
   const recapMonth = normalizeYyyyMm(pmMonth);
-  const recapIsPastMonth = Boolean(recapMonth && recapMonth < yyyymmNow);
+  const recapMonthPrev = shiftYyyyMm(yyyymmNow, -1);
+  const recapMonthNext = shiftYyyyMm(yyyymmNow, +1);
+  const recapIsInAllowedWindow = Boolean(
+    recapMonth && (recapMonth === recapMonthPrev || recapMonth === yyyymmNow || recapMonth === recapMonthNext)
+  );
 
   const recapFullItemsAll = (Array.isArray(pmItems) ? pmItems : []).filter((it) => {
     const t = String(it?.maintenanceType || '').trim().toUpperCase();
@@ -258,7 +274,7 @@ const PmModal = (props) => {
     return st === 'assigned';
   }).length;
 
-  const recapCanOpen = recapIsPastMonth && recapCountAssigned === 0;
+  const recapCanOpen = recapIsInAllowedWindow && recapCountAssigned === 0;
 
   const recapBucketForState = (state) => {
     const v = String(state || '').trim().toLowerCase();
