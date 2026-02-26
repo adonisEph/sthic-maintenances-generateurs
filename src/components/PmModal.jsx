@@ -55,14 +55,8 @@ const PmModal = (props) => {
     setPmFilterFrom,
     pmFilterTo,
     setPmFilterTo,
-    pmFilterNocAddedFrom,
-    setPmFilterNocAddedFrom,
-    pmFilterNocAddedTo,
-    setPmFilterNocAddedTo,
     pmFilterState,
     setPmFilterState,
-    pmFilterSource,
-    setPmFilterSource,
     pmFilterType,
     setPmFilterType,
     pmFilterZone,
@@ -644,8 +638,8 @@ const PmModal = (props) => {
                 onClose={() => setPmTodayActivitiesOpen(false)}
                 busy={pmTodayActivitiesBusy}
                 todayActivities={pmTodayActivities}
-                onRefresh={() => {
-                  if (typeof loadPmTodayActivities === 'function') loadPmTodayActivities();
+                onRefresh={(dateYmd) => {
+                  if (typeof loadPmTodayActivities === 'function') loadPmTodayActivities(dateYmd);
                 }}
               />
 
@@ -835,10 +829,7 @@ const PmModal = (props) => {
             const search = String(pmSearch || '').trim().toLowerCase();
             const dateFrom = normalizeYmd(pmFilterFrom);
             const dateTo = normalizeYmd(pmFilterTo);
-            const nocAddedFrom = normalizeYmd(pmFilterNocAddedFrom);
-            const nocAddedTo = normalizeYmd(pmFilterNocAddedTo);
             const reprogFilter = String(pmFilterReprog || 'all');
-            const sourceFilter = String(pmFilterSource || 'all');
 
             const normReprogStatus = (s) => {
               const v = String(s || '').trim().toLowerCase();
@@ -880,15 +871,6 @@ const PmModal = (props) => {
               if (dateTo) {
                 const sched = normalizeYmd(it?.scheduledWoDate);
                 if (sched && sched > dateTo) return false;
-              }
-              if (sourceFilter && sourceFilter !== 'all') {
-                if (sourceFilter === 'noc' && String(it?.createdSource || '') !== 'noc') return false;
-              }
-              if (nocAddedFrom || nocAddedTo) {
-                const d = normalizeYmd(it?.lastNocImportAt);
-                if (!d) return false;
-                if (nocAddedFrom && d < nocAddedFrom) return false;
-                if (nocAddedTo && d > nocAddedTo) return false;
               }
               if (reprogFilter && reprogFilter !== 'all') {
                 const st = effectiveReprogStatus(it);
@@ -1277,19 +1259,6 @@ const PmModal = (props) => {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1">Source</label>
-                      <select
-                        value={pmFilterSource}
-                        onChange={(e) => setPmFilterSource(String(e.target.value || 'all'))}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                        disabled={pmBusy}
-                      >
-                        <option value="all">Toutes</option>
-                        <option value="noc">Créés par NOC</option>
-                      </select>
-                    </div>
-
-                    <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1">Recherche</label>
                       <input
                         value={pmSearch}
@@ -1317,28 +1286,6 @@ const PmModal = (props) => {
                         type="date"
                         value={pmFilterTo}
                         onChange={(e) => setPmFilterTo(String(e.target.value || ''))}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                        disabled={pmBusy}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1">Ajout NOC du</label>
-                      <input
-                        type="date"
-                        value={pmFilterNocAddedFrom}
-                        onChange={(e) => setPmFilterNocAddedFrom(String(e.target.value || ''))}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                        disabled={pmBusy}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1">Ajout NOC au</label>
-                      <input
-                        type="date"
-                        value={pmFilterNocAddedTo}
-                        onChange={(e) => setPmFilterNocAddedTo(String(e.target.value || ''))}
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                         disabled={pmBusy}
                       />
@@ -1381,14 +1328,11 @@ const PmModal = (props) => {
                       type="button"
                       onClick={() => {
                         setPmFilterState('all');
-                        setPmFilterSource('all');
                         setPmFilterType('all');
                         setPmFilterZone('all');
                         setPmSearch('');
                         setPmFilterFrom('');
                         setPmFilterTo('');
-                        setPmFilterNocAddedFrom('');
-                        setPmFilterNocAddedTo('');
                         setPmFilterReprog('all');
                       }}
                       className="bg-gray-200 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-300 text-sm font-semibold"
@@ -1411,7 +1355,6 @@ const PmModal = (props) => {
                           <th className="px-3 py-2 font-semibold whitespace-nowrap">Ticket</th>
                           <th className="px-3 py-2 font-semibold whitespace-nowrap">État</th>
                           <th className="px-3 py-2 font-semibold whitespace-nowrap">Date planifiée</th>
-                          <th className="px-3 py-2 font-semibold whitespace-nowrap">Ajout NOC</th>
                           <th className="px-3 py-2 font-semibold whitespace-nowrap">Site</th>
                           <th className="px-3 py-2 font-semibold whitespace-nowrap">Zone</th>
                           <th className="px-3 py-2 font-semibold whitespace-nowrap">Type</th>
@@ -1426,7 +1369,7 @@ const PmModal = (props) => {
                       <tbody>
                         {tableFiltered.length === 0 ? (
                           <tr>
-                            <td className="px-4 py-4 text-gray-600" colSpan={isAdmin ? 13 : 12}>
+                            <td className="px-4 py-4 text-gray-600" colSpan={isAdmin ? 12 : 11}>
                               Aucun ticket pour ces filtres.
                             </td>
                           </tr>
@@ -1435,7 +1378,6 @@ const PmModal = (props) => {
                             const bucket = bucketForState(it?.state);
                             const badge = badgeForBucket(bucket);
                             const sched = it?.scheduledWoDate ? String(it.scheduledWoDate).slice(0, 10) : '';
-                            const nocAdded = it?.lastNocImportAt ? String(it.lastNocImportAt).slice(0, 10) : '';
                             const closed = it?.closedAt ? String(it.closedAt).slice(0, 10) : '';
                             const reprogStatus = effectiveReprogStatus(it);
                             const reprog = it?.reprogrammationDate ? String(it.reprogrammationDate).slice(0, 10) : '';
@@ -1451,7 +1393,6 @@ const PmModal = (props) => {
                                   </span>
                                 </td>
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{sched || '-'}</td>
-                                <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{nocAdded || '-'}</td>
                                 <td className="px-3 py-2 text-slate-900 max-w-[260px] whitespace-pre-line leading-tight break-words" title={siteLabel || ''}>{siteLabel || '-'}</td>
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.zone || '-'}</td>
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.maintenanceType || '-'}</td>

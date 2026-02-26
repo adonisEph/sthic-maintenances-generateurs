@@ -193,8 +193,6 @@ const GeneratorMaintenanceApp = () => {
   const [pmFilterZone, setPmFilterZone] = useState('all');
   const [pmFilterFrom, setPmFilterFrom] = useState('');
   const [pmFilterTo, setPmFilterTo] = useState('');
-  const [pmFilterNocAddedFrom, setPmFilterNocAddedFrom] = useState('');
-  const [pmFilterNocAddedTo, setPmFilterNocAddedTo] = useState('');
   const [pmFilterReprog, setPmFilterReprog] = useState('all');
   const [pmSearch, setPmSearch] = useState('');
   const [pmReprogExportDate, setPmReprogExportDate] = useState('');
@@ -206,7 +204,6 @@ const GeneratorMaintenanceApp = () => {
   const [pmReprogForm, setPmReprogForm] = useState({ date: '', status: '', reason: '' });
   const [pmReprogError, setPmReprogError] = useState('');
   const [pmReprogSaving, setPmReprogSaving] = useState(false);
-  const [pmFilterSource, setPmFilterSource] = useState('all'); 
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [calendarSendTechUserId, setCalendarSendTechUserId] = useState('');
   const [pmSendTechUserId, setPmSendTechUserId] = useState('');
@@ -1739,12 +1736,14 @@ const GeneratorMaintenanceApp = () => {
     setPmDashboard(data || null);
   };
 
-  const loadPmTodayActivities = async (monthIdParam) => {
+  const loadPmTodayActivities = async (monthIdParam, dateParam) => {
     const mId = String(monthIdParam || pmMonthId || '').trim();
     if (!mId) return;
     try {
       setPmTodayActivitiesBusy(true);
-      const data = await apiFetchJson(`/api/pm/months/${mId}/today-activities`, { method: 'GET' });
+      const d = String(dateParam || '').trim();
+      const qs = /^\d{4}-\d{2}-\d{2}$/.test(d) ? `?date=${encodeURIComponent(d)}` : '';
+      const data = await apiFetchJson(`/api/pm/months/${mId}/today-activities${qs}`, { method: 'GET' });
       setPmTodayActivities(data || null);
     } catch (e) {
       setPmTodayActivities(null);
@@ -6128,14 +6127,8 @@ return (
           setPmFilterFrom={setPmFilterFrom}
           pmFilterTo={pmFilterTo}
           setPmFilterTo={setPmFilterTo}
-          pmFilterNocAddedFrom={pmFilterNocAddedFrom}
-          setPmFilterNocAddedFrom={setPmFilterNocAddedFrom}
-          pmFilterNocAddedTo={pmFilterNocAddedTo}
-          setPmFilterNocAddedTo={setPmFilterNocAddedTo}
           pmFilterState={pmFilterState}
           setPmFilterState={setPmFilterState}
-          pmFilterSource={pmFilterSource}
-          setPmFilterSource={setPmFilterSource}
           pmFilterType={pmFilterType}
           setPmFilterType={setPmFilterType}
           pmFilterZone={pmFilterZone}
@@ -6159,7 +6152,7 @@ return (
           handlePmSaveReprog={handlePmSaveReprog}
           pmTodayActivities={pmTodayActivities}
           pmTodayActivitiesBusy={pmTodayActivitiesBusy}
-          loadPmTodayActivities={() => loadPmTodayActivities(pmMonthId)}
+          loadPmTodayActivities={(dateYmd) => loadPmTodayActivities(pmMonthId, dateYmd)}
           formatDate={formatDate}
           apiFetchJson={apiFetchJson}
           isSuperAdmin={Boolean(authUser?.role === 'admin' && authUser?.zone === 'BZV/POOL')}
