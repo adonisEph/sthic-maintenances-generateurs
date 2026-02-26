@@ -1,5 +1,26 @@
 import React from 'react';
-import { TrendingUp, X, Upload, Download, Trash2, RotateCcw, Activity, Menu, ChevronLeft, ListChecks, BadgeCheck, Clock, UserCheck } from 'lucide-react';
+import {
+  TrendingUp,
+  X,
+  Upload,
+  Download,
+  Trash2,
+  RotateCcw,
+  Activity,
+  Menu,
+  ChevronLeft,
+  ListChecks,
+  BadgeCheck,
+  Clock,
+  UserCheck,
+  Database,
+  MapPin,
+  CalendarDays,
+  CalendarCheck2,
+  CheckCircle2,
+  Ban,
+  Percent
+} from 'lucide-react';
 import TodayPlannedActivitiesModal from './TodayPlannedActivitiesModal';
 
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
@@ -95,6 +116,9 @@ const PmModal = (props) => {
   const [pmTodayActivitiesOpen, setPmTodayActivitiesOpen] = React.useState(false);
   const [pmFilterPlannedDay, setPmFilterPlannedDay] = React.useState('');
   const [pmMonthlyRecapOpen, setPmMonthlyRecapOpen] = React.useState(false);
+  const [pmRecapSitesOpen, setPmRecapSitesOpen] = React.useState(false);
+  const [pmRecapSitesTitle, setPmRecapSitesTitle] = React.useState('');
+  const [pmRecapSitesItems, setPmRecapSitesItems] = React.useState([]);
 
   const pmIsSuperAdmin = Boolean(props?.isSuperAdmin);
 
@@ -215,6 +239,8 @@ const PmModal = (props) => {
   const pmRetiredScopeZones = Array.isArray(pmRetired?.scopeZones) ? pmRetired.scopeZones : [];
   const pmRetiredItemsAll = Array.isArray(pmRetired?.items) ? pmRetired.items : [];
 
+  const allSites = Array.isArray(props?.sites) ? props.sites : [];
+
   const pmEffectiveRetiredZoneFilter = pmIsSuperAdmin ? String(pmRetiredSitesZoneFilter || 'ALL') : 'ALL';
   const pmRetiredItems =
     pmEffectiveRetiredZoneFilter && pmEffectiveRetiredZoneFilter !== 'ALL'
@@ -275,6 +301,246 @@ const PmModal = (props) => {
   }).length;
 
   const recapCanOpen = recapIsInAllowedWindow && recapCountAssigned === 0;
+
+  const recapNormSiteCode = (v) => String(v || '').trim();
+  const recapNormZone = (v) => String(v || '').trim();
+
+  const recapIsItemInScope = (it) => {
+    if (isManager && !pmIsSuperAdmin && !isViewer) {
+      const z = recapNormZone(it?.zone || it?.region);
+      const az = recapNormZone(authZone);
+      if (az) {
+        if (!z) return false;
+        if (z !== az) return false;
+      }
+    }
+    return true;
+  };
+
+  const recapSitesBaseInScope = (() => {
+    const az = recapNormZone(authZone);
+    const rows = (Array.isArray(allSites) ? allSites : []).filter(Boolean).map((s) => {
+      const siteCode = recapNormSiteCode(s?.idSite || s?.siteId || s?.siteCode);
+      const siteName = String(s?.nameSite || s?.siteName || '').trim();
+      const zone = recapNormZone(s?.zone || s?.region);
+      return { siteCode, siteName, zone };
+    });
+    const filtered =
+      isManager && !pmIsSuperAdmin && !isViewer && az
+        ? rows.filter((r) => r.zone && r.zone === az)
+        : rows;
+    const uniq = new Map();
+    for (const r of filtered) {
+      if (!r.siteCode) continue;
+      if (!uniq.has(r.siteCode)) uniq.set(r.siteCode, r);
+    }
+    return Array.from(uniq.values()).sort((a, b) => String(a.siteCode).localeCompare(String(b.siteCode)));
+  })();
+
+  const recapSitesPlannedInScope = (() => {
+    const uniq = new Map();
+    for (const it of recapFullItemsAll) {
+      const siteCode = recapNormSiteCode(it?.siteCode || it?.siteId);
+      if (!siteCode) continue;
+      if (uniq.has(siteCode)) continue;
+      uniq.set(siteCode, {
+        siteCode,
+        siteName: String(it?.siteName || '').trim(),
+        zone: recapNormZone(it?.zone || it?.region)
+      });
+    }
+    return Array.from(uniq.values()).sort((a, b) => String(a.siteCode).localeCompare(String(b.siteCode)));
+  })();
+
+  const recapSitesRetiredInScope = (() => {
+    if (recapSitesBaseInScope.length > 0) {
+      const planned = new Set(recapSitesPlannedInScope.map((s) => recapNormSiteCode(s?.siteCode)).filter(Boolean));
+      const out = [];
+      for (const s of recapSitesBaseInScope) {
+        const code = recapNormSiteCode(s?.siteCode);
+        if (!code) continue;
+        if (planned.has(code)) continue;
+        out.push(s);
+      }
+      out.sort((a, b) => String(a.siteCode).localeCompare(String(b.siteCode)));
+      return out;
+    }
+
+    const az = recapNormZone(authZone);
+    const src = Array.isArray(pmRetiredItemsAll) ? pmRetiredItemsAll : [];
+    const filtered = src.filter((r) => {
+      const rr = { zone: r?.zone, region: r?.region };
+      if (!recapIsItemInScope(rr)) return false;
+      if (isManager && !pmIsSuperAdmin && !isViewer && az) {
+        const z = recapNormZone(r?.zone || r?.region);
+        if (!z) return false;
+        if (z !== az) return false;
+      }
+      return true;
+    });
+    const uniq = new Map();
+    for (const r of filtered) {
+      const siteCode = recapNormSiteCode(r?.siteCode || r?.siteId);
+      if (!siteCode) continue;
+      if (uniq.has(siteCode)) continue;
+      uniq.set(siteCode, {
+        siteCode,
+        siteName: String(r?.siteName || '').trim(),
+        zone: recapNormZone(r?.zone || r?.region)
+      });
+    }
+    return Array.from(uniq.values()).sort((a, b) => String(a.siteCode).localeCompare(String(b.siteCode)));
+  })();
+
+  const recapSitesRealizedInScope = (() => {
+    const bySite = new Map();
+    for (const it of recapFullItemsAll) {
+      const siteCode = recapNormSiteCode(it?.siteCode || it?.siteId);
+      if (!siteCode) continue;
+      const cur = bySite.get(siteCode) || { any: false, anyAssigned: false, sample: it };
+      cur.any = true;
+      const st = String(it?.state || '').trim().toLowerCase();
+      if (st === 'assigned') cur.anyAssigned = true;
+      if (!cur.sample) cur.sample = it;
+      bySite.set(siteCode, cur);
+    }
+    const out = [];
+    for (const [siteCode, v] of bySite.entries()) {
+      if (!v.any) continue;
+      if (v.anyAssigned) continue;
+      const it = v.sample || {};
+      out.push({
+        siteCode,
+        siteName: String(it?.siteName || '').trim(),
+        zone: recapNormZone(it?.zone || it?.region)
+      });
+    }
+    out.sort((a, b) => String(a.siteCode).localeCompare(String(b.siteCode)));
+    return out;
+  })();
+
+  const recapNormReprogStatus = (s) => {
+    const v = String(s || '').trim().toLowerCase();
+    if (!v) return '';
+    if (v === 'approved') return 'APPROVED';
+    if (v === 'rejected') return 'REJECTED';
+    if (v === 'pending') return 'PENDING';
+    if (v === 'approved' || v === 'ok' || v === 'yes' || v === 'oui' || v === 'validee' || v === 'validée' || v === 'approuvee' || v === 'approuvée') return 'APPROVED';
+    if (v === 'rejected' || v === 'ko' || v === 'no' || v === 'non' || v === 'rejete' || v === 'rejeté' || v === 'rejetee' || v === 'rejetée' || v === 'refusee' || v === 'refusée') return 'REJECTED';
+    if (v === 'pending' || v === 'attente' || v === 'en attente' || v === 'waiting') return 'PENDING';
+    return '';
+  };
+
+  const recapEffectiveReprogStatus = (it) => {
+    const explicit = recapNormReprogStatus(it?.reprogrammationStatus);
+    if (explicit) return explicit;
+    const hasDate = !!String(it?.reprogrammationDate || '').trim();
+    const hasReason = !!String(it?.reprogrammationReason || '').trim();
+    if (hasDate) return 'APPROVED';
+    if (hasReason) return 'PENDING';
+    return '';
+  };
+
+  const recapSitesReprogRejectedInScope = (() => {
+    const uniq = new Map();
+    for (const it of recapFullItemsAll) {
+      if (recapEffectiveReprogStatus(it) !== 'REJECTED') continue;
+      const siteCode = recapNormSiteCode(it?.siteCode || it?.siteId);
+      if (!siteCode) continue;
+      if (uniq.has(siteCode)) continue;
+      uniq.set(siteCode, {
+        siteCode,
+        siteName: String(it?.siteName || '').trim(),
+        zone: recapNormZone(it?.zone || it?.region)
+      });
+    }
+    return Array.from(uniq.values()).sort((a, b) => String(a.siteCode).localeCompare(String(b.siteCode)));
+  })();
+
+  const recapSitesReprogApprovedInScope = (() => {
+    const uniq = new Map();
+    for (const it of recapFullItemsAll) {
+      if (recapEffectiveReprogStatus(it) !== 'APPROVED') continue;
+      const siteCode = recapNormSiteCode(it?.siteCode || it?.siteId);
+      if (!siteCode) continue;
+      if (uniq.has(siteCode)) continue;
+      uniq.set(siteCode, {
+        siteCode,
+        siteName: String(it?.siteName || '').trim(),
+        zone: recapNormZone(it?.zone || it?.region)
+      });
+    }
+    return Array.from(uniq.values()).sort((a, b) => String(a.siteCode).localeCompare(String(b.siteCode)));
+  })();
+
+  const recapOpenSites = (title, sites) => {
+    setPmRecapSitesTitle(String(title || '').trim());
+    setPmRecapSitesItems(Array.isArray(sites) ? sites : []);
+    setPmRecapSitesOpen(true);
+  };
+
+  const recapRatio = (num, den) => {
+    const n = Number(num || 0);
+    const d = Number(den || 0);
+    if (!d) return 0;
+    return Math.round((n / d) * 1000) / 10;
+  };
+
+  const recapTrends = (() => {
+    const month = recapMonth;
+    if (!month) return { days: [], nonAssigned: [], approved: [], rejected: [] };
+    const [y, m] = month.split('-').map((x) => Number(x));
+    if (!Number.isFinite(y) || !Number.isFinite(m)) return { days: [], nonAssigned: [], approved: [], rejected: [] };
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+    const nonAssigned = Array.from({ length: daysInMonth }, () => 0);
+    const approved = Array.from({ length: daysInMonth }, () => 0);
+    const rejected = Array.from({ length: daysInMonth }, () => 0);
+
+    for (const it of recapFullItemsAll) {
+      const sched = String(it?.scheduledWoDate || '').slice(0, 10);
+      const day = Number(String(sched || '').slice(8, 10));
+      if (!Number.isFinite(day) || day < 1 || day > daysInMonth) continue;
+      const st = String(it?.state || '').trim().toLowerCase();
+      if (st !== 'assigned') nonAssigned[day - 1] += 1;
+      const rs = recapEffectiveReprogStatus(it);
+      if (rs === 'APPROVED') approved[day - 1] += 1;
+      if (rs === 'REJECTED') rejected[day - 1] += 1;
+    }
+
+    return { days, nonAssigned, approved, rejected };
+  })();
+
+  const RecapLineChart = ({ title, color, values }) => {
+    const vals = Array.isArray(values) ? values : [];
+    const w = 880;
+    const h = 180;
+    const pad = 18;
+    const maxV = Math.max(1, ...vals.map((v) => Number(v || 0)));
+    const points = vals
+      .map((v, i) => {
+        const x = pad + (i * (w - pad * 2)) / Math.max(1, vals.length - 1);
+        const y = h - pad - (Number(v || 0) * (h - pad * 2)) / maxV;
+        return `${x},${y}`;
+      })
+      .join(' ');
+
+    return (
+      <div className="border rounded-xl overflow-hidden bg-white">
+        <div className="px-4 py-3 bg-slate-100 border-b text-sm font-semibold text-slate-900 flex items-center gap-2">
+          <TrendingUp size={16} className="text-slate-700" />
+          <div>{title}</div>
+        </div>
+        <div className="p-4">
+          <div className="text-xs text-slate-600 mb-2">Max: {maxV}</div>
+          <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-[180px]">
+            <rect x="0" y="0" width={w} height={h} fill="#ffffff" />
+            <polyline points={points} fill="none" stroke={color} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+          </svg>
+        </div>
+      </div>
+    );
+  };
 
   const recapBucketForState = (state) => {
     const v = String(state || '').trim().toLowerCase();
@@ -794,7 +1060,7 @@ const PmModal = (props) => {
 
               {pmMonthlyRecapOpen && (
                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
-                  <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[90vh]">
+                  <div className="bg-white rounded-xl shadow-2xl w-full h-[94vh] max-w-[98vw] overflow-hidden flex flex-col">
                     <div className="flex justify-between items-center p-4 border-b bg-indigo-800 text-white">
                       <div className="font-bold">RECAP MENSUEL PM ({recapMonth || pmMonth})</div>
                       <button
@@ -807,40 +1073,157 @@ const PmModal = (props) => {
                     </div>
 
                     <div className="p-4 overflow-auto">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        <div className="border rounded-lg p-3 bg-slate-50">
-                          <div className="text-xs font-semibold text-slate-700">Total FullPMWO</div>
-                          <div className="text-2xl font-bold text-slate-900 mt-1">{Number(recapStats?.total || 0)}</div>
+                      <div className="mb-4">
+                        <div className="text-xs text-slate-600">
+                          Fenêtre: {recapMonthPrev} / {yyyymmNow} / {recapMonthNext} • Scope: {isManager && !pmIsSuperAdmin && !isViewer ? String(authZone || '').trim() || 'zone' : 'toutes zones'}
                         </div>
-                        <div className="border rounded-lg p-3 bg-sky-50">
-                          <div className="text-xs font-semibold text-sky-800">Closed Complete</div>
-                          <div className="text-2xl font-bold text-sky-900 mt-1">{Number(recapStats?.byState?.closed || 0)}</div>
+                      </div>
+
+                      <div className="border rounded-xl overflow-hidden mb-5">
+                        <div className="px-4 py-3 bg-slate-100 border-b text-sm font-semibold text-slate-900 flex items-center gap-2">
+                          <MapPin size={16} className="text-slate-700" />
+                          <div>Section 1 — Sites (cartes cliquables)</div>
                         </div>
-                        <div className="border rounded-lg p-3 bg-amber-50">
-                          <div className="text-xs font-semibold text-amber-800">Awaiting Closure</div>
-                          <div className="text-2xl font-bold text-amber-900 mt-1">{Number(recapStats?.byState?.awaiting || 0)}</div>
+
+                        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                          <button
+                            type="button"
+                            className="border rounded-xl p-3 bg-indigo-50 border-indigo-200 hover:bg-indigo-100 text-left"
+                            onClick={() => recapOpenSites('Total sites en base', recapSitesBaseInScope)}
+                            disabled={pmBusy || recapSitesBaseInScope.length === 0}
+                            title={
+                              recapSitesBaseInScope.length === 0
+                                ? 'Liste des sites non disponible (props.sites manquant).'
+                                : 'Clique pour voir la liste.'
+                            }
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-[11px] font-semibold text-indigo-900">Total sites de la zone en base</div>
+                              <Database size={18} className="text-indigo-700 flex-shrink-0" />
+                            </div>
+                            <div className="text-2xl font-bold mt-1 text-indigo-900">{Number(recapSitesBaseInScope.length || 0)}</div>
+                            <div className="text-[11px] mt-2 text-indigo-800">Clique pour voir les sites</div>
+                          </button>
+
+                          <button
+                            type="button"
+                            className="border rounded-xl p-3 bg-fuchsia-50 border-fuchsia-200 hover:bg-fuchsia-100 text-left"
+                            onClick={() => recapOpenSites('Sites retirés pour la campagne', recapSitesRetiredInScope)}
+                            disabled={pmBusy}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-[11px] font-semibold text-fuchsia-900">Total sites retirés pour la campagne</div>
+                              <Ban size={18} className="text-fuchsia-700 flex-shrink-0" />
+                            </div>
+                            <div className="text-2xl font-bold mt-1 text-fuchsia-900">{Number(recapSitesRetiredInScope.length || 0)}</div>
+                            <div className="text-[11px] mt-2 text-fuchsia-800">Clique pour voir les sites</div>
+                          </button>
+
+                          <button
+                            type="button"
+                            className="border rounded-xl p-3 bg-sky-50 border-sky-200 hover:bg-sky-100 text-left"
+                            onClick={() => recapOpenSites('Sites planifiés (FullPMWO)', recapSitesPlannedInScope)}
+                            disabled={pmBusy}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-[11px] font-semibold text-sky-900">Total sites planifiés pour le mois</div>
+                              <CalendarDays size={18} className="text-sky-700 flex-shrink-0" />
+                            </div>
+                            <div className="text-2xl font-bold mt-1 text-sky-900">{Number(recapSitesPlannedInScope.length || 0)}</div>
+                            <div className="text-[11px] mt-2 text-sky-800">Clique pour voir les sites</div>
+                          </button>
+
+                          <button
+                            type="button"
+                            className="border rounded-xl p-3 bg-emerald-50 border-emerald-200 hover:bg-emerald-100 text-left"
+                            onClick={() => recapOpenSites('Sites réalisés (0 Assigned)', recapSitesRealizedInScope)}
+                            disabled={pmBusy}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-[11px] font-semibold text-emerald-900">Total sites réalisés</div>
+                              <CheckCircle2 size={18} className="text-emerald-700 flex-shrink-0" />
+                            </div>
+                            <div className="text-2xl font-bold mt-1 text-emerald-900">{Number(recapSitesRealizedInScope.length || 0)}</div>
+                            <div className="text-[11px] mt-2 text-emerald-800">Clique pour voir les sites</div>
+                          </button>
+
+                          <button
+                            type="button"
+                            className="border rounded-xl p-3 bg-rose-50 border-rose-200 hover:bg-rose-100 text-left"
+                            onClick={() => recapOpenSites('Sites reprogrammés (rejetés)', recapSitesReprogRejectedInScope)}
+                            disabled={pmBusy}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-[11px] font-semibold text-rose-900">Total sites reprogrammés (rejetés)</div>
+                              <RotateCcw size={18} className="text-rose-700 flex-shrink-0" />
+                            </div>
+                            <div className="text-2xl font-bold mt-1 text-rose-900">{Number(recapSitesReprogRejectedInScope.length || 0)}</div>
+                            <div className="text-[11px] mt-2 text-rose-800">Clique pour voir les sites</div>
+                          </button>
                         </div>
-                        <div className="border rounded-lg p-3 bg-blue-50">
-                          <div className="text-xs font-semibold text-blue-800">Work in progress</div>
-                          <div className="text-2xl font-bold text-blue-900 mt-1">{Number(recapStats?.byState?.wip || 0)}</div>
+                      </div>
+
+                      <div className="border rounded-xl overflow-hidden mb-5">
+                        <div className="px-4 py-3 bg-slate-100 border-b text-sm font-semibold text-slate-900 flex items-center gap-2">
+                          <Percent size={16} className="text-slate-700" />
+                          <div>Section 2 — Taux de réalisation</div>
                         </div>
-                        <div className="border rounded-lg p-3 bg-violet-50">
-                          <div className="text-xs font-semibold text-violet-800">Assigned (doit être 0)</div>
-                          <div className="text-2xl font-bold text-violet-900 mt-1">{Number(recapStats?.byState?.assigned || 0)}</div>
-                        </div>
-                        <div className="border rounded-lg p-3 bg-slate-50">
-                          <div className="text-xs font-semibold text-slate-700">Reprogrammations (toutes)</div>
-                          <div className="text-2xl font-bold text-slate-900 mt-1">{Number(recapStats?.reprogAny || 0)}</div>
-                          <div className="text-[11px] text-slate-600 mt-1">
-                            Approved: {Number(recapStats?.byReprog?.APPROVED || 0)} • Pending: {Number(recapStats?.byReprog?.PENDING || 0)} • Rejected: {Number(
-                              recapStats?.byReprog?.REJECTED || 0
-                            )}
+
+                        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                          <div className="border rounded-xl p-3 bg-emerald-50 border-emerald-200">
+                            <div className="text-[11px] font-semibold text-emerald-900">Taux réalisation (sites)</div>
+                            <div className="text-2xl font-bold mt-1 text-emerald-900">
+                              {recapRatio(recapSitesRealizedInScope.length, recapSitesPlannedInScope.length)}%
+                            </div>
+                            <div className="text-[11px] mt-2 text-emerald-800">
+                              {Number(recapSitesRealizedInScope.length || 0)} / {Number(recapSitesPlannedInScope.length || 0)}
+                            </div>
+                          </div>
+
+                          <div className="border rounded-xl p-3 bg-sky-50 border-sky-200">
+                            <div className="text-[11px] font-semibold text-sky-900">Reprog approuvées (sites)</div>
+                            <div className="text-2xl font-bold mt-1 text-sky-900">
+                              {recapRatio(recapSitesReprogApprovedInScope.length, recapSitesPlannedInScope.length)}%
+                            </div>
+                            <div className="text-[11px] mt-2 text-sky-800">
+                              {Number(recapSitesReprogApprovedInScope.length || 0)} / {Number(recapSitesPlannedInScope.length || 0)}
+                            </div>
+                          </div>
+
+                          <div className="border rounded-xl p-3 bg-rose-50 border-rose-200">
+                            <div className="text-[11px] font-semibold text-rose-900">Reprog rejetées (sites)</div>
+                            <div className="text-2xl font-bold mt-1 text-rose-900">
+                              {recapRatio(recapSitesReprogRejectedInScope.length, recapSitesPlannedInScope.length)}%
+                            </div>
+                            <div className="text-[11px] mt-2 text-rose-800">
+                              {Number(recapSitesReprogRejectedInScope.length || 0)} / {Number(recapSitesPlannedInScope.length || 0)}
+                            </div>
+                          </div>
+
+                          <div className="border rounded-xl p-3 bg-violet-50 border-violet-200">
+                            <div className="text-[11px] font-semibold text-violet-900">Assigned restant (tickets)</div>
+                            <div className="text-2xl font-bold mt-1 text-violet-900">{Number(recapCountAssigned || 0)}</div>
+                            <div className="text-[11px] mt-2 text-violet-800">Doit être 0 pour autoriser l’ouverture</div>
                           </div>
                         </div>
                       </div>
 
-                      <div className="mt-5 border rounded-lg overflow-hidden">
-                        <div className="px-4 py-3 bg-slate-100 border-b text-sm font-semibold text-slate-900">Répartition par zone</div>
+                      <div className="border rounded-xl overflow-hidden mb-5">
+                        <div className="px-4 py-3 bg-slate-100 border-b text-sm font-semibold text-slate-900 flex items-center gap-2">
+                          <CalendarCheck2 size={16} className="text-slate-700" />
+                          <div>Section 3 — Tendances (tickets)</div>
+                        </div>
+                        <div className="p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                          <RecapLineChart title="Tickets non-Assigned (par jour planifié)" color="#059669" values={recapTrends.nonAssigned} />
+                          <div className="grid grid-cols-1 gap-4">
+                            <RecapLineChart title="Reprogrammations APPROVED (par jour planifié)" color="#0284c7" values={recapTrends.approved} />
+                            <RecapLineChart title="Reprogrammations REJECTED (par jour planifié)" color="#e11d48" values={recapTrends.rejected} />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="border rounded-xl overflow-hidden">
+                        <div className="px-4 py-3 bg-slate-100 border-b text-sm font-semibold text-slate-900">Répartition par zone (tickets FullPMWO)</div>
                         <div className="p-4">
                           {(Array.isArray(recapStats?.zones) ? recapStats.zones : []).length === 0 ? (
                             <div className="text-sm text-slate-600">Aucune donnée.</div>
@@ -864,6 +1247,54 @@ const PmModal = (props) => {
                           )}
                         </div>
                       </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {pmMonthlyRecapOpen && pmRecapSitesOpen && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4">
+                  <div className="bg-white rounded-xl shadow-2xl w-full h-[90vh] max-w-[95vw] overflow-hidden flex flex-col">
+                    <div className="flex justify-between items-center p-4 border-b bg-slate-900 text-white">
+                      <div className="font-bold">Sites — {pmRecapSitesTitle || ''}</div>
+                      <button
+                        type="button"
+                        onClick={() => setPmRecapSitesOpen(false)}
+                        className="hover:bg-slate-800 p-2 rounded"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+                    <div className="p-4 overflow-auto">
+                      <table className="min-w-[900px] w-full text-sm">
+                        <thead className="bg-slate-100 sticky top-0 z-10">
+                          <tr className="text-left text-xs text-slate-800 border-b border-slate-300">
+                            <th className="px-3 py-2 font-semibold whitespace-nowrap">Zone</th>
+                            <th className="px-3 py-2 font-semibold whitespace-nowrap">Site</th>
+                            <th className="px-3 py-2 font-semibold whitespace-nowrap">Site Name</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(Array.isArray(pmRecapSitesItems) ? pmRecapSitesItems : []).length === 0 ? (
+                            <tr>
+                              <td className="px-4 py-4 text-gray-600" colSpan={3}>
+                                Aucun site.
+                              </td>
+                            </tr>
+                          ) : (
+                            (Array.isArray(pmRecapSitesItems) ? pmRecapSitesItems : []).map((it, idx) => (
+                              <tr
+                                key={`${it?.siteCode || 'site'}-${idx}`}
+                                className={`border-b border-slate-200 hover:bg-slate-100/60 ${idx % 2 === 1 ? 'bg-white' : 'bg-slate-50'}`}
+                              >
+                                <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.zone || '-'}</td>
+                                <td className="px-3 py-2 text-slate-900 whitespace-nowrap font-semibold">{it?.siteCode || '-'}</td>
+                                <td className="px-3 py-2 text-slate-900 max-w-[520px] whitespace-pre-line leading-tight break-words">{it?.siteName || '-'}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 </div>

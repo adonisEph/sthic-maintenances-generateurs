@@ -6119,6 +6119,7 @@ return (
           pmGlobalStep={pmGlobalStep}
           pmGlobalCompare={pmGlobalCompare}
           pmRetiredSites={pmRetiredSites}
+          sites={sites}
           pmItems={pmItems}
           pmImports={pmImports}
           pmSearch={pmSearch}
