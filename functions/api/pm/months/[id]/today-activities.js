@@ -39,7 +39,10 @@ function mapInterventionRow(r) {
     technicianUserId: r.technician_user_id || null,
     technicianName: r.technician_name,
     technicianZone: r.technician_zone || null,
-    status: r.status
+    status: r.status,
+    ticketNumber: r.ticket_number || null,
+    epv1DoneInMonth: Boolean(r.epv1_done_in_month),
+    epv2DoneInMonth: Boolean(r.epv2_done_in_month)
   };
 }
 
@@ -59,6 +62,8 @@ export async function onRequestGet({ request, env, data, params }) {
     const chosenDate = /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : '';
     const today = chosenDate || ymdToday();
 
+    const monthYyyyMm = String(today).slice(0, 7);
+
     const scopeZone = isSuperAdmin(data) || role === 'viewer' ? null : String(userZone(data) || 'BZV/POOL');
 
     const pmStmt = scopeZone
@@ -71,11 +76,84 @@ export async function onRequestGet({ request, env, data, params }) {
 
     const intStmt = scopeZone
       ? env.DB.prepare(
-          "SELECT i.*, s.id_site as site_code, s.name_site as site_name, COALESCE(s.zone, i.zone) as zone, u.zone as technician_zone FROM interventions i LEFT JOIN sites s ON s.id = i.site_id LEFT JOIN users u ON u.id = i.technician_user_id WHERE COALESCE(s.zone, i.zone) = ? AND i.planned_date = ? ORDER BY i.planned_date ASC"
-        ).bind(scopeZone, today)
+          `SELECT
+            COALESCE(i.id, 'epv:' || s.id || ':' || v.epv_type || ':' || v.planned_date) as id,
+            s.id as site_id,
+            s.id_site as site_code,
+            s.name_site as site_name,
+            COALESCE(s.zone, 'BZV/POOL') as zone,
+            v.planned_date,
+            v.epv_type,
+            i.technician_user_id,
+            i.technician_name,
+            u.zone as technician_zone,
+            COALESCE(i.status, 'planned') as status,
+            fh.ticket_number,
+            EXISTS(
+              SELECT 1 FROM interventions d
+              WHERE d.site_id = s.id AND d.epv_type = 'EPV1' AND d.status = 'done'
+                AND substr(d.planned_date, 1, 7) = ?
+              LIMIT 1
+            ) as epv1_done_in_month,
+            EXISTS(
+              SELECT 1 FROM interventions d
+              WHERE d.site_id = s.id AND d.epv_type = 'EPV2' AND d.status = 'done'
+                AND substr(d.planned_date, 1, 7) = ?
+              LIMIT 1
+            ) as epv2_done_in_month
+          FROM (
+            SELECT id as site_id, substr(epv1, 1, 10) as planned_date, 'EPV1' as epv_type FROM sites WHERE retired = 0 AND substr(epv1, 1, 10) = ?
+            UNION ALL
+            SELECT id as site_id, substr(epv2, 1, 10) as planned_date, 'EPV2' as epv_type FROM sites WHERE retired = 0 AND substr(epv2, 1, 10) = ?
+            UNION ALL
+            SELECT id as site_id, substr(epv3, 1, 10) as planned_date, 'EPV3' as epv_type FROM sites WHERE retired = 0 AND substr(epv3, 1, 10) = ?
+          ) v
+          JOIN sites s ON s.id = v.site_id
+          LEFT JOIN interventions i ON i.site_id = s.id AND i.epv_type = v.epv_type AND i.planned_date = v.planned_date
+          LEFT JOIN users u ON u.id = i.technician_user_id
+          LEFT JOIN fiche_history fh ON fh.intervention_id = i.id
+          WHERE COALESCE(s.zone, 'BZV/POOL') = ?
+          ORDER BY v.planned_date ASC, s.id_site ASC`
+        ).bind(monthYyyyMm, monthYyyyMm, today, today, today, scopeZone)
       : env.DB.prepare(
-          'SELECT i.*, s.id_site as site_code, s.name_site as site_name, COALESCE(s.zone, i.zone) as zone, u.zone as technician_zone FROM interventions i LEFT JOIN sites s ON s.id = i.site_id LEFT JOIN users u ON u.id = i.technician_user_id WHERE i.planned_date = ? ORDER BY i.planned_date ASC'
-        ).bind(today);
+          `SELECT
+            COALESCE(i.id, 'epv:' || s.id || ':' || v.epv_type || ':' || v.planned_date) as id,
+            s.id as site_id,
+            s.id_site as site_code,
+            s.name_site as site_name,
+            COALESCE(s.zone, 'BZV/POOL') as zone,
+            v.planned_date,
+            v.epv_type,
+            i.technician_user_id,
+            i.technician_name,
+            u.zone as technician_zone,
+            COALESCE(i.status, 'planned') as status,
+            fh.ticket_number,
+            EXISTS(
+              SELECT 1 FROM interventions d
+              WHERE d.site_id = s.id AND d.epv_type = 'EPV1' AND d.status = 'done'
+                AND substr(d.planned_date, 1, 7) = ?
+              LIMIT 1
+            ) as epv1_done_in_month,
+            EXISTS(
+              SELECT 1 FROM interventions d
+              WHERE d.site_id = s.id AND d.epv_type = 'EPV2' AND d.status = 'done'
+                AND substr(d.planned_date, 1, 7) = ?
+              LIMIT 1
+            ) as epv2_done_in_month
+          FROM (
+            SELECT id as site_id, substr(epv1, 1, 10) as planned_date, 'EPV1' as epv_type FROM sites WHERE retired = 0 AND substr(epv1, 1, 10) = ?
+            UNION ALL
+            SELECT id as site_id, substr(epv2, 1, 10) as planned_date, 'EPV2' as epv_type FROM sites WHERE retired = 0 AND substr(epv2, 1, 10) = ?
+            UNION ALL
+            SELECT id as site_id, substr(epv3, 1, 10) as planned_date, 'EPV3' as epv_type FROM sites WHERE retired = 0 AND substr(epv3, 1, 10) = ?
+          ) v
+          JOIN sites s ON s.id = v.site_id
+          LEFT JOIN interventions i ON i.site_id = s.id AND i.epv_type = v.epv_type AND i.planned_date = v.planned_date
+          LEFT JOIN users u ON u.id = i.technician_user_id
+          LEFT JOIN fiche_history fh ON fh.intervention_id = i.id
+          ORDER BY v.planned_date ASC, s.id_site ASC`
+        ).bind(monthYyyyMm, monthYyyyMm, today, today, today);
 
     const [pmRes, intRes] = await Promise.all([pmStmt.all(), intStmt.all()]);
 

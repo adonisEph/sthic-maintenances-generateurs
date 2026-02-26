@@ -21,7 +21,6 @@ const TodayPlannedActivitiesModal = ({
   const [filterZone, setFilterZone] = useState('all');
   const [filterAssignedZone, setFilterAssignedZone] = useState('all');
   const [filterAssignedTo, setFilterAssignedTo] = useState('');
-  const [filterState, setFilterState] = useState('all');
 
   const bySiteKey = new Map();
 
@@ -89,20 +88,16 @@ const TodayPlannedActivitiesModal = ({
     const hasVid = Boolean(r?.intervention);
     if (hasPm && hasVid) return 'PM+Vidange';
     if (hasPm) return 'PM Simple';
-    if (hasVid) return 'Vidange Simple';
-    return '-';
-  };
+    if (hasVid) {
+      const epvType = String(r?.intervention?.epvType || '').trim().toUpperCase();
+      const epv1DoneInMonth = Boolean(r?.intervention?.epv1DoneInMonth);
+      const epv2DoneInMonth = Boolean(r?.intervention?.epv2DoneInMonth);
 
-  const normalizeState = (v) => {
-    const s = String(v || '').trim().toLowerCase();
-    if (!s) return '-';
-    if (s === 'assigned') return 'Assigned';
-    if (s === 'work in progress' || s === 'wip') return 'Work in progress';
-    if (s === 'awaiting closure' || s === 'awaiting') return 'Awaiting Closure';
-    if (s === 'closed complete' || s === 'closed' || s === 'done') return 'Closed Complete';
-    if (s === 'planned') return 'Assigned';
-    if (s === 'sent') return 'Work in progress';
-    return String(v || '').trim() || '-';
+      if (epvType === 'EPV3' && epv2DoneInMonth) return 'Vidange Simple 3e passage';
+      if (epvType === 'EPV2' && epv1DoneInMonth) return 'Vidange Simple 2e passage';
+      return 'Vidange Simple';
+    }
+    return '-';
   };
 
   const siteCodeLabel = (r) => {
@@ -129,16 +124,21 @@ const TodayPlannedActivitiesModal = ({
     return '-';
   };
 
-  const stateLabel = (r) => {
-    if (r?.pm) return normalizeState(r.pm?.state);
-    if (r?.intervention) return normalizeState(r.intervention?.status);
-    return '-';
+  const ticketLabel = (r) => {
+    const tickets = [];
+    const pmTicket = String(r?.pm?.number || '').trim();
+    const vidTicket = String(r?.intervention?.ticketNumber || '').trim();
+    const isVidange = Boolean(r?.intervention);
+    if (pmTicket) tickets.push(pmTicket);
+    if (vidTicket && !tickets.includes(vidTicket)) tickets.push(vidTicket);
+    if (isVidange && !vidTicket) tickets.push('attente génération fiche');
+    return tickets.length > 0 ? tickets.join(' + ') : '-';
   };
 
   const badgeClass = (txt) => {
     if (txt === 'PM+Vidange') return 'bg-indigo-50 text-indigo-900 border-indigo-200';
     if (txt === 'PM Simple') return 'bg-sky-50 text-sky-900 border-sky-200';
-    if (txt === 'Vidange Simple') return 'bg-emerald-50 text-emerald-900 border-emerald-200';
+    if (txt.startsWith('Vidange Simple')) return 'bg-emerald-50 text-emerald-900 border-emerald-200';
     return 'bg-slate-50 text-slate-800 border-slate-200';
   };
 
@@ -163,9 +163,6 @@ const TodayPlannedActivitiesModal = ({
       const az = assignedZoneLabel(r);
       if (filterAssignedZone !== 'all' && az !== filterAssignedZone) return false;
 
-      const st = stateLabel(r);
-      if (filterState !== 'all' && st !== filterState) return false;
-
       if (assignedToNeedle) {
         const a = assignedToLabel(r).toLowerCase();
         if (!a.includes(assignedToNeedle)) return false;
@@ -173,14 +170,10 @@ const TodayPlannedActivitiesModal = ({
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, filterLabel, filterZone, filterAssignedZone, filterAssignedTo, filterState]);
+  }, [rows, filterLabel, filterZone, filterAssignedZone, filterAssignedTo]);
 
   const zoneOptions = useMemo(() => uniqueSorted(rows.map((r) => r?.zone)), [rows]);
   const assignedZoneOptions = useMemo(() => uniqueSorted(rows.map((r) => assignedZoneLabel(r))), [rows]);
-  const stateOptions = useMemo(
-    () => ['Assigned', 'Work in progress', 'Awaiting Closure', 'Closed Complete'],
-    []
-  );
 
   const exportExcel = () => {
     const out = rowsFiltered.map((r) => {
@@ -189,14 +182,14 @@ const TodayPlannedActivitiesModal = ({
       const content = pmShort ? pmShort : label;
       return {
         Date: today || '',
+        Ticket: ticketLabel(r),
         Site: siteCodeLabel(r),
         'Name Site': siteNameLabel(r),
         Zone: String(r?.zone || '').trim() || '',
         Type: label,
         'Short Description': content,
         'Assigné à': assignedToLabel(r),
-        'Zone Technicien': assignedZoneLabel(r),
-        Etat: stateLabel(r)
+        'Zone Technicien': assignedZoneLabel(r)
       };
     });
 
@@ -208,7 +201,7 @@ const TodayPlannedActivitiesModal = ({
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-0 sm:p-4">
-      <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-6xl sm:max-h-[90vh]">
+      <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-[95vw] sm:max-h-[92vh]">
         <div className="flex items-start justify-between gap-3 px-3 py-3 sm:p-4 border-b bg-indigo-800 text-white">
           <div className="min-w-0 flex items-center gap-2">
             <Activity size={24} className="flex-shrink-0" />
@@ -271,7 +264,7 @@ const TodayPlannedActivitiesModal = ({
           </div>
 
           {!busy && rows.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">Type</label>
                 <select
@@ -283,6 +276,8 @@ const TodayPlannedActivitiesModal = ({
                   <option value="all">Tous</option>
                   <option value="PM Simple">PM Simple</option>
                   <option value="Vidange Simple">Vidange Simple</option>
+                  <option value="Vidange Simple 2e passage">Vidange Simple 2e passage</option>
+                  <option value="Vidange Simple 3e passage">Vidange Simple 3e passage</option>
                   <option value="PM+Vidange">PM+Vidange</option>
                 </select>
               </div>
@@ -322,23 +317,6 @@ const TodayPlannedActivitiesModal = ({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">État</label>
-                <select
-                  value={filterState}
-                  onChange={(e) => setFilterState(String(e.target.value || 'all'))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                  disabled={busy}
-                >
-                  <option value="all">Tous</option>
-                  {stateOptions.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">Assigné à</label>
                 <input
                   value={filterAssignedTo}
@@ -357,16 +335,16 @@ const TodayPlannedActivitiesModal = ({
 
           {rowsFiltered.length > 0 && (
             <div className="overflow-auto border border-slate-200 rounded-lg">
-              <table className="min-w-[980px] w-full text-sm">
+              <table className="min-w-[1100px] w-full text-sm">
                 <thead className="bg-slate-50 sticky top-0 z-10">
                   <tr className="text-left text-xs text-slate-700 border-b border-slate-200">
+                    <th className="px-3 py-2 font-semibold whitespace-nowrap">Ticket</th>
                     <th className="px-3 py-2 font-semibold whitespace-nowrap">Site</th>
                     <th className="px-3 py-2 font-semibold whitespace-nowrap">Name Site</th>
                     <th className="px-3 py-2 font-semibold whitespace-nowrap">Zone</th>
                     <th className="px-3 py-2 font-semibold whitespace-nowrap">Short Description</th>
                     <th className="px-3 py-2 font-semibold whitespace-nowrap">Assigné à</th>
                     <th className="px-3 py-2 font-semibold whitespace-nowrap">Zone Technicien</th>
-                    <th className="px-3 py-2 font-semibold whitespace-nowrap">État</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -379,6 +357,9 @@ const TodayPlannedActivitiesModal = ({
                         key={r.key}
                         className={`border-b border-slate-100 ${idx % 2 === 1 ? 'bg-white' : 'bg-slate-50'}`}
                       >
+                        <td className="px-3 py-2 text-slate-900 whitespace-nowrap" title={ticketLabel(r)}>
+                          {ticketLabel(r)}
+                        </td>
                         <td className="px-3 py-2 text-slate-900 whitespace-nowrap" title={siteCodeLabel(r)}>
                           {siteCodeLabel(r)}
                         </td>
@@ -400,7 +381,6 @@ const TodayPlannedActivitiesModal = ({
                           {assignedToLabel(r)}
                         </td>
                         <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{assignedZoneLabel(r)}</td>
-                        <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{stateLabel(r)}</td>
                       </tr>
                     );
                   })}
