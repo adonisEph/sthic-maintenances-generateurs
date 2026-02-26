@@ -23,7 +23,8 @@ function mapPmRow(r) {
     assignedToZone: r.assigned_to_zone || null,
     state: r.state,
     closedAt: r.closed_at,
-    createdSource: r.created_source
+    createdSource: r.created_source,
+    epv1PlannedInMonth: Boolean(r.epv1_planned_in_month)
   };
 }
 
@@ -117,6 +118,28 @@ export async function onRequestGet({ request, env, data, params }) {
       add('EPV3', epv?.epv3);
     }
 
+    const siteIdByCode = new Map();
+    const epv1InMonthBySiteId = new Map();
+
+    for (const s of sites) {
+      const sid = String(s?.id || '').trim();
+      if (!sid) continue;
+      const code = String(s?.id_site || '').trim();
+      if (code) siteIdByCode.set(code, sid);
+
+      const nhEstimated = calculateEstimatedNH(s.nh2_a, s.date_a, s.regime);
+      const epv = calculateEPVDates(s.regime, s.nh1_dv, nhEstimated, s.seuil);
+      const epv1 = String(epv?.epv1 || '').slice(0, 10);
+      epv1InMonthBySiteId.set(sid, Boolean(epv1 && epv1.slice(0, 7) === monthYyyyMm));
+    }
+
+    const pmItemsEnriched = pmItems.map((p) => {
+      const code = String(p?.siteCode || '').trim();
+      const sid = code ? siteIdByCode.get(code) : '';
+      const hasEpv1InMonth = sid ? Boolean(epv1InMonthBySiteId.get(sid)) : false;
+      return { ...p, epv1PlannedInMonth: hasEpv1InMonth };
+    });
+
     const plannedKey = (p) => `${p.siteId}::${p.plannedDate}::${p.epvType}`;
     const plannedMap = new Map(planned.map((p) => [plannedKey(p), p]));
 
@@ -178,7 +201,7 @@ export async function onRequestGet({ request, env, data, params }) {
       return mapInterventionRow(out);
     }).filter(Boolean);
 
-    return json({ today, pmItems, interventions }, { status: 200 });
+    return json({ today, pmItems: pmItemsEnriched, interventions }, { status: 200 });
   } catch (e) {
     return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
   }

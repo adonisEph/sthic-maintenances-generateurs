@@ -104,10 +104,33 @@ const TodayPlannedActivitiesModal = ({
   const computeLabel = (r) => {
     const hasPm = Boolean(r?.pm);
     const hasVid = Boolean(r?.intervention);
-    if (hasPm && hasVid) return 'PM+Vidange';
-    if (hasPm) return 'PM Simple';
+    const pmType = String(r?.pm?.maintenanceType || '').trim().toUpperCase();
+    const epvType = String(r?.intervention?.epvType || '').trim().toUpperCase();
+
+    const isFullPmWo = pmType === 'FULLPMWO';
+    const isDgService = pmType === 'DG SERVICE';
+    const epv1PlannedInMonth = Boolean(r?.pm?.epv1PlannedInMonth);
+
+    if (hasPm && hasVid) {
+      if (isFullPmWo && epvType === 'EPV1') return 'PM+Vidange';
+      if (isFullPmWo) return 'PM Simple';
+      if (isDgService) {
+        const epv1DoneInMonth = Boolean(r?.intervention?.epv1DoneInMonth);
+        const epv2DoneInMonth = Boolean(r?.intervention?.epv2DoneInMonth);
+
+        if (epvType === 'EPV3' && epv2DoneInMonth) return 'Vidange Simple 3e passage';
+        if (epvType === 'EPV2' && epv1DoneInMonth) return 'Vidange Simple 2e passage';
+        return 'Vidange Simple';
+      }
+      return 'PM Simple';
+    }
+
+    if (hasPm) {
+      if (isFullPmWo && !epv1PlannedInMonth) return 'PM Simple';
+      return 'PM Simple';
+    }
+
     if (hasVid) {
-      const epvType = String(r?.intervention?.epvType || '').trim().toUpperCase();
       const epv1DoneInMonth = Boolean(r?.intervention?.epv1DoneInMonth);
       const epv2DoneInMonth = Boolean(r?.intervention?.epv2DoneInMonth);
 
@@ -115,6 +138,7 @@ const TodayPlannedActivitiesModal = ({
       if (epvType === 'EPV2' && epv1DoneInMonth) return 'Vidange Simple 2e passage';
       return 'Vidange Simple';
     }
+
     return '-';
   };
 

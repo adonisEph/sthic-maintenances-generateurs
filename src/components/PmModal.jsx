@@ -94,6 +94,7 @@ const PmModal = (props) => {
   const [pmPurgeResult, setPmPurgeResult] = React.useState(null);
   const [pmTodayActivitiesOpen, setPmTodayActivitiesOpen] = React.useState(false);
   const [pmFilterPlannedDay, setPmFilterPlannedDay] = React.useState('');
+  const [pmMonthlyRecapOpen, setPmMonthlyRecapOpen] = React.useState(false);
 
   const pmIsSuperAdmin = Boolean(props?.isSuperAdmin);
 
@@ -220,6 +221,110 @@ const PmModal = (props) => {
       ? pmRetiredItemsAll.filter((it) => String(it?.zone || '').trim() === pmEffectiveRetiredZoneFilter)
       : pmRetiredItemsAll;
 
+  const normalizeYyyyMm = (v) => {
+    const s = String(v || '').trim();
+    if (!/^\d{4}-\d{2}$/.test(s)) return '';
+    return s;
+  };
+
+  const yyyymmNow = (() => {
+    const d = new Date();
+    const yyyy = String(d.getFullYear());
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    return `${yyyy}-${mm}`;
+  })();
+
+  const recapMonth = normalizeYyyyMm(pmMonth);
+  const recapIsPastMonth = Boolean(recapMonth && recapMonth < yyyymmNow);
+
+  const recapFullItemsAll = (Array.isArray(pmItems) ? pmItems : []).filter((it) => {
+    const t = String(it?.maintenanceType || '').trim().toUpperCase();
+    if (t !== 'FULLPMWO') return false;
+    const m = String(it?.scheduledWoDate || '').slice(0, 7);
+    if (recapMonth && m && m !== recapMonth) return false;
+    if (isManager && !pmIsSuperAdmin && !isViewer) {
+      const z = String(it?.zone || it?.region || '').trim();
+      const az = String(authZone || '').trim();
+      if (az && z && z !== az) return false;
+    }
+    return true;
+  });
+
+  const recapCountAssigned = recapFullItemsAll.filter((it) => {
+    const st = String(it?.state || '').trim().toLowerCase();
+    return st === 'assigned';
+  }).length;
+
+  const recapCanOpen = recapIsPastMonth && recapCountAssigned === 0;
+
+  const recapBucketForState = (state) => {
+    const v = String(state || '').trim().toLowerCase();
+    if (v === 'closed complete' || v === 'closed') return 'closed';
+    if (v === 'awaiting closure' || v === 'awaiting') return 'awaiting';
+    if (v === 'work in progress' || v === 'wip') return 'wip';
+    if (v === 'assigned') return 'assigned';
+    return 'other';
+  };
+
+  const recapNormReprogStatus = (s) => {
+    const v = String(s || '').trim().toLowerCase();
+    if (!v) return '';
+    if (v === 'approved') return 'APPROVED';
+    if (v === 'rejected') return 'REJECTED';
+    if (v === 'pending') return 'PENDING';
+    if (v === 'approved' || v === 'ok' || v === 'yes' || v === 'oui' || v === 'validee' || v === 'validée' || v === 'approuvee' || v === 'approuvée') return 'APPROVED';
+    if (v === 'rejected' || v === 'ko' || v === 'no' || v === 'non' || v === 'rejete' || v === 'rejeté' || v === 'rejetee' || v === 'rejetée' || v === 'refusee' || v === 'refusée') return 'REJECTED';
+    if (v === 'pending' || v === 'attente' || v === 'en attente' || v === 'waiting') return 'PENDING';
+    return '';
+  };
+
+  const recapEffectiveReprogStatus = (it) => {
+    const explicit = recapNormReprogStatus(it?.reprogrammationStatus);
+    if (explicit) return explicit;
+    const hasDate = !!String(it?.reprogrammationDate || '').trim();
+    const hasReason = !!String(it?.reprogrammationReason || '').trim();
+    if (hasDate) return 'APPROVED';
+    if (hasReason) return 'PENDING';
+    return '';
+  };
+
+  const recapStats = (() => {
+    const total = recapFullItemsAll.length;
+    const byState = { closed: 0, awaiting: 0, wip: 0, assigned: 0, other: 0 };
+    const byReprog = { APPROVED: 0, REJECTED: 0, PENDING: 0, NONE: 0 };
+    const byZone = {};
+
+    for (const it of recapFullItemsAll) {
+      byState[recapBucketForState(it?.state)] = (byState[recapBucketForState(it?.state)] || 0) + 1;
+      const r = recapEffectiveReprogStatus(it);
+      if (!r) byReprog.NONE += 1;
+      else byReprog[r] = (byReprog[r] || 0) + 1;
+
+      const z = String(it?.zone || it?.region || '').trim() || '-';
+      byZone[z] = (byZone[z] || 0) + 1;
+    }
+
+    const realized = byState.closed + byState.awaiting + byState.wip;
+    const planned = total;
+    const reprogAny = byReprog.APPROVED + byReprog.REJECTED + byReprog.PENDING;
+    const penalised = byReprog.REJECTED;
+
+    const zones = Object.entries(byZone)
+      .sort((a, b) => b[1] - a[1])
+      .map(([zone, count]) => ({ zone, count }));
+
+    return {
+      total,
+      planned,
+      realized,
+      reprogAny,
+      penalised,
+      byState,
+      byReprog,
+      zones
+    };
+  })();
+
   return (
     <div className="fixed inset-0 bg-indigo-950/60 flex items-center justify-center z-50 p-0 sm:p-0">
       <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-none sm:max-w-none sm:max-h-[100vh] sm:h-[100vh]">
@@ -240,7 +345,7 @@ const PmModal = (props) => {
                   </button>
                 </div>
                 <div className="p-4 space-y-4">
-                <div>
+                  <div>
                   <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Période</div>
                   <div className="space-y-2">
                     <div className="flex flex-col">
@@ -303,6 +408,30 @@ const PmModal = (props) => {
                       <Download size={16} />
                       Export reprogrammées
                     </button>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Récapitulatif</div>
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => setPmMonthlyRecapOpen(true)}
+                      className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 disabled:opacity-60 disabled:hover:bg-white/10"
+                      disabled={pmBusy || !recapCanOpen}
+                      title={
+                        recapCanOpen
+                          ? `Ouvrir le récap mensuel (${recapMonth || pmMonth})`
+                          : `Disponible uniquement pour un mois terminé et sans tickets Assigned (reste: ${recapCountAssigned}).`
+                      }
+                    >
+                      RECAP MENSUEL PM
+                    </button>
+                    {!recapCanOpen && (
+                      <div className="text-[11px] text-white/70 leading-snug">
+                        Condition: mois terminé + 0 Assigned (reste: {recapCountAssigned}).
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -546,7 +675,7 @@ const PmModal = (props) => {
                   </div>
                 )}
               </div>
-            </div>
+              </div>
             )}
             <div className="flex-1 min-w-0 overflow-y-auto">
               <div className="bg-white border-b border-gray-200 shadow-sm px-4 py-3 sticky top-0 z-20">
@@ -643,6 +772,83 @@ const PmModal = (props) => {
                   if (typeof loadPmTodayActivities === 'function') loadPmTodayActivities(dateYmd);
                 }}
               />
+
+              {pmMonthlyRecapOpen && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+                  <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[90vh]">
+                    <div className="flex justify-between items-center p-4 border-b bg-indigo-800 text-white">
+                      <div className="font-bold">RECAP MENSUEL PM ({recapMonth || pmMonth})</div>
+                      <button
+                        type="button"
+                        onClick={() => setPmMonthlyRecapOpen(false)}
+                        className="hover:bg-indigo-900 p-2 rounded"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    <div className="p-4 overflow-auto">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div className="border rounded-lg p-3 bg-slate-50">
+                          <div className="text-xs font-semibold text-slate-700">Total FullPMWO</div>
+                          <div className="text-2xl font-bold text-slate-900 mt-1">{Number(recapStats?.total || 0)}</div>
+                        </div>
+                        <div className="border rounded-lg p-3 bg-sky-50">
+                          <div className="text-xs font-semibold text-sky-800">Closed Complete</div>
+                          <div className="text-2xl font-bold text-sky-900 mt-1">{Number(recapStats?.byState?.closed || 0)}</div>
+                        </div>
+                        <div className="border rounded-lg p-3 bg-amber-50">
+                          <div className="text-xs font-semibold text-amber-800">Awaiting Closure</div>
+                          <div className="text-2xl font-bold text-amber-900 mt-1">{Number(recapStats?.byState?.awaiting || 0)}</div>
+                        </div>
+                        <div className="border rounded-lg p-3 bg-blue-50">
+                          <div className="text-xs font-semibold text-blue-800">Work in progress</div>
+                          <div className="text-2xl font-bold text-blue-900 mt-1">{Number(recapStats?.byState?.wip || 0)}</div>
+                        </div>
+                        <div className="border rounded-lg p-3 bg-violet-50">
+                          <div className="text-xs font-semibold text-violet-800">Assigned (doit être 0)</div>
+                          <div className="text-2xl font-bold text-violet-900 mt-1">{Number(recapStats?.byState?.assigned || 0)}</div>
+                        </div>
+                        <div className="border rounded-lg p-3 bg-slate-50">
+                          <div className="text-xs font-semibold text-slate-700">Reprogrammations (toutes)</div>
+                          <div className="text-2xl font-bold text-slate-900 mt-1">{Number(recapStats?.reprogAny || 0)}</div>
+                          <div className="text-[11px] text-slate-600 mt-1">
+                            Approved: {Number(recapStats?.byReprog?.APPROVED || 0)} • Pending: {Number(recapStats?.byReprog?.PENDING || 0)} • Rejected: {Number(
+                              recapStats?.byReprog?.REJECTED || 0
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 border rounded-lg overflow-hidden">
+                        <div className="px-4 py-3 bg-slate-100 border-b text-sm font-semibold text-slate-900">Répartition par zone</div>
+                        <div className="p-4">
+                          {(Array.isArray(recapStats?.zones) ? recapStats.zones : []).length === 0 ? (
+                            <div className="text-sm text-slate-600">Aucune donnée.</div>
+                          ) : (
+                            <div className="space-y-2">
+                              {(Array.isArray(recapStats?.zones) ? recapStats.zones : []).map((z) => (
+                                <div key={z.zone} className="flex items-center gap-3">
+                                  <div className="w-44 text-sm font-semibold text-slate-900 truncate" title={String(z.zone || '')}>
+                                    {z.zone}
+                                  </div>
+                                  <div className="flex-1 h-2 bg-slate-200 rounded overflow-hidden">
+                                    <div
+                                      className="h-2 bg-indigo-600"
+                                      style={{ width: `${Math.round((Number(z.count || 0) / Math.max(1, Number(recapStats?.total || 0))) * 100)}%` }}
+                                    />
+                                  </div>
+                                  <div className="w-16 text-right text-sm text-slate-700">{Number(z.count || 0)}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {pmError && (
                 <div className="mb-4 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">
@@ -1299,21 +1505,6 @@ const PmModal = (props) => {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1">Date planifiée du jour</label>
-                      <input
-                        type="date"
-                        value={pmFilterPlannedDay}
-                        onChange={(e) => {
-                          const d = String(e.target.value || '').slice(0, 10);
-                          setPmFilterPlannedDay(d);
-                        }}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                        disabled={pmBusy}
-                        title="Choisir un jour (Scheduled WO Date)"
-                      />
-                    </div>
-
-                    <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1">Reprogrammation</label>
                       <select
                         value={pmFilterReprog}
@@ -1327,6 +1518,21 @@ const PmModal = (props) => {
                         <option value="approved">Approuvée</option>
                         <option value="rejected">Rejetée</option>
                       </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1 whitespace-nowrap">Date planifiée du jour</label>
+                      <input
+                        type="date"
+                        value={pmFilterPlannedDay}
+                        onChange={(e) => {
+                          const d = String(e.target.value || '').slice(0, 10);
+                          setPmFilterPlannedDay(d);
+                        }}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        disabled={pmBusy}
+                        title="Choisir un jour (Scheduled WO Date)"
+                      />
                     </div>
                   </div>
 
@@ -1603,9 +1809,9 @@ const PmModal = (props) => {
             </div>
           </div>
         </div>
+        </div>
 
       </div>
-    </div>
     </div>
   );
 };
