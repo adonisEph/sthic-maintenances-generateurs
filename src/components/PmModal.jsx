@@ -93,6 +93,7 @@ const PmModal = (props) => {
   const [pmPurgeZones, setPmPurgeZones] = React.useState([]);
   const [pmPurgeResult, setPmPurgeResult] = React.useState(null);
   const [pmTodayActivitiesOpen, setPmTodayActivitiesOpen] = React.useState(false);
+  const [pmFilterPlannedDay, setPmFilterPlannedDay] = React.useState('');
 
   const pmIsSuperAdmin = Boolean(props?.isSuperAdmin);
 
@@ -829,6 +830,7 @@ const PmModal = (props) => {
             const search = String(pmSearch || '').trim().toLowerCase();
             const dateFrom = normalizeYmd(pmFilterFrom);
             const dateTo = normalizeYmd(pmFilterTo);
+            const plannedDay = normalizeYmd(pmFilterPlannedDay);
             const reprogFilter = String(pmFilterReprog || 'all');
 
             const normReprogStatus = (s) => {
@@ -864,13 +866,18 @@ const PmModal = (props) => {
               if (pmFilterZone && pmFilterZone !== 'all') {
                 if (String(it?.zone || '').trim() !== String(pmFilterZone)) return false;
               }
-              if (dateFrom) {
+              if (plannedDay) {
                 const sched = normalizeYmd(it?.scheduledWoDate);
-                if (sched && sched < dateFrom) return false;
-              }
-              if (dateTo) {
-                const sched = normalizeYmd(it?.scheduledWoDate);
-                if (sched && sched > dateTo) return false;
+                if (sched !== plannedDay) return false;
+              } else {
+                if (dateFrom) {
+                  const sched = normalizeYmd(it?.scheduledWoDate);
+                  if (sched && sched < dateFrom) return false;
+                }
+                if (dateTo) {
+                  const sched = normalizeYmd(it?.scheduledWoDate);
+                  if (sched && sched > dateTo) return false;
+                }
               }
               if (reprogFilter && reprogFilter !== 'all') {
                 const st = effectiveReprogStatus(it);
@@ -1295,11 +1302,10 @@ const PmModal = (props) => {
                       <label className="block text-xs font-semibold text-gray-700 mb-1">Date planifiée du jour</label>
                       <input
                         type="date"
-                        value={pmFilterFrom && pmFilterFrom === pmFilterTo ? pmFilterFrom : ''}
+                        value={pmFilterPlannedDay}
                         onChange={(e) => {
                           const d = String(e.target.value || '').slice(0, 10);
-                          setPmFilterFrom(d);
-                          setPmFilterTo(d);
+                          setPmFilterPlannedDay(d);
                         }}
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                         disabled={pmBusy}
@@ -1347,6 +1353,7 @@ const PmModal = (props) => {
                         setPmFilterType('all');
                         setPmFilterZone('all');
                         setPmSearch('');
+                        setPmFilterPlannedDay('');
                         setPmFilterFrom('');
                         setPmFilterTo('');
                         setPmFilterReprog('all');
