@@ -122,6 +122,8 @@ const PmModal = (props) => {
   const [pmRecapSitesKind, setPmRecapSitesKind] = React.useState('');
   const [pmRecapMonthBusy, setPmRecapMonthBusy] = React.useState(false);
   const [pmRecapZoneFilter, setPmRecapZoneFilter] = React.useState('ALL');
+  const [pmRecapGlobalItems, setPmRecapGlobalItems] = React.useState([]);
+  const [pmRecapGlobalBusy, setPmRecapGlobalBusy] = React.useState(false);
 
   const pmIsSuperAdmin = Boolean(props?.isSuperAdmin);
 
@@ -298,10 +300,63 @@ const PmModal = (props) => {
   const recapIsInAllowedWindow = Boolean(recapMonth);
 
   const recapNormSiteCode = (v) => String(v || '').trim();
-  const recapNormZone = (v) => String(v || '').trim();
+  const recapNormZone = (v) =>
+    String(v || '')
+      .replace(/\u00A0/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase();
 
   const recapUserHasAllZonesAccess = !(isManager && !pmIsSuperAdmin && !isViewer);
-  const recapEffectiveZoneFilter = recapUserHasAllZonesAccess ? String(pmRecapZoneFilter || 'ALL').trim() || 'ALL' : String(authZone || '').trim();
+  const recapEffectiveZoneFilter = recapUserHasAllZonesAccess
+    ? recapNormZone(pmRecapZoneFilter || 'ALL') || 'ALL'
+    : recapNormZone(authZone);
+
+  React.useEffect(() => {
+    let alive = true;
+
+    const run = async () => {
+      if (!pmMonthlyRecapOpen) return;
+      if (!recapMonth) return;
+
+      setPmRecapGlobalBusy(true);
+      try {
+        const monthId = await pmEnsureMonthId(recapMonth);
+
+        const qs = (() => {
+          if (recapUserHasAllZonesAccess) {
+            if (recapEffectiveZoneFilter && recapEffectiveZoneFilter !== 'ALL') {
+              return `?zone=${encodeURIComponent(recapEffectiveZoneFilter)}`;
+            }
+            return '';
+          }
+          return '';
+        })();
+
+        const res = await pmCallJson(`/api/pm/months/${monthId}/global-items${qs}`, { method: 'GET' });
+        const items = Array.isArray(res?.items) ? res.items : [];
+        if (!alive) return;
+        setPmRecapGlobalItems(items);
+      } catch {
+        if (!alive) return;
+        setPmRecapGlobalItems([]);
+      } finally {
+        if (!alive) return;
+        setPmRecapGlobalBusy(false);
+      }
+    };
+
+    run();
+    return () => {
+      alive = false;
+    };
+  }, [pmMonthlyRecapOpen, recapMonth, recapUserHasAllZonesAccess, recapEffectiveZoneFilter]);
+
+  React.useEffect(() => {
+    if (pmMonthlyRecapOpen) return;
+    setPmRecapGlobalItems([]);
+    setPmRecapGlobalBusy(false);
+  }, [pmMonthlyRecapOpen]);
 
   const recapZoneOptions = (() => {
     const z = new Set();
@@ -331,13 +386,23 @@ const PmModal = (props) => {
 
   const recapSitesBaseInScope = (() => {
     const az = recapNormZone(recapEffectiveZoneFilter === 'ALL' ? authZone : recapEffectiveZoneFilter);
-    const rows = (Array.isArray(allSites) ? allSites : []).filter(Boolean).map((s) => {
+
+    const globalRows = (Array.isArray(pmRecapGlobalItems) ? pmRecapGlobalItems : []).filter(Boolean).map((it) => {
+      const siteCode = recapNormSiteCode(it?.siteCode || it?.siteId);
+      const siteName = String(it?.siteName || '').trim();
+      const zone = recapNormZone(it?.zone || it?.region);
+      return { siteCode, siteName, zone, technician: '' };
+    });
+
+    const localRows = (Array.isArray(allSites) ? allSites : []).filter(Boolean).map((s) => {
       const siteCode = recapNormSiteCode(s?.idSite || s?.siteId || s?.siteCode);
       const siteName = String(s?.nameSite || s?.siteName || '').trim();
       const zone = recapNormZone(s?.zone || s?.region);
       const technician = String(s?.technician || s?.technicianName || '').trim();
       return { siteCode, siteName, zone, technician };
     });
+
+    const rows = globalRows.length > 0 ? globalRows : localRows;
     const filtered = (() => {
       if (recapEffectiveZoneFilter && recapEffectiveZoneFilter !== 'ALL') {
         return rows.filter((r) => r.zone && r.zone === recapEffectiveZoneFilter);
@@ -437,6 +502,11 @@ const PmModal = (props) => {
     const filtered = src.filter((r) => {
       const rr = { zone: r?.zone, region: r?.region };
       if (!recapIsItemInScope(rr)) return false;
+      if (recapEffectiveZoneFilter && recapEffectiveZoneFilter !== 'ALL') {
+        const z = recapNormZone(r?.zone || r?.region);
+        if (!z) return false;
+        if (z !== recapEffectiveZoneFilter) return false;
+      }
       if (isManager && !pmIsSuperAdmin && !isViewer && az) {
         const z = recapNormZone(r?.zone || r?.region);
         if (!z) return false;
@@ -533,7 +603,7 @@ const PmModal = (props) => {
       uniq.set(siteCode, {
         siteCode,
         siteName: String(it?.siteName || '').trim(),
-        zone: recapNormZone(it?.zone || it?.region)
+        zone: recapZoneForItem(it)
       });
     }
     return Array.from(uniq.values()).sort((a, b) => String(a.siteCode).localeCompare(String(b.siteCode)));
