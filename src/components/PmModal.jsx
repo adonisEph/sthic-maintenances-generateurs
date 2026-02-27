@@ -188,6 +188,57 @@ const PmModal = (props) => {
     }
   };
 
+  React.useEffect(() => {
+    let alive = true;
+
+    const run = async () => {
+      if (!pmMonthlyRecapOpen) return;
+
+      const month = String(pmMonth || '').trim();
+      if (!/^\d{4}-\d{2}$/.test(month)) return;
+
+      const roleAllZones = !(isManager && !pmIsSuperAdmin && !isViewer);
+      const effectiveZone = roleAllZones ? String(pmRecapZoneFilter || 'ALL').trim() || 'ALL' : String(authZone || '').trim();
+
+      setPmRecapGlobalBusy(true);
+      try {
+        const monthId = await pmEnsureMonthId(month);
+
+        const qs = (() => {
+          if (roleAllZones) {
+            if (effectiveZone && effectiveZone !== 'ALL') {
+              return `?zone=${encodeURIComponent(effectiveZone)}`;
+            }
+            return '';
+          }
+          return '';
+        })();
+
+        const res = await pmCallJson(`/api/pm/months/${monthId}/global-items${qs}`, { method: 'GET' });
+        const items = Array.isArray(res?.items) ? res.items : [];
+        if (!alive) return;
+        setPmRecapGlobalItems(items);
+      } catch {
+        if (!alive) return;
+        setPmRecapGlobalItems([]);
+      } finally {
+        if (!alive) return;
+        setPmRecapGlobalBusy(false);
+      }
+    };
+
+    run();
+    return () => {
+      alive = false;
+    };
+  }, [pmMonthlyRecapOpen, pmMonth, pmRecapZoneFilter, isManager, pmIsSuperAdmin, isViewer, authZone]);
+
+  React.useEffect(() => {
+    if (pmMonthlyRecapOpen) return;
+    setPmRecapGlobalItems([]);
+    setPmRecapGlobalBusy(false);
+  }, [pmMonthlyRecapOpen]);
+
   const pmTogglePurgeZone = (zone) => {
     const z = String(zone || '').trim();
     if (!z) return;
@@ -311,52 +362,6 @@ const PmModal = (props) => {
   const recapEffectiveZoneFilter = recapUserHasAllZonesAccess
     ? recapNormZone(pmRecapZoneFilter || 'ALL') || 'ALL'
     : recapNormZone(authZone);
-
-  React.useEffect(() => {
-    let alive = true;
-
-    const run = async () => {
-      if (!pmMonthlyRecapOpen) return;
-      if (!recapMonth) return;
-
-      setPmRecapGlobalBusy(true);
-      try {
-        const monthId = await pmEnsureMonthId(recapMonth);
-
-        const qs = (() => {
-          if (recapUserHasAllZonesAccess) {
-            if (recapEffectiveZoneFilter && recapEffectiveZoneFilter !== 'ALL') {
-              return `?zone=${encodeURIComponent(recapEffectiveZoneFilter)}`;
-            }
-            return '';
-          }
-          return '';
-        })();
-
-        const res = await pmCallJson(`/api/pm/months/${monthId}/global-items${qs}`, { method: 'GET' });
-        const items = Array.isArray(res?.items) ? res.items : [];
-        if (!alive) return;
-        setPmRecapGlobalItems(items);
-      } catch {
-        if (!alive) return;
-        setPmRecapGlobalItems([]);
-      } finally {
-        if (!alive) return;
-        setPmRecapGlobalBusy(false);
-      }
-    };
-
-    run();
-    return () => {
-      alive = false;
-    };
-  }, [pmMonthlyRecapOpen, recapMonth, recapUserHasAllZonesAccess, recapEffectiveZoneFilter]);
-
-  React.useEffect(() => {
-    if (pmMonthlyRecapOpen) return;
-    setPmRecapGlobalItems([]);
-    setPmRecapGlobalBusy(false);
-  }, [pmMonthlyRecapOpen]);
 
   const recapZoneOptions = (() => {
     const z = new Set();
