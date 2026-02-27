@@ -119,6 +119,8 @@ const PmModal = (props) => {
   const [pmRecapSitesOpen, setPmRecapSitesOpen] = React.useState(false);
   const [pmRecapSitesTitle, setPmRecapSitesTitle] = React.useState('');
   const [pmRecapSitesItems, setPmRecapSitesItems] = React.useState([]);
+  const [pmRecapSitesKind, setPmRecapSitesKind] = React.useState('');
+  const [pmRecapMonthBusy, setPmRecapMonthBusy] = React.useState(false);
 
   const pmIsSuperAdmin = Boolean(props?.isSuperAdmin);
 
@@ -164,6 +166,23 @@ const PmModal = (props) => {
     const id = found?.id ? String(found.id) : '';
     if (!id) throw new Error(`Mois introuvable: ${m}`);
     return id;
+  };
+
+  const pmSetMonthAndRefresh = async (nextMonth) => {
+    const m = String(nextMonth || '').trim();
+    if (!/^\d{4}-\d{2}$/.test(m)) return;
+    if (!m) return;
+    if (m === String(pmMonth || '').trim()) return;
+    if (typeof setPmMonth !== 'function') return;
+    setPmRecapMonthBusy(true);
+    try {
+      setPmMonth(m);
+      if (typeof refreshPmAll === 'function') {
+        await refreshPmAll(m);
+      }
+    } finally {
+      setPmRecapMonthBusy(false);
+    }
   };
 
   const pmTogglePurgeZone = (zone) => {
@@ -275,9 +294,7 @@ const PmModal = (props) => {
   const recapMonth = normalizeYyyyMm(pmMonth);
   const recapMonthPrev = shiftYyyyMm(yyyymmNow, -1);
   const recapMonthNext = shiftYyyyMm(yyyymmNow, +1);
-  const recapIsInAllowedWindow = Boolean(
-    recapMonth && (recapMonth === recapMonthPrev || recapMonth === yyyymmNow || recapMonth === recapMonthNext)
-  );
+  const recapIsInAllowedWindow = Boolean(recapMonth);
 
   const recapFullItemsAll = (Array.isArray(pmItems) ? pmItems : []).filter((it) => {
     const t = String(it?.maintenanceType || '').trim().toUpperCase();
@@ -323,7 +340,8 @@ const PmModal = (props) => {
       const siteCode = recapNormSiteCode(s?.idSite || s?.siteId || s?.siteCode);
       const siteName = String(s?.nameSite || s?.siteName || '').trim();
       const zone = recapNormZone(s?.zone || s?.region);
-      return { siteCode, siteName, zone };
+      const technician = String(s?.technician || s?.technicianName || '').trim();
+      return { siteCode, siteName, zone, technician };
     });
     const filtered =
       isManager && !pmIsSuperAdmin && !isViewer && az
@@ -335,6 +353,16 @@ const PmModal = (props) => {
       if (!uniq.has(r.siteCode)) uniq.set(r.siteCode, r);
     }
     return Array.from(uniq.values()).sort((a, b) => String(a.siteCode).localeCompare(String(b.siteCode)));
+  })();
+
+  const recapSiteInfoByCode = (() => {
+    const map = new Map();
+    for (const s of recapSitesBaseInScope) {
+      const code = recapNormSiteCode(s?.siteCode);
+      if (!code) continue;
+      map.set(code, s);
+    }
+    return map;
   })();
 
   const recapSitesPlannedInScope = (() => {
@@ -473,10 +501,67 @@ const PmModal = (props) => {
     return Array.from(uniq.values()).sort((a, b) => String(a.siteCode).localeCompare(String(b.siteCode)));
   })();
 
-  const recapOpenSites = (title, sites) => {
+  const recapOpenSites = (kind, title, sites) => {
+    setPmRecapSitesKind(String(kind || '').trim());
     setPmRecapSitesTitle(String(title || '').trim());
     setPmRecapSitesItems(Array.isArray(sites) ? sites : []);
     setPmRecapSitesOpen(true);
+  };
+
+  const recapBuildSiteDetailsFromTickets = (siteList, { onlyRejected } = {}) => {
+    const out = [];
+    const wanted = new Set((Array.isArray(siteList) ? siteList : []).map((s) => recapNormSiteCode(s?.siteCode)).filter(Boolean));
+    if (wanted.size === 0) return [];
+
+    const bySite = new Map();
+    for (const it of recapFullItemsAll) {
+      const siteCode = recapNormSiteCode(it?.siteCode || it?.siteId);
+      if (!siteCode) continue;
+      if (!wanted.has(siteCode)) continue;
+      if (onlyRejected && recapEffectiveReprogStatus(it) !== 'REJECTED') continue;
+      const cur = bySite.get(siteCode) || {
+        sample: it,
+        tickets: [],
+        dates: [],
+        statuses: new Set(),
+        rootCauses: new Set()
+      };
+      if (it?.number) cur.tickets.push(String(it.number).trim());
+      const d = String(it?.scheduledWoDate || '').slice(0, 10);
+      if (d) cur.dates.push(d);
+      const st = String(it?.state || '').trim();
+      if (st) cur.statuses.add(st);
+      const rc = String(it?.Raison || it?.raison || it?.reprogrammationReason || '').trim();
+      if (rc) cur.rootCauses.add(rc);
+      bySite.set(siteCode, cur);
+    }
+
+    for (const [siteCode, v] of bySite.entries()) {
+      const info = recapSiteInfoByCode.get(siteCode) || {};
+      const sample = v.sample || {};
+      const zone = recapNormZone(info?.zone || sample?.zone || sample?.region);
+      const siteName = String(info?.siteName || sample?.siteName || '').trim();
+      const technician = String(info?.technician || '').trim();
+
+      const uniqTickets = Array.from(new Set(v.tickets.filter(Boolean))).sort((a, b) => a.localeCompare(b));
+      const uniqDates = Array.from(new Set(v.dates.filter(Boolean))).sort((a, b) => a.localeCompare(b));
+      const uniqStatuses = Array.from(v.statuses.values()).filter(Boolean).sort((a, b) => a.localeCompare(b));
+      const uniqRootCauses = Array.from(v.rootCauses.values()).filter(Boolean).sort((a, b) => a.localeCompare(b));
+
+      out.push({
+        siteCode,
+        siteName,
+        zone,
+        technician,
+        tickets: uniqTickets,
+        scheduledWoDates: uniqDates,
+        statut: uniqStatuses,
+        rootCauses: uniqRootCauses
+      });
+    }
+
+    out.sort((a, b) => String(a.siteCode).localeCompare(String(b.siteCode)));
+    return out;
   };
 
   const recapRatio = (num, den) => {
@@ -517,6 +602,7 @@ const PmModal = (props) => {
     const h = 180;
     const pad = 18;
     const maxV = Math.max(1, ...vals.map((v) => Number(v || 0)));
+    const tickEvery = vals.length > 20 ? 5 : 1;
     const points = vals
       .map((v, i) => {
         const x = pad + (i * (w - pad * 2)) / Math.max(1, vals.length - 1);
@@ -535,7 +621,28 @@ const PmModal = (props) => {
           <div className="text-xs text-slate-600 mb-2">Max: {maxV}</div>
           <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-[180px]">
             <rect x="0" y="0" width={w} height={h} fill="#ffffff" />
+            {vals.map((v, i) => {
+              if (i % tickEvery !== 0 && i !== vals.length - 1) return null;
+              const x = pad + (i * (w - pad * 2)) / Math.max(1, vals.length - 1);
+              return (
+                <g key={`tick-${i}`}>
+                  <line x1={x} y1={h - pad} x2={x} y2={h - pad + 6} stroke="#cbd5e1" strokeWidth="1" />
+                  <text x={x} y={h - 2} fontSize="10" textAnchor="middle" fill="#64748b">
+                    {i + 1}
+                  </text>
+                </g>
+              );
+            })}
             <polyline points={points} fill="none" stroke={color} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+            {vals.map((v, i) => {
+              const x = pad + (i * (w - pad * 2)) / Math.max(1, vals.length - 1);
+              const y = h - pad - (Number(v || 0) * (h - pad * 2)) / maxV;
+              return (
+                <circle key={`pt-${i}`} cx={x} cy={y} r="3" fill={color} opacity={0.9}>
+                  <title>{`Jour ${i + 1}: ${Number(v || 0)}`}</title>
+                </circle>
+              );
+            })}
           </svg>
         </div>
       </div>
@@ -1051,9 +1158,23 @@ const PmModal = (props) => {
                     </div>
 
                     <div className="p-4 overflow-auto">
-                      <div className="mb-4">
-                        <div className="text-xs text-slate-600">
-                          Fenêtre: {recapMonthPrev} / {yyyymmNow} / {recapMonthNext} • Scope: {isManager && !pmIsSuperAdmin && !isViewer ? String(authZone || '').trim() || 'zone' : 'toutes zones'}
+                      <div className="mb-4 flex flex-col sm:flex-row sm:items-end gap-3">
+                        <div className="flex flex-col">
+                          <label className="text-xs font-semibold text-slate-700 mb-1">Campagne (mois)</label>
+                          <input
+                            type="month"
+                            value={recapMonth || ''}
+                            onChange={(e) => {
+                              const v = String(e.target.value || '').slice(0, 7);
+                              pmSetMonthAndRefresh(v);
+                            }}
+                            className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+                            disabled={pmBusy || pmRecapMonthBusy}
+                          />
+                        </div>
+                        <div className="text-xs text-slate-600 pb-2">
+                          Scope: {isManager && !pmIsSuperAdmin && !isViewer ? String(authZone || '').trim() || 'zone' : 'toutes zones'}
+                          {pmRecapMonthBusy ? ' • Chargement…' : ''}
                         </div>
                       </div>
 
@@ -1067,7 +1188,7 @@ const PmModal = (props) => {
                           <button
                             type="button"
                             className="border rounded-xl p-3 bg-indigo-50 border-indigo-200 hover:bg-indigo-100 text-left"
-                            onClick={() => recapOpenSites('Total sites en base', recapSitesBaseInScope)}
+                            onClick={() => recapOpenSites('base', 'Total sites en base', recapSitesBaseInScope)}
                             disabled={pmBusy || recapSitesBaseInScope.length === 0}
                             title={
                               recapSitesBaseInScope.length === 0
@@ -1086,7 +1207,7 @@ const PmModal = (props) => {
                           <button
                             type="button"
                             className="border rounded-xl p-3 bg-fuchsia-50 border-fuchsia-200 hover:bg-fuchsia-100 text-left"
-                            onClick={() => recapOpenSites('Sites retirés pour la campagne', recapSitesRetiredInScope)}
+                            onClick={() => recapOpenSites('retired', 'Sites retirés pour la campagne', recapSitesRetiredInScope)}
                             disabled={pmBusy}
                           >
                             <div className="flex items-center justify-between gap-3">
@@ -1100,7 +1221,7 @@ const PmModal = (props) => {
                           <button
                             type="button"
                             className="border rounded-xl p-3 bg-sky-50 border-sky-200 hover:bg-sky-100 text-left"
-                            onClick={() => recapOpenSites('Sites planifiés (FullPMWO)', recapSitesPlannedInScope)}
+                            onClick={() => recapOpenSites('planned', 'Sites planifiés (FullPMWO)', recapSitesPlannedInScope)}
                             disabled={pmBusy}
                           >
                             <div className="flex items-center justify-between gap-3">
@@ -1114,7 +1235,7 @@ const PmModal = (props) => {
                           <button
                             type="button"
                             className="border rounded-xl p-3 bg-emerald-50 border-emerald-200 hover:bg-emerald-100 text-left"
-                            onClick={() => recapOpenSites('Sites réalisés (0 Assigned)', recapSitesRealizedInScope)}
+                            onClick={() => recapOpenSites('realized', 'Sites réalisés (0 Assigned)', recapSitesRealizedInScope)}
                             disabled={pmBusy}
                           >
                             <div className="flex items-center justify-between gap-3">
@@ -1128,7 +1249,7 @@ const PmModal = (props) => {
                           <button
                             type="button"
                             className="border rounded-xl p-3 bg-rose-50 border-rose-200 hover:bg-rose-100 text-left"
-                            onClick={() => recapOpenSites('Sites reprogrammés (rejetés)', recapSitesReprogRejectedInScope)}
+                            onClick={() => recapOpenSites('reprog_rejected', 'Sites reprogrammés (rejetés)', recapSitesReprogRejectedInScope)}
                             disabled={pmBusy}
                           >
                             <div className="flex items-center justify-between gap-3">
@@ -1149,7 +1270,10 @@ const PmModal = (props) => {
 
                         <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                           <div className="border rounded-xl p-3 bg-emerald-50 border-emerald-200">
-                            <div className="text-[11px] font-semibold text-emerald-900">Taux réalisation (sites)</div>
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-[11px] font-semibold text-emerald-900">Taux réalisation (sites)</div>
+                              <CheckCircle2 size={16} className="text-emerald-700 flex-shrink-0" />
+                            </div>
                             <div className="text-2xl font-bold mt-1 text-emerald-900">
                               {recapRatio(recapSitesRealizedInScope.length, recapSitesPlannedInScope.length)}%
                             </div>
@@ -1159,7 +1283,10 @@ const PmModal = (props) => {
                           </div>
 
                           <div className="border rounded-xl p-3 bg-sky-50 border-sky-200">
-                            <div className="text-[11px] font-semibold text-sky-900">Reprog approuvées (sites)</div>
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-[11px] font-semibold text-sky-900">Reprog approuvées (sites)</div>
+                              <CalendarCheck2 size={16} className="text-sky-700 flex-shrink-0" />
+                            </div>
                             <div className="text-2xl font-bold mt-1 text-sky-900">
                               {recapRatio(recapSitesReprogApprovedInScope.length, recapSitesPlannedInScope.length)}%
                             </div>
@@ -1169,7 +1296,10 @@ const PmModal = (props) => {
                           </div>
 
                           <div className="border rounded-xl p-3 bg-rose-50 border-rose-200">
-                            <div className="text-[11px] font-semibold text-rose-900">Reprog rejetées (sites)</div>
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-[11px] font-semibold text-rose-900">Reprog rejetées (sites)</div>
+                              <RotateCcw size={16} className="text-rose-700 flex-shrink-0" />
+                            </div>
                             <div className="text-2xl font-bold mt-1 text-rose-900">
                               {recapRatio(recapSitesReprogRejectedInScope.length, recapSitesPlannedInScope.length)}%
                             </div>
@@ -1179,7 +1309,10 @@ const PmModal = (props) => {
                           </div>
 
                           <div className="border rounded-xl p-3 bg-violet-50 border-violet-200">
-                            <div className="text-[11px] font-semibold text-violet-900">Assigned restant (tickets)</div>
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-[11px] font-semibold text-violet-900">Assigned restant (tickets)</div>
+                              <UserCheck size={16} className="text-violet-700 flex-shrink-0" />
+                            </div>
                             <div className="text-2xl font-bold mt-1 text-violet-900">{Number(recapCountAssigned || 0)}</div>
                             <div className="text-[11px] mt-2 text-violet-800">Doit être 0 pour autoriser l’ouverture</div>
                           </div>
@@ -1244,23 +1377,55 @@ const PmModal = (props) => {
                       </button>
                     </div>
                     <div className="p-4 overflow-auto">
-                      <table className="min-w-[900px] w-full text-sm">
+                      {(() => {
+                        const kind = String(pmRecapSitesKind || '').trim();
+                        const showTech = kind === 'base' || kind === 'retired' || kind === 'planned' || kind === 'realized' || kind === 'reprog_rejected';
+                        const showTickets = kind === 'planned' || kind === 'realized' || kind === 'reprog_rejected';
+                        const showDates = kind === 'planned' || kind === 'realized' || kind === 'reprog_rejected';
+                        const showStatus = kind === 'planned' || kind === 'realized';
+                        const showRootCause = kind === 'reprog_rejected';
+
+                        const rows = (() => {
+                          const src = Array.isArray(pmRecapSitesItems) ? pmRecapSitesItems : [];
+                          if (showTickets || showDates || showStatus || showRootCause) {
+                            return recapBuildSiteDetailsFromTickets(src, { onlyRejected: kind === 'reprog_rejected' });
+                          }
+                          return src.map((s) => {
+                            const code = recapNormSiteCode(s?.siteCode);
+                            const info = recapSiteInfoByCode.get(code) || {};
+                            return {
+                              ...s,
+                              technician: String(s?.technician || info?.technician || '').trim()
+                            };
+                          });
+                        })();
+
+                        return (
+                          <table className="min-w-[1200px] w-full text-sm">
                         <thead className="bg-slate-100 sticky top-0 z-10">
                           <tr className="text-left text-xs text-slate-800 border-b border-slate-300">
                             <th className="px-3 py-2 font-semibold whitespace-nowrap">Zone</th>
                             <th className="px-3 py-2 font-semibold whitespace-nowrap">Site</th>
                             <th className="px-3 py-2 font-semibold whitespace-nowrap">Site Name</th>
+                            {showTech && <th className="px-3 py-2 font-semibold whitespace-nowrap">Technicien</th>}
+                            {showTickets && <th className="px-3 py-2 font-semibold whitespace-nowrap">Tickets</th>}
+                            {showDates && <th className="px-3 py-2 font-semibold whitespace-nowrap">Scheduled WO Date</th>}
+                            {showStatus && <th className="px-3 py-2 font-semibold whitespace-nowrap">Statut</th>}
+                            {showRootCause && <th className="px-3 py-2 font-semibold whitespace-nowrap">Raison</th>}
                           </tr>
                         </thead>
                         <tbody>
-                          {(Array.isArray(pmRecapSitesItems) ? pmRecapSitesItems : []).length === 0 ? (
+                          {rows.length === 0 ? (
                             <tr>
-                              <td className="px-4 py-4 text-gray-600" colSpan={3}>
+                              <td
+                                className="px-4 py-4 text-gray-600"
+                                colSpan={3 + Number(showTech) + Number(showTickets) + Number(showDates) + Number(showStatus) + Number(showRootCause)}
+                              >
                                 Aucun site.
                               </td>
                             </tr>
                           ) : (
-                            (Array.isArray(pmRecapSitesItems) ? pmRecapSitesItems : []).map((it, idx) => (
+                            rows.map((it, idx) => (
                               <tr
                                 key={`${it?.siteCode || 'site'}-${idx}`}
                                 className={`border-b border-slate-200 hover:bg-slate-100/60 ${idx % 2 === 1 ? 'bg-white' : 'bg-slate-50'}`}
@@ -1268,11 +1433,36 @@ const PmModal = (props) => {
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.zone || '-'}</td>
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap font-semibold">{it?.siteCode || '-'}</td>
                                 <td className="px-3 py-2 text-slate-900 max-w-[520px] whitespace-pre-line leading-tight break-words">{it?.siteName || '-'}</td>
+                                {showTech && (
+                                  <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{String(it?.technician || '').trim() || '-'}</td>
+                                )}
+                                {showTickets && (
+                                  <td className="px-3 py-2 text-slate-900 max-w-[260px] whitespace-pre-line leading-tight break-words">
+                                    {Array.isArray(it?.tickets) ? it.tickets.join('\n') : '-'}
+                                  </td>
+                                )}
+                                {showDates && (
+                                  <td className="px-3 py-2 text-slate-900 max-w-[220px] whitespace-pre-line leading-tight break-words">
+                                    {Array.isArray(it?.scheduledWoDates) ? it.scheduledWoDates.join('\n') : '-'}
+                                  </td>
+                                )}
+                                {showStatus && (
+                                  <td className="px-3 py-2 text-slate-900 max-w-[220px] whitespace-pre-line leading-tight break-words">
+                                    {Array.isArray(it?.statut) ? it.statut.join('\n') : '-'}
+                                  </td>
+                                )}
+                                {showRootCause && (
+                                  <td className="px-3 py-2 text-slate-900 max-w-[320px] whitespace-pre-line leading-tight break-words">
+                                    {Array.isArray(it?.rootCauses) ? it.rootCauses.join('\n') : '-'}
+                                  </td>
+                                )}
                               </tr>
                             ))
                           )}
                         </tbody>
-                      </table>
+                          </table>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
