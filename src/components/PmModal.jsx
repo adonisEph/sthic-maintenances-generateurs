@@ -121,6 +121,7 @@ const PmModal = (props) => {
   const [pmRecapSitesItems, setPmRecapSitesItems] = React.useState([]);
   const [pmRecapSitesKind, setPmRecapSitesKind] = React.useState('');
   const [pmRecapMonthBusy, setPmRecapMonthBusy] = React.useState(false);
+  const [pmRecapZoneFilter, setPmRecapZoneFilter] = React.useState('ALL');
 
   const pmIsSuperAdmin = Boolean(props?.isSuperAdmin);
 
@@ -296,31 +297,25 @@ const PmModal = (props) => {
   const recapMonthNext = shiftYyyyMm(yyyymmNow, +1);
   const recapIsInAllowedWindow = Boolean(recapMonth);
 
-  const recapFullItemsAll = (Array.isArray(pmItems) ? pmItems : []).filter((it) => {
-    const t = String(it?.maintenanceType || '').trim().toUpperCase();
-    if (t !== 'FULLPMWO') return false;
-    const m = String(it?.scheduledWoDate || '').slice(0, 7);
-    if (recapMonth && m && m !== recapMonth) return false;
-    if (isManager && !pmIsSuperAdmin && !isViewer) {
-      const z = String(it?.zone || it?.region || '').trim();
-      const az = String(authZone || '').trim();
-      if (az) {
-        if (!z) return false;
-        if (z !== az) return false;
-      }
-    }
-    return true;
-  });
-
-  const recapCountAssigned = recapFullItemsAll.filter((it) => {
-    const st = String(it?.state || '').trim().toLowerCase();
-    return st === 'assigned';
-  }).length;
-
-  const recapCanOpen = recapIsInAllowedWindow && recapCountAssigned === 0;
-
   const recapNormSiteCode = (v) => String(v || '').trim();
   const recapNormZone = (v) => String(v || '').trim();
+
+  const recapUserHasAllZonesAccess = !(isManager && !pmIsSuperAdmin && !isViewer);
+  const recapEffectiveZoneFilter = recapUserHasAllZonesAccess ? String(pmRecapZoneFilter || 'ALL').trim() || 'ALL' : String(authZone || '').trim();
+
+  const recapZoneOptions = (() => {
+    const z = new Set();
+    for (const s of Array.isArray(allSites) ? allSites : []) {
+      const zz = recapNormZone(s?.zone || s?.region);
+      if (zz) z.add(zz);
+    }
+    for (const it of Array.isArray(pmItems) ? pmItems : []) {
+      const zz = recapNormZone(it?.zone || it?.region);
+      if (zz) z.add(zz);
+    }
+    const arr = Array.from(z.values()).sort((a, b) => String(a).localeCompare(String(b)));
+    return ['ALL', ...arr];
+  })();
 
   const recapIsItemInScope = (it) => {
     if (isManager && !pmIsSuperAdmin && !isViewer) {
@@ -335,7 +330,7 @@ const PmModal = (props) => {
   };
 
   const recapSitesBaseInScope = (() => {
-    const az = recapNormZone(authZone);
+    const az = recapNormZone(recapEffectiveZoneFilter === 'ALL' ? authZone : recapEffectiveZoneFilter);
     const rows = (Array.isArray(allSites) ? allSites : []).filter(Boolean).map((s) => {
       const siteCode = recapNormSiteCode(s?.idSite || s?.siteId || s?.siteCode);
       const siteName = String(s?.nameSite || s?.siteName || '').trim();
@@ -343,10 +338,15 @@ const PmModal = (props) => {
       const technician = String(s?.technician || s?.technicianName || '').trim();
       return { siteCode, siteName, zone, technician };
     });
-    const filtered =
-      isManager && !pmIsSuperAdmin && !isViewer && az
-        ? rows.filter((r) => r.zone && r.zone === az)
-        : rows;
+    const filtered = (() => {
+      if (recapEffectiveZoneFilter && recapEffectiveZoneFilter !== 'ALL') {
+        return rows.filter((r) => r.zone && r.zone === recapEffectiveZoneFilter);
+      }
+      if (isManager && !pmIsSuperAdmin && !isViewer && az) {
+        return rows.filter((r) => r.zone && r.zone === az);
+      }
+      return rows;
+    })();
     const uniq = new Map();
     for (const r of filtered) {
       if (!r.siteCode) continue;
@@ -365,6 +365,44 @@ const PmModal = (props) => {
     return map;
   })();
 
+  const recapZoneForItem = (it) => {
+    const direct = recapNormZone(it?.zone || it?.region);
+    if (direct) return direct;
+    const siteCode = recapNormSiteCode(it?.siteCode || it?.siteId);
+    if (!siteCode) return '';
+    const info = recapSiteInfoByCode.get(siteCode) || null;
+    const z = recapNormZone(info?.zone);
+    return z;
+  };
+
+  const recapFullItemsAll = (Array.isArray(pmItems) ? pmItems : []).filter((it) => {
+    const t = String(it?.maintenanceType || '').trim().toUpperCase();
+    if (t !== 'FULLPMWO') return false;
+    const m = String(it?.scheduledWoDate || '').slice(0, 7);
+    if (recapMonth && m && m !== recapMonth) return false;
+
+    if (recapEffectiveZoneFilter && recapEffectiveZoneFilter !== 'ALL') {
+      const z = recapZoneForItem(it);
+      if (!z) return false;
+      if (z !== recapEffectiveZoneFilter) return false;
+    } else if (isManager && !pmIsSuperAdmin && !isViewer) {
+      const z = recapZoneForItem(it);
+      const az = String(authZone || '').trim();
+      if (az) {
+        if (!z) return false;
+        if (z !== az) return false;
+      }
+    }
+    return true;
+  });
+
+  const recapCountAssigned = recapFullItemsAll.filter((it) => {
+    const st = String(it?.state || '').trim().toLowerCase();
+    return st === 'assigned';
+  }).length;
+
+  const recapCanOpen = recapIsInAllowedWindow && recapCountAssigned === 0;
+
   const recapSitesPlannedInScope = (() => {
     const uniq = new Map();
     for (const it of recapFullItemsAll) {
@@ -374,7 +412,7 @@ const PmModal = (props) => {
       uniq.set(siteCode, {
         siteCode,
         siteName: String(it?.siteName || '').trim(),
-        zone: recapNormZone(it?.zone || it?.region)
+        zone: recapZoneForItem(it)
       });
     }
     return Array.from(uniq.values()).sort((a, b) => String(a.siteCode).localeCompare(String(b.siteCode)));
@@ -440,7 +478,7 @@ const PmModal = (props) => {
       out.push({
         siteCode,
         siteName: String(it?.siteName || '').trim(),
-        zone: recapNormZone(it?.zone || it?.region)
+        zone: recapZoneForItem(it)
       });
     }
     out.sort((a, b) => String(a.siteCode).localeCompare(String(b.siteCode)));
@@ -479,7 +517,7 @@ const PmModal = (props) => {
       uniq.set(siteCode, {
         siteCode,
         siteName: String(it?.siteName || '').trim(),
-        zone: recapNormZone(it?.zone || it?.region)
+        zone: recapZoneForItem(it)
       });
     }
     return Array.from(uniq.values()).sort((a, b) => String(a.siteCode).localeCompare(String(b.siteCode)));
@@ -670,7 +708,7 @@ const PmModal = (props) => {
       if (!r) byReprog.NONE += 1;
       else byReprog[r] = (byReprog[r] || 0) + 1;
 
-      const z = String(it?.zone || it?.region || '').trim() || '-';
+      const z = recapZoneForItem(it) || '-';
       byZone[z] = (byZone[z] || 0) + 1;
     }
 
@@ -1172,8 +1210,27 @@ const PmModal = (props) => {
                             disabled={pmBusy || pmRecapMonthBusy}
                           />
                         </div>
+
+                        {recapUserHasAllZonesAccess && (
+                          <div className="flex flex-col">
+                            <label className="text-xs font-semibold text-slate-700 mb-1">Zone</label>
+                            <select
+                              value={String(pmRecapZoneFilter || 'ALL')}
+                              onChange={(e) => setPmRecapZoneFilter(String(e.target.value || 'ALL'))}
+                              className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+                              disabled={pmBusy || pmRecapMonthBusy}
+                            >
+                              {(Array.isArray(recapZoneOptions) ? recapZoneOptions : ['ALL']).map((z) => (
+                                <option key={z} value={z}>
+                                  {z === 'ALL' ? 'Toutes zones' : z}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
                         <div className="text-xs text-slate-600 pb-2">
-                          Scope: {isManager && !pmIsSuperAdmin && !isViewer ? String(authZone || '').trim() || 'zone' : 'toutes zones'}
+                          Scope: {recapEffectiveZoneFilter && recapEffectiveZoneFilter !== 'ALL' ? recapEffectiveZoneFilter : 'toutes zones'}
                           {pmRecapMonthBusy ? ' • Chargement…' : ''}
                         </div>
                       </div>
