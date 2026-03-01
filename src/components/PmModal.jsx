@@ -126,6 +126,7 @@ const PmModal = (props) => {
   const [pmRecapGlobalBusy, setPmRecapGlobalBusy] = React.useState(false);
   const [pmRecapGlobalPlans, setPmRecapGlobalPlans] = React.useState([]);
   const [pmRecapGlobalPlansBusy, setPmRecapGlobalPlansBusy] = React.useState(false);
+  const [pmRecapTrendPick, setPmRecapTrendPick] = React.useState(null);
 
   const pmIsSuperAdmin = Boolean(props?.isSuperAdmin);
 
@@ -751,8 +752,6 @@ const PmModal = (props) => {
     if (!d) return 0;
     return Math.round((n / d) * 1000) / 10;
   };
-
-  const [pmRecapTrendPick, setPmRecapTrendPick] = React.useState(null);
 
   const recapDonut = ({ percent, main, sub }) => {
     const p = Math.max(0, Math.min(100, Number(percent || 0)));
