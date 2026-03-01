@@ -419,6 +419,10 @@ const PmModal = (props) => {
       const zz = recapNormZone(p?.zone);
       if (zz) z.add(zz);
     }
+    for (const it of Array.isArray(pmRecapGlobalItems) ? pmRecapGlobalItems : []) {
+      const zz = recapNormZone(it?.zone || it?.region);
+      if (zz) z.add(zz);
+    }
     for (const s of Array.isArray(allSites) ? allSites : []) {
       const zz = recapNormZone(s?.zone || s?.region);
       if (zz) z.add(zz);
@@ -509,7 +513,7 @@ const PmModal = (props) => {
     if (direct) return direct;
     const siteCode = recapNormSiteCode(it?.siteCode || it?.siteId);
     if (!siteCode) return '';
-    const info = recapSiteInfoByCode.get(siteCode) || null;
+    const info = recapSiteInfoAllByCode.get(siteCode) || recapSiteInfoByCode.get(siteCode) || null;
     const z = recapNormZone(info?.zone);
     return z;
   };
@@ -908,10 +912,29 @@ const PmModal = (props) => {
             {vals.map((v, i) => {
               const x = pad + (i * (w - pad * 2)) / Math.max(1, vals.length - 1);
               const y = h - pad - (Number(v || 0) * (h - pad * 2)) / maxV;
+              const day = i + 1;
+              const isPicked = Number(pickedDay || 0) === day;
               return (
-                <circle key={`pt-${i}`} cx={x} cy={y} r="3" fill={color} opacity={0.9}>
-                  <title>{`Jour ${i + 1}: ${Number(v || 0)}`}</title>
-                </circle>
+                <g key={`pt-${i}`}>
+                  {isPicked ? <circle cx={x} cy={y} r="7" fill={color} opacity={0.18} /> : null}
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r={isPicked ? 5 : 3}
+                    fill={color}
+                    opacity={0.95}
+                    style={typeof onPickDay === 'function' ? { cursor: 'pointer' } : undefined}
+                    onClick={
+                      typeof onPickDay === 'function'
+                        ? () => {
+                            onPickDay(day);
+                          }
+                        : undefined
+                    }
+                  >
+                    <title>{`Jour ${day}: ${Number(v || 0)}`}</title>
+                  </circle>
+                </g>
               );
             })}
           </svg>
