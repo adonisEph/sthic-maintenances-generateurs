@@ -415,6 +415,13 @@ const PmModal = (props) => {
 
   const recapZoneOptions = (() => {
     const z = new Set();
+
+    if (recapUserHasAllZonesAccess) {
+      z.add('BZV/POOL');
+      z.add('PNR/KOUILOU');
+      z.add('UPCN');
+    }
+
     for (const p of Array.isArray(pmRecapGlobalPlans) ? pmRecapGlobalPlans : []) {
       const zz = recapNormZone(p?.zone);
       if (zz) z.add(zz);
@@ -973,9 +980,21 @@ const PmModal = (props) => {
     const reprogAny = byReprog.APPROVED + byReprog.REJECTED + byReprog.PENDING;
     const penalised = byReprog.REJECTED;
 
-    const zones = Object.entries(byZone)
-      .sort((a, b) => b[1] - a[1])
-      .map(([zone, count]) => ({ zone, count }));
+    const baseZones = (Array.isArray(recapZoneOptions) ? recapZoneOptions : [])
+      .map((x) => String(x || '').trim())
+      .filter((x) => x && x !== 'ALL');
+    const uniqBaseZones = Array.from(new Set(baseZones));
+
+    const zones = (() => {
+      if (uniqBaseZones.length > 0) {
+        return uniqBaseZones
+          .map((zone) => ({ zone, count: Number(byZone[zone] || 0) }))
+          .sort((a, b) => b.count - a.count || String(a.zone).localeCompare(String(b.zone)));
+      }
+      return Object.entries(byZone)
+        .sort((a, b) => b[1] - a[1])
+        .map(([zone, count]) => ({ zone, count }));
+    })();
 
     return {
       total,
