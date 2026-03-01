@@ -124,6 +124,8 @@ const PmModal = (props) => {
   const [pmRecapZoneFilter, setPmRecapZoneFilter] = React.useState('ALL');
   const [pmRecapGlobalItems, setPmRecapGlobalItems] = React.useState([]);
   const [pmRecapGlobalBusy, setPmRecapGlobalBusy] = React.useState(false);
+  const [pmRecapGlobalPlans, setPmRecapGlobalPlans] = React.useState([]);
+  const [pmRecapGlobalPlansBusy, setPmRecapGlobalPlansBusy] = React.useState(false);
 
   const pmIsSuperAdmin = Boolean(props?.isSuperAdmin);
 
@@ -237,7 +239,54 @@ const PmModal = (props) => {
     if (pmMonthlyRecapOpen) return;
     setPmRecapGlobalItems([]);
     setPmRecapGlobalBusy(false);
+    setPmRecapGlobalPlans([]);
+    setPmRecapGlobalPlansBusy(false);
   }, [pmMonthlyRecapOpen]);
+
+  React.useEffect(() => {
+    let alive = true;
+
+    const run = async () => {
+      if (!pmMonthlyRecapOpen) return;
+
+      const month = String(pmMonth || '').trim();
+      if (!/^\d{4}-\d{2}$/.test(month)) return;
+
+      const roleAllZones = !(isManager && !pmIsSuperAdmin && !isViewer);
+      const effectiveZone = roleAllZones ? String(pmRecapZoneFilter || 'ALL').trim() || 'ALL' : String(authZone || '').trim();
+
+      setPmRecapGlobalPlansBusy(true);
+      try {
+        const monthId = await pmEnsureMonthId(month);
+
+        const qs = (() => {
+          if (roleAllZones) {
+            return '';
+          }
+          if (effectiveZone) {
+            return `?zone=${encodeURIComponent(effectiveZone)}`;
+          }
+          return '';
+        })();
+
+        const res = await pmCallJson(`/api/pm/months/${monthId}/global-plans${qs}`, { method: 'GET' });
+        const plans = Array.isArray(res?.plans) ? res.plans : [];
+        if (!alive) return;
+        setPmRecapGlobalPlans(plans);
+      } catch {
+        if (!alive) return;
+        setPmRecapGlobalPlans([]);
+      } finally {
+        if (!alive) return;
+        setPmRecapGlobalPlansBusy(false);
+      }
+    };
+
+    run();
+    return () => {
+      alive = false;
+    };
+  }, [pmMonthlyRecapOpen, pmMonth, pmRecapZoneFilter, isManager, pmIsSuperAdmin, isViewer, authZone]);
 
   const pmTogglePurgeZone = (zone) => {
     const z = String(zone || '').trim();
@@ -365,6 +414,10 @@ const PmModal = (props) => {
 
   const recapZoneOptions = (() => {
     const z = new Set();
+    for (const p of Array.isArray(pmRecapGlobalPlans) ? pmRecapGlobalPlans : []) {
+      const zz = recapNormZone(p?.zone);
+      if (zz) z.add(zz);
+    }
     for (const s of Array.isArray(allSites) ? allSites : []) {
       const zz = recapNormZone(s?.zone || s?.region);
       if (zz) z.add(zz);
@@ -375,6 +428,21 @@ const PmModal = (props) => {
     }
     const arr = Array.from(z.values()).sort((a, b) => String(a).localeCompare(String(b)));
     return ['ALL', ...arr];
+  })();
+
+  const recapSiteInfoAllByCode = (() => {
+    const map = new Map();
+    for (const s of Array.isArray(allSites) ? allSites : []) {
+      const siteCode = recapNormSiteCode(s?.idSite || s?.siteId || s?.siteCode);
+      if (!siteCode) continue;
+      map.set(siteCode, {
+        siteCode,
+        siteName: String(s?.nameSite || s?.siteName || '').trim(),
+        zone: recapNormZone(s?.zone || s?.region),
+        technician: String(s?.technician || s?.technicianName || '').trim()
+      });
+    }
+    return map;
   })();
 
   const recapIsItemInScope = (it) => {
@@ -650,11 +718,11 @@ const PmModal = (props) => {
     }
 
     for (const [siteCode, v] of bySite.entries()) {
-      const info = recapSiteInfoByCode.get(siteCode) || {};
+      const info = recapSiteInfoAllByCode.get(siteCode) || recapSiteInfoByCode.get(siteCode) || {};
       const sample = v.sample || {};
       const zone = recapNormZone(info?.zone || sample?.zone || sample?.region);
       const siteName = String(info?.siteName || sample?.siteName || '').trim();
-      const technician = String(info?.technician || '').trim();
+      const technician = String(sample?.assignedTo || info?.technician || '').trim();
 
       const uniqTickets = Array.from(new Set(v.tickets.filter(Boolean))).sort((a, b) => a.localeCompare(b));
       const uniqDates = Array.from(new Set(v.dates.filter(Boolean))).sort((a, b) => a.localeCompare(b));
@@ -684,32 +752,123 @@ const PmModal = (props) => {
     return Math.round((n / d) * 1000) / 10;
   };
 
+  const [pmRecapTrendPick, setPmRecapTrendPick] = React.useState(null);
+
+  const recapDonut = ({ percent, main, sub }) => {
+    const p = Math.max(0, Math.min(100, Number(percent || 0)));
+    const r = 18;
+    const c = 2 * Math.PI * r;
+    const dash = (p / 100) * c;
+    const gap = c - dash;
+    return (
+      <div className="flex items-center gap-3">
+        <svg width="46" height="46" viewBox="0 0 46 46" className="flex-shrink-0">
+          <circle cx="23" cy="23" r={r} fill="none" stroke="#e2e8f0" strokeWidth="6" />
+          <circle
+            cx="23"
+            cy="23"
+            r={r}
+            fill="none"
+            stroke="#4f46e5"
+            strokeWidth="6"
+            strokeLinecap="round"
+            strokeDasharray={`${dash} ${gap}`}
+            transform="rotate(-90 23 23)"
+          />
+          <text x="23" y="26" textAnchor="middle" fontSize="10" fontWeight="700" fill="#0f172a">
+            {Math.round(p)}%
+          </text>
+        </svg>
+        <div className="min-w-0">
+          <div className="text-xs font-semibold text-slate-900 truncate">{main}</div>
+          {sub ? <div className="text-[11px] text-slate-600 truncate">{sub}</div> : null}
+        </div>
+      </div>
+    );
+  };
+
   const recapTrends = (() => {
     const month = recapMonth;
-    if (!month) return { days: [], nonAssigned: [], approved: [], rejected: [] };
+    if (!month) {
+      return {
+        days: [],
+        executed: [],
+        reprogAssigned: [],
+        reprogRejected: [],
+        byDay: new Map()
+      };
+    }
     const [y, m] = month.split('-').map((x) => Number(x));
-    if (!Number.isFinite(y) || !Number.isFinite(m)) return { days: [], nonAssigned: [], approved: [], rejected: [] };
+    if (!Number.isFinite(y) || !Number.isFinite(m)) {
+      return {
+        days: [],
+        executed: [],
+        reprogAssigned: [],
+        reprogRejected: [],
+        byDay: new Map()
+      };
+    }
     const daysInMonth = new Date(y, m, 0).getDate();
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-    const nonAssigned = Array.from({ length: daysInMonth }, () => 0);
-    const approved = Array.from({ length: daysInMonth }, () => 0);
-    const rejected = Array.from({ length: daysInMonth }, () => 0);
+    const executed = Array.from({ length: daysInMonth }, () => 0);
+    const reprogAssigned = Array.from({ length: daysInMonth }, () => 0);
+    const reprogRejected = Array.from({ length: daysInMonth }, () => 0);
+    const byDay = new Map();
+
+    const isExecuted = (state) => {
+      const st = String(state || '').trim().toLowerCase();
+      return st === 'closed complete' || st === 'awaiting closure' || st === 'work in progress';
+    };
+    const isAssigned = (state) => String(state || '').trim().toLowerCase() === 'assigned';
+    const isReprogAny = (it) => {
+      const rs = recapEffectiveReprogStatus(it);
+      return rs === 'APPROVED' || rs === 'REJECTED';
+    };
 
     for (const it of recapFullItemsAll) {
       const sched = String(it?.scheduledWoDate || '').slice(0, 10);
       const day = Number(String(sched || '').slice(8, 10));
       if (!Number.isFinite(day) || day < 1 || day > daysInMonth) continue;
-      const st = String(it?.state || '').trim().toLowerCase();
-      if (st !== 'assigned') nonAssigned[day - 1] += 1;
+
+      const d = byDay.get(day) || {
+        total: 0,
+        executed: 0,
+        assigned: 0,
+        reprogAny: 0,
+        reprogRejected: 0,
+        reprogApproved: 0
+      };
+      d.total += 1;
+
+      if (isExecuted(it?.state)) {
+        d.executed += 1;
+        executed[day - 1] += 1;
+      }
+
+      if (isAssigned(it?.state)) {
+        d.assigned += 1;
+        if (isReprogAny(it)) {
+          d.reprogAny += 1;
+          reprogAssigned[day - 1] += 1;
+        }
+      }
+
       const rs = recapEffectiveReprogStatus(it);
-      if (rs === 'APPROVED') approved[day - 1] += 1;
-      if (rs === 'REJECTED') rejected[day - 1] += 1;
+      if (rs === 'REJECTED') {
+        d.reprogRejected += 1;
+        reprogRejected[day - 1] += 1;
+      }
+      if (rs === 'APPROVED') {
+        d.reprogApproved += 1;
+      }
+
+      byDay.set(day, d);
     }
 
-    return { days, nonAssigned, approved, rejected };
+    return { days, executed, reprogAssigned, reprogRejected, byDay };
   })();
 
-  const RecapLineChart = ({ title, color, values }) => {
+  const RecapLineChart = ({ title, color, values, onPickDay, pickedDay }) => {
     const vals = Array.isArray(values) ? values : [];
     const w = 880;
     const h = 180;
@@ -1456,11 +1615,81 @@ const PmModal = (props) => {
                           <CalendarCheck2 size={16} className="text-slate-700" />
                           <div>Section 3 — Tendances (tickets)</div>
                         </div>
-                        <div className="p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-                          <RecapLineChart title="Tickets non-Assigned (par jour planifié)" color="#059669" values={recapTrends.nonAssigned} />
-                          <div className="grid grid-cols-1 gap-4">
-                            <RecapLineChart title="Reprogrammations APPROVED (par jour planifié)" color="#0284c7" values={recapTrends.approved} />
-                            <RecapLineChart title="Reprogrammations REJECTED (par jour planifié)" color="#e11d48" values={recapTrends.rejected} />
+                        <div className="p-4 space-y-4">
+                          {(() => {
+                            const pick = pmRecapTrendPick || null;
+                            const day = Number(pick?.day || 0);
+                            const kind = String(pick?.kind || '').trim();
+                            if (!day || !kind) return null;
+                            const d = recapTrends?.byDay?.get(day) || null;
+                            if (!d) return null;
+
+                            if (kind === 'executed') {
+                              const pct = recapRatio(d.executed, d.total);
+                              return (
+                                <div className="border rounded-xl p-3 bg-indigo-50 border-indigo-200">
+                                  {recapDonut({
+                                    percent: pct,
+                                    main: `Jour ${day} — Taux exécution` ,
+                                    sub: `${Number(d.executed || 0)} exécutés / ${Number(d.total || 0)} tickets planifiés`
+                                  })}
+                                </div>
+                              );
+                            }
+
+                            if (kind === 'reprog_assigned') {
+                              const pct = recapRatio(d.reprogAny, d.assigned);
+                              return (
+                                <div className="border rounded-xl p-3 bg-indigo-50 border-indigo-200">
+                                  {recapDonut({
+                                    percent: pct,
+                                    main: `Jour ${day} — Taux reprogrammation (Assigned)` ,
+                                    sub: `${Number(d.reprogAny || 0)} reprog (A/R) / ${Number(d.assigned || 0)} tickets Assigned`
+                                  })}
+                                </div>
+                              );
+                            }
+
+                            if (kind === 'reprog_rejected') {
+                              const den = Number(d.reprogApproved || 0) + Number(d.reprogRejected || 0);
+                              const pct = recapRatio(d.reprogRejected, den);
+                              return (
+                                <div className="border rounded-xl p-3 bg-indigo-50 border-indigo-200">
+                                  {recapDonut({
+                                    percent: pct,
+                                    main: `Jour ${day} — Part REJECTED (pénalisée)` ,
+                                    sub: `${Number(d.reprogRejected || 0)} rejetés / ${Number(den || 0)} (approved+rejected)`
+                                  })}
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
+
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <RecapLineChart
+                              title="Nombre de tickets FullPMWO exécutés (Closed Complete / Awaiting Closure / Work in progress) — par jour planifié"
+                              color="#059669"
+                              values={recapTrends.executed}
+                              pickedDay={pmRecapTrendPick?.kind === 'executed' ? pmRecapTrendPick?.day : null}
+                              onPickDay={(day) => setPmRecapTrendPick({ kind: 'executed', day })}
+                            />
+                            <div className="grid grid-cols-1 gap-4">
+                              <RecapLineChart
+                                title="Nombre de reprogrammations FullPMWO (Approved + Rejected) sur tickets Assigned — par jour planifié"
+                                color="#0284c7"
+                                values={recapTrends.reprogAssigned}
+                                pickedDay={pmRecapTrendPick?.kind === 'reprog_assigned' ? pmRecapTrendPick?.day : null}
+                                onPickDay={(day) => setPmRecapTrendPick({ kind: 'reprog_assigned', day })}
+                              />
+                              <RecapLineChart
+                                title="FullPMWO reprogrammés REJECTED (rejetés et pénalisés) — par jour planifié"
+                                color="#e11d48"
+                                values={recapTrends.reprogRejected}
+                                pickedDay={pmRecapTrendPick?.kind === 'reprog_rejected' ? pmRecapTrendPick?.day : null}
+                                onPickDay={(day) => setPmRecapTrendPick({ kind: 'reprog_rejected', day })}
+                              />
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -2372,23 +2601,31 @@ const PmModal = (props) => {
                                   </span>
                                 </td>
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{sched || '-'}</td>
-                                <td className="px-3 py-2 text-slate-900 max-w-[260px] whitespace-pre-line leading-tight break-words" title={siteLabel || ''}>{siteLabel || '-'}</td>
+                                <td
+                                  className="px-3 py-2 text-slate-900 max-w-[260px] whitespace-pre-line leading-tight break-words"
+                                  title={siteLabel || ''}
+                                >
+                                  {siteLabel || '-'}
+                                </td>
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.zone || '-'}</td>
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.maintenanceType || '-'}</td>
-                                <td className="px-3 py-2 text-slate-900 max-w-[200px] truncate" title={String(it?.assignedTo || '')}>{it?.assignedTo || '-'}</td>
+                                <td className="px-3 py-2 text-slate-900 max-w-[200px] truncate" title={String(it?.assignedTo || '')}>
+                                  {it?.assignedTo || '-'}
+                                </td>
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{closed || '-'}</td>
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{reprogStatus || '-'}</td>
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{reprog || '-'}</td>
-                                <td className="px-3 py-2 text-slate-900 max-w-[260px] truncate" title={reason || ''}>{reason || '-'}</td>
+                                <td className="px-3 py-2 text-slate-900 max-w-[260px] truncate" title={reason}>
+                                  {reason || '-'}
+                                </td>
                                 {(isAdmin || isManager) && (
-                                  <td className="px-3 py-2 text-gray-800 whitespace-nowrap">
+                                  <td className="px-3 py-2 whitespace-nowrap">
                                     <button
                                       type="button"
                                       onClick={() => handlePmOpenReprog(it)}
-                                      className="bg-indigo-700 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-800 text-xs font-semibold"
-                                      disabled={pmBusy}
+                                      className="px-3 py-1.5 rounded-lg bg-indigo-700 text-white text-xs font-semibold hover:bg-indigo-800"
                                     >
-                                      Reprogrammer
+                                      Reprog
                                     </button>
                                   </td>
                                 )}
@@ -2400,107 +2637,6 @@ const PmModal = (props) => {
                     </table>
                   </div>
                 </div>
-
-                {pmReprogOpen && pmReprogItem && (
-                  <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
-                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full overflow-hidden">
-                      <div className="flex justify-between items-center p-4 border-b bg-indigo-800 text-white">
-                        <div className="font-bold">Reprogrammation (PM)</div>
-                        <button
-                          onClick={() => {
-                            setPmReprogOpen(false);
-                            setPmReprogItem(null);
-                            setPmReprogForm({ date: '', status: '', reason: '' });
-                            setPmReprogError('');
-                          }}
-                          className="hover:bg-indigo-900 p-2 rounded"
-                        >
-                          <X size={18} />
-                        </button>
-                      </div>
-
-                      <div className="p-4 space-y-3">
-                        <div className="text-sm text-gray-700">
-                          <div className="font-semibold text-gray-900">Ticket: {pmReprogItem?.number || '-'}</div>
-                          <div className="text-xs text-gray-600">Site: {pmReprogItem?.siteName || '-'} {pmReprogItem?.siteCode ? `(${pmReprogItem.siteCode})` : ''}</div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div className="flex flex-col">
-                            <label className="text-xs text-gray-600 mb-1">Date de reprogrammation</label>
-                            <input
-                              type="date"
-                              value={pmReprogForm.date}
-                              onChange={(e) => {
-                                setPmReprogForm((prev) => ({ ...(prev || {}), date: e.target.value }));
-                                setPmReprogError('');
-                              }}
-                              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                            />
-                          </div>
-                          <div className="flex flex-col">
-                            <label className="text-xs text-gray-600 mb-1">Statut</label>
-                            <select
-                              value={pmReprogForm.status}
-                              onChange={(e) => {
-                                setPmReprogForm((prev) => ({ ...(prev || {}), status: e.target.value }));
-                                setPmReprogError('');
-                              }}
-                              className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
-                            >
-                              <option value="">(auto)</option>
-                              <option value="PENDING">En attente</option>
-                              <option value="APPROVED">Approuvée</option>
-                              <option value="REJECTED">Rejetée</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col">
-                          <label className="text-xs text-gray-600 mb-1">Raison / commentaires</label>
-                          <textarea
-                            value={pmReprogForm.reason}
-                            onChange={(e) => {
-                              setPmReprogForm((prev) => ({ ...(prev || {}), reason: e.target.value }));
-                              setPmReprogError('');
-                            }}
-                            rows={3}
-                            className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                            placeholder="Ex: demande client / indisponibilité site / pièces…"
-                          />
-                        </div>
-
-                        {pmReprogError && (
-                          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">
-                            {pmReprogError}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="p-4 border-t bg-white flex flex-col sm:flex-row sm:justify-end gap-2">
-                        <button
-                          onClick={() => {
-                            setPmReprogOpen(false);
-                            setPmReprogItem(null);
-                            setPmReprogForm({ date: '', status: '', reason: '' });
-                            setPmReprogError('');
-                          }}
-                          className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400 font-semibold"
-                          disabled={pmReprogSaving}
-                        >
-                          Annuler
-                        </button>
-                        <button
-                          onClick={handlePmSaveReprog}
-                          className="bg-indigo-800 text-white px-4 py-2 rounded-lg hover:bg-indigo-900 font-semibold"
-                          disabled={pmReprogSaving}
-                        >
-                          Enregistrer
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 <div className="border border-gray-200 rounded-xl overflow-hidden">
                   <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-3">
