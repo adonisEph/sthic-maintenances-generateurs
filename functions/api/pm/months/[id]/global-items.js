@@ -1,6 +1,14 @@
 import { ensureAdminUser } from '../../../_utils/db.js';
 import { json, requireAuth, requireAdmin, isSuperAdmin, userZone } from '../../../_utils/http.js';
 
+function normZone(v) {
+  return String(v || '')
+    .replace(/\u00A0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+
 function requireAdminOrViewer(data) {
   const role = String(data?.user?.role || '');
   return role === 'admin' || role === 'viewer' || role === 'manager';
@@ -48,7 +56,7 @@ export async function onRequestGet({ request, env, data, params }) {
     const url = new URL(request.url);
     const sp = url.searchParams;
 
-    const qZone = String(sp.get('zone') || '').trim();
+    const qZone = normZone(sp.get('zone'));
     const qPlanId = String(sp.get('planId') || '').trim();
 
     const zones = (() => {
@@ -56,7 +64,7 @@ export async function onRequestGet({ request, env, data, params }) {
         if (qZone) return [qZone];
         return null; // all zones
       }
-      return [userZone(data)];
+      return [normZone(userZone(data))];
     })();
 
     const where = ['month_id = ?'];
@@ -68,7 +76,7 @@ export async function onRequestGet({ request, env, data, params }) {
     }
 
     if (Array.isArray(zones) && zones.length > 0) {
-      where.push(`zone IN (${zones.map(() => '?').join(', ')})`);
+      where.push(`UPPER(TRIM(REPLACE(zone, '\u00A0', ' '))) IN (${zones.map(() => '?').join(', ')})`);
       bind.push(...zones);
     }
 
