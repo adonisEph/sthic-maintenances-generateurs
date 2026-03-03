@@ -47,6 +47,10 @@ const APP_VERSION_FORCE_AFTER_DAYS = 0;
 const DAILY_NH_UPDATE_STORAGE_KEY = 'gma_daily_nh_update_ymd';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
 const SPLASH_MIN_MS = 4250;
+const DISABLE_PUSH_NOTIFICATIONS = true;
+const DISABLE_NOTIFICATIONS_FEATURE = true;
+const DISABLE_PRESENCE_FEATURE = false;
+const DISABLE_META_VERSION_POLLING = true;
 
 const GeneratorMaintenanceApp = () => {
   const storage = useStorage();
@@ -139,6 +143,7 @@ const GeneratorMaintenanceApp = () => {
   const [accountSaving, setAccountSaving] = useState(false);
   const [userFormId, setUserFormId] = useState(null);
   const siteFormAnchorRef = useRef(null);
+  const presenceLastPingAtRef = useRef(0);
   const [userForm, setUserForm] = useState({ email: '', role: 'viewer', zone: 'BZV/POOL', technicianName: '', password: '' });
   const [userFormError, setUserFormError] = useState('');
   const [loginEmail, setLoginEmail] = useState('');
@@ -389,7 +394,17 @@ const GeneratorMaintenanceApp = () => {
     }
   };
 
+
+
   const loadNotificationsUnreadCount = async () => {
+    if (DISABLE_NOTIFICATIONS_FEATURE) {
+      try {
+        setNotificationsUnreadCount(0);
+        await safeSetAppBadge(0);
+      } catch {
+      }
+      return 0;
+    }
     try {
       const res = await apiFetchJson('/api/notifications/unread-count', { method: 'GET' });
       const c = Number(res?.unreadCount || 0);
@@ -417,6 +432,15 @@ const GeneratorMaintenanceApp = () => {
   };
 
   const ensurePushSubscription = async () => {
+
+    if (DISABLE_PUSH_NOTIFICATIONS) {
+      try {
+        setPushEnabled(false);
+      } catch {
+      }
+      return false;
+    }
+
     if (!('serviceWorker' in navigator)) return false;
     if (!('PushManager' in window)) return false;
     if (!('Notification' in window)) return false;
@@ -444,6 +468,15 @@ const GeneratorMaintenanceApp = () => {
   };
 
   const requestPushPermissionAndSubscribe = async () => {
+    
+    if (DISABLE_PUSH_NOTIFICATIONS) {
+      try {
+        setPushEnabled(false);
+      } catch {
+      }
+      return false;
+    }
+
     if (!('Notification' in window)) return false;
     if (!('serviceWorker' in navigator)) return false;
     try {
@@ -974,6 +1007,15 @@ const GeneratorMaintenanceApp = () => {
 
   useEffect(() => {
     if (!authUser?.id) return;
+    
+    if (DISABLE_NOTIFICATIONS_FEATURE || DISABLE_PUSH_NOTIFICATIONS) {
+      try {
+        setPushEnabled(false);
+        setNotificationsUnreadCount(0);
+      } catch {
+      }
+      return;
+    }
 
     let disposed = false;
     let intervalId = null;
@@ -3085,6 +3127,12 @@ const GeneratorMaintenanceApp = () => {
   };
 
   const pingPresence = async (activity) => {
+    if (DISABLE_PRESENCE_FEATURE) return;
+
+    const now = Date.now();
+    if (now - (presenceLastPingAtRef.current || 0) < 60 * 1000) return; // 60s
+    presenceLastPingAtRef.current = now;
+    
     await apiFetchJson('/api/presence/ping', {
       method: 'POST',
       body: JSON.stringify({ tabId, activity: String(activity || '') })
@@ -4638,7 +4686,7 @@ const GeneratorMaintenanceApp = () => {
       })();
     };
     tick();
-    const interval = setInterval(tick, 5000);
+    const interval = setInterval(tick, 60000);
     return () => {
       clearInterval(interval);
     };
@@ -4658,7 +4706,7 @@ const GeneratorMaintenanceApp = () => {
     };
 
     refresh();
-    const interval = setInterval(refresh, 2000);
+    const interval = setInterval(refresh, 10000);
     return () => {
       clearInterval(interval);
     };
@@ -5041,6 +5089,8 @@ const GeneratorMaintenanceApp = () => {
 
   useEffect(() => {
     if (!authUser?.id) return;
+
+    if (DISABLE_META_VERSION_POLLING) return;
 
     let isActive = true;
     let isRefreshing = false;
@@ -5830,7 +5880,7 @@ return (
           }}
           notificationsUnreadCount={notificationsUnreadCount}
           pushEnabled={pushEnabled}
-          onEnablePush={requestPushPermissionAndSubscribe}
+          onEnablePush={DISABLE_PUSH_NOTIFICATIONS ? null : requestPushPermissionAndSubscribe}
           accountError={accountError}
           accountSaving={accountSaving}
           onClose={() => {

@@ -50,30 +50,12 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/sw.js')
-      .then((registration) => {
-        const notifyUpdateReady = () => {
-          try {
-            window.dispatchEvent(new CustomEvent('pwa:update', { detail: { registration } }));
-          } catch {
-          }
-        };
-
-        if (registration.waiting) {
-          notifyUpdateReady();
-        }
-
-        registration.addEventListener('updatefound', () => {
-          const installing = registration.installing;
-          if (!installing) return;
-          installing.addEventListener('statechange', () => {
-            if (installing.state === 'installed' && navigator.serviceWorker.controller) {
-              notifyUpdateReady();
-            }
-          });
-        });
-      })
-      .catch(() => {});
+    try {
+      navigator.serviceWorker
+        .getRegistrations()
+        .then((regs) => Promise.all((Array.isArray(regs) ? regs : []).map((r) => r.unregister())))
+        .catch(() => {});
+    } catch {
+    }
   });
 }
