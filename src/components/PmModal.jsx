@@ -1016,6 +1016,21 @@ const PmModal = (props) => {
                 .replace(/[^a-z0-9]+/g, ' ')
                 .replace(/\s+/g, ' ')
                 .trim();
+
+            const normalizeFilterState = (state) => {
+              const raw = String(state || '').trim();
+              if (!raw) return 'all';
+              const v = norm(raw);
+              if (!v || v === 'all') return 'all';
+              const tokens = new Set(v.split(' ').filter(Boolean));
+              if (v === 'closed' || v === 'closed complete' || tokens.has('closed')) return 'closed';
+              if (v === 'awaiting' || v === 'awaiting closure' || tokens.has('awaiting')) return 'awaiting';
+              if (tokens.has('wip') || v.includes('work in progress') || v.includes('in progress') || (tokens.has('work') && tokens.has('progress'))) return 'wip';
+              if (v === 'assigned' || tokens.has('assigned')) return 'assigned';
+              return 'all';
+            };
+
+            const effectivePmFilterState = normalizeFilterState(pmFilterState);
             const bucketForState = (state) => {
               const v = norm(state);
               if (!v) return 'assigned';
@@ -1136,8 +1151,8 @@ const PmModal = (props) => {
             });
 
             const tableFiltered = baseFiltered.filter((it) => {
-              if (pmFilterState && pmFilterState !== 'all') {
-                if (bucketForState(it?.state) !== pmFilterState) return false;
+              if (effectivePmFilterState && effectivePmFilterState !== 'all') {
+                if (bucketForState(it?.state) !== effectivePmFilterState) return false;
               }
               return true;
             });
@@ -1449,8 +1464,8 @@ const PmModal = (props) => {
                       <select
                         id="pm_filter_state"
                         name="pmFilterState"
-                        value={pmFilterState}
-                        onChange={(e) => setPmFilterState(String(e.target.value || 'all'))}
+                        value={effectivePmFilterState}
+                        onChange={(e) => setPmFilterState(normalizeFilterState(e.target.value || 'all'))}
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                         disabled={pmBusy}
                       >

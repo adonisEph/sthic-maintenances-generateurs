@@ -86,7 +86,7 @@ export async function onRequestPost({ request, env, data, params }) {
       });
     }
 
-    const CHUNK_SIZE = 200;
+    const CHUNK_SIZE = 100;
     const chunks = chunkArray(cleanedRows, CHUNK_SIZE);
 
     const insertNocRowStmt = env.DB.prepare(
@@ -104,7 +104,9 @@ export async function onRequestPost({ request, env, data, params }) {
 
     const runBatch = async (stmts) => {
       if (!Array.isArray(stmts) || stmts.length === 0) return;
-      const MAX = 200;
+      // IMPORTANT: D1/SQLite has a bound-variables limit; with batch() the limit can be hit across the whole batch.
+      // Keep this conservative to avoid "too many SQL variables" in production.
+      const MAX = 40;
       for (let i = 0; i < stmts.length; i += MAX) {
         // eslint-disable-next-line no-await-in-loop
         await env.DB.batch(stmts.slice(i, i + MAX));
