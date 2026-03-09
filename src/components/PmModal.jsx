@@ -1425,8 +1425,10 @@ const PmModal = (props) => {
                 <div className="mb-5 bg-slate-50 border border-slate-200 rounded-lg p-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1">État</label>
+                      <label htmlFor="pm_filter_state" className="block text-xs font-semibold text-gray-700 mb-1">État</label>
                       <select
+                        id="pm_filter_state"
+                        name="pmFilterState"
                         value={pmFilterState}
                         onChange={(e) => setPmFilterState(String(e.target.value || 'all'))}
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
@@ -1441,8 +1443,10 @@ const PmModal = (props) => {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1">Type</label>
+                      <label htmlFor="pm_filter_type" className="block text-xs font-semibold text-gray-700 mb-1">Type</label>
                       <select
+                        id="pm_filter_type"
+                        name="pmFilterType"
                         value={pmFilterType}
                         onChange={(e) => setPmFilterType(String(e.target.value || 'all'))}
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"

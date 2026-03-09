@@ -80,8 +80,18 @@ export async function onRequestPost({ request, env, data, params }) {
       });
     }
 
-    const CHUNK_SIZE = 10;
+    const CHUNK_SIZE = 50;
     const chunks = chunkArray(cleanedRows, CHUNK_SIZE);
+
+    const insertNocRowStmt = env.DB.prepare(
+      'INSERT INTO pm_noc_rows (id, import_id, month_id, number, state, closed_at) VALUES (?, ?, ?, ?, ?, ?)'
+    );
+    const updatePmItemStmt = env.DB.prepare(
+      'UPDATE pm_items SET state = COALESCE(?, state), closed_at = COALESCE(?, closed_at), site_code = COALESCE(NULLIF(TRIM(site_code), \'\'), ?), short_description = COALESCE(NULLIF(TRIM(short_description), \'\'), ?), scheduled_wo_date = COALESCE(NULLIF(TRIM(scheduled_wo_date), \'\'), ?), assigned_to = COALESCE(NULLIF(TRIM(assigned_to), \'\'), ?), created_source = COALESCE(NULLIF(TRIM(created_source), \'\'), \'noc\'), last_noc_import_at = ?, updated_at = ? WHERE month_id = ? AND number = ?'
+    );
+    const updatePmItemScopedStmt = env.DB.prepare(
+      'UPDATE pm_items SET state = COALESCE(?, state), closed_at = COALESCE(?, closed_at), site_code = COALESCE(NULLIF(TRIM(site_code), \'\'), ?), short_description = COALESCE(NULLIF(TRIM(short_description), \'\'), ?), scheduled_wo_date = COALESCE(NULLIF(TRIM(scheduled_wo_date), \'\'), ?), assigned_to = COALESCE(NULLIF(TRIM(assigned_to), \'\'), ?), created_source = COALESCE(NULLIF(TRIM(created_source), \'\'), \'noc\'), last_noc_import_at = ?, updated_at = ? WHERE month_id = ? AND number = ? AND COALESCE(region, zone, \'\') = ?'
+    );
 
     for (const chunk of chunks) {
       const numbers = chunk.map((r) => r.number);
@@ -196,45 +206,29 @@ export async function onRequestPost({ request, env, data, params }) {
         }
       }
 
-      const insertValues = chunk.map(() => '(?, ?, ?, ?, ?, ?)').join(',');
-      const insertArgs = [];
       for (const r of chunk) {
-        insertArgs.push(newId(), importId, monthId, r.number, r.state, r.closedAt);
-      }
-      await env.DB.prepare(
-        `INSERT INTO pm_noc_rows (id, import_id, month_id, number, state, closed_at) VALUES ${insertValues}`
-      )
-        .bind(...insertArgs)
-        .run();
-
-      const updValues = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(',');
-      const updArgs = [];
-      for (const r of chunk) {
-        updArgs.push(r.number, r.state, r.closedAt, r.siteCode, r.shortDescription, r.scheduledWoDate, r.assignedTo);
+        await insertNocRowStmt.bind(newId(), importId, monthId, r.number, r.state, r.closedAt).run();
       }
 
-      const updSql =
-        `WITH upd(number, state, closed_at, site_code, short_description, scheduled_wo_date, assigned_to) AS (VALUES ${updValues})\n` +
-        ` UPDATE pm_items\n` +
-        ` SET state = COALESCE((SELECT state FROM upd WHERE upd.number = pm_items.number), state),\n` +
-        `     closed_at = COALESCE((SELECT closed_at FROM upd WHERE upd.number = pm_items.number), closed_at),\n` +
-        `     site_code = COALESCE(NULLIF(TRIM(pm_items.site_code), ''), (SELECT site_code FROM upd WHERE upd.number = pm_items.number)),\n` +
-        `     short_description = COALESCE(NULLIF(TRIM(pm_items.short_description), ''), (SELECT short_description FROM upd WHERE upd.number = pm_items.number)),\n` +
-        `     scheduled_wo_date = COALESCE(NULLIF(TRIM(pm_items.scheduled_wo_date), ''), (SELECT scheduled_wo_date FROM upd WHERE upd.number = pm_items.number)),\n` +
-        `     assigned_to = COALESCE(NULLIF(TRIM(pm_items.assigned_to), ''), (SELECT assigned_to FROM upd WHERE upd.number = pm_items.number)),\n` +
-        `     created_source = COALESCE(NULLIF(TRIM(pm_items.created_source), ''), 'noc'),\n` +
-        `     last_noc_import_at = ?,\n` +
-        `     updated_at = ?\n` +
-        ` WHERE month_id = ? AND number IN (SELECT number FROM upd)` +
-        (scopeZone ? " AND COALESCE(region, zone, '') = ?" : '');
-
-      const finalArgs = scopeZone
-        ? [...updArgs, now, now, monthId, scopeZone]
-        : [...updArgs, now, now, monthId];
-
-      await env.DB.prepare(updSql)
-        .bind(...finalArgs)
-        .run();
+      for (const r of chunk) {
+        const args = [
+          r.state,
+          r.closedAt,
+          r.siteCode,
+          r.shortDescription,
+          r.scheduledWoDate,
+          r.assignedTo,
+          now,
+          now,
+          monthId,
+          r.number
+        ];
+        if (scopeZone) {
+          await updatePmItemScopedStmt.bind(...args, scopeZone).run();
+        } else {
+          await updatePmItemStmt.bind(...args).run();
+        }
+      }
     }
 
     await env.DB.prepare('UPDATE pm_months SET updated_at = ? WHERE id = ?').bind(now, monthId).run();
