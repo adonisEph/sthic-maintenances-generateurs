@@ -1462,8 +1462,10 @@ const PmModal = (props) => {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1">Zone</label>
+                      <label htmlFor="pm_filter_zone" className="block text-xs font-semibold text-gray-700 mb-1">Zone</label>
                       <select
+                        id="pm_filter_zone"
+                        name="pmFilterZone"
                         value={pmFilterZone}
                         onChange={(e) => setPmFilterZone(String(e.target.value || 'all'))}
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
@@ -1479,8 +1481,10 @@ const PmModal = (props) => {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1">Recherche</label>
+                      <label htmlFor="pm_filter_search" className="block text-xs font-semibold text-gray-700 mb-1">Recherche</label>
                       <input
+                        id="pm_filter_search"
+                        name="pmSearch"
                         value={pmSearch}
                         onChange={(e) => setPmSearch(e.target.value)}
                         placeholder="Ticket, site, zone, technicien…"
@@ -1490,8 +1494,10 @@ const PmModal = (props) => {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1">Du</label>
+                      <label htmlFor="pm_filter_from" className="block text-xs font-semibold text-gray-700 mb-1">Du</label>
                       <input
+                        id="pm_filter_from"
+                        name="pmFilterFrom"
                         type="date"
                         value={pmFilterFrom}
                         onChange={(e) => setPmFilterFrom(String(e.target.value || ''))}
@@ -1501,8 +1507,10 @@ const PmModal = (props) => {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1">Au</label>
+                      <label htmlFor="pm_filter_to" className="block text-xs font-semibold text-gray-700 mb-1">Au</label>
                       <input
+                        id="pm_filter_to"
+                        name="pmFilterTo"
                         type="date"
                         value={pmFilterTo}
                         onChange={(e) => setPmFilterTo(String(e.target.value || ''))}
@@ -1512,8 +1520,10 @@ const PmModal = (props) => {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1">Reprogrammation</label>
+                      <label htmlFor="pm_filter_reprog" className="block text-xs font-semibold text-gray-700 mb-1">Reprogrammation</label>
                       <select
+                        id="pm_filter_reprog"
+                        name="pmFilterReprog"
                         value={pmFilterReprog}
                         onChange={(e) => setPmFilterReprog(String(e.target.value || 'all'))}
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
@@ -1528,8 +1538,10 @@ const PmModal = (props) => {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1 whitespace-nowrap">Date planifiée du jour</label>
+                      <label htmlFor="pm_filter_planned_day" className="block text-xs font-semibold text-gray-700 mb-1 whitespace-nowrap">Date planifiée du jour</label>
                       <input
+                        id="pm_filter_planned_day"
+                        name="pmFilterPlannedDay"
                         type="date"
                         value={pmFilterPlannedDay}
                         onChange={(e) => {

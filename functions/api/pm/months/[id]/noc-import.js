@@ -92,6 +92,9 @@ export async function onRequestPost({ request, env, data, params }) {
     const updatePmItemScopedStmt = env.DB.prepare(
       'UPDATE pm_items SET state = COALESCE(?, state), closed_at = COALESCE(?, closed_at), site_code = COALESCE(NULLIF(TRIM(site_code), \'\'), ?), short_description = COALESCE(NULLIF(TRIM(short_description), \'\'), ?), scheduled_wo_date = COALESCE(NULLIF(TRIM(scheduled_wo_date), \'\'), ?), assigned_to = COALESCE(NULLIF(TRIM(assigned_to), \'\'), ?), created_source = COALESCE(NULLIF(TRIM(created_source), \'\'), \'noc\'), last_noc_import_at = ?, updated_at = ? WHERE month_id = ? AND number = ? AND COALESCE(region, zone, \'\') = ?'
     );
+    const insertPmItemStmt = env.DB.prepare(
+      'INSERT OR IGNORE INTO pm_items (id, month_id, number, site_code, site_name, region, zone, short_description, maintenance_type, scheduled_wo_date, assigned_to, created_source, state, closed_at, last_noc_import_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    );
 
     for (const chunk of chunks) {
       const numbers = chunk.map((r) => r.number);
@@ -132,51 +135,48 @@ export async function onRequestPost({ request, env, data, params }) {
         );
         const siteMap = new Map();
         if (siteCodes.length > 0) {
-          const inSites = siteCodes.map(() => '?').join(',');
-          const stmt = env.DB.prepare(
-            `SELECT id_site, name_site, technician, zone FROM sites WHERE id_site IN (${inSites})`
-          ).bind(...siteCodes);
-          const resSites = await stmt.all();
-          for (const s of resSites?.results || []) {
-            const k = String(s?.id_site || '').trim();
-            if (!k) continue;
-            siteMap.set(k, s);
+          const SITE_CHUNK = 100;
+          const siteChunks = chunkArray(siteCodes, SITE_CHUNK);
+          for (const sc of siteChunks) {
+            const inSites = sc.map(() => '?').join(',');
+            const stmt = env.DB.prepare(
+              `SELECT id_site, name_site, technician, zone FROM sites WHERE id_site IN (${inSites})`
+            ).bind(...sc);
+            const resSites = await stmt.all();
+            for (const s of resSites?.results || []) {
+              const k = String(s?.id_site || '').trim();
+              if (!k) continue;
+              siteMap.set(k, s);
+            }
           }
         }
 
-        const insertPmValues = missingChunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(',');
-        const insertPmArgs = [];
         for (const r of missingChunk) {
           const code = String(r?.siteCode || '').trim();
           const s = code ? siteMap.get(code) : null;
           const z = scopeZone || String(s?.zone || '').trim() || null;
-          insertPmArgs.push(
-            newId(),
-            monthId,
-            r.number,
-            code || null,
-            s?.name_site ? String(s.name_site) : null,
-            z,
-            z,
-            r.shortDescription,
-            'FullPMWO',
-            r.scheduledWoDate,
-            r.assignedTo || (s?.technician ? String(s.technician) : null),
-            'noc',
-            r.state || 'Assigned',
-            r.closedAt,
-            now,
-            now,
-            now
-          );
+          await insertPmItemStmt
+            .bind(
+              newId(),
+              monthId,
+              r.number,
+              code || null,
+              s?.name_site ? String(s.name_site) : null,
+              z,
+              z,
+              r.shortDescription,
+              'FullPMWO',
+              r.scheduledWoDate,
+              r.assignedTo || (s?.technician ? String(s.technician) : null),
+              'noc',
+              r.state || 'Assigned',
+              r.closedAt,
+              now,
+              now,
+              now
+            )
+            .run();
         }
-
-        const insertPmSql =
-          `INSERT OR IGNORE INTO pm_items (` +
-          `id, month_id, number, site_code, site_name, region, zone, short_description, maintenance_type, scheduled_wo_date, assigned_to, created_source, state, closed_at, last_noc_import_at, created_at, updated_at` +
-          `) VALUES ${insertPmValues}`;
-
-        const res = await env.DB.prepare(insertPmSql).bind(...insertPmArgs).run();
 
         // Vérifie réellement quels tickets manquants ont été créés (INSERT OR IGNORE peut ne rien insérer)
         if (missingChunkNumbers.length > 0) {
