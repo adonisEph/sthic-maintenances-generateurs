@@ -59,7 +59,7 @@ export async function onRequestGet({ request, env, data, params }) {
 
     // Scope zone: super-admin + viewer voit tout, sinon zone du user
     if (!isSuperAdmin(data) && role !== 'viewer') {
-      where.push("COALESCE(region, zone, '') = ?");
+      where.push("TRIM(COALESCE(region, zone, '')) = TRIM(?)");
       bind.push(String(userZone(data) || 'BZV/POOL'));
     }
 
@@ -80,20 +80,16 @@ export async function onRequestGet({ request, env, data, params }) {
     if (state && state !== 'all') {
       const st = String(state || '').trim().toLowerCase();
       if (st === 'closed') {
-        where.push('(state = ? OR state = ?)');
-        bind.push('Closed Complete', 'Closed');
+        where.push("(LOWER(TRIM(state)) = 'closed complete' OR LOWER(TRIM(state)) = 'closed')");
       } else if (st === 'awaiting') {
-        where.push('(state = ? OR state = ?)');
-        bind.push('Awaiting Closure', 'Awaiting');
+        where.push("(LOWER(TRIM(state)) = 'awaiting closure' OR LOWER(TRIM(state)) = 'awaiting')");
       } else if (st === 'wip') {
-        where.push('(state = ? OR state = ?)');
-        bind.push('Work in progress', 'WIP');
+        where.push("(LOWER(TRIM(state)) = 'work in progress' OR LOWER(TRIM(state)) = 'wip' OR LOWER(TRIM(state)) LIKE '%work in progress%' OR LOWER(TRIM(state)) LIKE '%in progress%')");
       } else if (st === 'assigned') {
-        where.push('state = ?');
-        bind.push('Assigned');
+        where.push("LOWER(TRIM(state)) = 'assigned'");
       } else {
-        where.push('state = ?');
-        bind.push(state);
+        where.push('LOWER(TRIM(state)) = ?');
+        bind.push(st);
       }
     }
 
