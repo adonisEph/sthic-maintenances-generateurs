@@ -86,7 +86,7 @@ export async function onRequestPost({ request, env, data, params }) {
       });
     }
 
-    const CHUNK_SIZE = 100;
+    const CHUNK_SIZE = 50;
     const chunks = chunkArray(cleanedRows, CHUNK_SIZE);
 
     const insertNocRowStmt = env.DB.prepare(
@@ -152,7 +152,7 @@ export async function onRequestPost({ request, env, data, params }) {
         );
         const siteMap = new Map();
         if (siteCodes.length > 0) {
-          const SITE_CHUNK = 100;
+          const SITE_CHUNK = 50;
           const siteChunks = chunkArray(siteCodes, SITE_CHUNK);
           for (const sc of siteChunks) {
             const inSites = sc.map(() => '?').join(',');
