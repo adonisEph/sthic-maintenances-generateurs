@@ -38,8 +38,12 @@ export async function onRequestPost({ request, env, data, params }) {
     const rows = Array.isArray(body?.rows) ? body.rows : [];
     const filename = normStr(body?.filename);
 
+    const importId = normStr(body?.importId) || newId();
+    const isFirst = Boolean(body?.isFirst);
+    const isLast = body?.isLast === undefined ? true : Boolean(body?.isLast);
+    const totalRows = Number(body?.totalRows || rows.length || 0);
+
     const now = isoNow();
-    const importId = newId();
 
     const scopeZone = isSuperAdmin(data) ? null : String(userZone(data) || 'BZV/POOL').trim();
 
@@ -50,20 +54,22 @@ export async function onRequestPost({ request, env, data, params }) {
     const missingNumbers = [];
     const notCreatedNumbers = [];
 
-    await env.DB.prepare(
-      'INSERT INTO pm_imports (id, month_id, kind, imported_at, filename, row_count, created_by_user_id, created_by_email) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-    )
-      .bind(
-        importId,
-        monthId,
-        'noc',
-        now,
-        filename,
-        rows.length,
-        data?.user?.id ? String(data.user.id) : null,
-        data?.user?.email ? String(data.user.email) : null
+    if (isFirst) {
+      await env.DB.prepare(
+        'INSERT INTO pm_imports (id, month_id, kind, imported_at, filename, row_count, created_by_user_id, created_by_email) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
       )
-      .run();
+        .bind(
+          importId,
+          monthId,
+          'noc',
+          now,
+          filename,
+          totalRows,
+          data?.user?.id ? String(data.user.id) : null,
+          data?.user?.email ? String(data.user.email) : null
+        )
+        .run();
+    }
 
     const cleanedRows = [];
     for (const r of rows) {
@@ -80,7 +86,7 @@ export async function onRequestPost({ request, env, data, params }) {
       });
     }
 
-    const CHUNK_SIZE = 50;
+    const CHUNK_SIZE = 200;
     const chunks = chunkArray(cleanedRows, CHUNK_SIZE);
 
     const insertNocRowStmt = env.DB.prepare(
@@ -95,6 +101,15 @@ export async function onRequestPost({ request, env, data, params }) {
     const insertPmItemStmt = env.DB.prepare(
       'INSERT OR IGNORE INTO pm_items (id, month_id, number, site_code, site_name, region, zone, short_description, maintenance_type, scheduled_wo_date, assigned_to, created_source, state, closed_at, last_noc_import_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
+
+    const runBatch = async (stmts) => {
+      if (!Array.isArray(stmts) || stmts.length === 0) return;
+      const MAX = 200;
+      for (let i = 0; i < stmts.length; i += MAX) {
+        // eslint-disable-next-line no-await-in-loop
+        await env.DB.batch(stmts.slice(i, i + MAX));
+      }
+    };
 
     for (const chunk of chunks) {
       const numbers = chunk.map((r) => r.number);
@@ -151,12 +166,13 @@ export async function onRequestPost({ request, env, data, params }) {
           }
         }
 
+        const insertStmts = [];
         for (const r of missingChunk) {
           const code = String(r?.siteCode || '').trim();
           const s = code ? siteMap.get(code) : null;
           const z = scopeZone || String(s?.zone || '').trim() || null;
-          await insertPmItemStmt
-            .bind(
+          insertStmts.push(
+            insertPmItemStmt.bind(
               newId(),
               monthId,
               r.number,
@@ -175,8 +191,9 @@ export async function onRequestPost({ request, env, data, params }) {
               now,
               now
             )
-            .run();
+          );
         }
+        await runBatch(insertStmts);
 
         // Vérifie réellement quels tickets manquants ont été créés (INSERT OR IGNORE peut ne rien insérer)
         if (missingChunkNumbers.length > 0) {
@@ -206,11 +223,10 @@ export async function onRequestPost({ request, env, data, params }) {
         }
       }
 
+      const upStmts = [];
       for (const r of chunk) {
-        await insertNocRowStmt.bind(newId(), importId, monthId, r.number, r.state, r.closedAt).run();
-      }
+        upStmts.push(insertNocRowStmt.bind(newId(), importId, monthId, r.number, r.state, r.closedAt));
 
-      for (const r of chunk) {
         const args = [
           r.state,
           r.closedAt,
@@ -223,17 +239,16 @@ export async function onRequestPost({ request, env, data, params }) {
           monthId,
           r.number
         ];
-        if (scopeZone) {
-          await updatePmItemScopedStmt.bind(...args, scopeZone).run();
-        } else {
-          await updatePmItemStmt.bind(...args).run();
-        }
+        if (scopeZone) upStmts.push(updatePmItemScopedStmt.bind(...args, scopeZone));
+        else upStmts.push(updatePmItemStmt.bind(...args));
       }
+      await runBatch(upStmts);
     }
 
-    await env.DB.prepare('UPDATE pm_months SET updated_at = ? WHERE id = ?').bind(now, monthId).run();
-
-    await touchLastUpdatedAt(env);
+    if (isLast) {
+      await env.DB.prepare('UPDATE pm_months SET updated_at = ? WHERE id = ?').bind(now, monthId).run();
+      await touchLastUpdatedAt(env);
+    }
 
     return json(
       {

@@ -261,12 +261,17 @@ const PmModal = (props) => {
   const recapCanOpen = recapIsPastMonth && recapCountAssigned === 0;
 
   const recapBucketForState = (state) => {
-    const v = String(state || '').trim().toLowerCase();
+    const raw = String(state || '').trim().toLowerCase();
+    const v = raw
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
     if (!v) return 'other';
-    if (v === 'closed complete' || v === 'closed' || v.includes('closed')) return 'closed';
-    if (v === 'awaiting closure' || v === 'awaiting' || v.includes('awaiting')) return 'awaiting';
-    if (v === 'wip' || v.includes('work in progress') || v.includes('in progress') || (v.includes('work') && v.includes('progress'))) return 'wip';
-    if (v === 'assigned' || v.includes('assigned')) return 'assigned';
+    const tokens = new Set(v.split(' ').filter(Boolean));
+    if (v === 'closed complete' || v === 'closed' || tokens.has('closed')) return 'closed';
+    if (v === 'awaiting closure' || v === 'awaiting' || tokens.has('awaiting')) return 'awaiting';
+    if (tokens.has('wip') || v.includes('work in progress') || v.includes('in progress') || (tokens.has('work') && tokens.has('progress'))) return 'wip';
+    if (v === 'assigned' || tokens.has('assigned')) return 'assigned';
     return 'other';
   };
 
@@ -1004,17 +1009,24 @@ const PmModal = (props) => {
             const items = Array.isArray(pmItems) ? pmItems : [];
             const imports = Array.isArray(pmImports) ? pmImports : [];
 
-            const norm = (s) => String(s || '').trim().toLowerCase();
+            const norm = (s) =>
+              String(s || '')
+                .trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
             const bucketForState = (state) => {
               const v = norm(state);
               if (!v) return 'assigned';
+              const tokens = new Set(v.split(' ').filter(Boolean));
               if (v === 'closed complete' || v === 'closed' || v.includes('closed')) return 'closed';
               if (v === 'awaiting closure' || v === 'awaiting' || v.includes('awaiting')) return 'awaiting';
               if (
-                v === 'wip' ||
+                tokens.has('wip') ||
                 v.includes('work in progress') ||
                 v.includes('in progress') ||
-                (v.includes('work') && v.includes('progress'))
+                (tokens.has('work') && tokens.has('progress'))
               )
                 return 'wip';
               if (v === 'assigned' || v.includes('assigned')) return 'assigned';
@@ -1030,7 +1042,7 @@ const PmModal = (props) => {
               const raw = String(state || '').trim();
               const v = norm(raw);
               if (v === 'closed complete' || v === 'closed') return 'Closed Complete';
-              if (v === 'work in progress' || v === 'wip') return 'Work in progress';
+              if (v === 'work in progress' || v.includes('work in progress') || v.includes('in progress') || v === 'wip' || v.startsWith('wip ')) return 'Work in progress';
               if (v === 'awaiting closure' || v === 'awaiting') return 'Awaiting Closure';
               if (v === 'assigned') return 'Assigned';
               return raw || 'Assigned';

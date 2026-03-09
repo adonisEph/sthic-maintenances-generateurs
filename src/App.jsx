@@ -39,7 +39,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '3.3.3';
+const APP_VERSION = '3.3.5';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -3039,10 +3039,53 @@ const GeneratorMaintenanceApp = () => {
           rows.push({ number, state, closedAt, siteCode, shortDescription, scheduledWoDate, assignedTo });
         }
 
-        const res = await apiFetchJson(`/api/pm/months/${monthId}/noc-import`, {
-          method: 'POST',
-          body: JSON.stringify({ filename: file?.name || null, rows })
-        });
+        const CHUNK_SIZE = 500;
+        const total = rows.length;
+
+        const importId = (() => {
+          try {
+            return crypto.randomUUID();
+          } catch (e) {
+            return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+          }
+        })();
+
+        let aggUpdated = 0;
+        let aggMissing = 0;
+        let aggCreatedMissing = 0;
+        let aggMissingNotCreated = 0;
+        let lastRes = null;
+
+        setPmNocProgress(20);
+        setPmNocStep('Import NOC… 0%');
+
+        for (let i = 0; i < total; i += CHUNK_SIZE) {
+          const chunk = rows.slice(i, i + CHUNK_SIZE);
+          const sent = Math.min(total, i + chunk.length);
+          const pct = total > 0 ? Math.round((sent / total) * 100) : 100;
+
+          setPmNocProgress(Math.min(79, 20 + Math.round((pct * 59) / 100)));
+          setPmNocStep(`Import NOC… ${pct}%`);
+
+          // eslint-disable-next-line no-await-in-loop
+          const res = await apiFetchJson(`/api/pm/months/${monthId}/noc-import`, {
+            method: 'POST',
+            body: JSON.stringify({
+              filename: file?.name || null,
+              importId,
+              isFirst: i === 0,
+              isLast: sent >= total,
+              totalRows: total,
+              rows: chunk
+            })
+          });
+
+          lastRes = res;
+          aggUpdated += Number(res?.updated || 0);
+          aggMissing += Number(res?.missing || 0);
+          aggCreatedMissing += Number(res?.createdMissing || 0);
+          aggMissingNotCreated += Number(res?.missingNotCreated || 0);
+        }
 
         setPmNocProgress(80);
         setPmNocStep('Rafraîchissement…');
@@ -3055,20 +3098,20 @@ const GeneratorMaintenanceApp = () => {
         setPmNocProgress(100);
         setPmNocStep('Terminé');
 
-        const autoAdded = Number(res?.createdMissing || 0);
-        const notFound = Number(res?.missingNotCreated || 0);
+        const autoAdded = Number(aggCreatedMissing || 0);
+        const notFound = Number(aggMissingNotCreated || 0);
         const msg =
           autoAdded > 0 || notFound > 0
-            ? `✅ Import NOC terminé. Mis à jour: ${res?.updated || 0} • Ajoutés auto (NOC): ${autoAdded} • Introuvables: ${notFound}`
-            : `✅ Import NOC terminé. Mis à jour: ${res?.updated || 0}`;
+            ? `✅ Import NOC terminé. Mis à jour: ${aggUpdated} • Ajoutés auto (NOC): ${autoAdded} • Introuvables: ${notFound}`
+            : `✅ Import NOC terminé. Mis à jour: ${aggUpdated}`;
         setPmNotice(msg);
 
         if (autoAdded > 0 || notFound > 0) {
           alert(
-            `✅ Import NOC terminé.\n\nMis à jour: ${res?.updated || 0}\nAjoutés auto (NOC): ${autoAdded}\nIntrouvables: ${notFound}`
+            `✅ Import NOC terminé.\n\nMis à jour: ${aggUpdated}\nAjoutés auto (NOC): ${autoAdded}\nIntrouvables: ${notFound}`
           );
         } else {
-          alert(`✅ Import NOC terminé. Mis à jour: ${res?.updated || 0}`);
+          alert(`✅ Import NOC terminé. Mis à jour: ${aggUpdated}`);
         }
       } catch (err) {
         setPmNocProgress(0);
