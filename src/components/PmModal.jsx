@@ -262,10 +262,11 @@ const PmModal = (props) => {
 
   const recapBucketForState = (state) => {
     const v = String(state || '').trim().toLowerCase();
-    if (v === 'closed complete' || v === 'closed') return 'closed';
-    if (v === 'awaiting closure' || v === 'awaiting') return 'awaiting';
-    if (v === 'work in progress' || v === 'wip') return 'wip';
-    if (v === 'assigned') return 'assigned';
+    if (!v) return 'other';
+    if (v === 'closed complete' || v === 'closed' || v.includes('closed')) return 'closed';
+    if (v === 'awaiting closure' || v === 'awaiting' || v.includes('awaiting')) return 'awaiting';
+    if (v === 'wip' || v.includes('work in progress') || v.includes('in progress') || (v.includes('work') && v.includes('progress'))) return 'wip';
+    if (v === 'assigned' || v.includes('assigned')) return 'assigned';
     return 'other';
   };
 
@@ -1006,10 +1007,17 @@ const PmModal = (props) => {
             const norm = (s) => String(s || '').trim().toLowerCase();
             const bucketForState = (state) => {
               const v = norm(state);
-              if (v === 'closed complete' || v === 'closed') return 'closed';
-              if (v === 'awaiting closure' || v === 'awaiting') return 'awaiting';
-              if (v === 'work in progress' || v === 'wip') return 'wip';
-              if (v === 'assigned') return 'assigned';
+              if (!v) return 'assigned';
+              if (v === 'closed complete' || v === 'closed' || v.includes('closed')) return 'closed';
+              if (v === 'awaiting closure' || v === 'awaiting' || v.includes('awaiting')) return 'awaiting';
+              if (
+                v === 'wip' ||
+                v.includes('work in progress') ||
+                v.includes('in progress') ||
+                (v.includes('work') && v.includes('progress'))
+              )
+                return 'wip';
+              if (v === 'assigned' || v.includes('assigned')) return 'assigned';
               return 'assigned';
             };
 

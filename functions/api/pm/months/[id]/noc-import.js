@@ -41,7 +41,7 @@ export async function onRequestPost({ request, env, data, params }) {
     const now = isoNow();
     const importId = newId();
 
-    const scopeZone = isSuperAdmin(data) ? null : String(userZone(data) || 'BZV/POOL');
+    const scopeZone = isSuperAdmin(data) ? null : String(userZone(data) || 'BZV/POOL').trim();
 
     let updated = 0;
     let missing = 0;
@@ -90,7 +90,7 @@ export async function onRequestPost({ request, env, data, params }) {
       'UPDATE pm_items SET state = COALESCE(?, state), closed_at = COALESCE(?, closed_at), site_code = COALESCE(NULLIF(TRIM(site_code), \'\'), ?), short_description = COALESCE(NULLIF(TRIM(short_description), \'\'), ?), scheduled_wo_date = COALESCE(NULLIF(TRIM(scheduled_wo_date), \'\'), ?), assigned_to = COALESCE(NULLIF(TRIM(assigned_to), \'\'), ?), created_source = COALESCE(NULLIF(TRIM(created_source), \'\'), \'noc\'), last_noc_import_at = ?, updated_at = ? WHERE month_id = ? AND number = ?'
     );
     const updatePmItemScopedStmt = env.DB.prepare(
-      'UPDATE pm_items SET state = COALESCE(?, state), closed_at = COALESCE(?, closed_at), site_code = COALESCE(NULLIF(TRIM(site_code), \'\'), ?), short_description = COALESCE(NULLIF(TRIM(short_description), \'\'), ?), scheduled_wo_date = COALESCE(NULLIF(TRIM(scheduled_wo_date), \'\'), ?), assigned_to = COALESCE(NULLIF(TRIM(assigned_to), \'\'), ?), created_source = COALESCE(NULLIF(TRIM(created_source), \'\'), \'noc\'), last_noc_import_at = ?, updated_at = ? WHERE month_id = ? AND number = ? AND COALESCE(region, zone, \'\') = ?'
+      'UPDATE pm_items SET state = COALESCE(?, state), closed_at = COALESCE(?, closed_at), site_code = COALESCE(NULLIF(TRIM(site_code), \'\'), ?), short_description = COALESCE(NULLIF(TRIM(short_description), \'\'), ?), scheduled_wo_date = COALESCE(NULLIF(TRIM(scheduled_wo_date), \'\'), ?), assigned_to = COALESCE(NULLIF(TRIM(assigned_to), \'\'), ?), created_source = COALESCE(NULLIF(TRIM(created_source), \'\'), \'noc\'), last_noc_import_at = ?, updated_at = ? WHERE month_id = ? AND number = ? AND (TRIM(COALESCE(region, zone, \'\')) = ? OR TRIM(COALESCE(region, zone, \'\')) = \'\')'
     );
     const insertPmItemStmt = env.DB.prepare(
       'INSERT OR IGNORE INTO pm_items (id, month_id, number, site_code, site_name, region, zone, short_description, maintenance_type, scheduled_wo_date, assigned_to, created_source, state, closed_at, last_noc_import_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -103,7 +103,7 @@ export async function onRequestPost({ request, env, data, params }) {
       const inPlaceholders = numbers.map(() => '?').join(',');
       const existing = scopeZone
         ? await env.DB.prepare(
-            `SELECT number FROM pm_items WHERE month_id = ? AND COALESCE(region, zone, '') = ? AND number IN (${inPlaceholders})`
+            `SELECT number FROM pm_items WHERE month_id = ? AND (TRIM(COALESCE(region, zone, '')) = ? OR TRIM(COALESCE(region, zone, '')) = '') AND number IN (${inPlaceholders})`
           )
             .bind(monthId, scopeZone, ...numbers)
             .all()
@@ -183,7 +183,7 @@ export async function onRequestPost({ request, env, data, params }) {
           const inNow = missingChunkNumbers.map(() => '?').join(',');
           const createdNow = scopeZone
             ? await env.DB.prepare(
-                `SELECT number FROM pm_items WHERE month_id = ? AND COALESCE(region, zone, '') = ? AND number IN (${inNow})`
+                `SELECT number FROM pm_items WHERE month_id = ? AND (TRIM(COALESCE(region, zone, '')) = ? OR TRIM(COALESCE(region, zone, '')) = '') AND number IN (${inNow})`
               )
                 .bind(monthId, scopeZone, ...missingChunkNumbers)
                 .all()
