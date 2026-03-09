@@ -38,6 +38,8 @@ const PmModal = (props) => {
     handlePmGlobalImport,
     pmError,
     pmNotice,
+    pmNocProgress,
+    pmNocStep,
     pmClientProgress,
     pmClientStep,
     pmClientCompare,
@@ -521,6 +523,19 @@ const PmModal = (props) => {
                           disabled={pmBusy}
                         />
                       </label>
+
+                      {(Number(pmNocProgress || 0) > 0 || String(pmNocStep || '').trim()) && (
+                        <div className="mx-3 mt-2 mb-3">
+                          {String(pmNocStep || '').trim() && <div className="text-[11px] text-white/80 mb-1">{pmNocStep}</div>}
+                          <div className="w-full h-2 rounded bg-white/15 overflow-hidden">
+                            <div
+                              className="h-2 bg-sky-400"
+                              style={{ width: `${Math.max(0, Math.min(100, Number(pmNocProgress || 0)))}%` }}
+                            />
+                          </div>
+                          <div className="text-[11px] text-white/70 mt-1">{Math.max(0, Math.min(100, Number(pmNocProgress || 0)))}%</div>
+                        </div>
+                      )}
 
                       <label
                         className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-sky-400/70 focus-within:ring-offset-2 focus-within:ring-offset-indigo-950 ${

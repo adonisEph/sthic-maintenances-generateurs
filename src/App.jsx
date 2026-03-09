@@ -6205,6 +6205,8 @@ return (
           handlePmGlobalImport={handlePmGlobalImport}
           pmError={pmError}
           pmNotice={pmNotice}
+          pmNocProgress={pmNocProgress}
+          pmNocStep={pmNocStep}
           pmClientProgress={pmClientProgress}
           pmClientStep={pmClientStep}
           pmClientCompare={pmClientCompare}
