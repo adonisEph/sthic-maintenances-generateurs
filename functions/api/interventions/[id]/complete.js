@@ -100,8 +100,76 @@ export async function onRequestPost({ request, env, data, params }) {
     const tn = await nextTicketNumberForZone(env, ticketZone);
     const ticketNumber = formatTicket(tn, ticketZone);
 
-    const ficheId = `fiche-${id}`;
     const status = 'Effectuée';
+
+    const existingFiche = await env.DB.prepare('SELECT id FROM fiche_history WHERE intervention_id = ?').bind(id).first();
+    if (existingFiche?.id) {
+      await env.DB.prepare(
+        'UPDATE fiche_history SET status = ?, date_completed = ?, interval_hours = ?, contract_seuil = ?, is_within_contract = ?, nh1_dv = ?, date_dv = ?, nh_now = ?, updated_at = ? WHERE id = ?'
+      )
+        .bind(
+          status,
+          doneDate,
+          intervalHours,
+          contractSeuil,
+          isWithinContract === null ? null : (isWithinContract ? 1 : 0),
+          site.nh1_dv,
+          site.date_dv,
+          nhNow,
+          now,
+          String(existingFiche.id)
+        )
+        .run();
+
+      await touchLastUpdatedAt(env);
+
+      const updatedSite = await env.DB.prepare('SELECT * FROM sites WHERE id = ?').bind(site.id).first();
+
+      try {
+        const siteZone = String(site?.zone || 'BZV/POOL');
+
+        const viewersRes = await env.DB.prepare("SELECT id FROM users WHERE role = 'viewer'").all();
+        const viewerIds = (Array.isArray(viewersRes?.results) ? viewersRes.results : []).map((r) => String(r?.id || '')).filter(Boolean);
+
+        const managersRes = await env.DB.prepare("SELECT id FROM users WHERE role = 'manager' AND zone = ?").bind(siteZone).all();
+        const managerIds = (Array.isArray(managersRes?.results) ? managersRes.results : []).map((r) => String(r?.id || '')).filter(Boolean);
+
+        const adminsRes = await env.DB.prepare("SELECT id, zone FROM users WHERE role = 'admin'").all();
+        const adminRows = Array.isArray(adminsRes?.results) ? adminsRes.results : [];
+        const adminIds = adminRows
+          .filter((r) => {
+            const z = String(r?.zone || 'BZV/POOL');
+            if (z === 'BZV/POOL') return true;
+            return z === siteZone;
+          })
+          .map((r) => String(r?.id || ''))
+          .filter(Boolean);
+
+        const recipients = Array.from(new Set([...viewerIds, ...managerIds, ...adminIds])).filter(Boolean);
+        const title = 'Vidange effectuée';
+        const bodyTxt = `${String(site?.name_site || '') || 'Site'} (${String(site?.id_site || '').trim() || site.id}) - ${doneDate}`;
+
+        for (const uid of recipients) {
+          await createNotification(env, {
+            userId: uid,
+            title,
+            body: bodyTxt,
+            kind: 'EPV_DONE',
+            refId: String(id),
+            zone: siteZone
+          });
+        }
+
+        const subs = await loadPushSubscriptionsForUsers(env, recipients);
+        await fanoutWebPushNoPayload(env, subs);
+      } catch {
+        // ignore notifications failures
+      }
+
+      return json({ ok: true, epv: epvDates, site: updatedSite ? { id: updatedSite.id } : null }, { status: 200 });
+    }
+
+    const ficheId = `fiche-${id}`;
 
     try {
       await env.DB.prepare(

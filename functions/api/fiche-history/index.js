@@ -108,6 +108,7 @@ export async function onRequestPost({ request, env, data }) {
     const technician = String(body?.technician || '').trim();
     const plannedDate = body?.plannedDate ? String(body.plannedDate).slice(0, 10) : null;
     const epvType = body?.epvType ? String(body.epvType).trim() : null;
+    const interventionId = body?.interventionId != null ? String(body.interventionId).trim() : null;
 
     const signatureTypedName = String(body?.signatureTypedName || '').trim();
     const signatureDrawnPng = String(body?.signatureDrawnPng || '').trim();
@@ -153,8 +154,8 @@ export async function onRequestPost({ request, env, data }) {
     await env.DB.prepare(
       `INSERT INTO fiche_history
       (id, ticket_number, site_id, site_name, technician, date_generated, status, planned_date, epv_type, created_by,
-       signature_typed_name, signature_drawn_png, signed_by_email, signed_at, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       signature_typed_name, signature_drawn_png, signed_by_email, signed_at, intervention_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
       .bind(
         id,
@@ -171,6 +172,7 @@ export async function onRequestPost({ request, env, data }) {
         signatureDrawnPng,
         data?.user?.email ? String(data.user.email) : null,
         now,
+        interventionId,
         now,
         now
       )

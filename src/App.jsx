@@ -3012,6 +3012,8 @@ const GeneratorMaintenanceApp = () => {
     const reader = new FileReader();
     setPmBusy(true);
     setPmError('');
+    setPmNocProgress(0);
+    setPmNocStep('');
 
     reader.onload = async (event) => {
       try {
@@ -3098,6 +3100,11 @@ const GeneratorMaintenanceApp = () => {
         setPmNocProgress(100);
         setPmNocStep('Terminé');
 
+        setTimeout(() => {
+          setPmNocProgress(0);
+          setPmNocStep('');
+        }, 0);
+
         const autoAdded = Number(aggCreatedMissing || 0);
         const notFound = Number(aggMissingNotCreated || 0);
         const msg =
@@ -3114,9 +3121,9 @@ const GeneratorMaintenanceApp = () => {
           alert(`✅ Import NOC terminé. Mis à jour: ${aggUpdated}`);
         }
       } catch (err) {
-        setPmNocProgress(0);
-        setPmNocStep('');
-        setPmError(err?.message || 'Erreur lors de l\'import NOC.');
+        setPmNocProgress((p) => (Number(p || 0) > 0 ? p : 1));
+        setPmNocStep('Erreur import NOC');
+        setPmError(err?.message || "Erreur lors de l'import NOC.");
       } finally {
         setPmBusy(false);
       }
@@ -3449,7 +3456,26 @@ const GeneratorMaintenanceApp = () => {
       ].filter((c) => c.date);
 
       const next = candidates.find((c) => c.date >= today) || candidates[0];
-      setFicheContext({ plannedDate: next?.date || null, epvType: next?.type || null });
+      const plannedDate = next?.date ? String(next.date).slice(0, 10) : null;
+      const epvType = next?.type ? String(next.type).trim() : null;
+
+      let interventionId = null;
+      try {
+        const src = Array.isArray(interventions) ? interventions : [];
+        const found = src.find((it) => {
+          if (!it) return false;
+          if (String(it.siteId || '') !== String(site?.id || '')) return false;
+          if (String(it.plannedDate || '').slice(0, 10) !== String(plannedDate || '')) return false;
+          if (String(it.epvType || '').trim() !== String(epvType || '')) return false;
+          if (String(it.status || '') === 'done') return false;
+          return true;
+        });
+        interventionId = found?.id ? String(found.id) : null;
+      } catch {
+        interventionId = null;
+      }
+
+      setFicheContext({ plannedDate, epvType, interventionId });
     } catch (e) {
       setFicheContext(null);
     }
@@ -3480,7 +3506,26 @@ const GeneratorMaintenanceApp = () => {
     setBatchFicheSites(uniqueEvents);
     setBatchFicheIndex(0);
     setSiteForFiche(uniqueEvents[0].site);
-    setFicheContext({ plannedDate: uniqueEvents[0].date || null, epvType: uniqueEvents[0].type || null });
+    const plannedDate = uniqueEvents[0]?.date ? String(uniqueEvents[0].date).slice(0, 10) : null;
+    const epvType = uniqueEvents[0]?.type ? String(uniqueEvents[0].type).trim() : null;
+
+    let interventionId = null;
+    try {
+      const src = Array.isArray(interventions) ? interventions : [];
+      const found = src.find((it) => {
+        if (!it) return false;
+        if (String(it.siteId || '') !== String(uniqueEvents[0]?.site?.id || '')) return false;
+        if (String(it.plannedDate || '').slice(0, 10) !== String(plannedDate || '')) return false;
+        if (String(it.epvType || '').trim() !== String(epvType || '')) return false;
+        if (String(it.status || '') === 'done') return false;
+        return true;
+      });
+      interventionId = found?.id ? String(found.id) : null;
+    } catch {
+      interventionId = null;
+    }
+
+    setFicheContext({ plannedDate, epvType, interventionId });
     setSignatureTypedName('');
     setSignatureDrawnPng('');
     setShowDayDetailsModal(false);
@@ -3555,7 +3600,26 @@ const GeneratorMaintenanceApp = () => {
         if (nextIndex < batchFicheSites.length) {
           setBatchFicheIndex(nextIndex);
           setSiteForFiche(batchFicheSites[nextIndex].site);
-          setFicheContext({ plannedDate: batchFicheSites[nextIndex].date || null, epvType: batchFicheSites[nextIndex].type || null });
+          const plannedDate = batchFicheSites[nextIndex]?.date ? String(batchFicheSites[nextIndex].date).slice(0, 10) : null;
+          const epvType = batchFicheSites[nextIndex]?.type ? String(batchFicheSites[nextIndex].type).trim() : null;
+
+          let interventionId = null;
+          try {
+            const src = Array.isArray(interventions) ? interventions : [];
+            const found = src.find((it) => {
+              if (!it) return false;
+              if (String(it.siteId || '') !== String(batchFicheSites[nextIndex]?.site?.id || '')) return false;
+              if (String(it.plannedDate || '').slice(0, 10) !== String(plannedDate || '')) return false;
+              if (String(it.epvType || '').trim() !== String(epvType || '')) return false;
+              if (String(it.status || '') === 'done') return false;
+              return true;
+            });
+            interventionId = found?.id ? String(found.id) : null;
+          } catch {
+            interventionId = null;
+          }
+
+          setFicheContext({ plannedDate, epvType, interventionId });
           setSignatureTypedName('');
           setSignatureDrawnPng('');
         } else {
@@ -3677,7 +3741,26 @@ const GeneratorMaintenanceApp = () => {
         if (nextIndex < batchFicheSites.length) {
           setBatchFicheIndex(nextIndex);
           setSiteForFiche(batchFicheSites[nextIndex].site);
-          setFicheContext({ plannedDate: batchFicheSites[nextIndex].date || null, epvType: batchFicheSites[nextIndex].type || null });
+          const plannedDate = batchFicheSites[nextIndex]?.date ? String(batchFicheSites[nextIndex].date).slice(0, 10) : null;
+          const epvType = batchFicheSites[nextIndex]?.type ? String(batchFicheSites[nextIndex].type).trim() : null;
+
+          let interventionId = null;
+          try {
+            const src = Array.isArray(interventions) ? interventions : [];
+            const found = src.find((it) => {
+              if (!it) return false;
+              if (String(it.siteId || '') !== String(batchFicheSites[nextIndex]?.site?.id || '')) return false;
+              if (String(it.plannedDate || '').slice(0, 10) !== String(plannedDate || '')) return false;
+              if (String(it.epvType || '').trim() !== String(epvType || '')) return false;
+              if (String(it.status || '') === 'done') return false;
+              return true;
+            });
+            interventionId = found?.id ? String(found.id) : null;
+          } catch {
+            interventionId = null;
+          }
+
+          setFicheContext({ plannedDate, epvType, interventionId });
           setSignatureTypedName('');
           setSignatureDrawnPng('');
         } else {
@@ -3713,6 +3796,7 @@ const GeneratorMaintenanceApp = () => {
         technician: String(siteForFiche?.technician || '').trim(),
         plannedDate: ficheContext?.plannedDate ? String(ficheContext.plannedDate).slice(0, 10) : null,
         epvType: ficheContext?.epvType ? String(ficheContext.epvType).trim() : null,
+        interventionId: ficheContext?.interventionId ? String(ficheContext.interventionId) : null,
         signatureTypedName: String(signatureTypedName || '').trim(),
         signatureDrawnPng: String(signatureDrawnPng || '').trim()
       })
@@ -3726,7 +3810,26 @@ const GeneratorMaintenanceApp = () => {
     if (nextIndex < 0 || nextIndex >= batchFicheSites.length) return;
     setBatchFicheIndex(nextIndex);
     setSiteForFiche(batchFicheSites[nextIndex].site);
-    setFicheContext({ plannedDate: batchFicheSites[nextIndex].date || null, epvType: batchFicheSites[nextIndex].type || null });
+    const plannedDate = batchFicheSites[nextIndex]?.date ? String(batchFicheSites[nextIndex].date).slice(0, 10) : null;
+    const epvType = batchFicheSites[nextIndex]?.type ? String(batchFicheSites[nextIndex].type).trim() : null;
+
+    let interventionId = null;
+    try {
+      const src = Array.isArray(interventions) ? interventions : [];
+      const found = src.find((it) => {
+        if (!it) return false;
+        if (String(it.siteId || '') !== String(batchFicheSites[nextIndex]?.site?.id || '')) return false;
+        if (String(it.plannedDate || '').slice(0, 10) !== String(plannedDate || '')) return false;
+        if (String(it.epvType || '').trim() !== String(epvType || '')) return false;
+        if (String(it.status || '') === 'done') return false;
+        return true;
+      });
+      interventionId = found?.id ? String(found.id) : null;
+    } catch {
+      interventionId = null;
+    }
+
+    setFicheContext({ plannedDate, epvType, interventionId });
     setSignatureTypedName('');
     setSignatureDrawnPng('');
   };
@@ -6484,7 +6587,7 @@ return (
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2 mt-4">
+                      <div className="grid grid-cols-3 gap-2 mt-4">
                         {canWriteSites && (
                           <button
                             onClick={() => {
@@ -6548,6 +6651,16 @@ return (
                             className="bg-red-600 text-white py-2 rounded-lg hover:bg-red-700 text-sm font-semibold"
                           >
                             Suppr.
+                          </button>
+                        )}
+                        {canGenerateFiche && (
+                          <button
+                            onClick={() => {
+                              handleGenerateFiche(site);
+                            }}
+                            className="bg-emerald-600 text-white py-2 rounded-lg hover:bg-emerald-700 text-sm font-semibold"
+                          >
+                            Fiches
                           </button>
                         )}
                       </div>

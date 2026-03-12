@@ -48,7 +48,16 @@ const FicheModal = ({
           return res.blob();
         };
 
+        const zone = String(siteForFiche?.zone || '').trim().toUpperCase();
+        const signaturePreferred =
+          zone === 'PNR/KOUILOU'
+            ? '/signature_responsable_pnr_kouilou.png'
+            : zone === 'UPCN'
+              ? '/signature_responsable_upcn.png'
+              : null;
+
         const blob =
+          (signaturePreferred ? await tryFetch(signaturePreferred) : null) ||
           (await tryFetch('/signature_responsable.png')) ||
           (await tryFetch('/signature_responsable.PNG')) ||
           (await tryFetch('/assets/signature_responsable.png')) ||
