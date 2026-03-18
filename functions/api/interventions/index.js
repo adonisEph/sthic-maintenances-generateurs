@@ -95,6 +95,11 @@ export async function onRequestPost({ request, env, data }) {
     const technicianUserId = body.technicianUserId ? String(body.technicianUserId) : null;
     const technicianName = String(body.technicianName || '');
 
+    const requestedStatus = String(body.status || '').trim() || 'planned';
+    if (requestedStatus !== 'planned' && requestedStatus !== 'sent') {
+      return json({ error: "Statut invalide (attendu: 'planned' ou 'sent')." }, { status: 400 });
+    }
+
     if (!plannedDate || !epvType || !siteId || !technicianName) {
       return json({ error: 'Champs requis manquants.' }, { status: 400 });
     }
@@ -110,10 +115,13 @@ export async function onRequestPost({ request, env, data }) {
     const id = newId();
     const now = isoNow();
 
+    const status = requestedStatus;
+    const sentAt = status === 'sent' ? now : null;
+
     await env.DB.prepare(
-      'INSERT INTO interventions (id, site_id, zone, planned_date, epv_type, technician_user_id, technician_name, status, created_by_user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO interventions (id, site_id, zone, planned_date, epv_type, technician_user_id, technician_name, status, sent_at, created_by_user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     )
-      .bind(id, siteId, zone, plannedDate, epvType, technicianUserId, technicianName, 'planned', data.user.id, now, now)
+      .bind(id, siteId, zone, plannedDate, epvType, technicianUserId, technicianName, status, sentAt, data.user.id, now, now)
       .run();
 
     await touchLastUpdatedAt(env);
@@ -123,7 +131,39 @@ export async function onRequestPost({ request, env, data }) {
   } catch (e) {
     const msg = String(e?.message || 'Erreur serveur.');
     if (msg.toLowerCase().includes('unique')) {
-      return json({ error: 'Intervention déjà planifiée.' }, { status: 409 });
+      try {
+        const body = await readJson(request);
+        const plannedDate = String(body.plannedDate || '');
+        const epvType = String(body.epvType || '');
+        const siteId = String(body.siteId || '');
+        const requestedStatus = String(body.status || '').trim() || 'planned';
+
+        const existing = await env.DB.prepare(
+          'SELECT * FROM interventions WHERE site_id = ? AND planned_date = ? AND epv_type = ? ORDER BY created_at DESC LIMIT 1'
+        )
+          .bind(siteId, plannedDate, epvType)
+          .first();
+
+        if (!existing) {
+          return json({ error: 'Intervention déjà planifiée.' }, { status: 409 });
+        }
+
+        if (requestedStatus === 'sent' && String(existing.status || '') !== 'sent') {
+          const now = isoNow();
+          await env.DB.prepare(
+            "UPDATE interventions SET status = 'sent', sent_at = COALESCE(sent_at, ?), updated_at = ? WHERE id = ? AND status != 'done'"
+          )
+            .bind(now, now, String(existing.id))
+            .run();
+          await touchLastUpdatedAt(env);
+          const updated = await env.DB.prepare('SELECT * FROM interventions WHERE id = ?').bind(String(existing.id)).first();
+          return json({ intervention: mapRow(updated) }, { status: 200 });
+        }
+
+        return json({ intervention: mapRow(existing) }, { status: 200 });
+      } catch {
+        return json({ error: 'Intervention déjà planifiée.' }, { status: 409 });
+      }
     }
     return json({ error: msg }, { status: 500 });
   }

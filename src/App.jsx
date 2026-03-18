@@ -46,7 +46,7 @@ const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
 const APP_VERSION_FORCE_AFTER_DAYS = 0;
 const DAILY_NH_UPDATE_STORAGE_KEY = 'gma_daily_nh_update_ymd';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
-const SPLASH_MIN_MS = 4250;
+const SPLASH_MIN_MS = 4000;
 const DISABLE_PUSH_NOTIFICATIONS = true;
 const DISABLE_NOTIFICATIONS_FEATURE = true;
 const DISABLE_PRESENCE_FEATURE = false;
@@ -3440,7 +3440,114 @@ const GeneratorMaintenanceApp = () => {
     reader.readAsDataURL(file);
   };
 
-  const handleGenerateFiche = (site) => {
+  const normTechName = (v) =>
+      String(v || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ');
+
+  const ensureInterventionForFiche = async ({ site, plannedDateRaw, epvType }) => {
+      const siteId = String(site?.id || '').trim();
+      const t = String(epvType || '').trim();
+      const raw = String(plannedDateRaw || '').slice(0, 10);
+
+      if (!siteId || !t || !raw) return null;
+
+      // Appliquer le même shift "jours ouvrés" que l'affichage / interventions
+      let plannedDate = raw;
+      try {
+        const shifted = typeof ymdShiftForWorkdays === 'function' ? ymdShiftForWorkdays(raw) : '';
+        if (shifted && /^\d{4}-\d{2}-\d{2}$/.test(String(shifted))) plannedDate = String(shifted).slice(0, 10);
+      } catch {
+        // ignore
+      }
+
+      const findExisting = (src) => {
+        const arr = Array.isArray(src) ? src : [];
+        return (
+          arr.find((it) => {
+            if (!it) return false;
+            if (String(it.siteId || '') !== siteId) return false;
+            if (String(it.plannedDate || '').slice(0, 10) !== plannedDate) return false;
+            if (String(it.epvType || '').trim() !== t) return false;
+            if (String(it.status || '') === 'done') return false;
+            return true;
+          }) || null
+        );
+      };
+
+      // 1) tentative locale
+      const existingLocal = findExisting(interventions);
+      if (existingLocal?.id) return String(existingLocal.id);
+
+      // 2) création idempotente + visible technicien => status sent + technician_user_id
+      const techName = String(site?.technician || '').trim();
+      if (!techName) {
+        alert("Ce site n'a pas de technicien renseigné. Impossible de créer automatiquement l'intervention.");
+        return null;
+      }
+
+      // IMPORTANT: adapter ici si ton objet user s'appelle technician_name (snake_case)
+      const candidates = (Array.isArray(users) ? users : [])
+        .filter((u) => u && String(u.role || '') === 'technician' && !(u.disabledAt || u.disabled_at));
+
+      const techKey = normTechName(techName);
+
+      let techUser =
+        candidates.find((u) => normTechName(u.technicianName ?? u.technician_name) === techKey) || null;
+
+      if (!techUser) {
+        const contains = candidates.filter((u) => {
+          const a = normTechName(u.technicianName ?? u.technician_name);
+          return a && (a.includes(techKey) || techKey.includes(a));
+        });
+        if (contains.length === 1) techUser = contains[0];
+      }
+
+      const technicianUserId = techUser?.id ? String(techUser.id) : null;
+      if (!technicianUserId) {
+        alert(`Technicien introuvable dans USERS pour: "${techName}".\nImpossible de créer automatiquement l'intervention.`);
+        return null;
+      }
+
+      // API: demander sent pour apparition immédiate dans "Mes interventions"
+      const res = await apiFetchJson('/api/interventions', {
+        method: 'POST',
+        body: JSON.stringify({
+          siteId,
+          plannedDate,
+          epvType: t,
+          technicianName: techName,
+          technicianUserId,
+          status: 'sent'
+        })
+      });
+
+      const createdId = res?.intervention?.id ? String(res.intervention.id) : null;
+      if (createdId) {
+        try {
+          await loadInterventions();
+        } catch {
+          // ignore
+        }
+        return createdId;
+      }
+
+      // 3) dernier recours: reload et recherche
+      try {
+        await loadInterventions();
+        const existingReload = findExisting(interventions);
+        if (existingReload?.id) return String(existingReload.id);
+      } catch {
+        // ignore
+      }
+
+      return null;
+    };
+
+  const handleGenerateFiche = async (site) => {
     setIsBatchFiche(false);
     setBatchFicheSites([]);
     setBatchFicheIndex(0);
@@ -3461,16 +3568,7 @@ const GeneratorMaintenanceApp = () => {
 
       let interventionId = null;
       try {
-        const src = Array.isArray(interventions) ? interventions : [];
-        const found = src.find((it) => {
-          if (!it) return false;
-          if (String(it.siteId || '') !== String(site?.id || '')) return false;
-          if (String(it.plannedDate || '').slice(0, 10) !== String(plannedDate || '')) return false;
-          if (String(it.epvType || '').trim() !== String(epvType || '')) return false;
-          if (String(it.status || '') === 'done') return false;
-          return true;
-        });
-        interventionId = found?.id ? String(found.id) : null;
+        interventionId = await ensureInterventionForFiche({ site, plannedDateRaw: plannedDate, epvType });
       } catch {
         interventionId = null;
       }
@@ -3482,7 +3580,7 @@ const GeneratorMaintenanceApp = () => {
     setShowBannerUpload(true);
   };
 
-  const startBatchFicheGeneration = (events) => {
+  const startBatchFicheGeneration = async (events) => {
     const uniqueEvents = Array.from(
       new Map((events || []).map((e) => [e.site.id, e])).values()
     );
@@ -3511,16 +3609,11 @@ const GeneratorMaintenanceApp = () => {
 
     let interventionId = null;
     try {
-      const src = Array.isArray(interventions) ? interventions : [];
-      const found = src.find((it) => {
-        if (!it) return false;
-        if (String(it.siteId || '') !== String(uniqueEvents[0]?.site?.id || '')) return false;
-        if (String(it.plannedDate || '').slice(0, 10) !== String(plannedDate || '')) return false;
-        if (String(it.epvType || '').trim() !== String(epvType || '')) return false;
-        if (String(it.status || '') === 'done') return false;
-        return true;
+      interventionId = await ensureInterventionForFiche({
+        site: uniqueEvents[0].site,
+        plannedDateRaw: plannedDate,
+        epvType
       });
-      interventionId = found?.id ? String(found.id) : null;
     } catch {
       interventionId = null;
     }
@@ -3605,16 +3698,11 @@ const GeneratorMaintenanceApp = () => {
 
           let interventionId = null;
           try {
-            const src = Array.isArray(interventions) ? interventions : [];
-            const found = src.find((it) => {
-              if (!it) return false;
-              if (String(it.siteId || '') !== String(batchFicheSites[nextIndex]?.site?.id || '')) return false;
-              if (String(it.plannedDate || '').slice(0, 10) !== String(plannedDate || '')) return false;
-              if (String(it.epvType || '').trim() !== String(epvType || '')) return false;
-              if (String(it.status || '') === 'done') return false;
-              return true;
+            interventionId = await ensureInterventionForFiche({
+              site: batchFicheSites[nextIndex].site,
+              plannedDateRaw: plannedDate,
+              epvType
             });
-            interventionId = found?.id ? String(found.id) : null;
           } catch {
             interventionId = null;
           }
@@ -3746,16 +3834,11 @@ const GeneratorMaintenanceApp = () => {
 
           let interventionId = null;
           try {
-            const src = Array.isArray(interventions) ? interventions : [];
-            const found = src.find((it) => {
-              if (!it) return false;
-              if (String(it.siteId || '') !== String(batchFicheSites[nextIndex]?.site?.id || '')) return false;
-              if (String(it.plannedDate || '').slice(0, 10) !== String(plannedDate || '')) return false;
-              if (String(it.epvType || '').trim() !== String(epvType || '')) return false;
-              if (String(it.status || '') === 'done') return false;
-              return true;
+            interventionId = await ensureInterventionForFiche({
+              site: batchFicheSites[nextIndex].site,
+              plannedDateRaw: plannedDate,
+              epvType
             });
-            interventionId = found?.id ? String(found.id) : null;
           } catch {
             interventionId = null;
           }
@@ -3803,7 +3886,7 @@ const GeneratorMaintenanceApp = () => {
     });
   };
 
-  const goBatchFiche = (delta) => {
+  const goBatchFiche = async (delta) => {
     if (!isBatchFiche) return;
     const nextIndex = Number(batchFicheIndex) + Number(delta || 0);
     if (!Number.isFinite(nextIndex)) return;
@@ -3815,16 +3898,11 @@ const GeneratorMaintenanceApp = () => {
 
     let interventionId = null;
     try {
-      const src = Array.isArray(interventions) ? interventions : [];
-      const found = src.find((it) => {
-        if (!it) return false;
-        if (String(it.siteId || '') !== String(batchFicheSites[nextIndex]?.site?.id || '')) return false;
-        if (String(it.plannedDate || '').slice(0, 10) !== String(plannedDate || '')) return false;
-        if (String(it.epvType || '').trim() !== String(epvType || '')) return false;
-        if (String(it.status || '') === 'done') return false;
-        return true;
+      interventionId = await ensureInterventionForFiche({
+        site: batchFicheSites[nextIndex].site,
+        plannedDateRaw: plannedDate,
+        epvType
       });
-      interventionId = found?.id ? String(found.id) : null;
     } catch {
       interventionId = null;
     }
