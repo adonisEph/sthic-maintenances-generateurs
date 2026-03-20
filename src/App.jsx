@@ -5535,7 +5535,7 @@ const GeneratorMaintenanceApp = () => {
     };
 
     checkVersion();
-    const intervalId = setInterval(checkVersion, 5000);
+    const intervalId = setInterval(checkVersion, 4000);
     const onFocus = () => checkVersion();
     const onVisibility = () => {
       if (!document.hidden) checkVersion();
