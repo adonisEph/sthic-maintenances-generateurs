@@ -3441,17 +3441,17 @@ const GeneratorMaintenanceApp = () => {
   };
 
   const normTechName = (v) =>
-      String(v || '')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, ' ');
+    String(v || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
 
   const ensureInterventionForFiche = async ({ site, plannedDateRaw, epvType }) => {
-      const siteId = String(site?.id || '').trim();
-      const t = String(epvType || '').trim();
-      const raw = String(plannedDateRaw || '').slice(0, 10);
+    const siteId = String(site?.id || '').trim();
+    const t = String(epvType || '').trim();
+    const raw = String(plannedDateRaw || '').slice(0, 10);
 
       if (!siteId || !t || !raw) return null;
 
@@ -3507,10 +3507,8 @@ const GeneratorMaintenanceApp = () => {
       }
 
       const technicianUserId = techUser?.id ? String(techUser.id) : null;
-      if (!technicianUserId) {
-        alert(`Technicien introuvable dans USERS pour: "${techName}".\nImpossible de créer automatiquement l'intervention.`);
-        return null;
-      }
+      // IMPORTANT: ne pas bloquer ici.
+      // Si null, le backend tentera de résoudre technician_user_id via users.technician_name (+ zone).
 
       // API: demander sent pour apparition immédiate dans "Mes interventions"
       const res = await apiFetchJson('/api/interventions', {
@@ -3526,6 +3524,14 @@ const GeneratorMaintenanceApp = () => {
       });
 
       const createdId = res?.intervention?.id ? String(res.intervention.id) : null;
+      const returnedTechUserId = res?.intervention?.technicianUserId || res?.intervention?.technician_user_id || null;
+      if (!returnedTechUserId) {
+        alert(
+          `⚠️ Intervention créée mais sans technician_user_id (technicien non résolu côté serveur).\n` +
+          `Le technicien risque de ne pas la voir dans "Mes interventions".\n` +
+          `Technicien (site): "${techName}" | Zone site: "${String(site?.zone || '')}".`
+        );
+      }
       if (createdId) {
         try {
           await loadInterventions();
@@ -3870,6 +3876,21 @@ const GeneratorMaintenanceApp = () => {
   };
 
   const persistFicheHistory = async (ticketNumberFull) => {
+    let interventionId = ficheContext?.interventionId ? String(ficheContext.interventionId) : null;
+    // GARANTIE: si l'interventionId est absent, on la crée/récupère ici avant de persister la fiche.
+    if (!interventionId) {
+      try {
+        const plannedDateRaw = ficheContext?.plannedDate ? String(ficheContext.plannedDate).slice(0, 10) : null;
+        const epvType = ficheContext?.epvType ? String(ficheContext.epvType).trim() : null;
+        interventionId = await ensureInterventionForFiche({ site: siteForFiche, plannedDateRaw, epvType });
+  
+        if (interventionId) {
+          setFicheContext((prev) => ({ ...(prev || {}), interventionId }));
+        }
+      } catch {
+        interventionId = null;
+      }
+    }
     await apiFetchJson('/api/fiche-history', {
       method: 'POST',
       body: JSON.stringify({
@@ -3879,7 +3900,7 @@ const GeneratorMaintenanceApp = () => {
         technician: String(siteForFiche?.technician || '').trim(),
         plannedDate: ficheContext?.plannedDate ? String(ficheContext.plannedDate).slice(0, 10) : null,
         epvType: ficheContext?.epvType ? String(ficheContext.epvType).trim() : null,
-        interventionId: ficheContext?.interventionId ? String(ficheContext.interventionId) : null,
+        interventionId: interventionId ? String(interventionId) : null,
         signatureTypedName: String(signatureTypedName || '').trim(),
         signatureDrawnPng: String(signatureDrawnPng || '').trim()
       })

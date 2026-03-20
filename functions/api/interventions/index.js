@@ -92,7 +92,7 @@ export async function onRequestPost({ request, env, data }) {
     const plannedDate = String(body.plannedDate || '');
     const epvType = String(body.epvType || '');
     const siteId = String(body.siteId || '');
-    const technicianUserId = body.technicianUserId ? String(body.technicianUserId) : null;
+    let technicianUserId = body.technicianUserId ? String(body.technicianUserId) : null;
     const technicianName = String(body.technicianName || '');
 
     const requestedStatus = String(body.status || '').trim() || 'planned';
@@ -110,6 +110,33 @@ export async function onRequestPost({ request, env, data }) {
     if (!isSuperAdmin(data)) {
       const z = userZone(data);
       if (zone !== z) return json({ error: 'Accès interdit.' }, { status: 403 });
+    }
+
+    // If technicianUserId is not provided, try to resolve it server-side
+    // This makes fiche generation robust even if the frontend cannot match users.
+    if (!technicianUserId) {
+      try {
+        const norm = (v) =>
+          String(v || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, ' ');
+        const key = norm(technicianName);
+        if (key) {
+          const res = await env.DB.prepare(
+            "SELECT id, technician_name FROM users WHERE role = 'technician' AND (disabled_at IS NULL OR disabled_at = '') AND zone = ?"
+          )
+            .bind(zone)
+            .all();
+          const rows = Array.isArray(res?.results) ? res.results : [];
+          const match = rows.find((r) => norm(r?.technician_name) === key) || null;
+          if (match?.id) technicianUserId = String(match.id);
+        }
+      } catch {
+        // ignore: technicianUserId will remain null
+      }
     }
 
     const id = newId();
@@ -137,6 +164,8 @@ export async function onRequestPost({ request, env, data }) {
         const epvType = String(body.epvType || '');
         const siteId = String(body.siteId || '');
         const requestedStatus = String(body.status || '').trim() || 'planned';
+        const requestedTechnicianName = String(body.technicianName || '');
+        const requestedTechnicianUserId = body.technicianUserId ? String(body.technicianUserId) : null;
 
         const existing = await env.DB.prepare(
           'SELECT * FROM interventions WHERE site_id = ? AND planned_date = ? AND epv_type = ? ORDER BY created_at DESC LIMIT 1'
@@ -148,12 +177,43 @@ export async function onRequestPost({ request, env, data }) {
           return json({ error: 'Intervention déjà planifiée.' }, { status: 409 });
         }
 
-        if (requestedStatus === 'sent' && String(existing.status || '') !== 'sent') {
+        if (requestedStatus === 'sent') {
           const now = isoNow();
+
+          // Try to fill technician_user_id if missing and a technician is provided.
+          let techIdToSet = requestedTechnicianUserId;
+          if (!techIdToSet && !existing.technician_user_id) {
+            try {
+              const site = await env.DB.prepare('SELECT zone FROM sites WHERE id = ?').bind(siteId).first();
+              const zone = String(site?.zone || 'BZV/POOL');
+              const norm = (v) =>
+                String(v || '')
+                  .normalize('NFD')
+                  .replace(/[\u0300-\u036f]/g, '')
+                  .trim()
+                  .toLowerCase()
+                  .replace(/\s+/g, ' ');
+              const key = norm(requestedTechnicianName);
+              if (key) {
+                const res = await env.DB.prepare(
+                  "SELECT id, technician_name FROM users WHERE role = 'technician' AND (disabled_at IS NULL OR disabled_at = '') AND zone = ?"
+                )
+                  .bind(zone)
+                  .all();
+                const rows = Array.isArray(res?.results) ? res.results : [];
+                const match = rows.find((r) => norm(r?.technician_name) === key) || null;
+                if (match?.id) techIdToSet = String(match.id);
+              }
+            } catch {
+              techIdToSet = null;
+            }
+          }
+
+          // Upgrade planned->sent and set sent_at if missing. Keep technician_user_id if already set.
           await env.DB.prepare(
-            "UPDATE interventions SET status = 'sent', sent_at = COALESCE(sent_at, ?), updated_at = ? WHERE id = ? AND status != 'done'"
+            "UPDATE interventions SET status = 'sent', sent_at = COALESCE(sent_at, ?), technician_user_id = COALESCE(technician_user_id, ?), updated_at = ? WHERE id = ? AND status != 'done'"
           )
-            .bind(now, now, String(existing.id))
+            .bind(now, techIdToSet, now, String(existing.id))
             .run();
           await touchLastUpdatedAt(env);
           const updated = await env.DB.prepare('SELECT * FROM interventions WHERE id = ?').bind(String(existing.id)).first();
