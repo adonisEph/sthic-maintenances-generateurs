@@ -101,6 +101,9 @@ const GeneratorMaintenanceApp = () => {
   const [importBusy, setImportBusy] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [importStep, setImportStep] = useState('');
+  const [consoleRmsImportBusy, setConsoleRmsImportBusy] = useState(false);
+  const [consoleRmsImportProgress, setConsoleRmsImportProgress] = useState(0);
+  const [consoleRmsImportStep, setConsoleRmsImportStep] = useState('');
   const [exportBusy, setExportBusy] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportStep, setExportStep] = useState('');
@@ -4146,6 +4149,137 @@ const GeneratorMaintenanceApp = () => {
     e.target.value = '';
   };
 
+  const handleImportConsoleRms = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!isAdmin && !isManager) {
+      alert('Accès interdit.');
+      e.target.value = '';
+      return;
+    }
+
+    const ok = window.confirm(
+      `Confirmer l'import CONSOLE RMS ?\n\n` +
+      `Ce fichier va mettre à jour NH2 A et Date A des sites existants via la colonne "ID Site".\n` +
+      `Les lignes avec ID Site inconnu seront ignorées.\n\n` +
+      `Fichier: ${file?.name || ''}`
+    );
+    if (!ok) {
+      e.target.value = '';
+      return;
+    }
+
+    const parseExcelDateToYmd = (value) => {
+      if (value == null || String(value).trim() === '') return '';
+      if (typeof value === 'number') {
+        try {
+          const d = XLSX.SSF.parse_date_code(value);
+          if (!d || !d.y || !d.m || !d.d) return '';
+          return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
+        } catch {
+          return '';
+        }
+      }
+      const raw = String(value).trim();
+      if (!raw) return '';
+      if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+      const m1 = raw.match(/^(\d{2})[\/\.\-](\d{2})[\/\.\-](\d{4})/);
+      if (m1) return `${m1[3]}-${m1[2]}-${m1[1]}`;
+      return raw.slice(0, 10);
+    };
+
+    const reader = new FileReader();
+    setConsoleRmsImportBusy(true);
+    setConsoleRmsImportProgress(5);
+    setConsoleRmsImportStep('Lecture du fichier…');
+
+    reader.onprogress = (evt) => {
+      try {
+        if (!evt || !evt.total) return;
+        const pct = Math.max(0, Math.min(15, Math.round((evt.loaded / evt.total) * 15)));
+        setConsoleRmsImportProgress(pct);
+      } catch {
+        // ignore
+      }
+    };
+
+    reader.onload = async (event) => {
+      try {
+        setConsoleRmsImportStep('Analyse Excel…');
+        setConsoleRmsImportProgress((p) => Math.max(p, 20));
+
+        const data = new Uint8Array(event.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonRows = XLSX.utils.sheet_to_json(sheet);
+
+        setConsoleRmsImportStep('Préparation…');
+        setConsoleRmsImportProgress((p) => Math.max(p, 35));
+
+        const rows = (Array.isArray(jsonRows) ? jsonRows : []).map((r, idx) => {
+          const idSite = String(r?.['ID Site'] || r?.['IDSite'] || r?.['Id Site'] || r?.['idSite'] || '').trim();
+
+          const nh2Raw = r?.['NH2 A'] ?? r?.['NH2A'] ?? r?.['nh2A'];
+          const dateARaw = r?.['Date A'] ?? r?.['DateA'] ?? r?.['dateA'];
+
+          const nh2A =
+            nh2Raw == null || String(nh2Raw).trim() === ''
+              ? null
+              : Number(String(nh2Raw).replace(',', '.'));
+
+          const dateA = parseExcelDateToYmd(dateARaw) || '';
+
+          return {
+            idSite,
+            nh2A: Number.isFinite(nh2A) ? nh2A : null,
+            dateA,
+            _row: idx + 2
+          };
+        });
+
+        setConsoleRmsImportStep('Envoi serveur…');
+        setConsoleRmsImportProgress((p) => Math.max(p, 60));
+
+        const res = await apiFetchJson('/api/sites/console-rms-import', {
+          method: 'POST',
+          body: JSON.stringify({
+            filename: file?.name || null,
+            rows: rows.map(({ idSite, nh2A, dateA }) => ({ idSite, nh2A, dateA }))
+          })
+        });
+
+        setConsoleRmsImportStep('Actualisation…');
+        setConsoleRmsImportProgress((p) => Math.max(p, 90));
+        await loadData();
+
+        setConsoleRmsImportProgress(100);
+
+        const updated = Number(res?.updated || 0);
+        const ignored = Number(res?.ignored || 0);
+        const skipped = Number(res?.skipped || 0);
+
+        alert(
+          `✅ Import CONSOLE RMS terminé.\n\n` +
+          `Sites mis à jour: ${updated}\n` +
+          `Lignes ignorées (ID inconnu / invalide): ${ignored}\n` +
+          `Lignes sans valeur (NH2 A & Date A vides): ${skipped}`
+        );
+      } catch (err) {
+        alert(err?.message || 'Erreur lors de l’import CONSOLE RMS.');
+      } finally {
+        setConsoleRmsImportBusy(false);
+        setTimeout(() => {
+          setConsoleRmsImportStep('');
+          setConsoleRmsImportProgress(0);
+        }, 500);
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
+  };
+
   const handleExportExcel = async () => {
     const ok = window.confirm('Exporter la liste des sites en Excel ?');
     if (!ok) return;
@@ -5739,6 +5873,11 @@ return (
             sitesCount={sites.length}
             exportBusy={exportBusy}
             onExportExcel={handleExportExcel}
+            canImportConsoleRms={Boolean(isAdmin || isManager)}
+            consoleRmsImportBusy={consoleRmsImportBusy}
+            consoleRmsImportStep={consoleRmsImportStep}
+            consoleRmsImportProgress={consoleRmsImportProgress}
+            onImportConsoleRmsChange={handleImportConsoleRms}
           />
 
           {!isTechnician ? (
