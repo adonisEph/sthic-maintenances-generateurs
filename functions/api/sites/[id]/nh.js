@@ -75,9 +75,11 @@ export async function onRequestPost({ request, env, data, params }) {
     const prevRaw = prevEffective - prevOffset;
 
     const hasPrev = Number.isFinite(Number(prevNh2A));
-    const isReset = hasPrev ? (forceReset && rawNh < prevRaw ? 1 : 0) : 0;
+    const inputLooksEffective = prevOffset > 0 && rawNh >= prevEffective;
+    const isReset = hasPrev && !inputLooksEffective ? (forceReset && rawNh < prevRaw ? 1 : 0) : 0;
     const nextOffset = isReset ? prevEffective : prevOffset;
-    const effectiveNh = nextOffset + rawNh;
+    const effectiveNh = inputLooksEffective ? rawNh : (nextOffset + rawNh);
+    const readingRawNh = inputLooksEffective ? (effectiveNh - nextOffset) : rawNh;
 
     if (Number.isFinite(Number(site.nh1_dv)) && effectiveNh < Number(site.nh1_dv)) {
       return json({ error: "Le compteur (NH) ne peut pas être inférieur au NH1 DV du site." }, { status: 400 });
@@ -104,7 +106,7 @@ export async function onRequestPost({ request, env, data, params }) {
         rid,
         siteId,
         readingDate,
-        Math.trunc(rawNh),
+        Math.trunc(Number(readingRawNh)),
         prevNh2A,
         prevDateA,
         prevNh1DV,

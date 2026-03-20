@@ -83,13 +83,16 @@ export async function onRequestPost({ request, env, data }) {
       let effectiveNh = effectivePrev;
       let nextOffset = prevOffset;
       let isReset = 0;
+      let readingRawNh = prevRaw;
 
       if (hasNh) {
         const rawNh = Number(nextNh2A);
         const hasPrev = Number.isFinite(Number(prevNh2A));
-        isReset = hasPrev ? (rawNh < prevRaw ? 1 : 0) : 0;
+        const inputLooksEffective = prevOffset > 0 && rawNh >= effectivePrev;
+        isReset = hasPrev && !inputLooksEffective ? (rawNh < prevRaw ? 1 : 0) : 0;
         nextOffset = isReset ? effectivePrev : prevOffset;
-        effectiveNh = nextOffset + rawNh;
+        effectiveNh = inputLooksEffective ? rawNh : (nextOffset + rawNh);
+        readingRawNh = inputLooksEffective ? (effectiveNh - nextOffset) : rawNh;
 
         if (Number.isFinite(Number(prevNh1DV)) && effectiveNh < Number(prevNh1DV)) {
           // Invalid reading: ignore line
@@ -117,7 +120,7 @@ export async function onRequestPost({ request, env, data }) {
           rid,
           String(site.id),
           readingDate,
-          hasNh ? Math.trunc(Number(nextNh2A)) : Math.trunc(Number(prevRaw) || 0),
+          Math.trunc(Number(readingRawNh) || 0),
           prevNh2A,
           prevDateA,
           prevNh1DV,
