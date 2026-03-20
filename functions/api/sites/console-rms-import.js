@@ -24,6 +24,7 @@ export async function onRequestPost({ request, env, data }) {
 
     const body = await readJson(request);
     const rows = Array.isArray(body?.rows) ? body.rows : [];
+    const assumeEffectiveNh = Boolean(body?.assumeEffectiveNh);
 
     const z = String(userZone(data) || 'BZV/POOL');
     const canAllZones = isSuperAdmin(data);
@@ -88,7 +89,7 @@ export async function onRequestPost({ request, env, data }) {
       if (hasNh) {
         const rawNh = Number(nextNh2A);
         const hasPrev = Number.isFinite(Number(prevNh2A));
-        const inputLooksEffective = prevOffset > 0 && rawNh >= effectivePrev;
+        const inputLooksEffective = assumeEffectiveNh || (prevOffset > 0 && rawNh >= effectivePrev);
         isReset = hasPrev && !inputLooksEffective ? (rawNh < prevRaw ? 1 : 0) : 0;
         nextOffset = isReset ? effectivePrev : prevOffset;
         effectiveNh = inputLooksEffective ? rawNh : (nextOffset + rawNh);

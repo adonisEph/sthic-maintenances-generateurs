@@ -4245,6 +4245,7 @@ const GeneratorMaintenanceApp = () => {
           method: 'POST',
           body: JSON.stringify({
             filename: file?.name || null,
+            assumeEffectiveNh: true,
             rows: rows.map(({ idSite, nh2A, dateA }) => ({ idSite, nh2A, dateA }))
           })
         });

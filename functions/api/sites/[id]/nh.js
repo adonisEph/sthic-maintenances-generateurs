@@ -40,6 +40,7 @@ export async function onRequestPost({ request, env, data, params }) {
     const readingDate = /^\d{4}-\d{2}-\d{2}$/.test(readingDateRaw) ? readingDateRaw : ymdToday();
     const rawNh = Number(body?.nhValue);
     const forceReset = Boolean(body?.reset || body?.forceReset);
+    const assumeEffectiveNh = Boolean(body?.assumeEffectiveNh);
 
     if (!Number.isFinite(rawNh) || rawNh < 0) return json({ error: 'Compteur (NH) invalide.' }, { status: 400 });
 
@@ -75,7 +76,7 @@ export async function onRequestPost({ request, env, data, params }) {
     const prevRaw = prevEffective - prevOffset;
 
     const hasPrev = Number.isFinite(Number(prevNh2A));
-    const inputLooksEffective = prevOffset > 0 && rawNh >= prevEffective;
+    const inputLooksEffective = assumeEffectiveNh || (prevOffset > 0 && rawNh >= prevEffective);
     const isReset = hasPrev && !inputLooksEffective ? (forceReset && rawNh < prevRaw ? 1 : 0) : 0;
     const nextOffset = isReset ? prevEffective : prevOffset;
     const effectiveNh = inputLooksEffective ? rawNh : (nextOffset + rawNh);
