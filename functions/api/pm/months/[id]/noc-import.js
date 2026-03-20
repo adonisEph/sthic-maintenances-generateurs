@@ -20,6 +20,23 @@ function normalizeYmd(v) {
   return /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? ymd : null;
 }
 
+function normalizeZone(v) {
+  return String(v ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s*\/\s*/g, '/')
+    .replace(/\s+/g, ' ');
+}
+
+function inferMaintenanceType(shortDescription) {
+  const s = String(shortDescription ?? '').toLowerCase();
+  if (s.includes('epv1')) return 'EPV1';
+  if (s.includes('dg') || s.includes('generator') || s.includes('générateur')) return 'DG Service';
+  if (s.includes('air') || s.includes('conditioning') || s.includes('clim')) return 'Air Conditioning Service';
+  if (s.includes('fullpm') || s.includes('full pm') || s.includes('full pmwo') || s.includes('pmwo')) return 'FullPMWO';
+  return 'FullPMWO';
+}
+
 export async function onRequestPost({ request, env, data, params }) {
   try {
     await ensureAdminUser(env);
@@ -75,12 +92,14 @@ export async function onRequestPost({ request, env, data, params }) {
     for (const r of rows) {
       const number = String(r?.number || '').trim();
       if (!number) continue;
+      const shortDescription = normStr(r?.shortDescription);
       cleanedRows.push({
         number,
         state: normStr(r?.state),
         closedAt: normStr(r?.closedAt),
         siteCode: normStr(r?.siteCode),
-        shortDescription: normStr(r?.shortDescription),
+        shortDescription,
+        maintenanceType: inferMaintenanceType(shortDescription),
         scheduledWoDate: normalizeYmd(r?.scheduledWoDate),
         assignedTo: normStr(r?.assignedTo)
       });
@@ -93,10 +112,10 @@ export async function onRequestPost({ request, env, data, params }) {
       'INSERT INTO pm_noc_rows (id, import_id, month_id, number, state, closed_at) VALUES (?, ?, ?, ?, ?, ?)'
     );
     const updatePmItemStmt = env.DB.prepare(
-      'UPDATE pm_items SET state = COALESCE(?, state), closed_at = COALESCE(?, closed_at), site_code = COALESCE(NULLIF(TRIM(site_code), \'\'), ?), short_description = COALESCE(NULLIF(TRIM(short_description), \'\'), ?), scheduled_wo_date = COALESCE(NULLIF(TRIM(scheduled_wo_date), \'\'), ?), assigned_to = COALESCE(NULLIF(TRIM(assigned_to), \'\'), ?), created_source = COALESCE(NULLIF(TRIM(created_source), \'\'), \'noc\'), last_noc_import_at = ?, updated_at = ? WHERE month_id = ? AND number = ?'
+      'UPDATE pm_items SET state = COALESCE(?, state), closed_at = COALESCE(?, closed_at), site_code = COALESCE(NULLIF(TRIM(site_code), \'\'), ?), short_description = COALESCE(NULLIF(TRIM(short_description), \'\'), ?), maintenance_type = COALESCE(?, maintenance_type), scheduled_wo_date = COALESCE(NULLIF(TRIM(scheduled_wo_date), \'\'), ?), assigned_to = COALESCE(NULLIF(TRIM(assigned_to), \'\'), ?), created_source = COALESCE(NULLIF(TRIM(created_source), \'\'), \'noc\'), last_noc_import_at = ?, updated_at = ? WHERE month_id = ? AND number = ?'
     );
     const updatePmItemScopedStmt = env.DB.prepare(
-      'UPDATE pm_items SET state = COALESCE(?, state), closed_at = COALESCE(?, closed_at), site_code = COALESCE(NULLIF(TRIM(site_code), \'\'), ?), short_description = COALESCE(NULLIF(TRIM(short_description), \'\'), ?), scheduled_wo_date = COALESCE(NULLIF(TRIM(scheduled_wo_date), \'\'), ?), assigned_to = COALESCE(NULLIF(TRIM(assigned_to), \'\'), ?), created_source = COALESCE(NULLIF(TRIM(created_source), \'\'), \'noc\'), last_noc_import_at = ?, updated_at = ? WHERE month_id = ? AND number = ? AND (TRIM(COALESCE(region, zone, \'\')) = ? OR TRIM(COALESCE(region, zone, \'\')) = \'\')'
+      'UPDATE pm_items SET state = COALESCE(?, state), closed_at = COALESCE(?, closed_at), site_code = COALESCE(NULLIF(TRIM(site_code), \'\'), ?), short_description = COALESCE(NULLIF(TRIM(short_description), \'\'), ?), maintenance_type = COALESCE(?, maintenance_type), scheduled_wo_date = COALESCE(NULLIF(TRIM(scheduled_wo_date), \'\'), ?), assigned_to = COALESCE(NULLIF(TRIM(assigned_to), \'\'), ?), created_source = COALESCE(NULLIF(TRIM(created_source), \'\'), \'noc\'), last_noc_import_at = ?, updated_at = ? WHERE month_id = ? AND number = ? AND TRIM(COALESCE(region, zone, \'\')) = ?'
     );
     const insertPmItemStmt = env.DB.prepare(
       'INSERT OR IGNORE INTO pm_items (id, month_id, number, site_code, site_name, region, zone, short_description, maintenance_type, scheduled_wo_date, assigned_to, created_source, state, closed_at, last_noc_import_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -120,7 +139,7 @@ export async function onRequestPost({ request, env, data, params }) {
       const inPlaceholders = numbers.map(() => '?').join(',');
       const existing = scopeZone
         ? await env.DB.prepare(
-            `SELECT number FROM pm_items WHERE month_id = ? AND (TRIM(COALESCE(region, zone, '')) = ? OR TRIM(COALESCE(region, zone, '')) = '') AND number IN (${inPlaceholders})`
+            `SELECT number FROM pm_items WHERE month_id = ? AND TRIM(COALESCE(region, zone, '')) = ? AND number IN (${inPlaceholders})`
           )
             .bind(monthId, scopeZone, ...numbers)
             .all()
@@ -172,7 +191,20 @@ export async function onRequestPost({ request, env, data, params }) {
         for (const r of missingChunk) {
           const code = String(r?.siteCode || '').trim();
           const s = code ? siteMap.get(code) : null;
-          const z = scopeZone || String(s?.zone || '').trim() || null;
+          const siteZone = normalizeZone(s?.zone || '');
+          const z = siteZone || null;
+
+          if (scopeZone) {
+            const scopeNorm = normalizeZone(scopeZone);
+            if (!z) {
+              continue;
+            }
+            if (scopeNorm !== z) {
+              continue;
+            }
+          }
+
+          const maintenanceType = inferMaintenanceType(r?.shortDescription);
           insertStmts.push(
             insertPmItemStmt.bind(
               newId(),
@@ -183,7 +215,7 @@ export async function onRequestPost({ request, env, data, params }) {
               z,
               z,
               r.shortDescription,
-              'FullPMWO',
+              maintenanceType,
               r.scheduledWoDate,
               r.assignedTo || (s?.technician ? String(s.technician) : null),
               'noc',
@@ -202,7 +234,7 @@ export async function onRequestPost({ request, env, data, params }) {
           const inNow = missingChunkNumbers.map(() => '?').join(',');
           const createdNow = scopeZone
             ? await env.DB.prepare(
-                `SELECT number FROM pm_items WHERE month_id = ? AND (TRIM(COALESCE(region, zone, '')) = ? OR TRIM(COALESCE(region, zone, '')) = '') AND number IN (${inNow})`
+                `SELECT number FROM pm_items WHERE month_id = ? AND TRIM(COALESCE(region, zone, '')) = ? AND number IN (${inNow})`
               )
                 .bind(monthId, scopeZone, ...missingChunkNumbers)
                 .all()
@@ -234,6 +266,7 @@ export async function onRequestPost({ request, env, data, params }) {
           r.closedAt,
           r.siteCode,
           r.shortDescription,
+          r.maintenanceType,
           r.scheduledWoDate,
           r.assignedTo,
           now,

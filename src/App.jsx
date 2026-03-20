@@ -50,7 +50,7 @@ const SPLASH_MIN_MS = 4000;
 const DISABLE_PUSH_NOTIFICATIONS = true;
 const DISABLE_NOTIFICATIONS_FEATURE = true;
 const DISABLE_PRESENCE_FEATURE = false;
-const DISABLE_META_VERSION_POLLING = true;
+const DISABLE_META_VERSION_POLLING = false;
 
 const GeneratorMaintenanceApp = () => {
   const storage = useStorage();
@@ -5521,6 +5521,10 @@ const GeneratorMaintenanceApp = () => {
         }
         if (v !== lastVersion) {
           lastVersion = v;
+
+          setNotificationsToast('🔄 Données mises à jour');
+          window.setTimeout(() => setNotificationsToast(''), 2500);
+
           await refreshAll();
         }
       } catch {
