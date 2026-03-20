@@ -25,6 +25,8 @@ export async function onRequestPost({ request, env, data }) {
     const body = await readJson(request);
     const rows = Array.isArray(body?.rows) ? body.rows : [];
     const assumeEffectiveNh = Boolean(body?.assumeEffectiveNh);
+    const allowDecrease = Boolean(body?.allowDecrease);
+    const forceResetOnDecrease = Boolean(body?.forceResetOnDecrease);
 
     const z = String(userZone(data) || 'BZV/POOL');
     const canAllZones = isSuperAdmin(data);
@@ -43,7 +45,12 @@ export async function onRequestPost({ request, env, data }) {
     let ignored = 0;
     let skipped = 0;
 
+    let ignoredBadDate = 0;
+    let ignoredDateBeforeDv = 0;
+    let ignoredDecrease = 0;
+
     const now = isoNow();
+    const todayYmd = ymdToday();
 
     for (let i = 0; i < rows.length; i += 1) {
       const r = rows[i] || {};
@@ -80,6 +87,18 @@ export async function onRequestPost({ request, env, data }) {
 
       const readingDate = hasDate ? nextDateA : (/^\d{4}-\d{2}-\d{2}$/.test(prevDateA) ? prevDateA : ymdToday());
 
+      if (/^\d{4}-\d{2}-\d{2}$/.test(readingDate) && readingDate > todayYmd) {
+        ignored += 1;
+        ignoredBadDate += 1;
+        continue;
+      }
+      const dateDvYmd = String(prevDateDV || '').slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateDvYmd) && /^\d{4}-\d{2}-\d{2}$/.test(readingDate) && readingDate < dateDvYmd) {
+        ignored += 1;
+        ignoredDateBeforeDv += 1;
+        continue;
+      }
+
       // If NH is not provided, keep effective NH2A and offset as-is.
       let effectiveNh = effectivePrev;
       let nextOffset = prevOffset;
@@ -90,6 +109,14 @@ export async function onRequestPost({ request, env, data }) {
         const rawNh = Number(nextNh2A);
         const hasPrev = Number.isFinite(Number(prevNh2A));
         const inputLooksEffective = assumeEffectiveNh || (prevOffset > 0 && rawNh >= effectivePrev);
+        if (!allowDecrease) {
+          const isDecrease = inputLooksEffective ? (rawNh < effectivePrev) : (rawNh < prevRaw);
+          if (isDecrease && !forceResetOnDecrease) {
+            ignored += 1;
+            ignoredDecrease += 1;
+            continue;
+          }
+        }
         isReset = hasPrev && !inputLooksEffective ? (rawNh < prevRaw ? 1 : 0) : 0;
         nextOffset = isReset ? effectivePrev : prevOffset;
         effectiveNh = inputLooksEffective ? rawNh : (nextOffset + rawNh);
@@ -143,7 +170,18 @@ export async function onRequestPost({ request, env, data }) {
       await touchLastUpdatedAt(env);
     }
 
-    return json({ ok: true, updated, ignored, skipped }, { status: 200 });
+    return json(
+      {
+        ok: true,
+        updated,
+        ignored,
+        skipped,
+        ignoredBadDate,
+        ignoredDateBeforeDv,
+        ignoredDecrease
+      },
+      { status: 200 }
+    );
   } catch (e) {
     return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
   }

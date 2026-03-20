@@ -41,6 +41,7 @@ export async function onRequestPost({ request, env, data, params }) {
     const rawNh = Number(body?.nhValue);
     const forceReset = Boolean(body?.reset || body?.forceReset);
     const assumeEffectiveNh = Boolean(body?.assumeEffectiveNh);
+    const allowDecrease = Boolean(body?.allowDecrease);
 
     if (!Number.isFinite(rawNh) || rawNh < 0) return json({ error: 'Compteur (NH) invalide.' }, { status: 400 });
 
@@ -72,11 +73,28 @@ export async function onRequestPost({ request, env, data, params }) {
     const prevDateDV = site.date_dv == null ? null : String(site.date_dv);
     const prevOffset = site.nh_offset == null ? 0 : Number(site.nh_offset);
 
+    const todayYmd = ymdToday();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(readingDate) && readingDate > todayYmd) {
+      return json({ error: 'Date A invalide (dans le futur).' }, { status: 400 });
+    }
+    const dateDvYmd = String(prevDateDV || '').slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateDvYmd) && /^\d{4}-\d{2}-\d{2}$/.test(readingDate) && readingDate < dateDvYmd) {
+      return json({ error: 'Date A invalide (antérieure à Date DV).' }, { status: 400 });
+    }
+
     const prevEffective = Number.isFinite(Number(prevNh2A)) ? Number(prevNh2A) : 0;
     const prevRaw = prevEffective - prevOffset;
 
     const hasPrev = Number.isFinite(Number(prevNh2A));
     const inputLooksEffective = assumeEffectiveNh || (prevOffset > 0 && rawNh >= prevEffective);
+    if (!allowDecrease) {
+      if (inputLooksEffective && rawNh < prevEffective && !forceReset) {
+        return json({ error: 'Baisse de NH détectée. Utilisez le mode reset (ou allowDecrease).' }, { status: 400 });
+      }
+      if (!inputLooksEffective && rawNh < prevRaw && !forceReset) {
+        return json({ error: 'Baisse de NH détectée. Cochez reset pour confirmer.' }, { status: 400 });
+      }
+    }
     const isReset = hasPrev && !inputLooksEffective ? (forceReset && rawNh < prevRaw ? 1 : 0) : 0;
     const nextOffset = isReset ? prevEffective : prevOffset;
     const effectiveNh = inputLooksEffective ? rawNh : (nextOffset + rawNh);
