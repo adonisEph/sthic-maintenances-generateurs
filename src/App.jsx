@@ -39,7 +39,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '3.5.5';
+const APP_VERSION = '3.4.0';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
