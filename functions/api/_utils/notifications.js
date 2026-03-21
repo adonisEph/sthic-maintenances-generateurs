@@ -108,13 +108,38 @@ export async function getUnreadNotificationsCount(env, userId) {
   return Number(row?.c || 0);
 }
 
-export async function listNotifications(env, userId, { unreadOnly = false, limit = 50 } = {}) {
+export async function getUnreadNotificationsCountByKinds(env, userId, kinds = []) {
+  const list = Array.isArray(kinds) ? kinds.map((k) => String(k || '').trim()).filter(Boolean) : [];
+  if (list.length === 0) {
+    return await getUnreadNotificationsCount(env, userId);
+  }
+
+  const ph = list.map(() => '?').join(',');
+  const row = await env.DB.prepare(
+    `SELECT COUNT(1) as c FROM notifications WHERE user_id = ? AND read_at IS NULL AND kind IN (${ph})`
+  )
+    .bind(String(userId), ...list)
+    .first();
+  return Number(row?.c || 0);
+}
+
+export async function listNotifications(env, userId, { unreadOnly = false, limit = 50, kinds = [] } = {}) {
   const lim = Math.max(1, Math.min(200, Math.round(Number(limit || 50))));
-  const where = unreadOnly ? 'user_id = ? AND read_at IS NULL' : 'user_id = ?';
+  const kindList = Array.isArray(kinds) ? kinds.map((k) => String(k || '').trim()).filter(Boolean) : [];
+
+  let where = unreadOnly ? 'user_id = ? AND read_at IS NULL' : 'user_id = ?';
+  const binds = [String(userId)];
+
+  if (kindList.length > 0) {
+    const ph = kindList.map(() => '?').join(',');
+    where += ` AND kind IN (${ph})`;
+    binds.push(...kindList);
+  }
+
   const res = await env.DB.prepare(
     `SELECT * FROM notifications WHERE ${where} ORDER BY created_at DESC LIMIT ?`
   )
-    .bind(String(userId), lim)
+    .bind(...binds, lim)
     .all();
   return Array.isArray(res?.results) ? res.results : [];
 }

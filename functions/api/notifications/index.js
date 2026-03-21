@@ -1,6 +1,6 @@
 import { ensureAdminUser } from '../_utils/db.js';
 import { json, requireAuth, readJson } from '../_utils/http.js';
-import { getUnreadNotificationsCount, listNotifications, markNotificationsRead } from '../_utils/notifications.js';
+import { getUnreadNotificationsCount, getUnreadNotificationsCountByKinds, listNotifications, markNotificationsRead } from '../_utils/notifications.js';
 
 function mapRow(r) {
   if (!r) return null;
@@ -25,9 +25,18 @@ export async function onRequestGet({ request, env, data }) {
     const url = new URL(request.url);
     const unreadOnly = url.searchParams.get('unreadOnly') === '1';
     const limit = Number(url.searchParams.get('limit') || 50);
+    const kindsRaw = url.searchParams.get('kinds');
+    const kinds = kindsRaw
+      ? String(kindsRaw)
+          .split(',')
+          .map((k) => String(k || '').trim())
+          .filter(Boolean)
+      : [];
 
-    const rows = await listNotifications(env, data.user.id, { unreadOnly, limit });
-    const unreadCount = await getUnreadNotificationsCount(env, data.user.id);
+    const rows = await listNotifications(env, data.user.id, { unreadOnly, limit, kinds });
+    const unreadCount = kinds.length > 0
+      ? await getUnreadNotificationsCountByKinds(env, data.user.id, kinds)
+      : await getUnreadNotificationsCount(env, data.user.id);
 
     return json({ notifications: rows.map(mapRow), unreadCount }, { status: 200 });
   } catch (e) {

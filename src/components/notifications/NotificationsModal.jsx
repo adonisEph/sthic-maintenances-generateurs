@@ -6,7 +6,8 @@ const NotificationsModal = ({
   onClose,
   apiFetchJson,
   onMarkedRead,
-  initialUnreadOnly = true
+  initialUnreadOnly = true,
+  kinds = []
 }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -29,6 +30,8 @@ const NotificationsModal = ({
       const qs = new URLSearchParams();
       if (unreadOnly) qs.set('unreadOnly', '1');
       qs.set('limit', '80');
+      const kindList = Array.isArray(kinds) ? kinds.map((k) => String(k || '').trim()).filter(Boolean) : [];
+      if (kindList.length > 0) qs.set('kinds', kindList.join(','));
       const res = await apiFetchJson(`/api/notifications?${qs.toString()}`, { method: 'GET' });
       setItems(Array.isArray(res?.notifications) ? res.notifications : []);
     } catch (e) {

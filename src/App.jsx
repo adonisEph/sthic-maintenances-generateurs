@@ -39,18 +39,20 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '3.3.5';
+const APP_VERSION = '3.5.5';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
 const APP_VERSION_FORCE_AFTER_DAYS = 0;
+const APP_VERSION_REQUIRED_KEY = 'gma_app_required_version';
 const DAILY_NH_UPDATE_STORAGE_KEY = 'gma_daily_nh_update_ymd';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
 const SPLASH_MIN_MS = 4000;
-const DISABLE_PUSH_NOTIFICATIONS = true;
-const DISABLE_NOTIFICATIONS_FEATURE = true;
+const DISABLE_PUSH_NOTIFICATIONS = false;
+const DISABLE_NOTIFICATIONS_FEATURE = false;
 const DISABLE_PRESENCE_FEATURE = false;
 const DISABLE_META_VERSION_POLLING = false;
+const NOTIFICATION_KINDS_REALTIME = ['EPV_ASSIGNED', 'EPV_DONE'];
 
 const GeneratorMaintenanceApp = () => {
   const storage = useStorage();
@@ -409,7 +411,9 @@ const GeneratorMaintenanceApp = () => {
       return 0;
     }
     try {
-      const res = await apiFetchJson('/api/notifications/unread-count', { method: 'GET' });
+      const qs = new URLSearchParams();
+      qs.set('kinds', NOTIFICATION_KINDS_REALTIME.join(','));
+      const res = await apiFetchJson(`/api/notifications/unread-count?${qs.toString()}`, { method: 'GET' });
       const c = Number(res?.unreadCount || 0);
       setNotificationsUnreadCount(c);
       await safeSetAppBadge(c);
@@ -682,7 +686,8 @@ const GeneratorMaintenanceApp = () => {
       <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4">
         <div className="max-w-3xl mx-auto bg-white border border-indigo-200 shadow-lg rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="min-w-0">
-            <div className="font-bold text-gray-900">Nouvelle version disponible</div>
+            <div className="font-bold text-gray-900">Mise à jour obligatoire</div>
+            <div className="text-sm text-red-700 font-semibold mt-1">Veuillez mettre à jour l’application pour continuer.</div>
             <div className="text-sm text-gray-600">
               Version actuelle : <span className="font-semibold">{String(pwaUpdate?.currentVersion || APP_VERSION)}</span>
               {' • '}
@@ -802,7 +807,11 @@ const GeneratorMaintenanceApp = () => {
 
         const serverVersion = String(data?.version || '').trim();
         if (!serverVersion) return;
-
+        try {
+          localStorage.setItem(APP_VERSION_REQUIRED_KEY, serverVersion);
+        } catch {
+          // ignore
+        }
         const currentVersion = APP_VERSION;
         const hasNew = cmp(serverVersion, currentVersion) > 0;
         if (!hasNew) return;
@@ -1045,14 +1054,25 @@ const GeneratorMaintenanceApp = () => {
     onFocus = () => loadNotificationsUnreadCount();
     window.addEventListener('focus', onFocus);
 
-    onSwMessage = (event) => {
+    onSwMessage = async (event) => {
       if (!event?.data) return;
       if (event.data.type === 'PUSH_NOTIFICATION') {
-        loadNotificationsUnreadCount();
+        await loadNotificationsUnreadCount();
 
-        // mini toast in-app
-        setNotificationsToast('Nouvelle notification reçue');
-        window.setTimeout(() => setNotificationsToast(''), 3500);
+        try {
+          const qs = new URLSearchParams();
+          qs.set('unreadOnly', '1');
+          qs.set('limit', '1');
+          qs.set('kinds', NOTIFICATION_KINDS_REALTIME.join(','));
+          const latest = await apiFetchJson(`/api/notifications?${qs.toString()}`, { method: 'GET' });
+          const n = Array.isArray(latest?.notifications) ? latest.notifications[0] : null;
+          if (n?.title) {
+            setNotificationsToast(String(n.title));
+            window.setTimeout(() => setNotificationsToast(''), 3500);
+          }
+        } catch {
+          // si réseau KO, pas de toast (évite spam/bugs)
+        }
       
         // beep simple (si possible)
         try {
@@ -5521,10 +5541,6 @@ const GeneratorMaintenanceApp = () => {
         }
         if (v !== lastVersion) {
           lastVersion = v;
-
-          setNotificationsToast('🔄 Données mises à jour');
-          window.setTimeout(() => setNotificationsToast(''), 2500);
-
           await refreshAll();
         }
       } catch {
@@ -6699,6 +6715,7 @@ return (
             onClose={() => setShowNotificationsModal(false)}
             apiFetchJson={apiFetchJson}
             onMarkedRead={loadNotificationsUnreadCount}
+            kinds={NOTIFICATION_KINDS_REALTIME}
           />
 
         <div className="mb-6">
