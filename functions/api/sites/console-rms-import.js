@@ -3,7 +3,13 @@ import { json, readJson, isoNow, newId, requireAuth, isSuperAdmin, userZone, ymd
 import { touchLastUpdatedAt } from '../_utils/meta.js';
 import { calculateDiffNHs, calculateEstimatedNH, calculateRegime } from '../_utils/calc.js';
 
-const normIdSite = (v) => String(v || '').trim();
+const normIdSite = (v) =>
+  String(v || '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\u00A0/g, ' ')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
 
 const parseYmd = (v) => {
   const s = String(v || '').trim();
