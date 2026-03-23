@@ -25,7 +25,8 @@ export async function onRequestPost({ request, env, data, params }) {
     const items = Array.isArray(body?.items) ? body.items : [];
     const filename = normStr(body?.filename);
 
-    const scopeZone = isSuperAdmin(data) ? null : String(userZone(data) || 'BZV/POOL');
+    const superAdmin = isSuperAdmin(data);
+    const scopeZone = superAdmin ? null : String(userZone(data) || 'BZV/POOL');
 
     const now = isoNow();
 

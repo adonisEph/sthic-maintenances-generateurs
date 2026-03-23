@@ -1822,7 +1822,7 @@ const GeneratorMaintenanceApp = () => {
     const month = String(yyyymm || '').trim();
     if (!mId || !month) {
       setPmRetiredSites(null);
-      return;
+      return null;
     }
 
     const authZone = String(authUser?.zone || '').trim();
@@ -1848,7 +1848,7 @@ const GeneratorMaintenanceApp = () => {
     const scopeZonesNorm = scopeZones.map(normalizeZone).filter(Boolean);
     if (scopeZones.length === 0) {
       setPmRetiredSites(null);
-      return;
+      return null;
     }
 
     const normalizeType = (t) => String(t || '').trim().toLowerCase().replace(/\s+/g, '');
@@ -1902,8 +1902,12 @@ const GeneratorMaintenanceApp = () => {
 
     // Retirés = globalSites - clientSites (par siteCode)
     const items = [];
+    const activeItems = [];
     for (const [key, g] of globalSites.entries()) {
-      if (clientSites.has(key)) continue;
+      if (clientSites.has(key)) {
+        activeItems.push({ siteCode: g.siteCode, zone: g.zone });
+        continue;
+      }
       items.push(g);
     }
 
@@ -1921,14 +1925,19 @@ const GeneratorMaintenanceApp = () => {
       byZone[z] = Number(byZone[z] || 0) + 1;
     }
 
-    setPmRetiredSites({
+    const payload = {
       month,
       scopeZones: scopeZonesNorm,
       total: items.length,
       byZone,
-      items
-    });
+      items,
+      activeItems
+    };
+
+    setPmRetiredSites(payload);
+    return payload;
   };
+  
 
   const refreshPmAll = async (yyyymm) => {
     try {
@@ -2575,7 +2584,32 @@ const GeneratorMaintenanceApp = () => {
         await loadPmItems(monthId);
         await loadPmImports(monthId);
         await loadPmDashboard(monthId);
-        await refreshPmRetiredSites(monthId, pmMonth);
+        const retiredPayload = await refreshPmRetiredSites(monthId, pmMonth);
+
+        if (retiredPayload && (authUser?.role === 'admin' || authUser?.role === 'manager')) {
+          const retiredSites = (Array.isArray(retiredPayload?.items) ? retiredPayload.items : []).map((it) => ({
+            zone: it?.zone,
+            siteCode: it?.siteCode
+          }));
+
+          const activeSites = (Array.isArray(retiredPayload?.activeItems) ? retiredPayload.activeItems : []).map((it) => ({
+            zone: it?.zone,
+            siteCode: it?.siteCode
+          }));
+
+          if (retiredSites.length || activeSites.length) {
+            await apiFetchJson('/api/sites/apply-retired-from-pm', {
+              method: 'POST',
+              body: JSON.stringify({
+                scopeZones: retiredPayload?.scopeZones || [],
+                retiredSites,
+                activeSites
+              })
+            });
+
+            await loadData();
+          }
+        }
 
         setPmClientProgress(100);
         setPmClientStep('Terminé');
