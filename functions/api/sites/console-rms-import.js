@@ -54,6 +54,22 @@ export async function onRequestPost({ request, env, data }) {
     let ignoredBadDate = 0;
     let ignoredDateBeforeDv = 0;
     let ignoredDecrease = 0;
+    let ignoredMissingId = 0;
+    let ignoredUnknownId = 0;
+    let ignoredNhBelowDv = 0;
+
+    const ignoredSamples = [];
+    const pushIgnoredSample = (reason, r, idx, extra = {}) => {
+      if (ignoredSamples.length >= 80) return;
+      ignoredSamples.push({
+        reason,
+        row: Number(idx) + 1,
+        idSite: String(r?.idSite || ''),
+        nh2A: r?.nh2A == null ? null : Number(r.nh2A),
+        dateA: r?.dateA == null ? '' : String(r.dateA),
+        ...extra
+      });
+    };
 
     const now = isoNow();
     const todayYmd = ymdToday();
@@ -63,11 +79,15 @@ export async function onRequestPost({ request, env, data }) {
       const idSite = normIdSite(r?.idSite);
       if (!idSite) {
         ignored += 1;
+        ignoredMissingId += 1;
+        pushIgnoredSample('missing_id_site', r, i);
         continue;
       }
       const site = byIdSite.get(idSite);
       if (!site) {
         ignored += 1;
+        ignoredUnknownId += 1;
+        pushIgnoredSample('unknown_id_site', r, i, { normalizedIdSite: idSite });
         continue;
       }
 
@@ -96,12 +116,14 @@ export async function onRequestPost({ request, env, data }) {
       if (/^\d{4}-\d{2}-\d{2}$/.test(readingDate) && readingDate > todayYmd) {
         ignored += 1;
         ignoredBadDate += 1;
+        pushIgnoredSample('future_date', r, i, { readingDate, todayYmd, normalizedIdSite: idSite });
         continue;
       }
       const dateDvYmd = String(prevDateDV || '').slice(0, 10);
       if (/^\d{4}-\d{2}-\d{2}$/.test(dateDvYmd) && /^\d{4}-\d{2}-\d{2}$/.test(readingDate) && readingDate < dateDvYmd) {
         ignored += 1;
         ignoredDateBeforeDv += 1;
+        pushIgnoredSample('date_before_dv', r, i, { readingDate, dateDvYmd, normalizedIdSite: idSite });
         continue;
       }
 
@@ -120,6 +142,7 @@ export async function onRequestPost({ request, env, data }) {
           if (isDecrease && !forceResetOnDecrease) {
             ignored += 1;
             ignoredDecrease += 1;
+            pushIgnoredSample('decrease_blocked', r, i, { normalizedIdSite: idSite, prevNh2A, prevOffset });
             continue;
           }
         }
@@ -131,6 +154,8 @@ export async function onRequestPost({ request, env, data }) {
         if (Number.isFinite(Number(prevNh1DV)) && effectiveNh < Number(prevNh1DV)) {
           // Invalid reading: ignore line
           ignored += 1;
+          ignoredNhBelowDv += 1;
+          pushIgnoredSample('nh_below_dv', r, i, { normalizedIdSite: idSite, prevNh1DV });
           continue;
         }
       }
@@ -182,9 +207,13 @@ export async function onRequestPost({ request, env, data }) {
         updated,
         ignored,
         skipped,
+        ignoredMissingId,
+        ignoredUnknownId,
         ignoredBadDate,
         ignoredDateBeforeDv,
-        ignoredDecrease
+        ignoredDecrease,
+        ignoredNhBelowDv,
+        ignoredSamples
       },
       { status: 200 }
     );
