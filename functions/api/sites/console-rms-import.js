@@ -137,8 +137,23 @@ export async function onRequestPost({ request, env, data }) {
         const rawNh = Number(nextNh2A);
         const hasPrev = Number.isFinite(Number(prevNh2A));
         const inputLooksEffective = assumeEffectiveNh || (prevOffset > 0 && rawNh >= effectivePrev);
+
+        const autoResetHeuristic = (() => {
+          if (!Number.isFinite(Number(prevNh1DV))) return false;
+          if (!Number.isFinite(Number(effectivePrev))) return false;
+
+          const dv = Number(prevNh1DV);
+          const prevEff = Number(effectivePrev);
+          const drop = prevEff - rawNh;
+
+          if (rawNh <= 10 && dv >= 200) return true;
+          if (rawNh < dv * 0.5 && drop >= 200) return true;
+          return false;
+        })();
+
+        const effectiveMode = inputLooksEffective && !autoResetHeuristic;
         if (!allowDecrease) {
-          const isDecrease = inputLooksEffective ? (rawNh < effectivePrev) : (rawNh < prevRaw);
+          const isDecrease = effectiveMode ? (rawNh < effectivePrev) : (rawNh < prevRaw);
           if (isDecrease && !forceResetOnDecrease) {
             ignored += 1;
             ignoredDecrease += 1;
@@ -146,10 +161,10 @@ export async function onRequestPost({ request, env, data }) {
             continue;
           }
         }
-        isReset = hasPrev && !inputLooksEffective ? (rawNh < prevRaw ? 1 : 0) : 0;
+        isReset = autoResetHeuristic ? (hasPrev ? 1 : 0) : (hasPrev && !effectiveMode ? (rawNh < prevRaw ? 1 : 0) : 0);
         nextOffset = isReset ? effectivePrev : prevOffset;
-        effectiveNh = inputLooksEffective ? rawNh : (nextOffset + rawNh);
-        readingRawNh = inputLooksEffective ? (effectiveNh - nextOffset) : rawNh;
+        effectiveNh = effectiveMode ? rawNh : (nextOffset + rawNh);
+        readingRawNh = effectiveMode ? (effectiveNh - nextOffset) : rawNh;
 
         if (Number.isFinite(Number(prevNh1DV)) && effectiveNh < Number(prevNh1DV)) {
           // Invalid reading: ignore line

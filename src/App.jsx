@@ -4300,6 +4300,7 @@ const GeneratorMaintenanceApp = () => {
           body: JSON.stringify({
             filename: file?.name || null,
             assumeEffectiveNh: true,
+            allowDecrease: true,
             rows: rows.map(({ idSite, nh2A, dateA }) => ({ idSite, nh2A, dateA }))
           })
         });
