@@ -90,6 +90,7 @@ const HistoryModal = ({
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full"
                 >
                   <option value="all">Tous statuts</option>
+                  <option value="Brouillon">Brouillon</option>
                   <option value="En attente">En attente</option>
                   <option value="Effectuée">Effectuée</option>
                 </select>
