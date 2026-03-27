@@ -32,7 +32,7 @@ export async function onRequestPatch({ request, env, data, params }) {
   const nextTechnicianName = body.technicianName != null ? String(body.technicianName || '') : (existing.technician_name || '');
 
   if (!nextEmail) return json({ error: 'Email requis.' }, { status: 400 });
-  if (!['admin', 'viewer', 'technician', 'manager'].includes(nextRole)) return json({ error: 'Rôle invalide.' }, { status: 400 });
+  if (!['admin', 'viewer', 'technician', 'manager', 'warehouse'].includes(nextRole)) return json({ error: 'Rôle invalide.' }, { status: 400 });
   if (!nextZone) return json({ error: 'Zone requise.' }, { status: 400 });
   if (!['BZV/POOL', 'PNR/KOUILOU', 'UPCN'].includes(nextZone)) return json({ error: 'Zone invalide.' }, { status: 400 });
 

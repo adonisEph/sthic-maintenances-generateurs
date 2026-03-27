@@ -4,6 +4,12 @@ import { X } from 'lucide-react';
 const FicheModal = ({
   open,
   siteForFiche,
+  ficheHistory,
+  ficheId,
+  canWarehouse,
+  warehouseAirFilterOk,
+  warehouseCoolant5lOk,
+  onSaveWarehouseCheck,
   bannerImage,
   ticketNumber,
   signatureTypedName,
@@ -20,6 +26,79 @@ const FicheModal = ({
   formatDate
 }) => {
   if (!open || !siteForFiche) return null;
+
+  const shouldIncludeAirFilter = useMemo(() => {
+    const list = Array.isArray(ficheHistory) ? ficheHistory : [];
+
+    const siteId = String(siteForFiche?.id || '').trim();
+    if (!siteId) return true;
+
+    const dateDV = siteForFiche?.dateDV ? String(siteForFiche.dateDV).slice(0, 10) : '';
+    if (!dateDV) return true;
+
+    const already = list.some((f) => {
+      if (!f) return false;
+      if (String(f.siteId || '').trim() !== siteId) return false;
+      const dg = f.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
+      if (!dg) return false;
+      if (dg < dateDV) return false;
+      const st = String(f.status || '').trim();
+      if (st.toLowerCase().includes('annul')) return false;
+      if (f.warehouseAirFilterOk !== true) return false;
+      return true;
+    });
+
+    return !already;
+  }, [ficheHistory, siteForFiche]);
+
+  const shouldIncludeCoolant = useMemo(() => {
+    const list = Array.isArray(ficheHistory) ? ficheHistory : [];
+
+    const siteId = String(siteForFiche?.id || '').trim();
+    if (!siteId) return true;
+
+    const dateDV = siteForFiche?.dateDV ? String(siteForFiche.dateDV).slice(0, 10) : '';
+    if (!dateDV) return true;
+
+    const already = list.some((f) => {
+      if (!f) return false;
+      if (String(f.siteId || '').trim() !== siteId) return false;
+      const dg = f.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
+      if (!dg) return false;
+      if (dg < dateDV) return false;
+      const st = String(f.status || '').trim();
+      if (st.toLowerCase().includes('annul')) return false;
+      if (f.warehouseCoolant5lOk !== true) return false;
+      return true;
+    });
+
+    return !already;
+  }, [ficheHistory, siteForFiche]);
+
+  const shouldIncludeAirAndCoolant = shouldIncludeAirFilter || shouldIncludeCoolant;
+
+  const kitItems = useMemo(() => {
+    const raw = String(siteForFiche?.kitVidange || '');
+    const items = raw
+      .split('/')
+      .map((x) => String(x || '').trim())
+      .filter(Boolean);
+
+    if (shouldIncludeAirFilter && shouldIncludeCoolant) return items;
+
+    const norm = (v) =>
+      String(v || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+
+    return items.filter((it) => {
+      const n = norm(it);
+      if (!shouldIncludeAirFilter && n.includes('filtre') && n.includes('air')) return false;
+      if (!shouldIncludeCoolant && n.includes('liquide') && n.includes('refroid')) return false;
+      return true;
+    });
+  }, [siteForFiche, shouldIncludeAirFilter, shouldIncludeCoolant]);
 
   const signatureOk = useMemo(() => {
     const v = String(signatureDrawnPng || '').trim();
@@ -194,10 +273,44 @@ const FicheModal = ({
             <div className="mb-6">
               <p className="text-gray-600 text-xs mb-2">OBJET</p>
               <p className="font-bold text-sm">
-                VIDANGE DU GE {siteForFiche.generateur} {siteForFiche.capacite} + Filtre à air GE + 05 Litres liquide de
-                refroidissement
+                VIDANGE DU GE {siteForFiche.generateur} {siteForFiche.capacite}
+                {shouldIncludeAirAndCoolant
+                  ? `${shouldIncludeAirFilter ? ' + Filtre à air GE' : ''}${shouldIncludeCoolant ? ' + 05 Litres liquide de refroidissement' : ''}`
+                  : ''}
               </p>
             </div>
+
+            {canWarehouse && (
+              <div className="mb-4 border border-gray-300 rounded-lg p-3 text-sm">
+                <div className="font-bold text-gray-800 mb-2">Contrôle magasin (warehouse)</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(warehouseAirFilterOk)}
+                      onChange={(e) => onSaveWarehouseCheck && onSaveWarehouseCheck({
+                        ficheId,
+                        warehouseAirFilterOk: Boolean(e.target.checked),
+                        warehouseCoolant5lOk: Boolean(warehouseCoolant5lOk)
+                      })}
+                    />
+                    Filtre à air GE disponible/sorti
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(warehouseCoolant5lOk)}
+                      onChange={(e) => onSaveWarehouseCheck && onSaveWarehouseCheck({
+                        ficheId,
+                        warehouseAirFilterOk: Boolean(warehouseAirFilterOk),
+                        warehouseCoolant5lOk: Boolean(e.target.checked)
+                      })}
+                    />
+                    05 Litres liquide de refroidissement disponible/sorti
+                  </label>
+                </div>
+              </div>
+            )}
 
             <hr className="my-3 border-gray-800" style={{ borderWidth: '2px' }} />
 
@@ -232,7 +345,7 @@ const FicheModal = ({
                     </td>
                     <td className="border-2 border-gray-800 p-6" style={{ verticalAlign: 'top' }}>
                       <div className="flex flex-col items-center justify-center h-full text-center space-y-3">
-                        {siteForFiche.kitVidange.split('/').map((item, idx) => (
+                        {kitItems.map((item, idx) => (
                           <div key={idx} className="text-sm">
                             {item.trim()}
                           </div>

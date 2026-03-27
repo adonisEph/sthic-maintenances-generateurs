@@ -29,6 +29,10 @@ function mapRow(row) {
     signatureDrawnPng: row.signature_drawn_png || null,
     signedByEmail: row.signed_by_email || null,
     signedAt: row.signed_at || null,
+    warehouseAirFilterOk: row.warehouse_air_filter_ok === null ? null : Boolean(row.warehouse_air_filter_ok),
+    warehouseCoolant5lOk: row.warehouse_coolant_5l_ok === null ? null : Boolean(row.warehouse_coolant_5l_ok),
+    warehouseCheckedBy: row.warehouse_checked_by || null,
+    warehouseCheckedAt: row.warehouse_checked_at || null,
   };
 }
 
@@ -60,7 +64,7 @@ export async function onRequestGet({ request, env, data }) {
       binds.push(String(data.user.technicianName || ''));
     }
 
-    if (!isSuperAdmin(data) && (role === 'manager' || role === 'technician')) {
+    if (!isSuperAdmin(data) && (role === 'manager' || role === 'technician' || role === 'warehouse')) {
       where += ' AND s.zone = ?';
       binds.push(String(userZone(data) || 'BZV/POOL'));
     }
@@ -102,10 +106,14 @@ export async function onRequestPost({ request, env, data }) {
 
     const body = await readJson(request);
 
-    const ticketNumber = String(body?.ticketNumber || '').trim();
+    const mode = String(body?.mode || '').trim().toLowerCase();
+    const isDraft = mode === 'draft';
+
+    const ticketNumber = isDraft ? String(body?.ticketNumber || '').trim() : String(body?.ticketNumber || '').trim();
     const siteId = String(body?.siteId || '').trim();
     const siteName = String(body?.siteName || '').trim();
     const technician = String(body?.technician || '').trim();
+
     const plannedDate = body?.plannedDate ? String(body.plannedDate).slice(0, 10) : null;
     const epvType = body?.epvType ? String(body.epvType).trim() : null;
     const interventionId = body?.interventionId != null ? String(body.interventionId).trim() : null;
@@ -123,12 +131,12 @@ export async function onRequestPost({ request, env, data }) {
       return false;
     };
 
-    if (!ticketNumber || !siteId || !siteName || !technician) {
+    if (!siteId || !siteName || !technician || (!isDraft && !ticketNumber)) {
       return json({ error: 'Champs requis manquants.' }, { status: 400 });
     }
 
-    // Signature obligatoire
-    if (!hasResponsibleSignature(signatureDrawnPng)) {
+    // Signature obligatoire uniquement pour une fiche finalisée
+    if (!isDraft && !hasResponsibleSignature(signatureDrawnPng)) {
       return json({ error: 'Signature responsable obligatoire.' }, { status: 400 });
     }
 
@@ -142,10 +150,12 @@ export async function onRequestPost({ request, env, data }) {
       if (zone !== z) return json({ error: 'Accès interdit.' }, { status: 403 });
     }
 
-    // Doublon bloquant: 1 ticketNumber => 1 fiche
-    const existing = await env.DB.prepare('SELECT id FROM fiche_history WHERE ticket_number = ?').bind(ticketNumber).first();
-    if (existing?.id) {
-      return json({ error: 'Fiche déjà sortie pour ce ticket.' }, { status: 409 });
+    // Doublon bloquant: 1 ticketNumber => 1 fiche (uniquement si ticket renseigné)
+    if (!isDraft && ticketNumber) {
+      const existing = await env.DB.prepare('SELECT id FROM fiche_history WHERE ticket_number = ?').bind(ticketNumber).first();
+      if (existing?.id) {
+        return json({ error: 'Fiche déjà sortie pour ce ticket.' }, { status: 409 });
+      }
     }
 
     const id = newId();
@@ -159,19 +169,19 @@ export async function onRequestPost({ request, env, data }) {
     )
       .bind(
         id,
-        ticketNumber,
+        ticketNumber || null,
         siteId,
         siteName,
         technician,
         now,
-        'En attente',
+        isDraft ? 'Brouillon' : 'En attente',
         plannedDate,
         epvType,
         data?.user?.email ? String(data.user.email) : null,
         signatureTypedName,
-        signatureDrawnPng,
+        isDraft ? null : signatureDrawnPng,
         data?.user?.email ? String(data.user.email) : null,
-        now,
+        isDraft ? null : now,
         interventionId,
         now,
         now

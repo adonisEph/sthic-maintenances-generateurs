@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AlertCircle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users, Menu, ChevronLeft, Trash2, RotateCcw, Bell } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
@@ -252,10 +252,12 @@ const GeneratorMaintenanceApp = () => {
   const isViewer = currentRole === 'viewer';
   const isTechnician = currentRole === 'technician';
   const isManager = currentRole === 'manager';
+  const isWarehouse = currentRole === 'warehouse';
   const authZone = String(authUser?.zone || '').trim();
   const isSuperAdmin = isAdmin && authZone === 'BZV/POOL';
   const showZoneFilter = Boolean(isViewer || isSuperAdmin);
   const canWriteSites = isAdmin || isManager;
+  const canWarehouseCheck = isWarehouse || isAdmin || isManager;
   const canImportSites = isAdmin || isManager;
   const canExportExcel = isAdmin || isManager || isViewer;
   const canExportSites = canExportExcel && !isTechnician;
@@ -3636,7 +3638,14 @@ const GeneratorMaintenanceApp = () => {
         interventionId = null;
       }
 
-      setFicheContext({ plannedDate, epvType, interventionId });
+      let ficheId = null;
+      try {
+        ficheId = await createFicheDraft({ site, plannedDate, epvType, interventionId });
+      } catch {
+        ficheId = null;
+      }
+
+      setFicheContext({ plannedDate, epvType, interventionId, ficheId });
     } catch (e) {
       setFicheContext(null);
     }
@@ -3686,6 +3695,14 @@ const GeneratorMaintenanceApp = () => {
     setSignatureDrawnPng('');
     setShowDayDetailsModal(false);
     setShowBannerUpload(true);
+
+    let ficheId = null;
+    try {
+      ficheId = await createFicheDraft({ site: uniqueEvents[0].site, plannedDate, epvType, interventionId });
+    } catch {
+      ficheId = null;
+    }
+    setFicheContext({ plannedDate, epvType, interventionId, ficheId });
   };
 
   const handlePrintFiche = () => {
@@ -3932,6 +3949,41 @@ const GeneratorMaintenanceApp = () => {
     return `${prefix}${String(usedTicketNumber).padStart(5, '0')}`;
   };
 
+  const createFicheDraft = async ({ site, plannedDate, epvType, interventionId }) => {
+    const data = await apiFetchJson('/api/fiche-history', {
+      method: 'POST',
+      body: JSON.stringify({
+        mode: 'draft',
+        ticketNumber: null,
+        siteId: site?.id ? String(site.id) : '',
+        siteName: String(site?.nameSite || '').trim(),
+        technician: String(site?.technician || '').trim(),
+        plannedDate: plannedDate ? String(plannedDate).slice(0, 10) : null,
+        epvType: epvType ? String(epvType).trim() : null,
+        interventionId: interventionId ? String(interventionId) : null,
+        signatureTypedName: '',
+        signatureDrawnPng: ''
+      })
+    });
+
+    return data?.fiche?.id ? String(data.fiche.id) : null;
+  };
+
+  const handleSaveWarehouseCheck = async ({ ficheId, warehouseAirFilterOk, warehouseCoolant5lOk }) => {
+    if (!ficheId) return;
+
+    await apiFetchJson(`/api/fiche-history/${encodeURIComponent(String(ficheId))}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        mode: 'warehouse-check',
+        warehouseAirFilterOk: Boolean(warehouseAirFilterOk),
+        warehouseCoolant5lOk: Boolean(warehouseCoolant5lOk)
+      })
+    });
+
+    await loadFicheHistory();
+  };
+
   const persistFicheHistory = async (ticketNumberFull) => {
     let interventionId = ficheContext?.interventionId ? String(ficheContext.interventionId) : null;
     // GARANTIE: si l'interventionId est absent, on la crée/récupère ici avant de persister la fiche.
@@ -3948,6 +4000,22 @@ const GeneratorMaintenanceApp = () => {
         interventionId = null;
       }
     }
+
+    const ficheId = ficheContext?.ficheId ? String(ficheContext.ficheId) : null;
+
+    if (ficheId) {
+      await apiFetchJson(`/api/fiche-history/${encodeURIComponent(ficheId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          mode: 'finalize',
+          ticketNumber: String(ticketNumberFull || '').trim(),
+          signatureTypedName: String(signatureTypedName || '').trim(),
+          signatureDrawnPng: String(signatureDrawnPng || '').trim()
+        })
+      });
+      return;
+    }
+
     await apiFetchJson('/api/fiche-history', {
       method: 'POST',
       body: JSON.stringify({
@@ -4812,6 +4880,14 @@ const GeneratorMaintenanceApp = () => {
     if (!z || z === 'ALL') return true;
     return String(site?.zone || '').trim() === z;
   });
+
+  const activeFiche = useMemo(() => {
+    const id = ficheContext?.ficheId ? String(ficheContext.ficheId) : '';
+    if (!id) return null;
+
+    const list = Array.isArray(ficheHistory) ? ficheHistory : [];
+    return list.find((f) => String(f?.id || '') === id) || null;
+  }, [ficheContext?.ficheId, ficheHistory]);
 
   const technicians = ['all', ...new Set(sites.map(s => s.technician))];
   const filteredSites = sites
@@ -6543,6 +6619,9 @@ return (
         <FicheModal
           open={showFicheModal}
           siteForFiche={siteForFiche}
+          ficheHistory={ficheHistory}
+          ficheId={ficheContext?.ficheId ? String(ficheContext.ficheId) : null}
+          canWarehouse={Boolean(canWarehouseCheck && ficheContext?.ficheId)}
           bannerImage={bannerImage}
           ticketNumber={ticketNumber}
           signatureTypedName={signatureTypedName}
@@ -6555,6 +6634,9 @@ return (
           goBatchFiche={goBatchFiche}
           handlePrintFiche={handlePrintFiche}
           handleSaveFichePdf={handleSaveFichePdf}
+          warehouseAirFilterOk={activeFiche?.warehouseAirFilterOk === true}
+          warehouseCoolant5lOk={activeFiche?.warehouseCoolant5lOk === true}
+          onSaveWarehouseCheck={handleSaveWarehouseCheck}
           onClose={() => {
             setShowFicheModal(false);
             setSiteForFiche(null);

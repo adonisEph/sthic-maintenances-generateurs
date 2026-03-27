@@ -92,6 +92,7 @@ const UsersModal = ({
                   >
                     <option value="viewer">viewer (lecture)</option>
                     <option value="manager">manager (zone)</option>
+                    <option value="warehouse">warehouse (magasinier)</option>
                     <option value="technician">technician</option>
                     <option value="admin">admin</option>
                   </select>

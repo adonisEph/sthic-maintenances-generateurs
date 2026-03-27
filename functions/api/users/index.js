@@ -40,7 +40,7 @@ export async function onRequestPost({ request, env, data }) {
 
   if (!email) return json({ error: 'Email requis.' }, { status: 400 });
   if (!password) return json({ error: 'Mot de passe requis.' }, { status: 400 });
-  if (!['admin', 'viewer', 'technician', 'manager'].includes(role)) return json({ error: 'Rôle invalide.' }, { status: 400 });
+  if (!['admin', 'viewer', 'technician', 'manager', 'warehouse'].includes(role)) return json({ error: 'Rôle invalide.' }, { status: 400 });
   if (!zone) return json({ error: 'Zone requise.' }, { status: 400 });
   if (!['BZV/POOL', 'PNR/KOUILOU', 'UPCN'].includes(zone)) return json({ error: 'Zone invalide.' }, { status: 400 });
 
