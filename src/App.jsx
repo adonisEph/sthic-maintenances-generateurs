@@ -3708,6 +3708,7 @@ const GeneratorMaintenanceApp = () => {
   const handlePrintFiche = () => {
     (async () => {
       let usedTicketNumber = ticketNumber;
+      let issuedTicket = null;
 
       const hasResponsibleSignature = (value) => {
         const v = String(value || '').trim();
@@ -3733,12 +3734,15 @@ const GeneratorMaintenanceApp = () => {
             setTicketNumber(usedTicketNumber);
             await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
           }
+          if (String(z || '').trim().toUpperCase() === 'PNR/KOUILOU' && isManager && typeof data?.ticket === 'string' && data.ticket.trim()) {
+            issuedTicket = String(data.ticket).trim();
+          }
         } catch (e) {
           // fallback: keep local state
         }
       }
 
-      const ticketNumberFull = buildTicketNumberForFiche(usedTicketNumber);
+      const ticketNumberFull = issuedTicket || buildTicketNumberForFiche(usedTicketNumber);
       try {
         await persistFicheHistory(ticketNumberFull);
       } catch (e) {
@@ -3814,6 +3818,7 @@ const GeneratorMaintenanceApp = () => {
 
     try {
       let usedTicketNumber = ticketNumber;
+      let issuedTicket = null;
 
       const hasResponsibleSignature = (value) => {
         const v = String(value || '').trim();
@@ -3839,6 +3844,9 @@ const GeneratorMaintenanceApp = () => {
             setTicketNumber(usedTicketNumber);
             await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
           }
+          if (String(z || '').trim().toUpperCase() === 'PNR/KOUILOU' && isManager && typeof data?.ticket === 'string' && data.ticket.trim()) {
+            issuedTicket = String(data.ticket).trim();
+          }
         } catch {
           // ignore
         }
@@ -3846,7 +3854,7 @@ const GeneratorMaintenanceApp = () => {
 
       const fileBase = `Fiche_${String(siteForFiche?.nameSite || 'Site').replace(/[^a-z0-9_-]+/gi, '_')}_${new Date().toISOString().slice(0, 10)}`;
 
-      const ticketNumberFull = buildTicketNumberForFiche(usedTicketNumber);
+      const ticketNumberFull = issuedTicket || buildTicketNumberForFiche(usedTicketNumber);
       try {
         await persistFicheHistory(ticketNumberFull);
       } catch (e) {
