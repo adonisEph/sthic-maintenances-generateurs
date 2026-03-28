@@ -174,6 +174,13 @@ const FicheModal = ({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full my-8">
+        <style>{`
+          @media print {
+            body * { visibility: hidden; }
+            #fiche-print, #fiche-print * { visibility: visible; }
+            #fiche-print { position: absolute; left: 0; top: 0; width: 210mm; }
+          }
+        `}</style>
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gray-100">
           <h2 className="text-xl font-bold text-gray-800">📄 Fiche d'Intervention - Aperçu</h2>
           <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 w-full sm:w-auto">
@@ -226,7 +233,7 @@ const FicheModal = ({
           <div
             id="fiche-print"
             className="bg-white mx-auto flex flex-col"
-            style={{ maxWidth: '210mm', width: '100%', height: '277mm', boxSizing: 'border-box' }}
+            style={{ maxWidth: '210mm', width: '100%', minHeight: '277mm', boxSizing: 'border-box' }}
           >
             {bannerImage && (
               <div className="mb-3 border-2 border-gray-300 rounded overflow-hidden bg-gray-200">
@@ -314,8 +321,8 @@ const FicheModal = ({
 
             <hr className="my-3 border-gray-800" style={{ borderWidth: '2px' }} />
 
-            <div className="flex-1 flex flex-col">
-              <table className="w-full border-2 border-gray-800 text-sm" style={{ height: '100%' }}>
+            <div className="flex flex-col">
+              <table className="w-full border-2 border-gray-800 text-sm">
                 <thead>
                   <tr>
                     <th

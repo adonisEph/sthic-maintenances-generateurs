@@ -4,6 +4,7 @@ import { Activity, X } from 'lucide-react';
 const HistoryModal = ({
   open,
   onClose,
+  onOpenFiche,
   historyQuery,
   setHistoryQuery,
   historyDateFrom,
@@ -177,6 +178,18 @@ const HistoryModal = ({
                     </span>
                   </div>
 
+                  {(fiche.warehouseAirFilterOk !== null || fiche.warehouseCoolant5lOk !== null) && (
+                    <div className="mb-3 text-xs text-gray-700">
+                      <div className="font-semibold">Contrôle magasin</div>
+                      <div>
+                        Filtre à air GE: {fiche.warehouseAirFilterOk === true ? 'OK' : fiche.warehouseAirFilterOk === false ? 'NON' : '-'}
+                      </div>
+                      <div>
+                        05L LdR: {fiche.warehouseCoolant5lOk === true ? 'OK' : fiche.warehouseCoolant5lOk === false ? 'NON' : '-'}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-3">
                     <div className="min-w-0 flex flex-wrap items-baseline">
                       <span className="text-gray-600">Technicien:</span>
@@ -230,6 +243,16 @@ const HistoryModal = ({
                       className="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 font-semibold"
                     >
                       ✅ Marquer comme Effectuée
+                    </button>
+                  )}
+
+                  {typeof onOpenFiche === 'function' && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenFiche(fiche)}
+                      className="mt-3 w-full bg-slate-700 text-white py-2 rounded-lg hover:bg-slate-800 font-semibold"
+                    >
+                      Ouvrir
                     </button>
                   )}
                 </div>

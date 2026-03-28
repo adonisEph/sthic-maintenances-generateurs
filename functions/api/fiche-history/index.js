@@ -150,6 +150,27 @@ export async function onRequestPost({ request, env, data }) {
       if (zone !== z) return json({ error: 'Accès interdit.' }, { status: 403 });
     }
 
+    // Anti-doublon brouillon: réutiliser le brouillon existant (même site/date/type/intervention)
+    if (isDraft) {
+      const existingDraft = await env.DB.prepare(
+        `SELECT * FROM fiche_history
+         WHERE status = 'Brouillon'
+           AND site_id = ?
+           AND planned_date IS ?
+           AND epv_type IS ?
+           AND intervention_id IS ?
+           AND (ticket_number IS NULL OR ticket_number = '')
+         ORDER BY created_at DESC
+         LIMIT 1`
+      )
+        .bind(siteId, plannedDate, epvType, interventionId)
+        .first();
+
+      if (existingDraft?.id) {
+        return json({ fiche: mapRow(existingDraft) }, { status: 200 });
+      }
+    }
+
     // Doublon bloquant: 1 ticketNumber => 1 fiche (uniquement si ticket renseigné)
     if (!isDraft && ticketNumber) {
       const existing = await env.DB.prepare('SELECT id FROM fiche_history WHERE ticket_number = ?').bind(ticketNumber).first();

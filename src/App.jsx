@@ -3652,6 +3652,41 @@ const GeneratorMaintenanceApp = () => {
     setShowBannerUpload(true);
   };
 
+  const handleOpenFicheFromHistory = async (fiche) => {
+    try {
+      if (!fiche?.id) return;
+
+      const siteId = String(fiche.siteId || '').trim();
+      const site = (Array.isArray(sites) ? sites : []).find((s) => String(s?.id || '').trim() === siteId) || null;
+
+      if (!site) {
+        alert('Site introuvable pour cette fiche.');
+        return;
+      }
+
+      setShowHistory(false);
+
+      setIsBatchFiche(false);
+      setBatchFicheSites([]);
+      setBatchFicheIndex(0);
+
+      setSiteForFiche(site);
+
+      setFicheContext({
+        plannedDate: fiche?.plannedDate ? String(fiche.plannedDate).slice(0, 10) : null,
+        epvType: fiche?.epvType ? String(fiche.epvType).trim() : null,
+        interventionId: fiche?.interventionId ? String(fiche.interventionId) : null,
+        ficheId: String(fiche.id)
+      });
+
+      setShowBannerUpload(false);
+
+      setShowFicheModal(true);
+    } catch (e) {
+      alert(e?.message || "Erreur lors de l'ouverture de la fiche.");
+    }
+  };
+
   const startBatchFicheGeneration = async (events) => {
     const uniqueEvents = Array.from(
       new Map((events || []).map((e) => [e.site.id, e])).values()
@@ -3690,7 +3725,6 @@ const GeneratorMaintenanceApp = () => {
       interventionId = null;
     }
 
-    setFicheContext({ plannedDate, epvType, interventionId });
     setSignatureTypedName('');
     setSignatureDrawnPng('');
     setShowDayDetailsModal(false);
@@ -3791,9 +3825,17 @@ const GeneratorMaintenanceApp = () => {
             interventionId = null;
           }
 
-          setFicheContext({ plannedDate, epvType, interventionId });
+          let ficheId = null;
+          try {
+            ficheId = await createFicheDraft({ site: batchFicheSites[nextIndex].site, plannedDate, epvType, interventionId });
+          } catch {
+            ficheId = null;
+          }
+
+          setFicheContext({ plannedDate, epvType, interventionId, ficheId });
           setSignatureTypedName('');
           setSignatureDrawnPng('');
+
         } else {
           setIsBatchFiche(false);
           setBatchFicheSites([]);
@@ -3931,9 +3973,17 @@ const GeneratorMaintenanceApp = () => {
             interventionId = null;
           }
 
-          setFicheContext({ plannedDate, epvType, interventionId });
+          let ficheId = null;
+          try {
+            ficheId = await createFicheDraft({ site: batchFicheSites[nextIndex].site, plannedDate, epvType, interventionId });
+          } catch {
+            ficheId = null;
+          }
+
+          setFicheContext({ plannedDate, epvType, interventionId, ficheId });
           setSignatureTypedName('');
           setSignatureDrawnPng('');
+
         } else {
           setIsBatchFiche(false);
           setBatchFicheSites([]);
@@ -4061,7 +4111,14 @@ const GeneratorMaintenanceApp = () => {
       interventionId = null;
     }
 
-    setFicheContext({ plannedDate, epvType, interventionId });
+    let ficheId = null;
+    try {
+      ficheId = await createFicheDraft({ site: batchFicheSites[nextIndex].site, plannedDate, epvType, interventionId });
+    } catch {
+      ficheId = null;
+    }
+
+    setFicheContext({ plannedDate, epvType, interventionId, ficheId });
     setSignatureTypedName('');
     setSignatureDrawnPng('');
   };
@@ -6512,6 +6569,7 @@ return (
         <HistoryModal
           open={showHistory}
           onClose={() => setShowHistory(false)}
+          onOpenFiche={handleOpenFicheFromHistory}
           historyQuery={historyQuery}
           setHistoryQuery={setHistoryQuery}
           historyDateFrom={historyDateFrom}
