@@ -22,6 +22,24 @@ function ymdToUtcMs(ymd) {
   return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
 }
 
+function normalizeDateA(raw) {
+  const v = String(raw || '').trim();
+  if (!v) return '';
+
+  const iso = v.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+
+  const fr = v.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (fr) {
+    const dd = fr[1];
+    const mm = fr[2];
+    const yyyy = fr[3];
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  return '';
+}
+
 export async function onRequestPost({ env, data }) {
   try {
     await ensureAdminUser(env);
@@ -54,8 +72,10 @@ export async function onRequestPost({ env, data }) {
     );
 
     for (const row of rows) {
-      const prevDateA = String(row?.date_a || '').slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(prevDateA)) {
+      if (Number(row?.retired || 0) === 1) continue;
+
+      const prevDateA = normalizeDateA(row?.date_a);
+      if (!prevDateA) {
         skippedNoDateA += 1;
         continue;
       }

@@ -937,39 +937,9 @@ const GeneratorMaintenanceApp = () => {
 
     let active = true;
     let busy = false;
-    let timeoutId = null;
+    let intervalId = null;
     let onFocus = null;
     let onVisibility = null;
-
-    const nextRunDelayMs = () => {
-      try {
-        const timeZone = 'Africa/Brazzaville';
-        const now = new Date();
-        const parts = new Intl.DateTimeFormat('en-CA', {
-          timeZone,
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit'
-        })
-          .format(now)
-          .split('-')
-          .map((x) => Number(x));
-
-        const y = parts[0];
-        const m = parts[1];
-        const d = parts[2];
-        if (!y || !m || !d) return 60 * 60 * 1000;
-
-        const todayUtcMidnight = Date.UTC(y, m - 1, d);
-        const tomorrowUtcMidnight = todayUtcMidnight + 24 * 60 * 60 * 1000;
-
-        const nowUtc = Date.now();
-        const delay = Math.max(15 * 1000, tomorrowUtcMidnight - nowUtc + 5 * 1000);
-        return delay;
-      } catch {
-        return 60 * 60 * 1000;
-      }
-    };
 
     const tick = async () => {
       if (!active) return;
@@ -989,18 +959,10 @@ const GeneratorMaintenanceApp = () => {
 
     tick();
 
-    const scheduleNext = () => {
-      try {
-        if (timeoutId) window.clearTimeout(timeoutId);
-      } catch {
-      }
-      timeoutId = window.setTimeout(async () => {
-        await tick();
-        scheduleNext();
-      }, nextRunDelayMs());
-    };
-
-    scheduleNext();
+    intervalId = window.setInterval(() => {
+      tick();
+    }, 2 * 60 * 1000);
+    
     onFocus = () => tick();
     onVisibility = () => {
       if (document.visibilityState === 'visible') tick();
@@ -1011,7 +973,7 @@ const GeneratorMaintenanceApp = () => {
     return () => {
       active = false;
       try {
-        if (timeoutId) window.clearTimeout(timeoutId);
+        if (intervalId) window.clearInterval(intervalId);
         if (onFocus) window.removeEventListener('focus', onFocus);
         if (onVisibility) document.removeEventListener('visibilitychange', onVisibility);
       } catch {
