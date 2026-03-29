@@ -100,6 +100,7 @@ const GeneratorMaintenanceApp = () => {
   const [selectedSite, setSelectedSite] = useState(null);
   const [filterTechnician, setFilterTechnician] = useState('all');
   const [ticketNumber, setTicketNumber] = useState(1201);
+  const [ticketLabel, setTicketLabel] = useState('');
   const [importBusy, setImportBusy] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [importStep, setImportStep] = useState('');
@@ -3664,6 +3665,8 @@ const GeneratorMaintenanceApp = () => {
         return;
       }
 
+      setTicketLabel(String(fiche?.ticketNumber || '').trim());
+
       setShowHistory(false);
 
       setIsBatchFiche(false);
@@ -3771,6 +3774,7 @@ const GeneratorMaintenanceApp = () => {
           if (String(z || '').trim().toUpperCase() === 'PNR/KOUILOU' && isManager && typeof data?.ticket === 'string' && data.ticket.trim()) {
             issuedTicket = String(data.ticket).trim();
           }
+          setTicketLabel(issuedTicket || '');
         } catch (e) {
           // fallback: keep local state
         }
@@ -3835,6 +3839,7 @@ const GeneratorMaintenanceApp = () => {
           setFicheContext({ plannedDate, epvType, interventionId, ficheId });
           setSignatureTypedName('');
           setSignatureDrawnPng('');
+          setTicketLabel('');
 
         } else {
           setIsBatchFiche(false);
@@ -3889,6 +3894,7 @@ const GeneratorMaintenanceApp = () => {
           if (String(z || '').trim().toUpperCase() === 'PNR/KOUILOU' && isManager && typeof data?.ticket === 'string' && data.ticket.trim()) {
             issuedTicket = String(data.ticket).trim();
           }
+          setTicketLabel(issuedTicket || '');
         } catch {
           // ignore
         }
@@ -3983,6 +3989,7 @@ const GeneratorMaintenanceApp = () => {
           setFicheContext({ plannedDate, epvType, interventionId, ficheId });
           setSignatureTypedName('');
           setSignatureDrawnPng('');
+          setTicketLabel('');
 
         } else {
           setIsBatchFiche(false);
@@ -6690,6 +6697,7 @@ return (
           canWarehouse={Boolean(canWarehouseCheck && ficheContext?.ficheId)}
           bannerImage={bannerImage}
           ticketNumber={ticketNumber}
+          ticketLabel={ticketLabel}
           signatureTypedName={signatureTypedName}
           setSignatureTypedName={setSignatureTypedName}
           signatureDrawnPng={signatureDrawnPng}
@@ -6704,6 +6712,7 @@ return (
           warehouseCoolant5lOk={activeFiche?.warehouseCoolant5lOk === true}
           onSaveWarehouseCheck={handleSaveWarehouseCheck}
           onClose={() => {
+            setTicketLabel('');
             setShowFicheModal(false);
             setSiteForFiche(null);
             setBannerImage('');

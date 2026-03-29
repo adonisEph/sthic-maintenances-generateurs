@@ -12,6 +12,7 @@ const FicheModal = ({
   onSaveWarehouseCheck,
   bannerImage,
   ticketNumber,
+  ticketLabel,
   signatureTypedName,
   setSignatureTypedName,
   signatureDrawnPng,
@@ -171,6 +172,12 @@ const FicheModal = ({
     return 'T';
   })();
 
+  const displayTicket = (() => {
+    const label = String(ticketLabel || '').trim();
+    if (label) return label;
+    return `${ticketPrefix}${String(ticketNumber).padStart(5, '0')}`;
+  })();
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full my-8">
@@ -263,7 +270,7 @@ const FicheModal = ({
               </div>
               <div>
                 <p className="text-gray-600 text-xs mb-1">RÉFÉRENCE TICKET</p>
-                <p className="font-bold text-base">{ticketPrefix}{String(ticketNumber).padStart(5, '0')}</p>
+                <p className="font-bold text-base">{displayTicket}</p>
               </div>
               <div>
                 <p className="text-gray-600 text-xs mb-1">NOM(S) DE L'INTERVENANT</p>
