@@ -92,6 +92,7 @@ const HistoryModal = ({
                 >
                   <option value="all">Tous statuts</option>
                   <option value="Brouillon">Brouillon</option>
+                  <option value="Contrôle magasin">Contrôle magasin</option>
                   <option value="En attente">En attente</option>
                   <option value="Effectuée">Effectuée</option>
                 </select>
@@ -168,7 +169,7 @@ const HistoryModal = ({
                 >
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-3">
                     <div className="min-w-0">
-                      <h3 className="font-bold text-lg text-gray-800 truncate">{fiche.ticketNumber}</h3>
+                      <h3 className="font-bold text-lg text-gray-800 truncate">{fiche.ticketNumber || 'Brouillon'}</h3>
                       <p className="text-sm text-gray-600 truncate">{fiche.siteName}</p>
                     </div>
                     <span

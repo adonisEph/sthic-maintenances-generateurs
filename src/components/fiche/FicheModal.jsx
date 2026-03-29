@@ -10,6 +10,7 @@ const FicheModal = ({
   warehouseAirFilterOk,
   warehouseCoolant5lOk,
   onSaveWarehouseCheck,
+  onSubmitWarehouseCheck,
   bannerImage,
   ticketNumber,
   ticketLabel,
@@ -341,6 +342,23 @@ const FicheModal = ({
                     />
                     05 Litres liquide de refroidissement disponible/sorti
                   </label>
+                </div>
+
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onSubmitWarehouseCheck &&
+                      onSubmitWarehouseCheck({
+                        ficheId,
+                        warehouseAirFilterOk: Boolean(localWarehouseAirFilterOk),
+                        warehouseCoolant5lOk: Boolean(localWarehouseCoolant5lOk)
+                      })
+                    }
+                    className="w-full bg-emerald-700 text-white py-2 rounded-lg hover:bg-emerald-800 font-semibold"
+                  >
+                    Renvoyer au manager
+                  </button>
                 </div>
               </div>
             )}

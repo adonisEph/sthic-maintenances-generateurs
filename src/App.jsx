@@ -4031,6 +4031,30 @@ const GeneratorMaintenanceApp = () => {
     await loadFicheHistory();
   };
 
+  const handleSubmitWarehouseCheck = async ({ ficheId, warehouseAirFilterOk, warehouseCoolant5lOk }) => {
+    if (!ficheId) return;
+
+    // 1) Re-sauvegarder les cases (au cas où) pour être sûr que le retour contient les bons états
+    await apiFetchJson(`/api/fiche-history/${encodeURIComponent(String(ficheId))}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        mode: 'warehouse-check',
+        warehouseAirFilterOk: Boolean(warehouseAirFilterOk),
+        warehouseCoolant5lOk: Boolean(warehouseCoolant5lOk)
+      })
+    });
+
+    // 2) Renvoyer au manager (changement de statut -> "Contrôle magasin")
+    await apiFetchJson(`/api/fiche-history/${encodeURIComponent(String(ficheId))}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        mode: 'warehouse-submit'
+      })
+    });
+
+    await loadFicheHistory();
+  };
+
   const persistFicheHistory = async (ticketNumberFull) => {
     let interventionId = ficheContext?.interventionId ? String(ficheContext.interventionId) : null;
     // GARANTIE: si l'interventionId est absent, on la crée/récupère ici avant de persister la fiche.
@@ -6693,6 +6717,7 @@ return (
           warehouseAirFilterOk={activeFiche?.warehouseAirFilterOk === true}
           warehouseCoolant5lOk={activeFiche?.warehouseCoolant5lOk === true}
           onSaveWarehouseCheck={handleSaveWarehouseCheck}
+          onSubmitWarehouseCheck={handleSubmitWarehouseCheck}
           onClose={() => {
             setTicketLabel('');
             setShowFicheModal(false);

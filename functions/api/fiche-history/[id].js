@@ -1,5 +1,6 @@
 import { ensureAdminUser } from '../_utils/db.js';
 import { json, requireAuth, isSuperAdmin, userZone, readJson, isoNow } from '../_utils/http.js';
+import { createNotification, loadPushSubscriptionsForUsers, fanoutWebPushNoPayload } from '../_utils/notifications.js';
 
 function mapRow(row, siteZone) {
   if (!row) return null;
@@ -88,11 +89,16 @@ export async function onRequestPatch({ request, env, data, params }) {
     const now = isoNow();
 
     // 1) Warehouse check (magasinier)
-    if (mode === 'warehouse-check' || canWarehouse) {
+    if (mode === 'warehouse-check') {
       if (!canWarehouse && !canManage) return json({ error: 'Accès interdit.' }, { status: 403 });
 
       const air = boolToDb(body?.warehouseAirFilterOk);
       const coolant = boolToDb(body?.warehouseCoolant5lOk);
+
+      const hadNoWarehouseCheck =
+        existing?.warehouse_air_filter_ok === null &&
+        existing?.warehouse_coolant_5l_ok === null &&
+        existing?.warehouse_checked_at === null;
 
       await env.DB.prepare(
         'UPDATE fiche_history SET warehouse_air_filter_ok = ?, warehouse_coolant_5l_ok = ?, warehouse_checked_by = ?, warehouse_checked_at = ?, updated_at = ? WHERE id = ?'
@@ -106,6 +112,111 @@ export async function onRequestPatch({ request, env, data, params }) {
           id
         )
         .run();
+
+      if (hadNoWarehouseCheck && (air !== null || coolant !== null)) {
+        try {
+          const siteZone = String(zone || 'BZV/POOL');
+
+          const managersRes = await env.DB.prepare("SELECT id FROM users WHERE role = 'manager' AND zone = ?")
+            .bind(siteZone)
+            .all();
+          const managerIds = (Array.isArray(managersRes?.results) ? managersRes.results : [])
+            .map((r) => String(r?.id || ''))
+            .filter(Boolean);
+
+          const adminsRes = await env.DB.prepare("SELECT id, zone FROM users WHERE role = 'admin'").all();
+          const adminRows = Array.isArray(adminsRes?.results) ? adminsRes.results : [];
+          const adminIds = adminRows
+            .filter((r) => {
+              const z = String(r?.zone || 'BZV/POOL');
+              if (z === 'BZV/POOL') return true;
+              return z === siteZone;
+            })
+            .map((r) => String(r?.id || ''))
+            .filter(Boolean);
+
+          const recipients = Array.from(new Set([...managerIds, ...adminIds])).filter(Boolean);
+          const title = 'Retour magasin - Fiche prête';
+          const bodyTxt = `${String(existing?.site_name || '') || 'Site'} - contrôle magasin effectué.`;
+
+          for (const uid of recipients) {
+            await createNotification(env, {
+              userId: uid,
+              title,
+              body: bodyTxt,
+              kind: 'WAREHOUSE_CHECK',
+              refId: String(id),
+              zone: siteZone
+            });
+          }
+
+          const subs = await loadPushSubscriptionsForUsers(env, recipients);
+          await fanoutWebPushNoPayload(env, subs);
+        } catch {
+          // ignore notification failures
+        }
+      }
+
+      const updated = await env.DB.prepare('SELECT * FROM fiche_history WHERE id = ?').bind(id).first();
+      return json({ fiche: mapRow(updated, zone) }, { status: 200 });
+    }
+
+    // 1b) Warehouse submit/return to manager
+    if (mode === 'warehouse-submit') {
+      if (!canWarehouse) return json({ error: 'Accès interdit.' }, { status: 403 });
+
+      const st = String(existing?.status || '').trim();
+      if (st && st !== 'Brouillon' && st !== 'Contrôle magasin') {
+        return json({ error: 'Fiche non renvoyable (statut incompatible).' }, { status: 409 });
+      }
+
+      await env.DB.prepare(
+        "UPDATE fiche_history SET status = ?, updated_at = ? WHERE id = ?"
+      )
+        .bind('Contrôle magasin', now, id)
+        .run();
+
+      try {
+        const siteZone = String(zone || 'BZV/POOL');
+
+        const managersRes = await env.DB.prepare("SELECT id FROM users WHERE role = 'manager' AND zone = ?")
+          .bind(siteZone)
+          .all();
+        const managerIds = (Array.isArray(managersRes?.results) ? managersRes.results : [])
+          .map((r) => String(r?.id || ''))
+          .filter(Boolean);
+
+        const adminsRes = await env.DB.prepare("SELECT id, zone FROM users WHERE role = 'admin'").all();
+        const adminRows = Array.isArray(adminsRes?.results) ? adminsRes.results : [];
+        const adminIds = adminRows
+          .filter((r) => {
+            const z = String(r?.zone || 'BZV/POOL');
+            if (z === 'BZV/POOL') return true;
+            return z === siteZone;
+          })
+          .map((r) => String(r?.id || ''))
+          .filter(Boolean);
+
+        const recipients = Array.from(new Set([...managerIds, ...adminIds])).filter(Boolean);
+        const title = 'Retour magasin - Fiche renvoyée';
+        const bodyTxt = `${String(existing?.site_name || '') || 'Site'} - fiche renvoyée pour finalisation.`;
+
+        for (const uid of recipients) {
+          await createNotification(env, {
+            userId: uid,
+            title,
+            body: bodyTxt,
+            kind: 'WAREHOUSE_SUBMIT',
+            refId: String(id),
+            zone: siteZone
+          });
+        }
+
+        const subs = await loadPushSubscriptionsForUsers(env, recipients);
+        await fanoutWebPushNoPayload(env, subs);
+      } catch {
+        // ignore notification failures
+      }
 
       const updated = await env.DB.prepare('SELECT * FROM fiche_history WHERE id = ?').bind(id).first();
       return json({ fiche: mapRow(updated, zone) }, { status: 200 });
