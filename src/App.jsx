@@ -3612,6 +3612,25 @@ const GeneratorMaintenanceApp = () => {
 
       return null;
     };
+  
+  const loadTicketLabelPreview = async (site) => {
+    try {
+      const z = String(site?.zone || '').trim();
+      if (!isManager) {
+        setTicketLabel('');
+        return;
+      }
+      if (String(z).toUpperCase() !== 'PNR/KOUILOU') {
+        setTicketLabel('');
+        return;
+      }
+      const data = await apiFetchJson(`/api/meta/ticket-number?zone=${encodeURIComponent(z)}`, { method: 'GET' });
+      const label = String(data?.nextTicket || '').trim();
+      setTicketLabel(label);
+    } catch {
+      setTicketLabel('');
+    }
+  };
 
   const handleGenerateFiche = async (site) => {
     setIsBatchFiche(false);
@@ -3647,6 +3666,7 @@ const GeneratorMaintenanceApp = () => {
       }
 
       setFicheContext({ plannedDate, epvType, interventionId, ficheId });
+      await loadTicketLabelPreview(site);
     } catch (e) {
       setFicheContext(null);
     }
