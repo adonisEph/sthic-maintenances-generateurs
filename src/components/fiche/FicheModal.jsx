@@ -28,6 +28,9 @@ const FicheModal = ({
 }) => {
   if (!open || !siteForFiche) return null;
 
+  const [localWarehouseAirFilterOk, setLocalWarehouseAirFilterOk] = useState(Boolean(warehouseAirFilterOk));
+  const [localWarehouseCoolant5lOk, setLocalWarehouseCoolant5lOk] = useState(Boolean(warehouseCoolant5lOk));
+
   const shouldIncludeAirFilter = useMemo(() => {
     const list = Array.isArray(ficheHistory) ? ficheHistory : [];
 
@@ -110,6 +113,14 @@ const FicheModal = ({
     if (v.startsWith('/')) return true;
     return false;
   }, [signatureDrawnPng]);
+
+  useEffect(() => {
+    setLocalWarehouseAirFilterOk(Boolean(warehouseAirFilterOk));
+  }, [warehouseAirFilterOk]);
+
+  useEffect(() => {
+    setLocalWarehouseCoolant5lOk(Boolean(warehouseCoolant5lOk));
+  }, [warehouseCoolant5lOk]);
 
   useEffect(() => {
     if (!open) return;
@@ -301,24 +312,32 @@ const FicheModal = ({
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
-                      checked={Boolean(warehouseAirFilterOk)}
-                      onChange={(e) => onSaveWarehouseCheck && onSaveWarehouseCheck({
-                        ficheId,
-                        warehouseAirFilterOk: Boolean(e.target.checked),
-                        warehouseCoolant5lOk: Boolean(warehouseCoolant5lOk)
-                      })}
+                      checked={Boolean(localWarehouseAirFilterOk)}
+                      onChange={(e) => {
+                        const next = Boolean(e.target.checked);
+                        setLocalWarehouseAirFilterOk(next);
+                        onSaveWarehouseCheck && onSaveWarehouseCheck({
+                          ficheId,
+                          warehouseAirFilterOk: next,
+                          warehouseCoolant5lOk: Boolean(localWarehouseCoolant5lOk)
+                        });
+                      }}
                     />
                     Filtre à air GE disponible/sorti
                   </label>
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
-                      checked={Boolean(warehouseCoolant5lOk)}
-                      onChange={(e) => onSaveWarehouseCheck && onSaveWarehouseCheck({
-                        ficheId,
-                        warehouseAirFilterOk: Boolean(warehouseAirFilterOk),
-                        warehouseCoolant5lOk: Boolean(e.target.checked)
-                      })}
+                      checked={Boolean(localWarehouseCoolant5lOk)}
+                      onChange={(e) => {
+                        const next = Boolean(e.target.checked);
+                        setLocalWarehouseCoolant5lOk(next);
+                        onSaveWarehouseCheck && onSaveWarehouseCheck({
+                          ficheId,
+                          warehouseAirFilterOk: Boolean(localWarehouseAirFilterOk),
+                          warehouseCoolant5lOk: next
+                        });
+                      }}
                     />
                     05 Litres liquide de refroidissement disponible/sorti
                   </label>

@@ -64,7 +64,7 @@ export async function onRequestGet({ request, env, data }) {
       binds.push(String(data.user.technicianName || ''));
     }
 
-    if (!isSuperAdmin(data) && (role === 'manager' || role === 'technician' || role === 'warehouse')) {
+    if (!isSuperAdmin(data) && (role === 'manager' || role === 'technician')) {
       where += ' AND s.zone = ?';
       binds.push(String(userZone(data) || 'BZV/POOL'));
     }
