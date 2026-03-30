@@ -5,6 +5,8 @@ const HistoryModal = ({
   open,
   onClose,
   onOpenFiche,
+  onSendToWarehouse,
+  canSendToWarehouse,
   historyQuery,
   setHistoryQuery,
   historyDateFrom,
@@ -236,26 +238,30 @@ const HistoryModal = ({
                       <span className="text-gray-600">Date réalisation:</span>
                       <span className="ml-2 break-words">{fiche.dateCompleted ? formatDate(fiche.dateCompleted) : '-'}</span>
                     </div>
-                  </div>
+                    </div>
 
-                  {fiche.status === 'En attente' && canMarkCompleted && (
-                    <button
-                      onClick={() => handleMarkAsCompleted(fiche.id)}
-                      className="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 font-semibold"
-                    >
-                      ✅ Marquer comme Effectuée
-                    </button>
-                  )}
+                    {canSendToWarehouse && (fiche.status === 'Brouillon' || fiche.status === 'Envoyée au magasin') && (
+                      <div className="mb-3">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!onSendToWarehouse) return;
+                            await onSendToWarehouse({ ficheId: fiche.id });
+                          }}
+                          className="w-full bg-indigo-700 text-white py-2 rounded-lg hover:bg-indigo-800 font-semibold"
+                        >
+                          Envoyer au magasin
+                        </button>
+                      </div>
+                    )}
 
-                  {typeof onOpenFiche === 'function' && (
                     <button
                       type="button"
                       onClick={() => onOpenFiche(fiche)}
-                      className="mt-3 w-full bg-slate-700 text-white py-2 rounded-lg hover:bg-slate-800 font-semibold"
+                      className="w-full bg-slate-700 text-white py-2 rounded-lg hover:bg-slate-800 font-semibold"
                     >
                       Ouvrir
                     </button>
-                  )}
                 </div>
               ))}
             </div>

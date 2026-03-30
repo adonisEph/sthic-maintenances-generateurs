@@ -59,6 +59,12 @@ export async function onRequestGet({ request, env, data }) {
 
     const role = String(data?.user?.role || '');
 
+    if (role === 'warehouse') {
+      where += ' AND s.zone = ?';
+      binds.push(String(userZone(data) || 'BZV/POOL'));
+      where += " AND fh.status IN ('Envoyée au magasin', 'Contrôle magasin')";
+    }
+
     if (role === 'technician') {
       where += ' AND fh.technician = ?';
       binds.push(String(data.user.technicianName || ''));

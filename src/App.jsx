@@ -73,6 +73,7 @@ const GeneratorMaintenanceApp = () => {
   const [showInterventions, setShowInterventions] = useState(false);
   const [showScoring, setShowScoring] = useState(false);
   const [showPm, setShowPm] = useState(false);
+  const [showWarehouseProcess, setShowWarehouseProcess] = useState(false);
   const [scoringMonth, setScoringMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [scoringDetails, setScoringDetails] = useState({ open: false, title: '', kind: '', items: [] });
   const [interventions, setInterventions] = useState([]);
@@ -4023,8 +4024,8 @@ const GeneratorMaintenanceApp = () => {
       method: 'PATCH',
       body: JSON.stringify({
         mode: 'warehouse-check',
-        warehouseAirFilterOk: Boolean(warehouseAirFilterOk),
-        warehouseCoolant5lOk: Boolean(warehouseCoolant5lOk)
+        warehouseAirFilterOk,
+        warehouseCoolant5lOk
       })
     });
 
@@ -4039,8 +4040,8 @@ const GeneratorMaintenanceApp = () => {
       method: 'PATCH',
       body: JSON.stringify({
         mode: 'warehouse-check',
-        warehouseAirFilterOk: Boolean(warehouseAirFilterOk),
-        warehouseCoolant5lOk: Boolean(warehouseCoolant5lOk)
+        warehouseAirFilterOk,
+        warehouseCoolant5lOk
       })
     });
 
@@ -4050,6 +4051,17 @@ const GeneratorMaintenanceApp = () => {
       body: JSON.stringify({
         mode: 'warehouse-submit'
       })
+    });
+
+    await loadFicheHistory();
+  };
+
+  const handleSendToWarehouse = async ({ ficheId }) => {
+    if (!ficheId) return;
+
+    await apiFetchJson(`/api/fiche-history/${encodeURIComponent(String(ficheId))}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ mode: 'send-to-warehouse' })
     });
 
     await loadFicheHistory();
@@ -6229,6 +6241,19 @@ return (
             Historique
           </button>
 
+          {isWarehouse && (
+            <button
+              onClick={() => {
+                setSidebarOpen(false);
+                setShowWarehouseProcess(true);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
+            >
+              <Activity size={18} />
+              Fiches process
+            </button>
+          )}
+
           {canReset && (
             <button
               onClick={() => {
@@ -6579,10 +6604,85 @@ return (
           onCancel={() => setShowResetConfirm(false)}
         />
 
+        {showWarehouseProcess && (
+          <div className="fixed inset-0 bg-indigo-900/35 flex items-center justify-center z-50 p-0 sm:p-4">
+            <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:h-auto sm:max-w-6xl sm:max-h-[92vh] sm:rounded-xl">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gradient-to-r from-indigo-600 via-sky-600 to-teal-600 text-white">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <Activity size={24} />
+                  Fiches process (magasin)
+                </h2>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setShowWarehouseProcess(false)}
+                    className="hover:bg-white/10 p-2 rounded"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+                {(() => {
+                  const list = (Array.isArray(ficheHistory) ? ficheHistory : [])
+                    .filter((f) => f && (f.status === 'Envoyée au magasin' || f.status === 'Contrôle magasin'))
+                    .sort((a, b) =>
+                      String(b.updatedAt || b.dateGenerated || '').localeCompare(String(a.updatedAt || a.dateGenerated || ''))
+                    );
+
+                  if (list.length === 0) {
+                    return (
+                      <div className="text-center py-12 text-gray-500">
+                        <Activity size={48} className="mx-auto mb-4 text-gray-300" />
+                        <p className="text-lg font-semibold">Aucune fiche à traiter</p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-3">
+                      {list.map((fiche) => (
+                        <div key={fiche.id} className="border-2 rounded-lg p-4 bg-white border-gray-200">
+                          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-2">
+                            <div className="min-w-0">
+                              <div className="font-bold text-lg text-gray-800 truncate">{fiche.ticketNumber || '-'}</div>
+                              <div className="text-sm text-gray-600 truncate">{fiche.siteName}</div>
+                            </div>
+                            <span className="px-3 py-1 rounded-full text-sm font-semibold self-start bg-yellow-500 text-white">
+                              {fiche.status}
+                            </span>
+                          </div>
+
+                          <div className="text-xs text-gray-700 mb-3">
+                            <div>Filtre à air GE: {fiche.warehouseAirFilterOk === true ? 'OK' : fiche.warehouseAirFilterOk === false ? 'NON' : '-'}</div>
+                            <div>05L LdR: {fiche.warehouseCoolant5lOk === true ? 'OK' : fiche.warehouseCoolant5lOk === false ? 'NON' : '-'}</div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenFicheFromHistory(fiche)}
+                            className="w-full bg-slate-700 text-white py-2 rounded-lg hover:bg-slate-800 font-semibold"
+                          >
+                            Ouvrir
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="p-3 border-t bg-white" />
+            </div>
+          </div>
+        )}
+
         <HistoryModal
           open={showHistory}
           onClose={() => setShowHistory(false)}
           onOpenFiche={handleOpenFicheFromHistory}
+          onSendToWarehouse={handleSendToWarehouse}
+          canSendToWarehouse={Boolean(isAdmin || isManager)}
           historyQuery={historyQuery}
           setHistoryQuery={setHistoryQuery}
           historyDateFrom={historyDateFrom}

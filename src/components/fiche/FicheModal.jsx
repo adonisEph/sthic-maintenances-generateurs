@@ -29,8 +29,12 @@ const FicheModal = ({
 }) => {
   if (!open || !siteForFiche) return null;
 
-  const [localWarehouseAirFilterOk, setLocalWarehouseAirFilterOk] = useState(Boolean(warehouseAirFilterOk));
-  const [localWarehouseCoolant5lOk, setLocalWarehouseCoolant5lOk] = useState(Boolean(warehouseCoolant5lOk));
+  const [localWarehouseAirFilterOk, setLocalWarehouseAirFilterOk] = useState(
+    warehouseAirFilterOk === null || warehouseAirFilterOk === undefined ? null : Boolean(warehouseAirFilterOk)
+  );
+  const [localWarehouseCoolant5lOk, setLocalWarehouseCoolant5lOk] = useState(
+    warehouseCoolant5lOk === null || warehouseCoolant5lOk === undefined ? null : Boolean(warehouseCoolant5lOk)
+  );
 
   const shouldIncludeAirFilter = useMemo(() => {
     const list = Array.isArray(ficheHistory) ? ficheHistory : [];
@@ -80,7 +84,14 @@ const FicheModal = ({
     return !already;
   }, [ficheHistory, siteForFiche]);
 
-  const shouldIncludeAirAndCoolant = shouldIncludeAirFilter || shouldIncludeCoolant;
+  const warehouseIncludeAirFilter = localWarehouseAirFilterOk === true;
+  const warehouseIncludeCoolant = localWarehouseCoolant5lOk === true;
+
+  // Warehouse view: default to show consumables until explicitly marked ❌ (false)
+  const effectiveIncludeAirFilter = canWarehouse ? localWarehouseAirFilterOk !== false : shouldIncludeAirFilter;
+  const effectiveIncludeCoolant = canWarehouse ? localWarehouseCoolant5lOk !== false : shouldIncludeCoolant;
+
+  const shouldIncludeAirAndCoolant = effectiveIncludeAirFilter || effectiveIncludeCoolant;
 
   const kitItems = useMemo(() => {
     const raw = String(siteForFiche?.kitVidange || '');
@@ -89,7 +100,7 @@ const FicheModal = ({
       .map((x) => String(x || '').trim())
       .filter(Boolean);
 
-    if (shouldIncludeAirFilter && shouldIncludeCoolant) return items;
+    if (effectiveIncludeAirFilter && effectiveIncludeCoolant) return items;
 
     const norm = (v) =>
       String(v || '')
@@ -99,11 +110,11 @@ const FicheModal = ({
 
     return items.filter((it) => {
       const n = norm(it);
-      if (!shouldIncludeAirFilter && n.includes('filtre') && n.includes('air')) return false;
-      if (!shouldIncludeCoolant && n.includes('liquide') && n.includes('refroid')) return false;
+      if (!effectiveIncludeAirFilter && n.includes('filtre') && n.includes('air')) return false;
+      if (!effectiveIncludeCoolant && n.includes('liquide') && n.includes('refroid')) return false;
       return true;
     });
-  }, [siteForFiche, shouldIncludeAirFilter, shouldIncludeCoolant]);
+  }, [siteForFiche, effectiveIncludeAirFilter, effectiveIncludeCoolant]);
 
   const signatureOk = useMemo(() => {
     const v = String(signatureDrawnPng || '').trim();
@@ -116,15 +127,20 @@ const FicheModal = ({
   }, [signatureDrawnPng]);
 
   useEffect(() => {
-    setLocalWarehouseAirFilterOk(Boolean(warehouseAirFilterOk));
+    setLocalWarehouseAirFilterOk(
+      warehouseAirFilterOk === null || warehouseAirFilterOk === undefined ? null : Boolean(warehouseAirFilterOk)
+    );
   }, [warehouseAirFilterOk]);
 
   useEffect(() => {
-    setLocalWarehouseCoolant5lOk(Boolean(warehouseCoolant5lOk));
+    setLocalWarehouseCoolant5lOk(
+      warehouseCoolant5lOk === null || warehouseCoolant5lOk === undefined ? null : Boolean(warehouseCoolant5lOk)
+    );
   }, [warehouseCoolant5lOk]);
 
   useEffect(() => {
     if (!open) return;
+    if (canWarehouse) return;
     if (String(signatureDrawnPng || '').trim().startsWith('data:image/png;base64,')) return;
 
     let cancelled = false;
@@ -221,20 +237,24 @@ const FicheModal = ({
                 </button>
               </div>
             )}
-            <button
-              onClick={handlePrintFiche}
-              disabled={!signatureOk}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold w-full sm:w-auto disabled:bg-gray-400"
-            >
-              Imprimer
-            </button>
-            <button
-              onClick={handleSaveFichePdf}
-              disabled={!signatureOk}
-              className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold w-full sm:w-auto disabled:bg-gray-400"
-            >
-              Enregistrer le PDF
-            </button>
+            {!canWarehouse && (
+              <button
+                onClick={handlePrintFiche}
+                disabled={!signatureOk}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold w-full sm:w-auto disabled:bg-gray-400"
+              >
+                Imprimer
+              </button>
+            )}
+            {!canWarehouse && (
+              <button
+                onClick={handleSaveFichePdf}
+                disabled={!signatureOk}
+                className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold w-full sm:w-auto disabled:bg-gray-400"
+              >
+                Enregistrer le PDF
+              </button>
+            )}
             <button
               onClick={onClose}
               className="bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500"
@@ -254,7 +274,7 @@ const FicheModal = ({
             className="bg-white mx-auto flex flex-col"
             style={{ maxWidth: '210mm', width: '100%', minHeight: '277mm', boxSizing: 'border-box' }}
           >
-            {bannerImage && (
+            {!canWarehouse && bannerImage && (
               <div className="mb-3 border-2 border-gray-300 rounded overflow-hidden bg-gray-200">
                 <img
                   src={bannerImage}
@@ -265,7 +285,7 @@ const FicheModal = ({
               </div>
             )}
 
-            {!bannerImage && (
+            {!canWarehouse && !bannerImage && (
               <div className="mb-4 bg-yellow-50 border-2 border-yellow-300 rounded p-3 text-center">
                 <p className="text-yellow-800 font-semibold">⚠️ Bannière non chargée</p>
               </div>
@@ -301,7 +321,7 @@ const FicheModal = ({
               <p className="font-bold text-sm">
                 VIDANGE DU GE {siteForFiche.generateur} {siteForFiche.capacite}
                 {shouldIncludeAirAndCoolant
-                  ? `${shouldIncludeAirFilter ? ' + Filtre à air GE' : ''}${shouldIncludeCoolant ? ' + 05 Litres liquide de refroidissement' : ''}`
+                  ? `${effectiveIncludeAirFilter ? ' + Filtre à air GE' : ''}${effectiveIncludeCoolant ? ' + 05 Litres liquide de refroidissement' : ''}`
                   : ''}
               </p>
             </div>
@@ -310,38 +330,73 @@ const FicheModal = ({
               <div className="mb-4 border border-gray-300 rounded-lg p-3 text-sm">
                 <div className="font-bold text-gray-800 mb-2">Contrôle magasin (warehouse)</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(localWarehouseAirFilterOk)}
-                      onChange={(e) => {
-                        const next = Boolean(e.target.checked);
-                        setLocalWarehouseAirFilterOk(next);
-                        onSaveWarehouseCheck && onSaveWarehouseCheck({
-                          ficheId,
-                          warehouseAirFilterOk: next,
-                          warehouseCoolant5lOk: Boolean(localWarehouseCoolant5lOk)
-                        });
-                      }}
-                    />
-                    Filtre à air GE disponible/sorti
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(localWarehouseCoolant5lOk)}
-                      onChange={(e) => {
-                        const next = Boolean(e.target.checked);
-                        setLocalWarehouseCoolant5lOk(next);
-                        onSaveWarehouseCheck && onSaveWarehouseCheck({
-                          ficheId,
-                          warehouseAirFilterOk: Boolean(localWarehouseAirFilterOk),
-                          warehouseCoolant5lOk: next
-                        });
-                      }}
-                    />
-                    05 Litres liquide de refroidissement disponible/sorti
-                  </label>
+                  <div className="border border-gray-200 rounded-lg p-3">
+                    <div className="font-semibold text-gray-800 mb-2">Filtre à air GE</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLocalWarehouseAirFilterOk(true);
+                          onSaveWarehouseCheck && onSaveWarehouseCheck({
+                            ficheId,
+                            warehouseAirFilterOk: true,
+                            warehouseCoolant5lOk: localWarehouseCoolant5lOk
+                          });
+                        }}
+                        className={`px-3 py-2 rounded-lg font-semibold border ${localWarehouseAirFilterOk === true ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-white text-gray-800 border-gray-300'}`}
+                      >
+                        ✅ Disponible
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLocalWarehouseAirFilterOk(false);
+                          onSaveWarehouseCheck && onSaveWarehouseCheck({
+                            ficheId,
+                            warehouseAirFilterOk: false,
+                            warehouseCoolant5lOk: localWarehouseCoolant5lOk
+                          });
+                        }}
+                        className={`px-3 py-2 rounded-lg font-semibold border ${localWarehouseAirFilterOk === false ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-800 border-gray-300'}`}
+                      >
+                        ❌ Indispo
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="border border-gray-200 rounded-lg p-3">
+                    <div className="font-semibold text-gray-800 mb-2">05 Litres liquide de refroidissement</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLocalWarehouseCoolant5lOk(true);
+                          onSaveWarehouseCheck && onSaveWarehouseCheck({
+                            ficheId,
+                            warehouseAirFilterOk: localWarehouseAirFilterOk,
+                            warehouseCoolant5lOk: true
+                          });
+                        }}
+                        className={`px-3 py-2 rounded-lg font-semibold border ${localWarehouseCoolant5lOk === true ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-white text-gray-800 border-gray-300'}`}
+                      >
+                        ✅ Disponible
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLocalWarehouseCoolant5lOk(false);
+                          onSaveWarehouseCheck && onSaveWarehouseCheck({
+                            ficheId,
+                            warehouseAirFilterOk: localWarehouseAirFilterOk,
+                            warehouseCoolant5lOk: false
+                          });
+                        }}
+                        className={`px-3 py-2 rounded-lg font-semibold border ${localWarehouseCoolant5lOk === false ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-800 border-gray-300'}`}
+                      >
+                        ❌ Indispo
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="mt-3">
@@ -351,8 +406,8 @@ const FicheModal = ({
                       onSubmitWarehouseCheck &&
                       onSubmitWarehouseCheck({
                         ficheId,
-                        warehouseAirFilterOk: Boolean(localWarehouseAirFilterOk),
-                        warehouseCoolant5lOk: Boolean(localWarehouseCoolant5lOk)
+                        warehouseAirFilterOk: localWarehouseAirFilterOk,
+                        warehouseCoolant5lOk: localWarehouseCoolant5lOk
                       })
                     }
                     className="w-full bg-emerald-700 text-white py-2 rounded-lg hover:bg-emerald-800 font-semibold"
@@ -409,54 +464,60 @@ const FicheModal = ({
             </div>
 
             <div className="grid grid-cols-2 gap-4 text-sm mt-auto pt-4">
-              <div className="border-2 border-gray-800 p-4" style={{ minHeight: '90px' }}>
-                <p className="font-bold mb-3 text-base">H</p>
-                <p className="text-3xl font-bold text-center mt-2">{siteForFiche.nh1DV} H</p>
-              </div>
-              <div className="border-2 border-gray-800 p-4" style={{ minHeight: '90px' }}>
-                <p className="font-bold mb-3 text-right text-base">SIGNATURE RESPONSABLE</p>
-                <div className="flex items-center justify-end" style={{ height: '65px' }}>
-                  {signatureDrawnPng ? (
-                    <img
-                      alt="Signature"
-                      src={signatureDrawnPng}
-                      style={{ height: '80px', width: '260px', maxWidth: '100%', objectFit: 'contain' }}
-                    />
-                  ) : (
-                    <div style={{ height: '60px', width: '100%' }} />
-                  )}
+              {!canWarehouse && (
+                <div className="border-2 border-gray-800 p-4" style={{ minHeight: '90px' }}>
+                  <p className="font-bold mb-3 text-base">H</p>
+                  <p className="text-3xl font-bold text-center mt-2">{siteForFiche.nh1DV} H</p>
                 </div>
-                <p className="text-xs text-right mt-3">DATE</p>
-                <p className="text-right font-bold">{formatDate(new Date().toISOString())}</p>
-              </div>
+              )}
+              {!canWarehouse && (
+                <div className="border-2 border-gray-800 p-4" style={{ minHeight: '90px' }}>
+                  <p className="font-bold mb-3 text-right text-base">SIGNATURE RESPONSABLE</p>
+                  <div className="flex items-center justify-end" style={{ height: '65px' }}>
+                    {signatureDrawnPng ? (
+                      <img
+                        alt="Signature"
+                        src={signatureDrawnPng}
+                        style={{ height: '80px', width: '260px', maxWidth: '100%', objectFit: 'contain' }}
+                      />
+                    ) : (
+                      <div style={{ height: '60px', width: '100%' }} />
+                    )}
+                  </div>
+                  <p className="text-xs text-right mt-3">DATE</p>
+                  <p className="text-right font-bold">{formatDate(new Date().toISOString())}</p>
+                </div>
+              )}
             </div>
           </div>
                   
-          <div className="mt-6 border-t pt-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div />
-              <div>
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <label className="block text-sm font-semibold text-gray-700">Signature (obligatoire)</label>
-                </div>
-                <div className="border border-gray-300 rounded-lg overflow-hidden bg-white">
-                  {signatureDrawnPng ? (
-                    <div className="text-xs text-indigo-700 mt-2 font-semibold">
-                      Signature responsable chargée (PNG).
-                    </div>
-                  ) : (
-                    <div className="text-xs text-red-700 mt-2">
-                      Signature responsable (PNG) introuvable. Vérifier le fichier <code>/signature_responsable.png</code>.
-                    </div>
-                  )}
+          {!canWarehouse && (
+            <div className="mt-6 border-t pt-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div />
+                <div>
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <label className="block text-sm font-semibold text-gray-700">Signature (obligatoire)</label>
+                  </div>
+                  <div className="border border-gray-300 rounded-lg overflow-hidden bg-white">
+                    {signatureDrawnPng ? (
+                      <div className="text-xs text-indigo-700 mt-2 font-semibold">
+                        Signature responsable chargée (PNG).
+                      </div>
+                    ) : (
+                      <div className="text-xs text-red-700 mt-2">
+                        Signature responsable (PNG) introuvable. Vérifier le fichier <code>/signature_responsable.png</code>.
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
   );
-};
+}
 
 export default FicheModal;
