@@ -233,6 +233,8 @@ const FicheModal = ({
 
   const canShowBannerBlock = !isWarehouseView && !Boolean(disableSignatureAutofetch);
 
+  const shouldShowFinalizeArtifacts = !canShowFinalize || Boolean(bannerImage);
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full my-8">
@@ -567,13 +569,13 @@ const FicheModal = ({
             </div>
 
             <div className="grid grid-cols-2 gap-4 text-sm mt-auto pt-4">
-              {!isWarehouseView && !shouldHideProcessButtons && (
+              {!isWarehouseView && !Boolean(disableSignatureAutofetch) && shouldShowFinalizeArtifacts && (
                 <div className="border-2 border-gray-800 p-4" style={{ minHeight: '90px' }}>
                   <p className="font-bold mb-3 text-base">H</p>
                   <p className="text-3xl font-bold text-center mt-2">{siteForFiche.nh1DV} H</p>
                 </div>
               )}
-              {!isWarehouseView && !shouldHideProcessButtons && (
+              {!isWarehouseView && !Boolean(disableSignatureAutofetch) && shouldShowFinalizeArtifacts && (
                 <div className="border-2 border-gray-800 p-4" style={{ minHeight: '90px' }}>
                   <p className="font-bold mb-3 text-right text-base">SIGNATURE RESPONSABLE</p>
                   <div className="flex items-center justify-end" style={{ height: '65px' }}>
@@ -584,7 +586,7 @@ const FicheModal = ({
                         style={{ height: '80px', width: '260px', maxWidth: '100%', objectFit: 'contain' }}
                       />
                     ) : (
-                      <div style={{ height: '60px', width: '100%' }} />
+                      <div className="text-xs text-gray-600">Signature non disponible</div>
                     )}
                   </div>
                   <p className="text-xs text-right mt-3">DATE</p>
@@ -592,8 +594,8 @@ const FicheModal = ({
                 </div>
               )}
             </div>
+
           </div>
-                  
           {!isWarehouseView && !shouldHideProcessButtons && (
             <div className="mt-6 border-t pt-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
