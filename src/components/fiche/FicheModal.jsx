@@ -7,6 +7,17 @@ const FicheModal = ({
   ficheHistory,
   ficheId,
   canWarehouse,
+  showWarehouseControls,
+  hideWarehouseSection,
+  hideProcessButtons,
+  showFinalizeButton,
+  finalizeBusy,
+  onFinalizeFiche,
+  showSendToWarehouseInObjet,
+  canSendToWarehouse,
+  onSendToWarehouse,
+  warehouseReadOnly,
+  disableSignatureAutofetch,
   warehouseAirFilterOk,
   warehouseCoolant5lOk,
   onSaveWarehouseCheck,
@@ -28,6 +39,9 @@ const FicheModal = ({
   formatDate
 }) => {
   if (!open || !siteForFiche) return null;
+
+  const [warehouseSubmitBusy, setWarehouseSubmitBusy] = useState(false);
+  const [warehouseSubmitSuccessOpen, setWarehouseSubmitSuccessOpen] = useState(false);
 
   const [localWarehouseAirFilterOk, setLocalWarehouseAirFilterOk] = useState(
     warehouseAirFilterOk === null || warehouseAirFilterOk === undefined ? null : Boolean(warehouseAirFilterOk)
@@ -87,9 +101,12 @@ const FicheModal = ({
   const warehouseIncludeAirFilter = localWarehouseAirFilterOk === true;
   const warehouseIncludeCoolant = localWarehouseCoolant5lOk === true;
 
+  const isWarehouseView = Boolean(canWarehouse);
+  const canShowWarehouseControls = Boolean((canWarehouse || showWarehouseControls) && !hideWarehouseSection);
+
   // Warehouse view: default to show consumables until explicitly marked ❌ (false)
-  const effectiveIncludeAirFilter = canWarehouse ? localWarehouseAirFilterOk !== false : shouldIncludeAirFilter;
-  const effectiveIncludeCoolant = canWarehouse ? localWarehouseCoolant5lOk !== false : shouldIncludeCoolant;
+  const effectiveIncludeAirFilter = canShowWarehouseControls ? localWarehouseAirFilterOk !== false : shouldIncludeAirFilter;
+  const effectiveIncludeCoolant = canShowWarehouseControls ? localWarehouseCoolant5lOk !== false : shouldIncludeCoolant;
 
   const shouldIncludeAirAndCoolant = effectiveIncludeAirFilter || effectiveIncludeCoolant;
 
@@ -140,7 +157,8 @@ const FicheModal = ({
 
   useEffect(() => {
     if (!open) return;
-    if (canWarehouse) return;
+    if (isWarehouseView) return;
+    if (Boolean(disableSignatureAutofetch)) return;
     if (String(signatureDrawnPng || '').trim().startsWith('data:image/png;base64,')) return;
 
     let cancelled = false;
@@ -206,6 +224,12 @@ const FicheModal = ({
     return `${ticketPrefix}${String(ticketNumber).padStart(5, '0')}`;
   })();
 
+  const shouldHideWarehouse = Boolean(hideWarehouseSection);
+  const shouldHideProcessButtons = Boolean(hideProcessButtons);
+  const canShowSendToWarehouse = Boolean(showSendToWarehouseInObjet && canSendToWarehouse && onSendToWarehouse && ficheId);
+  const isWarehouseReadOnly = Boolean(warehouseReadOnly);
+  const canShowFinalize = Boolean(showFinalizeButton && onFinalizeFiche && ficheId);
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full my-8">
@@ -237,7 +261,7 @@ const FicheModal = ({
                 </button>
               </div>
             )}
-            {!canWarehouse && (
+            {!isWarehouseView && !shouldHideProcessButtons && (
               <button
                 onClick={handlePrintFiche}
                 disabled={!signatureOk}
@@ -246,13 +270,26 @@ const FicheModal = ({
                 Imprimer
               </button>
             )}
-            {!canWarehouse && (
+            {!isWarehouseView && !shouldHideProcessButtons && (
               <button
                 onClick={handleSaveFichePdf}
                 disabled={!signatureOk}
                 className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold w-full sm:w-auto disabled:bg-gray-400"
               >
                 Enregistrer le PDF
+              </button>
+            )}
+
+            {canShowFinalize && !shouldHideProcessButtons && (
+              <button
+                type="button"
+                onClick={async () => {
+                  await onFinalizeFiche({ ficheId });
+                }}
+                disabled={Boolean(finalizeBusy)}
+                className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold w-full sm:w-auto disabled:bg-gray-400"
+              >
+                {finalizeBusy ? 'Finalisation...' : 'Finaliser la fiche'}
               </button>
             )}
             <button
@@ -269,12 +306,43 @@ const FicheModal = ({
         </div>
 
         <div className="bg-white p-8 overflow-auto" style={{ maxHeight: '80vh' }}>
+          {warehouseSubmitSuccessOpen && (
+            <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4">
+              <div className="bg-white w-full max-w-lg rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
+                <div className="p-4 border-b bg-emerald-700 text-white">
+                  <div className="text-lg font-bold text-center">Renvoi effectué</div>
+                </div>
+                <div className="p-5">
+                  <div className="text-center text-gray-800 font-semibold">
+                    La fiche d'intervention vidange traitée a été renvoyée au collaborateur zonal avec succès.
+                  </div>
+                  <div className="text-center text-sm text-gray-600 mt-2">
+                    Statut: <span className="font-bold">Contrôle magasin</span>
+                  </div>
+
+                  <div className="mt-5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setWarehouseSubmitSuccessOpen(false);
+                        onClose && onClose();
+                      }}
+                      className="w-full bg-slate-800 text-white py-2 rounded-lg hover:bg-slate-900 font-semibold"
+                    >
+                      Fermer
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div
             id="fiche-print"
             className="bg-white mx-auto flex flex-col"
             style={{ maxWidth: '210mm', width: '100%', minHeight: '277mm', boxSizing: 'border-box' }}
           >
-            {!canWarehouse && bannerImage && (
+            {!isWarehouseView && !shouldHideProcessButtons && bannerImage && (
               <div className="mb-3 border-2 border-gray-300 rounded overflow-hidden bg-gray-200">
                 <img
                   src={bannerImage}
@@ -285,7 +353,7 @@ const FicheModal = ({
               </div>
             )}
 
-            {!canWarehouse && !bannerImage && (
+            {!isWarehouseView && !shouldHideProcessButtons && !bannerImage && (
               <div className="mb-4 bg-yellow-50 border-2 border-yellow-300 rounded p-3 text-center">
                 <p className="text-yellow-800 font-semibold">⚠️ Bannière non chargée</p>
               </div>
@@ -324,9 +392,23 @@ const FicheModal = ({
                   ? `${effectiveIncludeAirFilter ? ' + Filtre à air GE' : ''}${effectiveIncludeCoolant ? ' + 05 Litres liquide de refroidissement' : ''}`
                   : ''}
               </p>
+
+              {canShowSendToWarehouse && (
+                <div className="mt-4 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await onSendToWarehouse({ ficheId });
+                    }}
+                    className="bg-indigo-700 text-white px-6 py-3 rounded-lg hover:bg-indigo-800 font-bold"
+                  >
+                    Envoyer au magasin
+                  </button>
+                </div>
+              )}
             </div>
 
-            {canWarehouse && (
+            {canShowWarehouseControls && (
               <div className="mb-4 border border-gray-300 rounded-lg p-3 text-sm">
                 <div className="font-bold text-gray-800 mb-2">Contrôle magasin (warehouse)</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -335,6 +417,7 @@ const FicheModal = ({
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
+                        disabled={isWarehouseReadOnly}
                         onClick={() => {
                           setLocalWarehouseAirFilterOk(true);
                           onSaveWarehouseCheck && onSaveWarehouseCheck({
@@ -349,6 +432,7 @@ const FicheModal = ({
                       </button>
                       <button
                         type="button"
+                        disabled={isWarehouseReadOnly}
                         onClick={() => {
                           setLocalWarehouseAirFilterOk(false);
                           onSaveWarehouseCheck && onSaveWarehouseCheck({
@@ -369,6 +453,7 @@ const FicheModal = ({
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
+                        disabled={isWarehouseReadOnly}
                         onClick={() => {
                           setLocalWarehouseCoolant5lOk(true);
                           onSaveWarehouseCheck && onSaveWarehouseCheck({
@@ -383,6 +468,7 @@ const FicheModal = ({
                       </button>
                       <button
                         type="button"
+                        disabled={isWarehouseReadOnly}
                         onClick={() => {
                           setLocalWarehouseCoolant5lOk(false);
                           onSaveWarehouseCheck && onSaveWarehouseCheck({
@@ -399,22 +485,34 @@ const FicheModal = ({
                   </div>
                 </div>
 
-                <div className="mt-3">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onSubmitWarehouseCheck &&
-                      onSubmitWarehouseCheck({
-                        ficheId,
-                        warehouseAirFilterOk: localWarehouseAirFilterOk,
-                        warehouseCoolant5lOk: localWarehouseCoolant5lOk
-                      })
-                    }
-                    className="w-full bg-emerald-700 text-white py-2 rounded-lg hover:bg-emerald-800 font-semibold"
-                  >
-                    Renvoyer au manager
-                  </button>
-                </div>
+                {!isWarehouseReadOnly && (
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        (async () => {
+                          try {
+                            if (warehouseSubmitBusy) return;
+                            if (!onSubmitWarehouseCheck) return;
+                            setWarehouseSubmitBusy(true);
+                            await onSubmitWarehouseCheck({
+                              ficheId,
+                              warehouseAirFilterOk: localWarehouseAirFilterOk,
+                              warehouseCoolant5lOk: localWarehouseCoolant5lOk
+                            });
+                            setWarehouseSubmitSuccessOpen(true);
+                          } finally {
+                            setWarehouseSubmitBusy(false);
+                          }
+                        })();
+                      }}
+                      disabled={warehouseSubmitBusy}
+                      className="w-full bg-emerald-700 text-white py-2 rounded-lg hover:bg-emerald-800 font-semibold disabled:bg-emerald-400"
+                    >
+                      {warehouseSubmitBusy ? 'Renvoi...' : 'Renvoyer au manager'}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -464,17 +562,17 @@ const FicheModal = ({
             </div>
 
             <div className="grid grid-cols-2 gap-4 text-sm mt-auto pt-4">
-              {!canWarehouse && (
+              {!isWarehouseView && !shouldHideProcessButtons && (
                 <div className="border-2 border-gray-800 p-4" style={{ minHeight: '90px' }}>
                   <p className="font-bold mb-3 text-base">H</p>
                   <p className="text-3xl font-bold text-center mt-2">{siteForFiche.nh1DV} H</p>
                 </div>
               )}
-              {!canWarehouse && (
+              {!isWarehouseView && !shouldHideProcessButtons && (
                 <div className="border-2 border-gray-800 p-4" style={{ minHeight: '90px' }}>
                   <p className="font-bold mb-3 text-right text-base">SIGNATURE RESPONSABLE</p>
                   <div className="flex items-center justify-end" style={{ height: '65px' }}>
-                    {signatureDrawnPng ? (
+                    {signatureOk ? (
                       <img
                         alt="Signature"
                         src={signatureDrawnPng}
@@ -491,7 +589,7 @@ const FicheModal = ({
             </div>
           </div>
                   
-          {!canWarehouse && (
+          {!isWarehouseView && !shouldHideProcessButtons && (
             <div className="mt-6 border-t pt-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div />

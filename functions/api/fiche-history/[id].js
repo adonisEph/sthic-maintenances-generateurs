@@ -140,7 +140,7 @@ export async function onRequestPatch({ request, env, data, params }) {
       if (zone !== z) return json({ error: 'Accès interdit.' }, { status: 403 });
     }
 
-    if (!isSuperAdmin(data) && role !== 'admin' && !canWarehouse) {
+    if (role === 'admin' || role === 'manager') {
       const z = String(userZone(data) || 'BZV/POOL');
       if (zone !== z) return json({ error: 'Accès interdit.' }, { status: 403 });
     }

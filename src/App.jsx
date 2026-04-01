@@ -74,6 +74,16 @@ const GeneratorMaintenanceApp = () => {
   const [showScoring, setShowScoring] = useState(false);
   const [showPm, setShowPm] = useState(false);
   const [showWarehouseProcess, setShowWarehouseProcess] = useState(false);
+  const [warehouseProcessQuery, setWarehouseProcessQuery] = useState('');
+  const [warehouseProcessDateFrom, setWarehouseProcessDateFrom] = useState('');
+  const [warehouseProcessDateTo, setWarehouseProcessDateTo] = useState('');
+  const [warehouseProcessStatus, setWarehouseProcessStatus] = useState('all');
+  const [warehouseProcessSort, setWarehouseProcessSort] = useState('newest');
+  const [showWarehouseReturns, setShowWarehouseReturns] = useState(false);
+  const [warehouseReturnsQuery, setWarehouseReturnsQuery] = useState('');
+  const [warehouseReturnsDateFrom, setWarehouseReturnsDateFrom] = useState('');
+  const [warehouseReturnsDateTo, setWarehouseReturnsDateTo] = useState('');
+  const [warehouseReturnsSort, setWarehouseReturnsSort] = useState('newest');
   const [scoringMonth, setScoringMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [scoringDetails, setScoringDetails] = useState({ open: false, title: '', kind: '', items: [] });
   const [interventions, setInterventions] = useState([]);
@@ -125,6 +135,10 @@ const GeneratorMaintenanceApp = () => {
   const [bannerImage, setBannerImage] = useState('');
   const [siteForFiche, setSiteForFiche] = useState(null);
   const [ficheContext, setFicheContext] = useState(null);
+  const [ficheOpenSource, setFicheOpenSource] = useState('');
+  const [warehouseReturnsOpenMode, setWarehouseReturnsOpenMode] = useState('readonly');
+  const [finalizeBusy, setFinalizeBusy] = useState(false);
+  const [hideProcessButtonsOverride, setHideProcessButtonsOverride] = useState(false);
   const [signatureTypedName, setSignatureTypedName] = useState('');
   const [signatureDrawnPng, setSignatureDrawnPng] = useState('');
   const [ficheHistory, setFicheHistory] = useState([]);
@@ -269,6 +283,54 @@ const GeneratorMaintenanceApp = () => {
   const canManageUsers = isAdmin;
   const canUseInterventions = isAdmin || isManager || isTechnician || isViewer;
   const canUsePm = isAdmin || isManager || isViewer;
+  const warehouseProcessCount = useMemo(() => {
+    const list = Array.isArray(ficheHistory) ? ficheHistory : [];
+    return list.filter((f) => f && (f.status === 'Envoyée au magasin' || f.status === 'Contrôle magasin')).length;
+  }, [ficheHistory]);
+
+  const prevWarehouseProcessCountRef = useRef(warehouseProcessCount);
+
+  useEffect(() => {
+    if (!isWarehouse) {
+      prevWarehouseProcessCountRef.current = warehouseProcessCount;
+      return;
+    }
+
+    const prev = Number(prevWarehouseProcessCountRef.current || 0);
+    const next = Number(warehouseProcessCount || 0);
+
+    if (next > prev) {
+      setNotificationsToast(`📥 ${next} fiche(s) reçue(s) au magasin`);
+      window.setTimeout(() => setNotificationsToast(''), 3500);
+    }
+
+    prevWarehouseProcessCountRef.current = next;
+  }, [warehouseProcessCount, isWarehouse]);
+
+  const warehouseReturnsCount = useMemo(() => {
+    const list = Array.isArray(ficheHistory) ? ficheHistory : [];
+    return list.filter((f) => f && f.status === 'Contrôle magasin').length;
+  }, [ficheHistory]);
+
+  const prevWarehouseReturnsCountRef = useRef(warehouseReturnsCount);
+
+  useEffect(() => {
+    if (!(isAdmin || isManager)) {
+      prevWarehouseReturnsCountRef.current = warehouseReturnsCount;
+      return;
+    }
+
+    const prev = Number(prevWarehouseReturnsCountRef.current || 0);
+    const next = Number(warehouseReturnsCount || 0);
+
+    if (next > prev) {
+      setNotificationsToast(`📥 ${next} fiche(s) renvoyée(s) par le magasin`);
+      window.setTimeout(() => setNotificationsToast(''), 3500);
+    }
+
+    prevWarehouseReturnsCountRef.current = next;
+  }, [warehouseReturnsCount, isAdmin, isManager]);
+
 
   const apiFetchJson = async (path, init = {}) => {
     const res = await fetch(path, {
@@ -3458,6 +3520,11 @@ const GeneratorMaintenanceApp = () => {
     reader.onload = (event) => {
       setBannerImage(event.target.result);
       setShowBannerUpload(false);
+
+      setHideProcessButtonsOverride(false);
+
+      setFinalizeBusy(false);
+
       setShowFicheModal(true);
     };
     reader.readAsDataURL(file);
@@ -3667,11 +3734,30 @@ const GeneratorMaintenanceApp = () => {
 
       setShowBannerUpload(false);
 
+      setHideProcessButtonsOverride(false);
+      setFinalizeBusy(false);
+
+      setShowWarehouseReturns(false);
+
       setShowFicheModal(true);
     } catch (e) {
       alert(e?.message || "Erreur lors de l'ouverture de la fiche.");
     }
   };
+
+  const handleOpenFicheFromWarehouseReturnsReadonly = async (fiche) => {
+      setFicheOpenSource('warehouseReturns');
+      setWarehouseReturnsOpenMode('readonly');
+      setShowWarehouseReturns(false);
+      await handleOpenFicheFromHistory(fiche);
+    };
+
+    const handleOpenFicheFromWarehouseReturnsControl = async (fiche) => {
+      setFicheOpenSource('warehouseReturns');
+      setWarehouseReturnsOpenMode('control');
+      setShowWarehouseReturns(false);
+      await handleOpenFicheFromHistory(fiche);
+    };
 
   const startBatchFicheGeneration = async (events) => {
     const uniqueEvents = Array.from(
@@ -3723,6 +3809,63 @@ const GeneratorMaintenanceApp = () => {
       ficheId = null;
     }
     setFicheContext({ plannedDate, epvType, interventionId, ficheId });
+  };
+
+
+  const handleFinalizeWarehouseReturn = async ({ ficheId }) => {
+    if (!ficheId) return;
+
+    try {
+      setFinalizeBusy(true);
+
+      // 1) Masquer les boutons process pendant aperçu + impression
+      setHideProcessButtonsOverride(true);
+
+      // 2) Imprimer (ça va aussi finaliser côté API via persistFicheHistory -> mode finalize)
+      // on laisse le flux existant valider la signature (elle sera auto-fetch si dispo)
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+      try {
+        if (!String(bannerImage || '').trim()) {
+          const res = await fetch(`/banniere.png?v=${Date.now()}`, { cache: 'no-store' });
+          if (res.ok) {
+            const blob = await res.blob();
+            const reader = new FileReader();
+            const dataUrl = await new Promise((resolve) => {
+              reader.onloadend = () => resolve(String(reader.result || ''));
+              reader.readAsDataURL(blob);
+            });
+            if (String(dataUrl).startsWith('data:image/')) {
+              setBannerImage(dataUrl);
+              await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+
+      const afterPrint = () => {
+        window.removeEventListener('afterprint', afterPrint);
+        setHideProcessButtonsOverride(false);
+        setFinalizeBusy(false);
+
+        // Option UX: fermer la fiche après finalisation
+        setShowFicheModal(false);
+      };
+
+      window.addEventListener('afterprint', afterPrint);
+
+      window.setTimeout(() => {
+        try { afterPrint(); } catch {}
+      }, 15000);
+
+      handlePrintFiche();
+    } catch (e) {
+      setHideProcessButtonsOverride(false);
+      setFinalizeBusy(false);
+      alert(e?.message || 'Erreur lors de la finalisation.');
+    }
   };
 
   const handlePrintFiche = () => {
@@ -6241,16 +6384,56 @@ return (
             Historique
           </button>
 
+          {(isAdmin || isManager) && (
+            <button
+              onClick={() => {
+                setSidebarOpen(false);
+
+                setWarehouseReturnsQuery('');
+                setWarehouseReturnsDateFrom('');
+                setWarehouseReturnsDateTo('');
+                setWarehouseReturnsSort('newest');
+
+                setShowWarehouseReturns(true);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
+            >
+              <Activity size={18} />
+              <span className="flex-1">Retour Magasinier</span>
+              <span
+                className={`ml-auto px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                  warehouseReturnsCount > 0 ? 'bg-amber-400 text-slate-900' : 'bg-white/10 text-white'
+                }`}
+              >
+                {warehouseReturnsCount}
+              </span>
+            </button>
+          )}
+
           {isWarehouse && (
             <button
               onClick={() => {
                 setSidebarOpen(false);
+
+                setWarehouseProcessQuery('');
+                setWarehouseProcessDateFrom('');
+                setWarehouseProcessDateTo('');
+                setWarehouseProcessStatus('all');
+                setWarehouseProcessSort('newest');
+
                 setShowWarehouseProcess(true);
               }}
               className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
             >
               <Activity size={18} />
-              Fiches process
+              <span className="flex-1">Fiches process</span>
+              <span
+                className={`ml-auto px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                  warehouseProcessCount > 0 ? 'bg-amber-400 text-slate-900' : 'bg-white/10 text-white'
+                }`}
+              >
+                {warehouseProcessCount}
+              </span>
             </button>
           )}
 
@@ -6623,45 +6806,400 @@ return (
               </div>
 
               <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-start">
+                    <div className="flex flex-col w-full min-w-0">
+                      <span className="text-xs text-gray-600 mb-1">Recherche</span>
+                      <input
+                        type="text"
+                        value={warehouseProcessQuery}
+                        onChange={(e) => setWarehouseProcessQuery(e.target.value)}
+                        placeholder="Ticket / site"
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full min-w-0"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full min-w-0">
+                      <div className="flex flex-col w-full min-w-0">
+                        <span className="text-xs text-gray-600 mb-1">Du</span>
+                        <input
+                          type="date"
+                          value={warehouseProcessDateFrom}
+                          onChange={(e) => setWarehouseProcessDateFrom(e.target.value)}
+                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full min-w-0"
+                        />
+                      </div>
+                      <div className="flex flex-col w-full min-w-0">
+                        <span className="text-xs text-gray-600 mb-1">Au</span>
+                        <input
+                          type="date"
+                          value={warehouseProcessDateTo}
+                          onChange={(e) => setWarehouseProcessDateTo(e.target.value)}
+                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full min-w-0"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col w-full min-w-0">
+                      <span className="text-xs text-gray-600 mb-1">Statut</span>
+                      <select
+                        value={warehouseProcessStatus}
+                        onChange={(e) => setWarehouseProcessStatus(e.target.value)}
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full"
+                      >
+                        <option value="all">Tous</option>
+                        <option value="Envoyée au magasin">Envoyée au magasin</option>
+                        <option value="Contrôle magasin">Contrôle magasin</option>
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col w-full min-w-0">
+                      <span className="text-xs text-gray-600 mb-1">Tri</span>
+                      <select
+                        value={warehouseProcessSort}
+                        onChange={(e) => setWarehouseProcessSort(e.target.value)}
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full"
+                      >
+                        <option value="newest">Plus récent</option>
+                        <option value="oldest">Plus ancien</option>
+                        <option value="ticket">Ticket (A→Z)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-gray-600 mt-3 flex justify-between">
+                    <span>
+                      À traiter: <strong>{warehouseProcessCount}</strong>
+                    </span>
+                    <button
+                      onClick={() => {
+                        setWarehouseProcessQuery('');
+                        setWarehouseProcessDateFrom('');
+                        setWarehouseProcessDateTo('');
+                        setWarehouseProcessStatus('all');
+                        setWarehouseProcessSort('newest');
+                      }}
+                      className="text-amber-700 hover:underline"
+                    >
+                      Réinitialiser
+                    </button>
+                  </div>
+                </div>
+
                 {(() => {
-                  const list = (Array.isArray(ficheHistory) ? ficheHistory : [])
-                    .filter((f) => f && (f.status === 'Envoyée au magasin' || f.status === 'Contrôle magasin'))
-                    .sort((a, b) =>
+                  const listAll = (Array.isArray(ficheHistory) ? ficheHistory : []).filter(
+                    (f) => f && (f.status === 'Envoyée au magasin' || f.status === 'Contrôle magasin')
+                  );
+
+                  const q = String(warehouseProcessQuery || '').trim().toLowerCase();
+                  const from = String(warehouseProcessDateFrom || '').slice(0, 10);
+                  const to = String(warehouseProcessDateTo || '').slice(0, 10);
+                  const st = String(warehouseProcessStatus || 'all');
+
+                  const listFiltered = listAll.filter((f) => {
+                    if (!f) return false;
+                    if (st !== 'all' && String(f.status || '') !== st) return false;
+
+                    const dg = String(f.dateGenerated || '').slice(0, 10);
+                    if (from && dg && dg < from) return false;
+                    if (to && dg && dg > to) return false;
+
+                    if (q) {
+                      const hay = `${String(f.ticketNumber || '')} ${String(f.siteName || '')}`.toLowerCase();
+                      if (!hay.includes(q)) return false;
+                    }
+                    return true;
+                  });
+
+                  const list = (() => {
+                    if (warehouseProcessSort === 'oldest') {
+                      return [...listFiltered].sort((a, b) =>
+                        String(a.updatedAt || a.dateGenerated || '').localeCompare(String(b.updatedAt || b.dateGenerated || ''))
+                      );
+                    }
+                    if (warehouseProcessSort === 'ticket') {
+                      return [...listFiltered].sort((a, b) =>
+                        String(a.ticketNumber || '').localeCompare(String(b.ticketNumber || ''))
+                      );
+                    }
+                    return [...listFiltered].sort((a, b) =>
                       String(b.updatedAt || b.dateGenerated || '').localeCompare(String(a.updatedAt || a.dateGenerated || ''))
                     );
+                  })();
 
                   if (list.length === 0) {
                     return (
                       <div className="text-center py-12 text-gray-500">
                         <Activity size={48} className="mx-auto mb-4 text-gray-300" />
                         <p className="text-lg font-semibold">Aucune fiche à traiter</p>
+                        <p className="text-sm mt-2">Aucune fiche ne correspond aux filtres actuels</p>
                       </div>
                     );
                   }
 
                   return (
-                    <div className="space-y-3">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                       {list.map((fiche) => (
                         <div key={fiche.id} className="border-2 rounded-lg p-4 bg-white border-gray-200">
-                          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-2">
-                            <div className="min-w-0">
-                              <div className="font-bold text-lg text-gray-800 truncate">{fiche.ticketNumber || '-'}</div>
-                              <div className="text-sm text-gray-600 truncate">{fiche.siteName}</div>
+                          <div className="flex flex-col gap-2 mb-3">
+                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
+                              <div className="min-w-0">
+                                <div className="font-bold text-lg text-gray-800 truncate">{fiche.ticketNumber || '-'}</div>
+                                <div className="text-sm text-gray-600 truncate">{fiche.siteName}</div>
+                              </div>
+                              <span
+                                className={`px-3 py-1 rounded-full text-sm font-semibold self-start ${
+                                  fiche.status === 'Envoyée au magasin' ? 'bg-indigo-700 text-white' : 'bg-amber-500 text-white'
+                                }`}
+                              >
+                                {fiche.status}
+                              </span>
                             </div>
-                            <span className="px-3 py-1 rounded-full text-sm font-semibold self-start bg-yellow-500 text-white">
-                              {fiche.status}
-                            </span>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-700">
+                              <div>
+                                <span className="text-gray-500">Date génération:</span>{' '}
+                                <span className="font-semibold">{fiche.dateGenerated ? formatDate(fiche.dateGenerated) : '-'}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">Dernière maj:</span>{' '}
+                                <span className="font-semibold">{fiche.updatedAt ? formatDate(fiche.updatedAt) : '-'}</span>
+                              </div>
+                            </div>
+
+                            <div className="text-xs text-gray-700">
+                              <div>
+                                Filtre à air GE:{' '}
+                                <span className="font-semibold">
+                                  {fiche.warehouseAirFilterOk === true ? '✅ OK' : fiche.warehouseAirFilterOk === false ? '❌ NON' : '-'}
+                                </span>
+                              </div>
+                              <div>
+                                05L LdR:{' '}
+                                <span className="font-semibold">
+                                  {fiche.warehouseCoolant5lOk === true ? '✅ OK' : fiche.warehouseCoolant5lOk === false ? '❌ NON' : '-'}
+                                </span>
+                              </div>
+                            </div>
                           </div>
 
-                          <div className="text-xs text-gray-700 mb-3">
-                            <div>Filtre à air GE: {fiche.warehouseAirFilterOk === true ? 'OK' : fiche.warehouseAirFilterOk === false ? 'NON' : '-'}</div>
-                            <div>05L LdR: {fiche.warehouseCoolant5lOk === true ? 'OK' : fiche.warehouseCoolant5lOk === false ? 'NON' : '-'}</div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenFicheFromWarehouseReturnsReadonly(fiche)}
+                                className="w-full bg-slate-800 text-white py-2 rounded-lg hover:bg-slate-900 font-semibold"
+                              >
+                                Ouvrir (lecture seule)
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleOpenFicheFromWarehouseReturnsControl(fiche)}
+                                className="w-full bg-amber-600 text-white py-2 rounded-lg hover:bg-amber-700 font-semibold"
+                              >
+                                Ouvrir (mode contrôle)
+                              </button>
+                            </div>    
+
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="p-3 border-t bg-white" />
+            </div>
+          </div>
+        )}
+
+        {showWarehouseReturns && (
+          <div className="fixed inset-0 bg-indigo-900/35 flex items-center justify-center z-50 p-0 sm:p-4">
+            <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:h-auto sm:max-w-6xl sm:max-h-[92vh] sm:rounded-xl">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gradient-to-r from-indigo-600 via-sky-600 to-teal-600 text-white">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <Activity size={24} />
+                  Retour Magasinier
+                </h2>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setShowWarehouseReturns(false)}
+                    className="hover:bg-white/10 p-2 rounded"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-start">
+                    <div className="flex flex-col w-full min-w-0">
+                      <span className="text-xs text-gray-600 mb-1">Recherche</span>
+                      <input
+                        type="text"
+                        value={warehouseReturnsQuery}
+                        onChange={(e) => setWarehouseReturnsQuery(e.target.value)}
+                        placeholder="Ticket / site"
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full min-w-0"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full min-w-0">
+                      <div className="flex flex-col w-full min-w-0">
+                        <span className="text-xs text-gray-600 mb-1">Du</span>
+                        <input
+                          type="date"
+                          value={warehouseReturnsDateFrom}
+                          onChange={(e) => setWarehouseReturnsDateFrom(e.target.value)}
+                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full min-w-0"
+                        />
+                      </div>
+                      <div className="flex flex-col w-full min-w-0">
+                        <span className="text-xs text-gray-600 mb-1">Au</span>
+                        <input
+                          type="date"
+                          value={warehouseReturnsDateTo}
+                          onChange={(e) => setWarehouseReturnsDateTo(e.target.value)}
+                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full min-w-0"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col w-full min-w-0">
+                      <span className="text-xs text-gray-600 mb-1">Statut</span>
+                      <div className="border border-gray-200 bg-white rounded-lg px-3 py-2 text-sm font-semibold text-gray-800">
+                        Contrôle magasin
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col w-full min-w-0">
+                      <span className="text-xs text-gray-600 mb-1">Tri</span>
+                      <select
+                        value={warehouseReturnsSort}
+                        onChange={(e) => setWarehouseReturnsSort(e.target.value)}
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full"
+                      >
+                        <option value="newest">Plus récent</option>
+                        <option value="oldest">Plus ancien</option>
+                        <option value="ticket">Ticket (A→Z)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-gray-600 mt-3 flex justify-between">
+                    <span>
+                      À finaliser: <strong>{warehouseReturnsCount}</strong>
+                    </span>
+                    <button
+                      onClick={() => {
+                        setWarehouseReturnsQuery('');
+                        setWarehouseReturnsDateFrom('');
+                        setWarehouseReturnsDateTo('');
+                        setWarehouseReturnsSort('newest');
+                      }}
+                      className="text-amber-700 hover:underline"
+                    >
+                      Réinitialiser
+                    </button>
+                  </div>
+                </div>
+
+                {(() => {
+                  const listAll = (Array.isArray(ficheHistory) ? ficheHistory : []).filter(
+                    (f) => f && f.status === 'Contrôle magasin'
+                  );
+
+                  const q = String(warehouseReturnsQuery || '').trim().toLowerCase();
+                  const from = String(warehouseReturnsDateFrom || '').slice(0, 10);
+                  const to = String(warehouseReturnsDateTo || '').slice(0, 10);
+
+                  const listFiltered = listAll.filter((f) => {
+                    if (!f) return false;
+
+                    const dg = String(f.dateGenerated || '').slice(0, 10);
+                    if (from && dg && dg < from) return false;
+                    if (to && dg && dg > to) return false;
+
+                    if (q) {
+                      const hay = `${String(f.ticketNumber || '')} ${String(f.siteName || '')}`.toLowerCase();
+                      if (!hay.includes(q)) return false;
+                    }
+                    return true;
+                  });
+
+                  const list = (() => {
+                    if (warehouseReturnsSort === 'oldest') {
+                      return [...listFiltered].sort((a, b) =>
+                        String(a.updatedAt || a.dateGenerated || '').localeCompare(String(b.updatedAt || b.dateGenerated || ''))
+                      );
+                    }
+                    if (warehouseReturnsSort === 'ticket') {
+                      return [...listFiltered].sort((a, b) =>
+                        String(a.ticketNumber || '').localeCompare(String(b.ticketNumber || ''))
+                      );
+                    }
+                    return [...listFiltered].sort((a, b) =>
+                      String(b.updatedAt || b.dateGenerated || '').localeCompare(String(a.updatedAt || a.dateGenerated || ''))
+                    );
+                  })();
+
+                  if (list.length === 0) {
+                    return (
+                      <div className="text-center py-12 text-gray-500">
+                        <Activity size={48} className="mx-auto mb-4 text-gray-300" />
+                        <p className="text-lg font-semibold">Aucune fiche renvoyée</p>
+                        <p className="text-sm mt-2">Aucune fiche ne correspond aux filtres actuels</p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                      {list.map((fiche) => (
+                        <div key={fiche.id} className="border-2 rounded-lg p-4 bg-white border-gray-200">
+                          <div className="flex flex-col gap-2 mb-3">
+                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
+                              <div className="min-w-0">
+                                <div className="font-bold text-lg text-gray-800 truncate">{fiche.ticketNumber || '-'}</div>
+                                <div className="text-sm text-gray-600 truncate">{fiche.siteName}</div>
+                              </div>
+                              <span className="px-3 py-1 rounded-full text-sm font-semibold self-start bg-amber-500 text-white">
+                                Contrôle magasin
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-700">
+                              <div>
+                                <span className="text-gray-500">Date génération:</span>{' '}
+                                <span className="font-semibold">{fiche.dateGenerated ? formatDate(fiche.dateGenerated) : '-'}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">Dernière maj:</span>{' '}
+                                <span className="font-semibold">{fiche.updatedAt ? formatDate(fiche.updatedAt) : '-'}</span>
+                              </div>
+                            </div>
+
+                            <div className="text-xs text-gray-700">
+                              <div>
+                                Filtre à air GE:{' '}
+                                <span className="font-semibold">
+                                  {fiche.warehouseAirFilterOk === true ? '✅ OK' : fiche.warehouseAirFilterOk === false ? '❌ NON' : '-'}
+                                </span>
+                              </div>
+                              <div>
+                                05L LdR:{' '}
+                                <span className="font-semibold">
+                                  {fiche.warehouseCoolant5lOk === true ? '✅ OK' : fiche.warehouseCoolant5lOk === false ? '❌ NON' : '-'}
+                                </span>
+                              </div>
+                            </div>
                           </div>
 
                           <button
                             type="button"
                             onClick={() => handleOpenFicheFromHistory(fiche)}
-                            className="w-full bg-slate-700 text-white py-2 rounded-lg hover:bg-slate-800 font-semibold"
+                            className="w-full bg-slate-800 text-white py-2 rounded-lg hover:bg-slate-900 font-semibold"
                           >
                             Ouvrir
                           </button>
@@ -6683,6 +7221,7 @@ return (
           onOpenFiche={handleOpenFicheFromHistory}
           onSendToWarehouse={handleSendToWarehouse}
           canSendToWarehouse={Boolean(isAdmin || isManager)}
+          allowedStatuses={['En attente', 'Effectuée']}
           historyQuery={historyQuery}
           setHistoryQuery={setHistoryQuery}
           historyDateFrom={historyDateFrom}
@@ -6800,7 +7339,12 @@ return (
           siteForFiche={siteForFiche}
           ficheHistory={ficheHistory}
           ficheId={ficheContext?.ficheId ? String(ficheContext.ficheId) : null}
-          canWarehouse={Boolean(canWarehouseCheck && ficheContext?.ficheId)}
+          canWarehouse={Boolean(isWarehouse && ficheContext?.ficheId)}
+          showWarehouseControls={Boolean(ficheOpenSource === 'warehouseReturns')}
+          showFinalizeButton={Boolean(ficheOpenSource === 'warehouseReturns')}
+          finalizeBusy={finalizeBusy}
+          onFinalizeFiche={handleFinalizeWarehouseReturn}
+          hideProcessButtons={Boolean(hideProcessButtonsOverride)}
           bannerImage={bannerImage}
           ticketNumber={ticketNumber}
           ticketLabel={ticketLabel}
@@ -6814,8 +7358,9 @@ return (
           goBatchFiche={goBatchFiche}
           handlePrintFiche={handlePrintFiche}
           handleSaveFichePdf={handleSaveFichePdf}
-          warehouseAirFilterOk={activeFiche?.warehouseAirFilterOk === true}
-          warehouseCoolant5lOk={activeFiche?.warehouseCoolant5lOk === true}
+          warehouseAirFilterOk={activeFiche?.warehouseAirFilterOk ?? null}
+          warehouseCoolant5lOk={activeFiche?.warehouseCoolant5lOk ?? null}
+          warehouseReadOnly={Boolean(ficheOpenSource === 'warehouseReturns' && warehouseReturnsOpenMode === 'readonly')}
           onSaveWarehouseCheck={handleSaveWarehouseCheck}
           onSubmitWarehouseCheck={handleSubmitWarehouseCheck}
           onClose={() => {
@@ -6829,6 +7374,7 @@ return (
             setIsBatchFiche(false);
             setBatchFicheSites([]);
             setBatchFicheIndex(0);
+            setFicheOpenSource('');
           }}
           formatDate={formatDate}
         />

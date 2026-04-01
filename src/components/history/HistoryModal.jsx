@@ -7,6 +7,7 @@ const HistoryModal = ({
   onOpenFiche,
   onSendToWarehouse,
   canSendToWarehouse,
+  allowedStatuses,
   historyQuery,
   setHistoryQuery,
   historyDateFrom,
@@ -31,11 +32,19 @@ const HistoryModal = ({
   if (!open) return null;
 
   const zones = ['ALL', 'BZV/POOL', 'PNR/KOUILOU', 'UPCN'];
-  const listAll = Array.isArray(filteredFicheHistory) ? filteredFicheHistory : [];
+  const listPre = Array.isArray(filteredFicheHistory) ? filteredFicheHistory : [];
+  const allowedSet = Array.isArray(allowedStatuses) && allowedStatuses.length > 0 ? new Set(allowedStatuses) : null;
+  const listAll = allowedSet ? listPre.filter((f) => f && allowedSet.has(String(f.status || ''))) : listPre;
   const list =
     showZoneFilter && historyZone && historyZone !== 'ALL'
       ? listAll.filter((f) => String(f?.zone || '').trim() === String(historyZone))
       : listAll;
+
+  const statusOptions = (() => {
+    const base = ['Brouillon', 'Contrôle magasin', 'En attente', 'Effectuée'];
+    if (!allowedSet) return base;
+    return base.filter((s) => allowedSet.has(s));
+  })();
 
   return (
     <div className="fixed inset-0 bg-indigo-900/35 flex items-center justify-center z-50 p-0 sm:p-4">
@@ -93,10 +102,10 @@ const HistoryModal = ({
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full"
                 >
                   <option value="all">Tous statuts</option>
-                  <option value="Brouillon">Brouillon</option>
-                  <option value="Contrôle magasin">Contrôle magasin</option>
-                  <option value="En attente">En attente</option>
-                  <option value="Effectuée">Effectuée</option>
+                  {statusOptions.includes('Brouillon') && <option value="Brouillon">Brouillon</option>}
+                  {statusOptions.includes('Contrôle magasin') && <option value="Contrôle magasin">Contrôle magasin</option>}
+                  {statusOptions.includes('En attente') && <option value="En attente">En attente</option>}
+                  {statusOptions.includes('Effectuée') && <option value="Effectuée">Effectuée</option>}
                 </select>
               </div>
               <div className="flex flex-col w-full min-w-0">

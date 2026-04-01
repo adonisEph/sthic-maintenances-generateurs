@@ -70,7 +70,7 @@ export async function onRequestGet({ request, env, data }) {
       binds.push(String(data.user.technicianName || ''));
     }
 
-    if (!isSuperAdmin(data) && (role === 'manager' || role === 'technician')) {
+    if (role === 'admin' || role === 'manager' || role === 'technician') {
       where += ' AND s.zone = ?';
       binds.push(String(userZone(data) || 'BZV/POOL'));
     }
@@ -146,12 +146,12 @@ export async function onRequestPost({ request, env, data }) {
       return json({ error: 'Signature responsable obligatoire.' }, { status: 400 });
     }
 
-    // Contrôle zone (manager doit rester dans sa zone, superadmin ok)
+    // Contrôle zone strict (collaborateur zonal): admin/manager doit rester dans sa zone
     const site = await env.DB.prepare('SELECT id, zone FROM sites WHERE id = ?').bind(siteId).first();
     if (!site) return json({ error: 'Site introuvable.' }, { status: 404 });
 
     const zone = String(site.zone || 'BZV/POOL');
-    if (!isSuperAdmin(data) && role === 'manager') {
+    if (role === 'admin' || role === 'manager') {
       const z = String(userZone(data) || 'BZV/POOL');
       if (zone !== z) return json({ error: 'Accès interdit.' }, { status: 403 });
     }
