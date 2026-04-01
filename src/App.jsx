@@ -136,6 +136,7 @@ const GeneratorMaintenanceApp = () => {
   const [siteForFiche, setSiteForFiche] = useState(null);
   const [ficheContext, setFicheContext] = useState(null);
   const [ficheOpenSource, setFicheOpenSource] = useState('');
+  const [ficheFlowMode, setFicheFlowMode] = useState('');
   const [warehouseReturnsOpenMode, setWarehouseReturnsOpenMode] = useState('readonly');
   const [finalizeBusy, setFinalizeBusy] = useState(false);
   const [hideProcessButtonsOverride, setHideProcessButtonsOverride] = useState(false);
@@ -3669,6 +3670,10 @@ const GeneratorMaintenanceApp = () => {
     setSiteForFiche(site);
     setSignatureTypedName('');
     setSignatureDrawnPng('');
+    setFicheOpenSource('history');
+    setFicheFlowMode('preSend');
+    setHideProcessButtonsOverride(true);
+    setShowBannerUpload(false);
     try {
       const today = new Date().toISOString().split('T')[0];
       const candidates = [
@@ -3700,7 +3705,7 @@ const GeneratorMaintenanceApp = () => {
     } catch (e) {
       setFicheContext(null);
     }
-    setShowBannerUpload(true);
+    setShowFicheModal(true);
   };
 
   const handleOpenFicheFromHistory = async (fiche) => {
@@ -3749,6 +3754,8 @@ const GeneratorMaintenanceApp = () => {
       setFicheOpenSource('warehouseReturns');
       setWarehouseReturnsOpenMode('readonly');
       setShowWarehouseReturns(false);
+      setFicheFlowMode('warehouseReturns');
+      setHideProcessButtonsOverride(false);
       await handleOpenFicheFromHistory(fiche);
     };
 
@@ -3756,6 +3763,8 @@ const GeneratorMaintenanceApp = () => {
       setFicheOpenSource('warehouseReturns');
       setWarehouseReturnsOpenMode('control');
       setShowWarehouseReturns(false);
+      setFicheFlowMode('warehouseReturns');
+      setHideProcessButtonsOverride(false);
       await handleOpenFicheFromHistory(fiche);
     };
 
@@ -3800,7 +3809,11 @@ const GeneratorMaintenanceApp = () => {
     setSignatureTypedName('');
     setSignatureDrawnPng('');
     setShowDayDetailsModal(false);
-    setShowBannerUpload(true);
+    setFicheOpenSource('history');
+    setFicheFlowMode('preSend');
+    setHideProcessButtonsOverride(true);
+    setShowBannerUpload(false);
+    setShowFicheModal(true);
 
     let ficheId = null;
     try {
@@ -7343,6 +7356,11 @@ return (
           showWarehouseControls={Boolean(ficheOpenSource === 'warehouseReturns')}
           showFinalizeButton={Boolean(ficheOpenSource === 'warehouseReturns')}
           finalizeBusy={finalizeBusy}
+          hideWarehouseSection={Boolean(ficheFlowMode === 'preSend')}
+          showSendToWarehouseInObjet={Boolean(ficheFlowMode === 'preSend')}
+          canSendToWarehouse={Boolean(isAdmin || isManager)}
+          onSendToWarehouse={handleSendToWarehouse}
+          disableSignatureAutofetch={Boolean(ficheFlowMode === 'preSend')}
           onFinalizeFiche={handleFinalizeWarehouseReturn}
           hideProcessButtons={Boolean(hideProcessButtonsOverride)}
           bannerImage={bannerImage}
@@ -7362,7 +7380,11 @@ return (
           warehouseCoolant5lOk={activeFiche?.warehouseCoolant5lOk ?? null}
           warehouseReadOnly={Boolean(ficheOpenSource === 'warehouseReturns' && warehouseReturnsOpenMode === 'readonly')}
           onSaveWarehouseCheck={handleSaveWarehouseCheck}
-          onSubmitWarehouseCheck={handleSubmitWarehouseCheck}
+          onSubmitWarehouseCheck={
+            ficheOpenSource === 'warehouseReturns' && warehouseReturnsOpenMode === 'control'
+              ? null
+              : handleSubmitWarehouseCheck
+          }
           onClose={() => {
             setTicketLabel('');
             setShowFicheModal(false);
@@ -7375,6 +7397,9 @@ return (
             setBatchFicheSites([]);
             setBatchFicheIndex(0);
             setFicheOpenSource('');
+            setFicheFlowMode('');
+            setHideProcessButtonsOverride(false);
+            setFinalizeBusy(false);
           }}
           formatDate={formatDate}
         />

@@ -229,6 +229,7 @@ const FicheModal = ({
   const canShowSendToWarehouse = Boolean(showSendToWarehouseInObjet && canSendToWarehouse && onSendToWarehouse && ficheId);
   const isWarehouseReadOnly = Boolean(warehouseReadOnly);
   const canShowFinalize = Boolean(showFinalizeButton && onFinalizeFiche && ficheId);
+  const warehouseControlsLabel = !isWarehouseView && Boolean(showWarehouseControls) ? 'Contrôle consommables' : 'Contrôle magasin (warehouse)';
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
@@ -277,19 +278,6 @@ const FicheModal = ({
                 className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold w-full sm:w-auto disabled:bg-gray-400"
               >
                 Enregistrer le PDF
-              </button>
-            )}
-
-            {canShowFinalize && !shouldHideProcessButtons && (
-              <button
-                type="button"
-                onClick={async () => {
-                  await onFinalizeFiche({ ficheId });
-                }}
-                disabled={Boolean(finalizeBusy)}
-                className="bg-emerald-700 text-white px-4 py-2 rounded-lg hover:bg-emerald-800 font-semibold w-full sm:w-auto disabled:bg-gray-400"
-              >
-                {finalizeBusy ? 'Finalisation...' : 'Finaliser la fiche'}
               </button>
             )}
             <button
@@ -406,11 +394,26 @@ const FicheModal = ({
                   </button>
                 </div>
               )}
+
+              {canShowFinalize && !shouldHideProcessButtons && (
+                <div className="mt-4 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await onFinalizeFiche({ ficheId });
+                    }}
+                    disabled={Boolean(finalizeBusy)}
+                    className="bg-emerald-700 text-white px-6 py-3 rounded-lg hover:bg-emerald-800 font-bold disabled:bg-gray-400"
+                  >
+                    {finalizeBusy ? 'Finalisation...' : 'Finaliser la fiche'}
+                  </button>
+                </div>
+              )}
             </div>
 
             {canShowWarehouseControls && (
               <div className="mb-4 border border-gray-300 rounded-lg p-3 text-sm">
-                <div className="font-bold text-gray-800 mb-2">Contrôle magasin (warehouse)</div>
+                <div className="font-bold text-gray-800 mb-2">{warehouseControlsLabel}</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="border border-gray-200 rounded-lg p-3">
                     <div className="font-semibold text-gray-800 mb-2">Filtre à air GE</div>
