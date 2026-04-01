@@ -3768,6 +3768,14 @@ const GeneratorMaintenanceApp = () => {
       await handleOpenFicheFromHistory(fiche);
     };
 
+    const handleOpenFicheFromWarehouseProcess = async (fiche) => {
+      setFicheOpenSource('warehouseProcess');
+      setFicheFlowMode('');
+      setHideProcessButtonsOverride(false);
+      setWarehouseReturnsOpenMode('readonly');
+      await handleOpenFicheFromHistory(fiche);
+    };
+
   const startBatchFicheGeneration = async (events) => {
     const uniqueEvents = Array.from(
       new Map((events || []).map((e) => [e.site.id, e])).values()
@@ -6996,23 +7004,13 @@ return (
                             </div>
                           </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenFicheFromWarehouseReturnsReadonly(fiche)}
-                                className="w-full bg-slate-800 text-white py-2 rounded-lg hover:bg-slate-900 font-semibold"
-                              >
-                                Ouvrir (lecture seule)
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => handleOpenFicheFromWarehouseReturnsControl(fiche)}
-                                className="w-full bg-amber-600 text-white py-2 rounded-lg hover:bg-amber-700 font-semibold"
-                              >
-                                Ouvrir (mode contrôle)
-                              </button>
-                            </div>    
+                           <button
+                            type="button"
+                            onClick={() => handleOpenFicheFromWarehouseProcess(fiche)}
+                            className="w-full bg-slate-800 text-white py-2 rounded-lg hover:bg-slate-900 font-semibold"
+                          >
+                            Ouvrir
+                          </button>  
 
                         </div>
                       ))}
@@ -7354,7 +7352,7 @@ return (
           ficheId={ficheContext?.ficheId ? String(ficheContext.ficheId) : null}
           canWarehouse={Boolean(isWarehouse && ficheContext?.ficheId)}
           showWarehouseControls={Boolean(ficheOpenSource === 'warehouseReturns')}
-          showFinalizeButton={Boolean(ficheOpenSource === 'warehouseReturns')}
+          showFinalizeButton={Boolean(ficheOpenSource === 'warehouseReturns' && !isWarehouse)}
           finalizeBusy={finalizeBusy}
           hideWarehouseSection={Boolean(ficheFlowMode === 'preSend')}
           showSendToWarehouseInObjet={Boolean(ficheFlowMode === 'preSend')}
