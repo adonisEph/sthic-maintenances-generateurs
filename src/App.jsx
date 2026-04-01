@@ -7206,14 +7206,23 @@ return (
                               </div>
                             </div>
                           </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenFicheFromWarehouseReturnsReadonly(fiche)}
+                              className="w-full bg-slate-800 text-white py-2 rounded-lg hover:bg-slate-900 font-semibold"
+                            >
+                              Ouvrir (lecture seule)
+                            </button>
 
-                          <button
-                            type="button"
-                            onClick={() => handleOpenFicheFromHistory(fiche)}
-                            className="w-full bg-slate-800 text-white py-2 rounded-lg hover:bg-slate-900 font-semibold"
-                          >
-                            Ouvrir
-                          </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenFicheFromWarehouseReturnsControl(fiche)}
+                              className="w-full bg-amber-600 text-white py-2 rounded-lg hover:bg-amber-700 font-semibold"
+                            >
+                              Ouvrir (mode contrôle)
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
