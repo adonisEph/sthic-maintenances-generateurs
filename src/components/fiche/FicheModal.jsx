@@ -231,6 +231,8 @@ const FicheModal = ({
   const canShowFinalize = Boolean(showFinalizeButton && onFinalizeFiche && ficheId);
   const warehouseControlsLabel = !isWarehouseView && Boolean(showWarehouseControls) ? 'Contrôle consommables' : 'Contrôle magasin (warehouse)';
 
+  const canShowBannerBlock = !isWarehouseView && !Boolean(disableSignatureAutofetch);
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full my-8">
@@ -330,7 +332,7 @@ const FicheModal = ({
             className="bg-white mx-auto flex flex-col"
             style={{ maxWidth: '210mm', width: '100%', minHeight: '277mm', boxSizing: 'border-box' }}
           >
-            {!isWarehouseView && !shouldHideProcessButtons && bannerImage && (
+            {canShowBannerBlock && bannerImage && (
               <div className="mb-3 border-2 border-gray-300 rounded overflow-hidden bg-gray-200">
                 <img
                   src={bannerImage}
@@ -341,7 +343,7 @@ const FicheModal = ({
               </div>
             )}
 
-            {!isWarehouseView && !shouldHideProcessButtons && !bannerImage && (
+            {canShowBannerBlock && !bannerImage && (
               <div className="mb-4 bg-yellow-50 border-2 border-yellow-300 rounded p-3 text-center">
                 <p className="text-yellow-800 font-semibold">⚠️ Bannière non chargée</p>
               </div>
