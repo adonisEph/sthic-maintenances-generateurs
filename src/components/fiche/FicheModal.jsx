@@ -279,7 +279,7 @@ const FicheModal = ({
               <button
                 onClick={handlePrintFiche}
                 disabled={!signatureOk}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold w-full sm:w-auto disabled:bg-gray-400"
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold w-full sm:w-auto disabled:bg-gray-400 print:hidden"
               >
                 Imprimer
               </button>
@@ -288,7 +288,7 @@ const FicheModal = ({
               <button
                 onClick={handleSaveFichePdf}
                 disabled={!signatureOk}
-                className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold w-full sm:w-auto disabled:bg-gray-400"
+                className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold w-full sm:w-auto disabled:bg-gray-400 print:hidden"
               >
                 Enregistrer le PDF
               </button>
@@ -414,7 +414,7 @@ const FicheModal = ({
                         }
                       }}
                       disabled={Boolean(sendToWarehouseBusy)}
-                      className="bg-indigo-700 text-white px-6 py-3 rounded-lg hover:bg-indigo-800 font-bold"
+                      className="bg-indigo-700 text-white px-6 py-3 rounded-lg hover:bg-indigo-800 font-bold print:hidden"
                     >
                       {sendToWarehouseBusy
                         ? 'Envoi...'
@@ -438,7 +438,7 @@ const FicheModal = ({
                       await onFinalizeFiche({ ficheId });
                     }}
                     disabled={Boolean(finalizeBusy)}
-                    className="bg-emerald-700 text-white px-6 py-3 rounded-lg hover:bg-emerald-800 font-bold disabled:bg-gray-400"
+                    className="bg-emerald-700 text-white px-6 py-3 rounded-lg hover:bg-emerald-800 font-bold disabled:bg-gray-400 print:hidden"
                   >
                     {finalizeBusy ? 'Finalisation...' : 'Finaliser la fiche'}
                   </button>
@@ -545,7 +545,7 @@ const FicheModal = ({
                         })();
                       }}
                       disabled={warehouseSubmitBusy}
-                      className="w-full bg-emerald-700 text-white py-2 rounded-lg hover:bg-emerald-800 font-semibold disabled:bg-emerald-400"
+                      className="w-full bg-emerald-700 text-white py-2 rounded-lg hover:bg-emerald-800 font-semibold disabled:bg-emerald-400 print:hidden"
                     >
                       {warehouseSubmitBusy ? 'Renvoi...' : 'Renvoyer au manager'}
                     </button>

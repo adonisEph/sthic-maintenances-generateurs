@@ -3763,9 +3763,15 @@ const GeneratorMaintenanceApp = () => {
     setSiteForFiche(site);
     setSignatureTypedName('');
     setSignatureDrawnPng('');
-    setFicheOpenSource('history');
-    setFicheFlowMode('preSend');
-    setHideProcessButtonsOverride(true);
+    const authZone = String(authUser?.zone || '').trim().toUpperCase();
+    const isCase2NoWarehouse = Boolean(
+      isManager && (authZone === 'PNR/KOUILOU' || authZone === 'UPCN')
+    );
+
+    setFicheOpenSource(isCase2NoWarehouse ? 'warehouseReturns' : 'history');
+    setWarehouseReturnsOpenMode(isCase2NoWarehouse ? 'control' : 'readonly');
+    setFicheFlowMode(isCase2NoWarehouse ? 'warehouseReturns' : 'preSend');
+    setHideProcessButtonsOverride(false);
     setShowBannerUpload(false);
     try {
       const today = new Date().toISOString().split('T')[0];
@@ -3910,9 +3916,15 @@ const GeneratorMaintenanceApp = () => {
     setSignatureTypedName('');
     setSignatureDrawnPng('');
     setShowDayDetailsModal(false);
-    setFicheOpenSource('history');
-    setFicheFlowMode('preSend');
-    setHideProcessButtonsOverride(true);
+    const authZone = String(authUser?.zone || '').trim().toUpperCase();
+    const isCase2NoWarehouse = Boolean(
+      isManager && (authZone === 'PNR/KOUILOU' || authZone === 'UPCN')
+    );
+
+    setFicheOpenSource(isCase2NoWarehouse ? 'warehouseReturns' : 'history');
+    setWarehouseReturnsOpenMode(isCase2NoWarehouse ? 'control' : 'readonly');
+    setFicheFlowMode(isCase2NoWarehouse ? 'warehouseReturns' : 'preSend');
+    setHideProcessButtonsOverride(false);
     setShowBannerUpload(false);
     setShowFicheModal(true);
 
