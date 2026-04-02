@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Filter } from 'lucide-react';
 
 const SitesTechnicianFilter = ({
@@ -14,6 +14,25 @@ const SitesTechnicianFilter = ({
 
   const siteOptions = Array.isArray(sites) ? sites : [];
   const showSiteFilter = typeof onChangeSite === 'function' && filterSite !== undefined;
+
+  const selectedSiteLabel = useMemo(() => {
+    if (!showSiteFilter) return '';
+    if (String(filterSite || '') === 'all') return '';
+
+    const selected = siteOptions.find((s) => String(s?.id || '') === String(filterSite || ''));
+    if (!selected) return '';
+
+    const idSite = String(selected?.idSite || '').trim();
+    const name = String(selected?.nameSite || '').trim();
+    return idSite ? `${idSite} - ${name}` : name;
+  }, [filterSite, showSiteFilter, siteOptions]);
+
+  const [siteInput, setSiteInput] = useState('');
+
+  useEffect(() => {
+    if (!showSiteFilter) return;
+    setSiteInput(selectedSiteLabel);
+  }, [selectedSiteLabel, showSiteFilter]);
 
   return (
     <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -34,10 +53,30 @@ const SitesTechnicianFilter = ({
       {showSiteFilter && (
         <>
           <input
-            value={String(filterSite || '') === 'all' ? '' : String(filterSite || '')}
+            value={siteInput}
             onChange={(e) => {
-              const v = String(e.target.value || '');
-              onChangeSite(v.trim() ? v : 'all');
+              setSiteInput(String(e.target.value || ''));
+            }}
+            onBlur={() => {
+              const v = String(siteInput || '').trim();
+
+              if (!v) {
+                onChangeSite('all');
+                return;
+              }
+
+              const match = siteOptions.find((s) => {
+                const idSite = String(s?.idSite || '').trim();
+                const name = String(s?.nameSite || '').trim();
+                const label = idSite ? `${idSite} - ${name}` : name;
+                return label === v;
+              });
+
+              if (match) {
+                onChangeSite(String(match?.id || ''));
+              } else {
+                setSiteInput(selectedSiteLabel);
+              }
             }}
             list="sites-filter-datalist"
             placeholder="Tous les sites"

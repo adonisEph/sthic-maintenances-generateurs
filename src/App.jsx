@@ -5221,16 +5221,7 @@ const GeneratorMaintenanceApp = () => {
 
   const urgentSites = urgentSitesAll
   .filter((site) => filterTechnician === 'all' || site.technician === filterTechnician)
-  .filter((site) => {
-    if (filterSite === 'all') return true;
-    const q = String(filterSite || '').trim().toLowerCase();
-    if (!q) return true;
-
-    const idSite = String(site?.idSite || '').trim().toLowerCase();
-    const nameSite = String(site?.nameSite || '').trim().toLowerCase();
-
-    return idSite.includes(q) || nameSite.includes(q) || `${idSite} - ${nameSite}`.includes(q);
-  })
+  .filter((site) => filterSite === 'all' || String(site?.id || '') === String(filterSite))
   .filter((site) => {
     if (!showZoneFilter) return true;
     const z = String(dashboardZone || 'ALL');
@@ -5250,16 +5241,7 @@ const GeneratorMaintenanceApp = () => {
   const filteredSites = sites
     .map(getUpdatedSite)
     .filter((site) => filterTechnician === 'all' || site.technician === filterTechnician)
-    .filter((site) => {
-      if (filterSite === 'all') return true;
-      const q = String(filterSite || '').trim().toLowerCase();
-      if (!q) return true;
-
-      const idSite = String(site?.idSite || '').trim().toLowerCase();
-      const nameSite = String(site?.nameSite || '').trim().toLowerCase();
-
-      return idSite.includes(q) || nameSite.includes(q) || `${idSite} - ${nameSite}`.includes(q);
-    })
+    .filter((site) => filterSite === 'all' || String(site?.id || '') === String(filterSite))
     .filter((site) => {
       if (!showZoneFilter) return true;
       const z = String(dashboardZone || 'ALL');
