@@ -43,6 +43,9 @@ const FicheModal = ({
   const [warehouseSubmitBusy, setWarehouseSubmitBusy] = useState(false);
   const [warehouseSubmitSuccessOpen, setWarehouseSubmitSuccessOpen] = useState(false);
 
+  const [sendToWarehouseBusy, setSendToWarehouseBusy] = useState(false);
+  const [sendToWarehouseSuccess, setSendToWarehouseSuccess] = useState(false);
+
   const [localWarehouseAirFilterOk, setLocalWarehouseAirFilterOk] = useState(
     warehouseAirFilterOk === null || warehouseAirFilterOk === undefined ? null : Boolean(warehouseAirFilterOk)
   );
@@ -154,6 +157,12 @@ const FicheModal = ({
       warehouseCoolant5lOk === null || warehouseCoolant5lOk === undefined ? null : Boolean(warehouseCoolant5lOk)
     );
   }, [warehouseCoolant5lOk]);
+
+  useEffect(() => {
+    if (!open) return;
+    setSendToWarehouseBusy(false);
+    setSendToWarehouseSuccess(false);
+  }, [open, ficheId]);
 
   useEffect(() => {
     if (!open) return;
@@ -387,15 +396,37 @@ const FicheModal = ({
 
               {canShowSendToWarehouse && (
                 <div className="mt-4 flex justify-center">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await onSendToWarehouse({ ficheId });
-                    }}
-                    className="bg-indigo-700 text-white px-6 py-3 rounded-lg hover:bg-indigo-800 font-bold"
-                  >
-                    Envoyer au magasin
-                  </button>
+                  <div className="flex flex-col items-center">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (sendToWarehouseBusy) return;
+
+                        setSendToWarehouseBusy(true);
+                        setSendToWarehouseSuccess(false);
+                        try {
+                          await onSendToWarehouse({ ficheId });
+                          setSendToWarehouseSuccess(true);
+                          await new Promise((r) => setTimeout(r, 800));
+                          if (typeof onClose === 'function') onClose();
+                        } finally {
+                          setSendToWarehouseBusy(false);
+                        }
+                      }}
+                      disabled={Boolean(sendToWarehouseBusy)}
+                      className="bg-indigo-700 text-white px-6 py-3 rounded-lg hover:bg-indigo-800 font-bold"
+                    >
+                      {sendToWarehouseBusy
+                        ? 'Envoi...'
+                        : sendToWarehouseSuccess
+                          ? 'Envoyée au magasin ✓'
+                          : 'Envoyer au magasin'}
+                    </button>
+
+                    {sendToWarehouseSuccess && (
+                      <div className="mt-2 text-sm font-semibold text-green-700">Fiche envoyée au magasin</div>
+                    )}
+                  </div>
                 </div>
               )}
 

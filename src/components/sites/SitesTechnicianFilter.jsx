@@ -28,11 +28,49 @@ const SitesTechnicianFilter = ({
   }, [filterSite, showSiteFilter, siteOptions]);
 
   const [siteInput, setSiteInput] = useState('');
+  const [siteDropdownOpen, setSiteDropdownOpen] = useState(false);
+
+  const siteOptionsWithLabel = useMemo(() => {
+    return siteOptions.map((s) => {
+      const idSite = String(s?.idSite || '').trim();
+      const name = String(s?.nameSite || '').trim();
+      const label = idSite ? `${idSite} - ${name}` : name;
+      return {
+        id: String(s?.id || ''),
+        label
+      };
+    });
+  }, [siteOptions]);
+
+  const siteSuggestions = useMemo(() => {
+    if (!siteDropdownOpen) return [];
+
+    const q = String(siteInput || '').trim().toLowerCase();
+    if (!q) return siteOptionsWithLabel.slice(0, 50);
+
+    return siteOptionsWithLabel
+      .filter((o) => String(o?.label || '').toLowerCase().includes(q))
+      .slice(0, 50);
+  }, [siteDropdownOpen, siteInput, siteOptionsWithLabel]);
 
   useEffect(() => {
     if (!showSiteFilter) return;
     setSiteInput(selectedSiteLabel);
   }, [selectedSiteLabel, showSiteFilter]);
+
+  const applySiteSelectionFromLabel = (label) => {
+    const v = String(label || '').trim();
+
+    if (!v) {
+      onChangeSite('all');
+      return;
+    }
+
+    const match = siteOptionsWithLabel.find((o) => String(o?.label || '') === v);
+    if (match && match.id) {
+      onChangeSite(match.id);
+    }
+  };
 
   return (
     <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -52,44 +90,58 @@ const SitesTechnicianFilter = ({
 
       {showSiteFilter && (
         <>
-          <input
-            value={siteInput}
-            onChange={(e) => {
-              setSiteInput(String(e.target.value || ''));
-            }}
-            onBlur={() => {
-              const v = String(siteInput || '').trim();
+          <div className="relative flex-1 sm:flex-initial">
+            <input
+              value={siteInput}
+              onChange={(e) => {
+                setSiteInput(String(e.target.value || ''));
+                setSiteDropdownOpen(true);
+              }}
+              onFocus={() => {
+                setSiteDropdownOpen(true);
+              }}
+              onBlur={() => {
+                const v = String(siteInput || '').trim();
+                const exact = siteOptionsWithLabel.find((o) => String(o?.label || '') === v);
 
-              if (!v) {
-                onChangeSite('all');
-                return;
-              }
+                if (!v) {
+                  onChangeSite('all');
+                  setSiteDropdownOpen(false);
+                  return;
+                }
 
-              const match = siteOptions.find((s) => {
-                const idSite = String(s?.idSite || '').trim();
-                const name = String(s?.nameSite || '').trim();
-                const label = idSite ? `${idSite} - ${name}` : name;
-                return label === v;
-              });
+                if (exact) {
+                  applySiteSelectionFromLabel(v);
+                  setSiteDropdownOpen(false);
+                } else {
+                  setSiteInput(selectedSiteLabel);
+                  setSiteDropdownOpen(false);
+                }
+              }}
+              placeholder="Tous les sites"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full"
+            />
 
-              if (match) {
-                onChangeSite(String(match?.id || ''));
-              } else {
-                setSiteInput(selectedSiteLabel);
-              }
-            }}
-            list="sites-filter-datalist"
-            placeholder="Tous les sites"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1 sm:flex-initial"
-          />
-          <datalist id="sites-filter-datalist">
-            {siteOptions.map((s) => {
-              const idSite = String(s?.idSite || '').trim();
-              const name = String(s?.nameSite || '').trim();
-              const label = idSite ? `${idSite} - ${name}` : name;
-              return <option key={String(s?.id || '')} value={label} />;
-            })}
-          </datalist>
+            {siteDropdownOpen && siteSuggestions.length > 0 && (
+              <div className="absolute z-50 mt-1 w-full max-h-64 overflow-auto rounded-lg border border-gray-200 bg-white text-black shadow-lg">
+                {siteSuggestions.map((o) => (
+                  <button
+                    key={o.id || o.label}
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setSiteInput(o.label);
+                      applySiteSelectionFromLabel(o.label);
+                      setSiteDropdownOpen(false);
+                    }}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>
