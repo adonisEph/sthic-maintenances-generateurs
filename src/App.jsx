@@ -110,6 +110,7 @@ const GeneratorMaintenanceApp = () => {
   const [siteToDelete, setSiteToDelete] = useState(null);
   const [selectedSite, setSelectedSite] = useState(null);
   const [filterTechnician, setFilterTechnician] = useState('all');
+  const [filterSite, setFilterSite] = useState('all');
   const [ticketNumber, setTicketNumber] = useState(1201);
   const [ticketLabel, setTicketLabel] = useState('');
   const [importBusy, setImportBusy] = useState(false);
@@ -5221,6 +5222,16 @@ const GeneratorMaintenanceApp = () => {
   const urgentSites = urgentSitesAll
   .filter((site) => filterTechnician === 'all' || site.technician === filterTechnician)
   .filter((site) => {
+    if (filterSite === 'all') return true;
+    const q = String(filterSite || '').trim().toLowerCase();
+    if (!q) return true;
+
+    const idSite = String(site?.idSite || '').trim().toLowerCase();
+    const nameSite = String(site?.nameSite || '').trim().toLowerCase();
+
+    return idSite.includes(q) || nameSite.includes(q) || `${idSite} - ${nameSite}`.includes(q);
+  })
+  .filter((site) => {
     if (!showZoneFilter) return true;
     const z = String(dashboardZone || 'ALL');
     if (!z || z === 'ALL') return true;
@@ -5239,6 +5250,16 @@ const GeneratorMaintenanceApp = () => {
   const filteredSites = sites
     .map(getUpdatedSite)
     .filter((site) => filterTechnician === 'all' || site.technician === filterTechnician)
+    .filter((site) => {
+      if (filterSite === 'all') return true;
+      const q = String(filterSite || '').trim().toLowerCase();
+      if (!q) return true;
+
+      const idSite = String(site?.idSite || '').trim().toLowerCase();
+      const nameSite = String(site?.nameSite || '').trim().toLowerCase();
+
+      return idSite.includes(q) || nameSite.includes(q) || `${idSite} - ${nameSite}`.includes(q);
+    })
     .filter((site) => {
       if (!showZoneFilter) return true;
       const z = String(dashboardZone || 'ALL');
@@ -6692,6 +6713,9 @@ return (
                   filterTechnician={filterTechnician}
                   onChange={setFilterTechnician}
                   technicians={technicians}
+                  filterSite={filterSite}
+                  onChangeSite={setFilterSite}
+                  sites={filteredSites}
                 />
               </div>
             </div>
