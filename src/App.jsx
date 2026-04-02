@@ -743,9 +743,101 @@ const GeneratorMaintenanceApp = () => {
   };
 
   const exportBusyRef = useRef(false);
+  const pmRetiredAutoApplyBusyRef = useRef(false);
+  const pmRetiredAutoApplyKeyRef = useRef('');
   useEffect(() => {
     exportBusyRef.current = Boolean(exportBusy);
   }, [exportBusy]);
+
+  const pmRetiredComputeBusyRef = useRef(false);
+  const pmRetiredComputeKeyRef = useRef('');
+
+  useEffect(() => {
+    (async () => {
+      try {
+        if (!(authUser?.role === 'admin' || authUser?.role === 'manager')) return;
+
+        const month = String(pmMonth || '').trim() || new Date().toISOString().slice(0, 7);
+        if (!/^\d{4}-\d{2}$/.test(month)) return;
+
+        const key = `${String(authUser?.role || '')}|${month}`;
+        if (pmRetiredComputeKeyRef.current === key) return;
+        if (pmRetiredComputeBusyRef.current) return;
+
+        pmRetiredComputeBusyRef.current = true;
+
+        const id = pmMonthId || (await ensurePmMonth(month));
+        if (!id) return;
+
+        if (!pmMonthId) setPmMonthId(id);
+        if (pmMonth !== month) setPmMonth(month);
+
+        await refreshPmRetiredSites(id, month);
+
+        pmRetiredComputeKeyRef.current = key;
+      } catch {
+        // ignore
+      } finally {
+        pmRetiredComputeBusyRef.current = false;
+      }
+    })();
+  }, [authUser?.id, authUser?.role, pmMonth, pmMonthId]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        if (!(authUser?.role === 'admin' || authUser?.role === 'manager')) return;
+
+        const payload = pmRetiredSites && typeof pmRetiredSites === 'object' ? pmRetiredSites : null;
+        if (!payload) return;
+
+        const month = String(payload?.month || '').trim();
+        const scopeZones = Array.isArray(payload?.scopeZones) ? payload.scopeZones : [];
+        const retiredItems = Array.isArray(payload?.items) ? payload.items : [];
+        const activeItems = Array.isArray(payload?.activeItems) ? payload.activeItems : [];
+
+        if (!month) return;
+
+        const key = `${month}|${scopeZones.join(',')}|${retiredItems.length}|${activeItems.length}`;
+        if (pmRetiredAutoApplyKeyRef.current === key) return;
+        if (pmRetiredAutoApplyBusyRef.current) return;
+
+        const retiredSites = retiredItems.map((it) => ({
+          zone: it?.zone,
+          siteCode: it?.siteCode
+        }));
+
+        const activeSites = activeItems.map((it) => ({
+          zone: it?.zone,
+          siteCode: it?.siteCode
+        }));
+
+        if (retiredSites.length === 0 && activeSites.length === 0) {
+          pmRetiredAutoApplyKeyRef.current = key;
+          return;
+        }
+
+        pmRetiredAutoApplyBusyRef.current = true;
+
+        await apiFetchJson('/api/sites/apply-retired-from-pm', {
+          method: 'POST',
+          body: JSON.stringify({
+            scopeZones,
+            retiredSites,
+            activeSites
+          })
+        });
+
+        await loadData();
+
+        pmRetiredAutoApplyKeyRef.current = key;
+      } catch {
+        // ignore
+      } finally {
+        pmRetiredAutoApplyBusyRef.current = false;
+      }
+    })();
+  }, [pmRetiredSites, authUser?.role]);
 
   const renderPwaUpdateBanner = () => {
     if (!pwaUpdate?.available) return null;
