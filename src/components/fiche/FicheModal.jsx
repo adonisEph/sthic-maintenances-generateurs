@@ -77,6 +77,8 @@ const FicheModal = ({
     return !already;
   }, [ficheHistory, siteForFiche]);
 
+  const airFilterAlreadyProvided = !shouldIncludeAirFilter;
+
   const shouldIncludeCoolant = useMemo(() => {
     const list = Array.isArray(ficheHistory) ? ficheHistory : [];
 
@@ -108,7 +110,12 @@ const FicheModal = ({
   const canShowWarehouseControls = Boolean((canWarehouse || showWarehouseControls) && !hideWarehouseSection);
 
   // Warehouse view: default to show consumables until explicitly marked ❌ (false)
-  const effectiveIncludeAirFilter = canShowWarehouseControls ? localWarehouseAirFilterOk !== false : shouldIncludeAirFilter;
+  // Global rule: if the air filter was already provided on a previous fiche, never include it again.
+  const effectiveIncludeAirFilter = airFilterAlreadyProvided
+    ? false
+    : canShowWarehouseControls
+      ? localWarehouseAirFilterOk !== false
+      : shouldIncludeAirFilter;
   const effectiveIncludeCoolant = canShowWarehouseControls ? localWarehouseCoolant5lOk !== false : shouldIncludeCoolant;
 
   const shouldIncludeAirAndCoolant = effectiveIncludeAirFilter || effectiveIncludeCoolant;
@@ -450,41 +457,43 @@ const FicheModal = ({
               <div className="mb-4 border border-gray-300 rounded-lg p-3 text-sm">
                 <div className="font-bold text-gray-800 mb-2">{warehouseControlsLabel}</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="border border-gray-200 rounded-lg p-3">
-                    <div className="font-semibold text-gray-800 mb-2">Filtre à air GE</div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        disabled={isWarehouseReadOnly}
-                        onClick={() => {
-                          setLocalWarehouseAirFilterOk(true);
-                          onSaveWarehouseCheck && onSaveWarehouseCheck({
-                            ficheId,
-                            warehouseAirFilterOk: true,
-                            warehouseCoolant5lOk: localWarehouseCoolant5lOk
-                          });
-                        }}
-                        className={`px-3 py-2 rounded-lg font-semibold border ${localWarehouseAirFilterOk === true ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-white text-gray-800 border-gray-300'}`}
-                      >
-                        ✅ Disponible
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isWarehouseReadOnly}
-                        onClick={() => {
-                          setLocalWarehouseAirFilterOk(false);
-                          onSaveWarehouseCheck && onSaveWarehouseCheck({
-                            ficheId,
-                            warehouseAirFilterOk: false,
-                            warehouseCoolant5lOk: localWarehouseCoolant5lOk
-                          });
-                        }}
-                        className={`px-3 py-2 rounded-lg font-semibold border ${localWarehouseAirFilterOk === false ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-800 border-gray-300'}`}
-                      >
-                        ❌ Indispo
-                      </button>
+                  {!airFilterAlreadyProvided && (
+                    <div className="border border-gray-200 rounded-lg p-3">
+                      <div className="font-semibold text-gray-800 mb-2">Filtre à air GE</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          disabled={isWarehouseReadOnly}
+                          onClick={() => {
+                            setLocalWarehouseAirFilterOk(true);
+                            onSaveWarehouseCheck && onSaveWarehouseCheck({
+                              ficheId,
+                              warehouseAirFilterOk: true,
+                              warehouseCoolant5lOk: localWarehouseCoolant5lOk
+                            });
+                          }}
+                          className={`px-3 py-2 rounded-lg font-semibold border ${localWarehouseAirFilterOk === true ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-white text-gray-800 border-gray-300'}`}
+                        >
+                          ✅ Disponible
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isWarehouseReadOnly}
+                          onClick={() => {
+                            setLocalWarehouseAirFilterOk(false);
+                            onSaveWarehouseCheck && onSaveWarehouseCheck({
+                              ficheId,
+                              warehouseAirFilterOk: false,
+                              warehouseCoolant5lOk: localWarehouseCoolant5lOk
+                            });
+                          }}
+                          className={`px-3 py-2 rounded-lg font-semibold border ${localWarehouseAirFilterOk === false ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-800 border-gray-300'}`}
+                        >
+                          ❌ Indispo
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <div className="border border-gray-200 rounded-lg p-3">
                     <div className="font-semibold text-gray-800 mb-2">05 Litres liquide de refroidissement</div>

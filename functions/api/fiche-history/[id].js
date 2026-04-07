@@ -150,6 +150,26 @@ export async function onRequestPatch({ request, env, data, params }) {
 
     const now = isoNow();
 
+    // 0b) Manager/Admin: revoke a fiche previously sent to warehouse
+    // (no physical warehouse / user mistake). Not a hard delete: mark as Annulée.
+    if (mode === 'revoke-send-to-warehouse') {
+      if (!canManage) return json({ error: 'Accès interdit.' }, { status: 403 });
+
+      const st = String(existing?.status || '').trim();
+      if (st !== 'Envoyée au magasin') {
+        return json({ error: 'Statut incompatible.' }, { status: 409 });
+      }
+
+      await env.DB.prepare(
+        'UPDATE fiche_history SET status = ?, updated_at = ? WHERE id = ?'
+      )
+        .bind('Annulée', now, id)
+        .run();
+
+      const updated = await env.DB.prepare('SELECT * FROM fiche_history WHERE id = ?').bind(id).first();
+      return json({ fiche: mapRow(updated, zone) }, { status: 200 });
+    }
+
     // 0) Manager/Admin: send to warehouse (reserve ticket before warehouse control)
     if (mode === 'send-to-warehouse') {
       if (!canManage) return json({ error: 'Accès interdit.' }, { status: 403 });
@@ -235,9 +255,12 @@ export async function onRequestPatch({ request, env, data, params }) {
         try {
           const siteZone = String(zone || 'BZV/POOL');
 
+          const ticket = String(existing?.ticket_number || '').trim();
+          const ticketLabel = ticket ? `ticket ${ticket}` : '';
+
           const recipients = await loadCollaboratorRecipientIds(env, siteZone);
           const title = 'Retour magasin - Fiche prête';
-          const bodyTxt = `${String(existing?.site_name || '') || 'Site'} - contrôle magasin effectué.`;
+          const bodyTxt = `${String(existing?.site_name || '') || 'Site'}${ticketLabel ? ` - ${ticketLabel}` : ''} - contrôle magasin effectué.`;
 
           for (const uid of recipients) {
             await createNotification(env, {
@@ -279,9 +302,12 @@ export async function onRequestPatch({ request, env, data, params }) {
       try {
         const siteZone = String(zone || 'BZV/POOL');
 
+        const ticket = String(existing?.ticket_number || '').trim();
+        const ticketLabel = ticket ? `ticket ${ticket}` : '';
+
         const recipients = await loadCollaboratorRecipientIds(env, siteZone);
         const title = 'Retour magasin - Fiche renvoyée';
-        const bodyTxt = `${String(existing?.site_name || '') || 'Site'} - fiche traitée par le magasin et renvoyée pour finalisation.`;
+        const bodyTxt = `${String(existing?.site_name || '') || 'Site'}${ticketLabel ? ` - ${ticketLabel}` : ''} - fiche traitée par le magasin et renvoyée pour finalisation.`;
 
         for (const uid of recipients) {
           await createNotification(env, {

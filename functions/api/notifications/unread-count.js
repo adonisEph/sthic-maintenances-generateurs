@@ -25,7 +25,17 @@ export async function onRequestGet({ env, data }) {
       ? await getUnreadNotificationsCountByKinds(env, data.user.id, kinds)
       : await getUnreadNotificationsCount(env, data.user.id);
 
-    return json({ unreadCount }, { status: 200 });
+    return json(
+      { unreadCount },
+      {
+        status: 200,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          Pragma: 'no-cache',
+          Expires: '0'
+        }
+      }
+    );
   } catch (e) {
     return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
   }

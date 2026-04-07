@@ -38,7 +38,17 @@ export async function onRequestGet({ request, env, data }) {
       ? await getUnreadNotificationsCountByKinds(env, data.user.id, kinds)
       : await getUnreadNotificationsCount(env, data.user.id);
 
-    return json({ notifications: rows.map(mapRow), unreadCount }, { status: 200 });
+    return json(
+      { notifications: rows.map(mapRow), unreadCount },
+      {
+        status: 200,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          Pragma: 'no-cache',
+          Expires: '0'
+        }
+      }
+    );
   } catch (e) {
     return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
   }
@@ -55,7 +65,17 @@ export async function onRequestPost({ request, env, data }) {
     const res = await markNotificationsRead(env, data.user.id, ids);
     const unreadCount = await getUnreadNotificationsCount(env, data.user.id);
 
-    return json({ ok: true, ...res, unreadCount }, { status: 200 });
+    return json(
+      { ok: true, ...res, unreadCount },
+      {
+        status: 200,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          Pragma: 'no-cache',
+          Expires: '0'
+        }
+      }
+    );
   } catch (e) {
     return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
   }

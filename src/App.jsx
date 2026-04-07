@@ -52,7 +52,13 @@ const DISABLE_PUSH_NOTIFICATIONS = false;
 const DISABLE_NOTIFICATIONS_FEATURE = false;
 const DISABLE_PRESENCE_FEATURE = false;
 const DISABLE_META_VERSION_POLLING = false;
-const NOTIFICATION_KINDS_REALTIME = ['EPV_ASSIGNED', 'EPV_DONE'];
+const NOTIFICATION_KINDS_REALTIME = [
+  'EPV_ASSIGNED',
+  'EPV_DONE',
+  'WAREHOUSE_INBOX',
+  'WAREHOUSE_CHECK',
+  'WAREHOUSE_SUBMIT'
+];
 
 const GeneratorMaintenanceApp = () => {
   const storage = useStorage();
@@ -84,6 +90,12 @@ const GeneratorMaintenanceApp = () => {
   const [warehouseReturnsDateFrom, setWarehouseReturnsDateFrom] = useState('');
   const [warehouseReturnsDateTo, setWarehouseReturnsDateTo] = useState('');
   const [warehouseReturnsSort, setWarehouseReturnsSort] = useState('newest');
+  const [warehouseRevokeOpen, setWarehouseRevokeOpen] = useState(false);
+  const [warehouseRevokeQuery, setWarehouseRevokeQuery] = useState('');
+  const [warehouseRevokeDateFrom, setWarehouseRevokeDateFrom] = useState('');
+  const [warehouseRevokeDateTo, setWarehouseRevokeDateTo] = useState('');
+  const [warehouseRevokeSort, setWarehouseRevokeSort] = useState('newest');
+  const [warehouseRevokeBusyId, setWarehouseRevokeBusyId] = useState('');
   const [scoringMonth, setScoringMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [scoringDetails, setScoringDetails] = useState({ open: false, title: '', kind: '', items: [] });
   const [interventions, setInterventions] = useState([]);
@@ -289,7 +301,10 @@ const GeneratorMaintenanceApp = () => {
     const list = Array.isArray(ficheHistory) ? ficheHistory : [];
     return list.filter((f) => f && (f.status === 'Envoyée au magasin' || f.status === 'Contrôle magasin')).length;
   }, [ficheHistory]);
-
+  const canWarehouseRevoke = Boolean(
+    isSuperAdmin ||
+    (isManager && ['PNR/KOUILOU', 'UPCN'].includes(String(authUser?.zone || '').trim().toUpperCase()))
+  );
   const prevWarehouseProcessCountRef = useRef(warehouseProcessCount);
 
   useEffect(() => {
@@ -4336,6 +4351,21 @@ const GeneratorMaintenanceApp = () => {
     await loadFicheHistory();
   };
 
+  const handleRevokeSendToWarehouse = async ({ ficheId }) => {
+    if (!ficheId) return;
+
+    try {
+      setWarehouseRevokeBusyId(String(ficheId));
+      await apiFetchJson(`/api/fiche-history/${encodeURIComponent(String(ficheId))}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ mode: 'revoke-send-to-warehouse' })
+      });
+      await loadFicheHistory();
+    } finally {
+      setWarehouseRevokeBusyId('');
+    }
+  };
+
   const persistFicheHistory = async (ticketNumberFull) => {
     let interventionId = ficheContext?.interventionId ? String(ficheContext.interventionId) : null;
     // GARANTIE: si l'interventionId est absent, on la crée/récupère ici avant de persister la fiche.
@@ -7142,15 +7172,226 @@ return (
                   <Activity size={24} />
                   Retour Magasinier
                 </h2>
+
                 <div className="flex items-center gap-3">
+                  {canWarehouseRevoke && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setWarehouseRevokeQuery('');
+                        setWarehouseRevokeDateFrom('');
+                        setWarehouseRevokeDateTo('');
+                        setWarehouseRevokeSort('newest');
+                        setWarehouseRevokeBusyId('');
+                        setWarehouseRevokeOpen(true);
+                      }}
+                      className="hover:bg-white/10 px-3 py-2 rounded font-semibold"
+                    >
+                      Révocation
+                    </button>
+                  )}
+
                   <button
-                    onClick={() => setShowWarehouseReturns(false)}
+                    onClick={() => {
+                      setWarehouseRevokeOpen(false);
+                      setShowWarehouseReturns(false);
+                    }}
                     className="hover:bg-white/10 p-2 rounded"
                   >
                     <X size={20} />
                   </button>
                 </div>
+
               </div>
+
+              {warehouseRevokeOpen && (
+                <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4">
+                  <div className="bg-white w-full max-w-5xl rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
+                    <div className="flex items-center justify-between gap-3 p-4 border-b bg-slate-900 text-white">
+                      <div className="text-lg font-bold">Révocation fiches magasin</div>
+                      <button
+                        type="button"
+                        onClick={() => setWarehouseRevokeOpen(false)}
+                        className="hover:bg-white/10 p-2 rounded"
+                      >
+                        <X size={20} />
+                      </button>
+                    </div>
+
+                    <div className="p-4 sm:p-6">
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-start">
+                          <div className="flex flex-col w-full min-w-0">
+                            <span className="text-xs text-gray-600 mb-1">Recherche</span>
+                            <input
+                              type="text"
+                              value={warehouseRevokeQuery}
+                              onChange={(e) => setWarehouseRevokeQuery(e.target.value)}
+                              placeholder="Ticket / site"
+                              className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full min-w-0"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full min-w-0">
+                            <div className="flex flex-col w-full min-w-0">
+                              <span className="text-xs text-gray-600 mb-1">Du</span>
+                              <input
+                                type="date"
+                                value={warehouseRevokeDateFrom}
+                                onChange={(e) => setWarehouseRevokeDateFrom(e.target.value)}
+                                className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full min-w-0"
+                              />
+                            </div>
+                            <div className="flex flex-col w-full min-w-0">
+                              <span className="text-xs text-gray-600 mb-1">Au</span>
+                              <input
+                                type="date"
+                                value={warehouseRevokeDateTo}
+                                onChange={(e) => setWarehouseRevokeDateTo(e.target.value)}
+                                className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full min-w-0"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col w-full min-w-0">
+                            <span className="text-xs text-gray-600 mb-1">Statut</span>
+                            <div className="border border-gray-200 bg-white rounded-lg px-3 py-2 text-sm font-semibold text-gray-800">
+                              Envoyée au magasin
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col w-full min-w-0">
+                            <span className="text-xs text-gray-600 mb-1">Tri</span>
+                            <select
+                              value={warehouseRevokeSort}
+                              onChange={(e) => setWarehouseRevokeSort(e.target.value)}
+                              className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full"
+                            >
+                              <option value="newest">Plus récent</option>
+                              <option value="oldest">Plus ancien</option>
+                              <option value="ticket">Ticket (A→Z)</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="text-xs text-gray-600 mt-3 flex justify-between">
+                          <span />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setWarehouseRevokeQuery('');
+                              setWarehouseRevokeDateFrom('');
+                              setWarehouseRevokeDateTo('');
+                              setWarehouseRevokeSort('newest');
+                            }}
+                            className="text-amber-700 hover:underline"
+                          >
+                            Réinitialiser
+                          </button>
+                        </div>
+                      </div>
+
+                      {(() => {
+                        const listAll = (Array.isArray(ficheHistory) ? ficheHistory : []).filter(
+                          (f) => f && f.status === 'Envoyée au magasin'
+                        );
+
+                        const q = String(warehouseRevokeQuery || '').trim().toLowerCase();
+                        const from = String(warehouseRevokeDateFrom || '').slice(0, 10);
+                        const to = String(warehouseRevokeDateTo || '').slice(0, 10);
+
+                        const listFiltered = listAll.filter((f) => {
+                          const dg = String(f.dateGenerated || '').slice(0, 10);
+                          if (from && dg && dg < from) return false;
+                          if (to && dg && dg > to) return false;
+
+                          if (q) {
+                            const hay = `${String(f.ticketNumber || '')} ${String(f.siteName || '')}`.toLowerCase();
+                            if (!hay.includes(q)) return false;
+                          }
+                          return true;
+                        });
+
+                        const list = (() => {
+                          if (warehouseRevokeSort === 'oldest') {
+                            return [...listFiltered].sort((a, b) =>
+                              String(a.updatedAt || a.dateGenerated || '').localeCompare(String(b.updatedAt || b.dateGenerated || ''))
+                            );
+                          }
+                          if (warehouseRevokeSort === 'ticket') {
+                            return [...listFiltered].sort((a, b) =>
+                              String(a.ticketNumber || '').localeCompare(String(b.ticketNumber || ''))
+                            );
+                          }
+                          return [...listFiltered].sort((a, b) =>
+                            String(b.updatedAt || b.dateGenerated || '').localeCompare(String(a.updatedAt || a.dateGenerated || ''))
+                          );
+                        })();
+
+                        if (list.length === 0) {
+                          return <div className="text-center py-10 text-gray-500 font-semibold">Aucune fiche à révoquer</div>;
+                        }
+
+                        return (
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                            {list.map((fiche) => (
+                              <div key={fiche.id} className="border-2 rounded-lg p-4 bg-white border-gray-200">
+                                <div className="flex flex-col gap-2 mb-3">
+                                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
+                                    <div className="min-w-0">
+                                      <div className="font-bold text-lg text-gray-800 truncate">{fiche.ticketNumber || '-'}</div>
+                                      <div className="text-sm text-gray-600 truncate">{fiche.siteName}</div>
+                                    </div>
+                                    <span className="px-3 py-1 rounded-full text-sm font-semibold self-start bg-indigo-700 text-white">
+                                      Envoyée au magasin
+                                    </span>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-700">
+                                    <div>
+                                      <span className="text-gray-500">Date génération:</span>{' '}
+                                      <span className="font-semibold">{fiche.dateGenerated ? formatDate(fiche.dateGenerated) : '-'}</span>
+                                    </div>
+                                    <div>
+                                      <span className="text-gray-500">Dernière maj:</span>{' '}
+                                      <span className="font-semibold">{fiche.updatedAt ? formatDate(fiche.updatedAt) : '-'}</span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  disabled={warehouseRevokeBusyId === String(fiche.id)}
+                                  onClick={async () => {
+                                    const ok = window.confirm(
+                                      `Révoquer cette fiche ?\n\nTicket: ${String(fiche.ticketNumber || '-')}\nSite: ${String(fiche.siteName || '-')}`
+                                    );
+                                    if (!ok) return;
+                                    await handleRevokeSendToWarehouse({ ficheId: fiche.id });
+                                  }}
+                                  className="w-full bg-red-700 text-white py-2 rounded-lg hover:bg-red-800 font-semibold disabled:bg-red-300"
+                                >
+                                  {warehouseRevokeBusyId === String(fiche.id) ? 'Annulation...' : 'Annuler la fiche'}
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <div className="p-3 border-t bg-white flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setWarehouseRevokeOpen(false)}
+                        className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold"
+                      >
+                        Fermer
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="p-4 sm:p-6 overflow-y-auto flex-1">
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
