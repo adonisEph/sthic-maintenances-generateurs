@@ -6552,7 +6552,15 @@ return (
                 setWarehouseReturnsDateTo('');
                 setWarehouseReturnsSort('newest');
 
-                setShowWarehouseReturns(true);
+                (async () => {
+                  try {
+                    await loadFicheHistory();
+                  } catch {
+                    // ignore
+                  }
+                  setShowWarehouseReturns(true);
+                })();
+
               }}
               className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
             >
