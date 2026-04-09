@@ -52,8 +52,44 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     try {
       navigator.serviceWorker
-        .getRegistrations()
-        .then((regs) => Promise.all((Array.isArray(regs) ? regs : []).map((r) => r.unregister())))
+        .register('/sw.js', { scope: '/' })
+        .then((reg) => {
+          try {
+            reg.update().catch(() => {});
+
+            const maybeSkipWaiting = () => {
+              try {
+                const sw = reg.waiting;
+                if (sw) sw.postMessage({ type: 'SKIP_WAITING' });
+              } catch {
+              }
+            };
+
+            maybeSkipWaiting();
+
+            reg.addEventListener('updatefound', () => {
+              try {
+                const newWorker = reg.installing;
+                if (!newWorker) return;
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed') {
+                    maybeSkipWaiting();
+                  }
+                });
+              } catch {
+              }
+            });
+
+            // Appliquer la nouvelle version dès qu'elle prend le contrôle
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+              try {
+                window.location.reload();
+              } catch {
+              }
+            });
+          } catch {
+          }
+        })
         .catch(() => {});
     } catch {
     }

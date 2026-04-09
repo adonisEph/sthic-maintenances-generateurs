@@ -39,7 +39,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '3.4.1';
+const APP_VERSION = '4.2.2';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -227,6 +227,8 @@ const GeneratorMaintenanceApp = () => {
   const [pmGlobalStep, setPmGlobalStep] = useState('');
   const [pmGlobalCompare, setPmGlobalCompare] = useState(null);
   const [pmRetiredSites, setPmRetiredSites] = useState(null);
+  const [urgentRetiredMonthsMap, setUrgentRetiredMonthsMap] = useState({});
+  const [urgentRetiredMonthsLoading, setUrgentRetiredMonthsLoading] = useState(false);
   const [pmResetBusy, setPmResetBusy] = useState(false);
   const [pmFilterState, setPmFilterState] = useState('all');
   const [pmFilterType, setPmFilterType] = useState('all');
@@ -5271,6 +5273,79 @@ const GeneratorMaintenanceApp = () => {
     return String(site?.zone || '').trim() === z;
   });
 
+  useEffect(() => {
+    if (!(isAdmin || isManager || isViewer)) {
+      setUrgentRetiredMonthsMap({});
+      return;
+    }
+
+    const list = Array.isArray(urgentSites) ? urgentSites : [];
+    if (list.length === 0) {
+      setUrgentRetiredMonthsMap({});
+      return;
+    }
+
+    // On ne demande que les sites réellement "RETARD" (sinon inutile)
+    const lateSites = list.filter((s) => {
+      const d = getDaysUntil(s?.epv1);
+      return d !== null && d < 0;
+    });
+
+    if (lateSites.length === 0) {
+      setUrgentRetiredMonthsMap({});
+      return;
+    }
+
+    // siteCodes = codes PM (dans ton UI c’est site.idSite)
+    const siteCodes = Array.from(
+      new Set(
+        lateSites
+          .map((s) => String(s?.idSite || '').trim())
+          .filter(Boolean)
+      )
+    );
+
+    if (siteCodes.length === 0) {
+      setUrgentRetiredMonthsMap({});
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setUrgentRetiredMonthsLoading(true);
+
+        const qs = new URLSearchParams();
+        qs.set('siteCodes', siteCodes.join(','));
+        qs.set('maxMonths', '18');
+
+        const data = await apiFetchJson(`/api/pm/retired-months?${qs.toString()}`, { method: 'GET' });
+        const items = Array.isArray(data?.items) ? data.items : [];
+
+        // Map par clé "ZONE|CODE" pour supporter superadmin multi-zone
+        const nextMap = {};
+        for (const it of items) {
+          const z = String(it?.zone || '').trim().toUpperCase();
+          const c = String(it?.siteCode || '').trim().toUpperCase();
+          const months = Array.isArray(it?.retiredMonths) ? it.retiredMonths : [];
+          if (!z || !c || months.length === 0) continue;
+          nextMap[`${z}|${c}`] = months;
+        }
+
+        if (!cancelled) setUrgentRetiredMonthsMap(nextMap);
+      } catch {
+        if (!cancelled) setUrgentRetiredMonthsMap({});
+      } finally {
+        if (!cancelled) setUrgentRetiredMonthsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [urgentSites, isAdmin, isManager, isViewer]);
+
   const activeFiche = useMemo(() => {
     const id = ficheContext?.ficheId ? String(ficheContext.ficheId) : '';
     if (!id) return null;
@@ -7981,6 +8056,33 @@ return (
                           Technicien: {site.technician} | Régime: {Number(site.regime || 0)}H/J | NH Estimé: {Number.isFinite(Number(site.nhEstimated)) ? `${site.nhEstimated}H` : '-'} | Diff: {Number.isFinite(Number(site.diffEstimated)) ? `${site.diffEstimated}H` : '-'}
                         </div>
                       </div>
+
+                      {(() => {
+                        const z = String(site?.zone || '').trim().toUpperCase();
+                        const c = String(site?.idSite || '').trim().toUpperCase();
+                        const key = `${z}|${c}`;
+                        const months = Array.isArray(urgentRetiredMonthsMap?.[key]) ? urgentRetiredMonthsMap[key] : [];
+                        if (months.length === 0) return null;
+
+                        return (
+                          <div className="flex flex-wrap gap-1 justify-end flex-1 pt-1">
+                            <span className="text-[10px] font-semibold text-slate-600 mr-1">Retiré:</span>
+                            {months.slice(0, 6).map((m) => (
+                              <span
+                                key={m}
+                                className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200"
+                              >
+                                {m}
+                              </span>
+                            ))}
+                            {months.length > 6 && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                                +{months.length - 6}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       <div className="flex flex-col items-end flex-shrink-0">
                         <div className={days !== null && days < 0 ? 'text-red-700 font-bold' : 'text-gray-700 font-bold'}>{label}</div>

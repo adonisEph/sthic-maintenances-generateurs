@@ -96,13 +96,76 @@ export async function onRequestPost({ request, env, data, params }) {
       .bind('done', doneDate, now, id)
       .run();
 
-    const ticketZone = String(site?.zone || site?.region || '').trim();
-    const tn = await nextTicketNumberForZone(env, ticketZone);
-    const ticketNumber = formatTicket(tn, ticketZone);
-
     const status = 'Effectuée';
 
-    const existingFiche = await env.DB.prepare('SELECT id FROM fiche_history WHERE intervention_id = ?').bind(id).first();
+    // 1) Priorité: fiche déjà liée à cette intervention
+    // 2) Fallback: fiche créée en amont (manager/admin) mais pas liée (intervention_id absent/différent)
+    //    => on la ré-attache à cette intervention pour garantir la cohérence ticket/fiche.
+    const existingFicheByIntervention = await env.DB.prepare(
+      'SELECT id, ticket_number FROM fiche_history WHERE intervention_id = ?'
+    )
+      .bind(id)
+      .first();
+
+    const fallbackFiche = !existingFicheByIntervention?.id
+      ? await env.DB.prepare(
+          `SELECT id, ticket_number
+           FROM fiche_history
+           WHERE site_id = ?
+             AND planned_date IS ?
+             AND epv_type IS ?
+             AND technician = ?
+             AND status IN ('En attente', 'Envoyée au magasin', 'Contrôle magasin')
+           ORDER BY created_at DESC
+           LIMIT 1`
+        )
+          .bind(site.id, intervention.planned_date || null, intervention.epv_type || null, intervention.technician_name)
+          .first()
+      : null;
+
+    const existingFiche = existingFicheByIntervention?.id ? existingFicheByIntervention : fallbackFiche;
+
+    // si on a trouvé une fiche fallback: on l'attache à l'intervention courante
+    if (fallbackFiche?.id) {
+      await env.DB.prepare(
+        'UPDATE fiche_history SET intervention_id = ?, updated_at = ? WHERE id = ?'
+      )
+        .bind(id, now, String(fallbackFiche.id))
+        .run();
+    }
+
+    // Ticket: ne générer un nouveau ticket que si on crée une nouvelle fiche, ou si la fiche trouvée n'en a pas.
+    const ticketZone = String(site?.zone || site?.region || '').trim();
+    let ticketNumber = String(existingFiche?.ticket_number || '').trim();
+    if (!ticketNumber) {
+      const z = String(ticketZone || '').trim().toUpperCase();
+      if (z === 'PNR/KOUILOU') {
+        // Même règle que /api/meta/ticket-number/next pour PNR/KOUILOU (format dd/mm/yyyy-n)
+        const ymd = String(doneDate || '').slice(0, 10);
+        const key = `ticket_number_pnr_day_${ymd}`;
+
+        await env.DB.prepare('INSERT OR IGNORE INTO meta (meta_key, meta_value) VALUES (?, ?)')
+          .bind(key, '0')
+          .run();
+
+        const row = await env.DB.prepare('SELECT meta_value FROM meta WHERE meta_key = ?').bind(key).first();
+        const current = Number(row?.meta_value || 0);
+        const next = (Number.isFinite(current) ? current : 0) + 1;
+
+        await env.DB.prepare('INSERT OR REPLACE INTO meta (meta_key, meta_value) VALUES (?, ?)')
+          .bind(key, String(next))
+          .run();
+
+        await touchLastUpdatedAt(env);
+
+        const [yy, mm, dd] = ymd.split('-');
+        ticketNumber = `${dd}/${mm}/${yy}-${next}`;
+      } else {
+        const tn = await nextTicketNumberForZone(env, ticketZone);
+        ticketNumber = formatTicket(tn, ticketZone);
+      }
+    }
+
     if (existingFiche?.id) {
       await env.DB.prepare(
         'UPDATE fiche_history SET status = ?, date_completed = ?, interval_hours = ?, contract_seuil = ?, is_within_contract = ?, nh1_dv = ?, date_dv = ?, nh_now = ?, updated_at = ? WHERE id = ?'
@@ -120,6 +183,15 @@ export async function onRequestPost({ request, env, data, params }) {
           String(existingFiche.id)
         )
         .run();
+
+      // si la fiche existante n'avait pas de ticket (cas rare), on le fixe ici
+      if (!String(existingFiche?.ticket_number || '').trim() && ticketNumber) {
+        await env.DB.prepare(
+          'UPDATE fiche_history SET ticket_number = ?, updated_at = ? WHERE id = ?'
+        )
+          .bind(ticketNumber, now, String(existingFiche.id))
+          .run();
+      }
 
       await touchLastUpdatedAt(env);
 
