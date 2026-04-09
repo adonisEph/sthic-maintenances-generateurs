@@ -39,14 +39,14 @@ const CompleteInterventionModal = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div className="flex flex-col">
-              <label className="text-[10px] text-gray-500 mb-1">NH1 DV</label>
+              <label className="text-[10px] text-gray-500 mb-1">Nombre d'heure dernière vidange</label>
               <div className="border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm font-semibold text-gray-800">
                 {completeModalSite?.nh1DV ?? '-'}
               </div>
             </div>
 
             <div className="flex flex-col">
-              <label className="text-[10px] text-gray-500 mb-1">Date DV</label>
+              <label className="text-[10px] text-gray-500 mb-1">Date dernière vidange</label>
               <div className="border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm font-semibold text-gray-800">
                 {completeModalSite?.dateDV
                   ? (formatDate ? formatDate(completeModalSite.dateDV) : completeModalSite.dateDV)
@@ -55,7 +55,7 @@ const CompleteInterventionModal = ({
             </div>
 
             <div className="flex flex-col">
-              <label className="text-[10px] text-gray-500 mb-1">Régime</label>
+              <label className="text-[10px] text-gray-500 mb-1">Régime de fonctionnement du generateur</label>
               <div className="border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm font-semibold text-gray-800">
                 {Number.isFinite(Number(completeModalSite?.regime)) ? `${Number(completeModalSite.regime)}H/J` : '-'}
               </div>
@@ -64,7 +64,7 @@ const CompleteInterventionModal = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="flex flex-col">
-              <label className="text-xs text-gray-600 mb-1">Date de vidange</label>
+              <label className="text-xs text-gray-600 mb-1">Date de vidange du jour</label>
               <input
                 type="date"
                 value={completeForm?.doneDate || ''}
@@ -73,7 +73,7 @@ const CompleteInterventionModal = ({
               />
             </div>
             <div className="flex flex-col">
-              <label className="text-xs text-gray-600 mb-1">Compteur (NH) relevé</label>
+              <label className="text-xs text-gray-600 mb-1">Nombre d'heure DEEPSEA relevé du jour</label>
               <input
                 type="number"
                 value={completeForm?.nhNow || ''}
