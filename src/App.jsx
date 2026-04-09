@@ -5274,7 +5274,7 @@ const GeneratorMaintenanceApp = () => {
   });
 
   useEffect(() => {
-    if (!(isAdmin || isManager || isViewer)) {
+    if (!(isAdmin || isManager || isViewer || isTechnician)) {
       setUrgentRetiredMonthsMap({});
       return;
     }
@@ -5344,7 +5344,7 @@ const GeneratorMaintenanceApp = () => {
     return () => {
       cancelled = true;
     };
-  }, [urgentSites, isAdmin, isManager, isViewer]);
+  }, [urgentSites, isAdmin, isManager, isViewer, isTechnician]);
 
   const activeFiche = useMemo(() => {
     const id = ficheContext?.ficheId ? String(ficheContext.ficheId) : '';

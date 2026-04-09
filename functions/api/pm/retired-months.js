@@ -3,7 +3,7 @@ import { json, requireAuth, isSuperAdmin, userZone } from '../_utils/http.js';
 
 function requireAdminOrViewer(data) {
   const role = String(data?.user?.role || '');
-  return role === 'admin' || role === 'viewer' || role === 'manager';
+  return role === 'admin' || role === 'viewer' || role === 'manager' || role === 'technician';
 }
 
 function normalizeZone(z) {
