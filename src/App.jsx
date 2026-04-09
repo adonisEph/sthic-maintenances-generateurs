@@ -1639,7 +1639,19 @@ const GeneratorMaintenanceApp = () => {
       }
       if (payload?.doneDate) msgLines.push(`Date de vidange: ${String(payload.doneDate)}`);
       if (payload?.nhNow) msgLines.push(`Compteur actuel (NH): ${String(payload.nhNow)}`);
-
+      
+      try {
+        const nhNowNum = Number(payload?.nhNow);
+        const nh1dvNum = Number(site?.nh1DV);
+        if (Number.isFinite(nhNowNum) && Number.isFinite(nh1dvNum)) {
+          const diff = nhNowNum - nh1dvNum;
+          if (Number.isFinite(diff)) {
+            msgLines.push(`Vidange effectuée à : ${diff}H`);
+          }
+        }
+      } catch {
+        // ignore
+      }
       const ok = window.confirm(msgLines.join('\n'));
       if (!ok) return;
 

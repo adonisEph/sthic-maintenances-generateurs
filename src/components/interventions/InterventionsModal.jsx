@@ -1065,21 +1065,6 @@ const InterventionsModal = ({
 
                         {(isTechnician && site && (focusPm || showPmNhOnly)) && (
                           <div className="mt-3 flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const offset = Number(site?.nhOffset || 0);
-                                const raw = Math.max(0, Number(site?.nh2A || 0) - offset);
-                                setNhModalIntervention(linkedVidange || it);
-                                setNhModalSite(site);
-                                setNhForm({ nhValue: String(Math.trunc(raw)), readingDate: today });
-                                setNhFormError('');
-                                setNhModalOpen(true);
-                              }}
-                              className="bg-slate-700 text-white px-2 py-1.5 rounded-lg hover:bg-slate-800 font-semibold text-xs"
-                            >
-                              Mettre à jour NH
-                            </button>
                             {focusPm && String(linkedVidange?.status || '') !== 'done' && (
                               <button
                                 type="button"
@@ -1162,23 +1147,7 @@ const InterventionsModal = ({
                         RETARD
                       </span>
                     )}
-                    {!(!focusVidange && movedToPm) && isTechnician && site && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const offset = Number(site?.nhOffset || 0);
-                          const raw = Math.max(0, Number(site?.nh2A || 0) - offset);
-                          setNhModalIntervention(it);
-                          setNhModalSite(site);
-                          setNhForm({ nhValue: String(Math.trunc(raw)), readingDate: today });
-                          setNhFormError('');
-                          setNhModalOpen(true);
-                        }}
-                        className="bg-slate-700 text-white px-2 py-1.5 rounded-lg hover:bg-slate-800 font-semibold text-xs"
-                      >
-                        Mettre à jour NH
-                      </button>
-                    )}
+
                     {!(!focusVidange && movedToPm) && st !== 'done' && (isAdmin || isTechnician) && (
                       <button
                         onClick={() => {
