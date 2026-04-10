@@ -34,6 +34,10 @@ export async function onRequestGet({ env, data }) {
 
     const role = String(data?.user?.role || '');
     const z = userZone(data);
+    const zLoose = String(z || '')
+      .trim()
+      .toUpperCase()
+      .replace(/[\s-]+/g, '');
 
     let stmt = env.DB.prepare('SELECT * FROM sites ORDER BY id_site ASC');
     if (role === 'technician') {
@@ -52,14 +56,17 @@ export async function onRequestGet({ env, data }) {
         stmt = env.DB
           .prepare(
             `SELECT * FROM sites
-             WHERE UPPER(TRIM(zone)) = ?
+             WHERE (
+               TRIM(COALESCE(zone, '')) = ''
+               OR REPLACE(REPLACE(UPPER(TRIM(zone)), ' ', ''), '-', '') = ?
+             )
                AND (
                  TRIM(technician) = TRIM(?) COLLATE NOCASE
                  OR (TRIM(?) != '' AND TRIM(technician) = TRIM(?) COLLATE NOCASE)
                )
              ORDER BY id_site ASC`
           )
-          .bind(z, techName, techEmail, techEmail);
+          .bind(zLoose, techName, techEmail, techEmail);
       }
     } else if (role === 'admin') {
       if (!isSuperAdmin(data)) {
