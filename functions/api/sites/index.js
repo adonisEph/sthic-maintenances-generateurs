@@ -41,14 +41,16 @@ export async function onRequestGet({ env, data }) {
       if (isSuperAdmin(data)) {
         stmt = env.DB.prepare('SELECT * FROM sites WHERE technician = ? ORDER BY id_site ASC').bind(techName);
       } else {
-        stmt = env.DB.prepare('SELECT * FROM sites WHERE zone = ? AND technician = ? ORDER BY id_site ASC').bind(z, techName);
+        stmt = env.DB
+          .prepare('SELECT * FROM sites WHERE UPPER(TRIM(zone)) = ? AND technician = ? ORDER BY id_site ASC')
+          .bind(z, techName);
       }
     } else if (role === 'admin') {
       if (!isSuperAdmin(data)) {
-        stmt = env.DB.prepare('SELECT * FROM sites WHERE zone = ? ORDER BY id_site ASC').bind(z);
+        stmt = env.DB.prepare('SELECT * FROM sites WHERE UPPER(TRIM(zone)) = ? ORDER BY id_site ASC').bind(z);
       }
     } else if (role === 'manager') {
-      stmt = env.DB.prepare('SELECT * FROM sites WHERE zone = ? ORDER BY id_site ASC').bind(z);
+      stmt = env.DB.prepare('SELECT * FROM sites WHERE UPPER(TRIM(zone)) = ? ORDER BY id_site ASC').bind(z);
     }
 
     const res = await stmt.all();

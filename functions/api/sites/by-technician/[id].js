@@ -56,8 +56,9 @@ export async function onRequestGet({ env, data, params }) {
     const z = userZone(data);
 
     if (!isSuperAdmin(data)) {
-      const techZone = String(user?.zone || 'BZV/POOL');
-      if (String(techZone) !== String(z)) return json({ error: 'Accès interdit.' }, { status: 403 });
+      const techZone = normalizeZone(user?.zone || 'BZV/POOL');
+      const requesterZone = normalizeZone(z || 'BZV/POOL');
+      if (techZone !== requesterZone) return json({ error: 'Accès interdit.' }, { status: 403 });
     }
 
     const stmt = env.DB.prepare(
