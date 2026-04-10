@@ -37,7 +37,16 @@ export async function onRequestGet({ env, data }) {
     const zLoose = String(z || '')
       .trim()
       .toUpperCase()
-      .replace(/[\s-]+/g, '');
+      .replace(/[^A-Z0-9]+/g, '');
+
+    const debug = (() => {
+      try {
+        const url = new URL(String(data?.requestUrl || ''));
+        return url.searchParams.get('debug') === '1';
+      } catch {
+        return false;
+      }
+    })();
 
     const normalizeTech = (s) => {
       return String(s || '')
@@ -76,7 +85,7 @@ export async function onRequestGet({ env, data }) {
           `SELECT * FROM sites
            WHERE (
              TRIM(COALESCE(zone, '')) = ''
-             OR REPLACE(REPLACE(UPPER(TRIM(zone)), ' ', ''), '-', '') = ?
+             OR REPLACE(REPLACE(REPLACE(REPLACE(UPPER(TRIM(zone)), '/', ''), ' ', ''), '-', ''), '_', '') = ?
            )
            ORDER BY id_site ASC`
         ).bind(zLoose);
@@ -96,6 +105,37 @@ export async function onRequestGet({ env, data }) {
         if (tech.includes(key) || key.includes(tech)) return true;
         return false;
       });
+
+      if (debug) {
+        const techSamples = rows
+          .map((r) => ({ raw: r?.technician ?? null, norm: normalizeTech(r?.technician) }))
+          .filter((x) => x.raw)
+          .slice(0, 25);
+        return json(
+          {
+            debug: {
+              zone: z,
+              zoneLoose: zLoose,
+              sessionTechName,
+              sessionTechEmail,
+              effectiveTechName,
+              normalizedKey: key,
+              rowsInZone: rows.length,
+              matched: filtered.length,
+              technicianSamples: techSamples
+            },
+            sites: filtered.map(mapSiteRow)
+          },
+          {
+            status: 200,
+            headers: {
+              'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+              Pragma: 'no-cache',
+              Expires: '0'
+            }
+          }
+        );
+      }
 
       return json(
         { sites: filtered.map(mapSiteRow) },
