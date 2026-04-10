@@ -38,12 +38,28 @@ export async function onRequestGet({ env, data }) {
     let stmt = env.DB.prepare('SELECT * FROM sites ORDER BY id_site ASC');
     if (role === 'technician') {
       const techName = String(data?.user?.technicianName || '').trim();
+      const techEmail = String(data?.user?.email || '').trim();
       if (isSuperAdmin(data)) {
-        stmt = env.DB.prepare('SELECT * FROM sites WHERE technician = ? ORDER BY id_site ASC').bind(techName);
+        stmt = env.DB
+          .prepare(
+            `SELECT * FROM sites
+             WHERE TRIM(technician) = TRIM(?) COLLATE NOCASE
+                OR (TRIM(?) != '' AND TRIM(technician) = TRIM(?) COLLATE NOCASE)
+             ORDER BY id_site ASC`
+          )
+          .bind(techName, techEmail, techEmail);
       } else {
         stmt = env.DB
-          .prepare('SELECT * FROM sites WHERE UPPER(TRIM(zone)) = ? AND technician = ? ORDER BY id_site ASC')
-          .bind(z, techName);
+          .prepare(
+            `SELECT * FROM sites
+             WHERE UPPER(TRIM(zone)) = ?
+               AND (
+                 TRIM(technician) = TRIM(?) COLLATE NOCASE
+                 OR (TRIM(?) != '' AND TRIM(technician) = TRIM(?) COLLATE NOCASE)
+               )
+             ORDER BY id_site ASC`
+          )
+          .bind(z, techName, techEmail, techEmail);
       }
     } else if (role === 'admin') {
       if (!isSuperAdmin(data)) {
