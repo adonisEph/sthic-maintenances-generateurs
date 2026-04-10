@@ -39,35 +39,75 @@ export async function onRequestGet({ env, data }) {
       .toUpperCase()
       .replace(/[\s-]+/g, '');
 
+    const normalizeTech = (s) => {
+      return String(s || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    };
+
     let stmt = env.DB.prepare('SELECT * FROM sites ORDER BY id_site ASC');
     if (role === 'technician') {
-      const techName = String(data?.user?.technicianName || '').trim();
-      const techEmail = String(data?.user?.email || '').trim();
-      if (isSuperAdmin(data)) {
-        stmt = env.DB
-          .prepare(
-            `SELECT * FROM sites
-             WHERE TRIM(technician) = TRIM(?) COLLATE NOCASE
-                OR (TRIM(?) != '' AND TRIM(technician) = TRIM(?) COLLATE NOCASE)
-             ORDER BY id_site ASC`
-          )
-          .bind(techName, techEmail, techEmail);
-      } else {
-        stmt = env.DB
-          .prepare(
-            `SELECT * FROM sites
-             WHERE (
-               TRIM(COALESCE(zone, '')) = ''
-               OR REPLACE(REPLACE(UPPER(TRIM(zone)), ' ', ''), '-', '') = ?
-             )
-               AND (
-                 TRIM(technician) = TRIM(?) COLLATE NOCASE
-                 OR (TRIM(?) != '' AND TRIM(technician) = TRIM(?) COLLATE NOCASE)
-               )
-             ORDER BY id_site ASC`
-          )
-          .bind(zLoose, techName, techEmail, techEmail);
+      const sessionTechName = String(data?.user?.technicianName || '').trim();
+      const sessionTechEmail = String(data?.user?.email || '').trim();
+
+      // Take technician_name from DB as source of truth (session payload can be stale / mis-cased)
+      let effectiveTechName = sessionTechName;
+      try {
+        const u = await env.DB
+          .prepare('SELECT technician_name, email FROM users WHERE id = ?')
+          .bind(String(data?.user?.id || ''))
+          .first();
+        const dbTechName = String(u?.technician_name || '').trim();
+        if (dbTechName) effectiveTechName = dbTechName;
+      } catch {
+        // ignore
       }
+
+      // For technicians: filter by zone in SQL, then match assigned technician name in JS with robust normalization
+      if (isSuperAdmin(data)) {
+        stmt = env.DB.prepare('SELECT * FROM sites ORDER BY id_site ASC');
+      } else {
+        stmt = env.DB.prepare(
+          `SELECT * FROM sites
+           WHERE (
+             TRIM(COALESCE(zone, '')) = ''
+             OR REPLACE(REPLACE(UPPER(TRIM(zone)), ' ', ''), '-', '') = ?
+           )
+           ORDER BY id_site ASC`
+        ).bind(zLoose);
+      }
+
+      const res = await stmt.all();
+      const rows = Array.isArray(res?.results) ? res.results : [];
+
+      const key = normalizeTech(effectiveTechName);
+      const filtered = rows.filter((r) => {
+        if (!r) return false;
+        const tech = normalizeTech(r.technician);
+        if (!key || !tech) return false;
+        if (tech === key) return true;
+
+        // Very small tolerance: allow single contains match when it's unambiguous
+        if (tech.includes(key) || key.includes(tech)) return true;
+        return false;
+      });
+
+      return json(
+        { sites: filtered.map(mapSiteRow) },
+        {
+          status: 200,
+          headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+            Pragma: 'no-cache',
+            Expires: '0'
+          }
+        }
+      );
     } else if (role === 'admin') {
       if (!isSuperAdmin(data)) {
         stmt = env.DB.prepare('SELECT * FROM sites WHERE UPPER(TRIM(zone)) = ? ORDER BY id_site ASC').bind(z);
