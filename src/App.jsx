@@ -603,7 +603,7 @@ const GeneratorMaintenanceApp = () => {
       const month = yyyyMmFromDate(currentMonth);
       const sitesInScope = (Array.isArray(sites) ? sites : [])
         .map(getUpdatedSite)
-        .filter((s) => s && !s.retired && String(s.technician || '').trim() === technicianName);
+        .filter((s) => s && !s.retired && normTechName(s.technician) === normTechName(technicianName));
 
       const interventionsToSend = [];
       for (const s of sitesInScope) {
@@ -4944,7 +4944,7 @@ const GeneratorMaintenanceApp = () => {
     const doneByPlannedDate = ficheHistory
       .filter((f) => f && f.status === 'Effectuée' && f.plannedDate && String(f.plannedDate).slice(0, 7) === yyyymm)
       .filter((f) => !zoneActive || String(f?.zone || '').trim() === zoneActive)
-      .filter((f) => techFilter === 'all' || String(f.technician || '') === techFilter);
+      .filter((f) => techFilter === 'all' || normTechName(f.technician) === normTechName(techFilter));
 
     const plannedByFiches = doneByPlannedDate
       .map((f) => ({
@@ -4965,12 +4965,12 @@ const GeneratorMaintenanceApp = () => {
     const plannedEventsFiltered =
     techFilter === 'all'
       ? plannedEvents
-      : plannedEvents.filter((ev) => String(ev?.technician || '') === techFilter);
+      : plannedEvents.filter((ev) => normTechName(ev?.technician) === normTechName(techFilter));
 
     const completedFichesInMonth = ficheHistory
       .filter((f) => f && f.status === 'Effectuée' && f.dateCompleted && isInMonth(f.dateCompleted, yyyymm))
       .filter((f) => !zoneActive || String(f?.zone || '').trim() === zoneActive)
-      .filter((f) => techFilter === 'all' || String(f.technician || '') === techFilter);
+      .filter((f) => techFilter === 'all' || normTechName(f.technician) === normTechName(techFilter));
     const contractOk = completedFichesInMonth.filter((f) => f.isWithinContract === true);
     const contractOver = completedFichesInMonth.filter((f) => f.isWithinContract === false);
 
