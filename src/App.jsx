@@ -5276,7 +5276,7 @@ const GeneratorMaintenanceApp = () => {
     .sort((a, b) => getDaysUntil(a.epv1) - getDaysUntil(b.epv1));
 
   const urgentSites = urgentSitesAll
-  .filter((site) => filterTechnician === 'all' || site.technician === filterTechnician)
+  .filter((site) => filterTechnician === 'all' || normTechName(site.technician) === normTechName(filterTechnician))
   .filter((site) => filterSite === 'all' || String(site?.id || '') === String(filterSite))
   .filter((site) => {
     if (!showZoneFilter) return true;
@@ -5366,10 +5366,10 @@ const GeneratorMaintenanceApp = () => {
     return list.find((f) => String(f?.id || '') === id) || null;
   }, [ficheContext?.ficheId, ficheHistory]);
 
-  const technicians = ['all', ...new Set(sites.map(s => s.technician))];
+  const technicians = ['all', ...new Set(sites.map(s => String(s?.technician || '').trim()).filter(Boolean))];
   const filteredSites = sites
     .map(getUpdatedSite)
-    .filter((site) => filterTechnician === 'all' || site.technician === filterTechnician)
+    .filter((site) => filterTechnician === 'all' || normTechName(site.technician) === normTechName(filterTechnician))
     .filter((site) => filterSite === 'all' || String(site?.id || '') === String(filterSite))
     .filter((site) => {
       if (!showZoneFilter) return true;
