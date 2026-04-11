@@ -27,7 +27,7 @@ function mapSiteRow(row) {
   };
 }
 
-export async function onRequestGet({ env, data }) {
+export async function onRequestGet({ request, env, data }) {
   try {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
@@ -41,7 +41,7 @@ export async function onRequestGet({ env, data }) {
 
     const debug = (() => {
       try {
-        const url = new URL(String(data?.requestUrl || ''));
+        const url = new URL(request.url);
         return url.searchParams.get('debug') === '1';
       } catch {
         return false;
@@ -77,19 +77,10 @@ export async function onRequestGet({ env, data }) {
         // ignore
       }
 
-      // For technicians: filter by zone in SQL, then match assigned technician name in JS with robust normalization
-      if (isSuperAdmin(data)) {
-        stmt = env.DB.prepare('SELECT * FROM sites ORDER BY id_site ASC');
-      } else {
-        stmt = env.DB.prepare(
-          `SELECT * FROM sites
-           WHERE (
-             TRIM(COALESCE(zone, '')) = ''
-             OR REPLACE(REPLACE(REPLACE(REPLACE(UPPER(TRIM(zone)), '/', ''), ' ', ''), '-', ''), '_', '') = ?
-           )
-           ORDER BY id_site ASC`
-        ).bind(zLoose);
-      }
+      // For technicians: do NOT filter by site.zone.
+      // Some DB rows can have missing/incorrect zone values; technicians should still see their assigned sites.
+      // Security is preserved because we only return rows that match the assigned technician name.
+      stmt = env.DB.prepare('SELECT * FROM sites ORDER BY id_site ASC');
 
       const res = await stmt.all();
       const rows = Array.isArray(res?.results) ? res.results : [];
@@ -108,7 +99,7 @@ export async function onRequestGet({ env, data }) {
 
       if (debug) {
         const techSamples = rows
-          .map((r) => ({ raw: r?.technician ?? null, norm: normalizeTech(r?.technician) }))
+          .map((r) => ({ raw: r?.technician ?? null, norm: normalizeTech(r?.technician), zone: r?.zone ?? null }))
           .filter((x) => x.raw)
           .slice(0, 25);
         return json(
