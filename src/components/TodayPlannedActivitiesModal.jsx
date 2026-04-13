@@ -24,6 +24,7 @@ const TodayPlannedActivitiesModal = ({
   const [selectedDate, setSelectedDate] = useState(today || '');
 
   const cardsRef = useRef(null);
+  const captureRef = useRef(null);
   const [copyBusy, setCopyBusy] = useState(false);
 
   useEffect(() => {
@@ -44,7 +45,16 @@ const TodayPlannedActivitiesModal = ({
     d.setDate(d.getDate() + 1);
     const next = d.toISOString().slice(0, 10);
     setSelectedDate(next);
-  }, [isSuperAdmin, today]);
+  }, [isSuperAdmin, today, open]);
+
+  const tomorrowYmd = useMemo(() => {
+    const src = String(today || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(src)) return '';
+    const d = new Date(`${src}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return '';
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }, [today]);
 
   useEffect(() => {
     const d = String(selectedDate || '').slice(0, 10);
@@ -62,7 +72,7 @@ const TodayPlannedActivitiesModal = ({
   }, [selectedDate, isSuperAdmin, onRefreshFicheHistory, copyBusy]);
 
   const planningLabel = useMemo(() => {
-    const d = String(selectedDate || '').slice(0, 10);
+    const d = String(tomorrowYmd || selectedDate || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return '';
     const dt = new Date(`${d}T00:00:00`);
     if (Number.isNaN(dt.getTime())) return '';
@@ -70,7 +80,7 @@ const TodayPlannedActivitiesModal = ({
     const fr = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'][dow] || '';
     const fmt = typeof formatDate === 'function' ? formatDate(d) : d;
     return `Planning vidanges de (${fr} - ${fmt})`;
-  }, [selectedDate, formatDate]);
+  }, [tomorrowYmd, selectedDate, formatDate]);
 
   const superAdminCards = useMemo(() => {
     if (!isSuperAdmin) return [];
@@ -108,14 +118,21 @@ const TodayPlannedActivitiesModal = ({
   }, [isSuperAdmin, ficheHistory, today, sites]);
 
   const copyCardsImage = async () => {
-    if (!cardsRef.current) return;
+    const el = captureRef.current || cardsRef.current;
+    if (!el) return;
     if (copyBusy) return;
     try {
       setCopyBusy(true);
-      const canvas = await html2canvas(cardsRef.current, {
+      const canvas = await html2canvas(el, {
         backgroundColor: '#ffffff',
-        scale: 2,
-        useCORS: true
+        scale: 3,
+        useCORS: true,
+        scrollX: 0,
+        scrollY: -window.scrollY,
+        onclone: (doc) => {
+          const root = doc.body;
+          if (root) root.style.overflow = 'visible';
+        }
       });
 
       const blob = await new Promise((resolve) => canvas.toBlob((b) => resolve(b), 'image/png'));
@@ -353,7 +370,7 @@ const TodayPlannedActivitiesModal = ({
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-0 sm:p-4">
-      <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-[95vw] sm:max-h-[92vh]">
+      <div ref={captureRef} className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-[95vw] sm:max-h-[92vh]">
         <div className="flex items-start justify-between gap-3 px-3 py-3 sm:p-4 border-b bg-indigo-800 text-white">
           <div className="min-w-0 flex items-center gap-2">
             <Activity size={24} className="flex-shrink-0" />
@@ -361,7 +378,7 @@ const TodayPlannedActivitiesModal = ({
               <div className="text-base sm:text-xl font-bold truncate">
                 {isSuperAdmin ? (planningLabel || 'Planning vidanges') : 'Activités planifiées du jour'}
               </div>
-              <div className="text-xs text-white/80">Date: {isSuperAdmin ? (selectedDate || '-') : (today || '-')}</div>
+              <div className="text-xs text-white/80">Date: {isSuperAdmin ? (tomorrowYmd || selectedDate || '-') : (today || '-')}</div>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -447,7 +464,13 @@ const TodayPlannedActivitiesModal = ({
                             <div className="text-[11px] font-semibold text-slate-500">Générateur</div>
                             <div className="text-sm text-slate-900">
                               <span className="font-semibold">{c.generateur || '-'}</span>
-                              {c.capacite ? <span className="text-slate-700"> • {c.capacite} KVA</span> : null}
+                              {c.capacite ? (
+                                <span className="text-slate-700">
+                                  {' '}
+                                  • {c.capacite}
+                                  {/kva/i.test(String(c.capacite)) ? '' : ' KVA'}
+                                </span>
+                              ) : null}
                             </div>
                           </div>
                         </div>
