@@ -14,6 +14,7 @@ import DeleteSiteConfirmModal from './components/sites/DeleteSiteConfirmModal';
 import SitesStats from './components/sites/SitesStats';
 import SitesTechnicianFilter from './components/sites/SitesTechnicianFilter';
 import SidebarSitesActions from './components/sites/SidebarSitesActions';
+import TechnicianNhSiteUpdateModal from './components/sites/TechnicianNhSiteUpdateModal';
 import DashboardHeader from './components/dashboard/DashboardHeader';
 import DashboardKpiGrid from './components/dashboard/DashboardKpiGrid';
 import DashboardDetailsModal from './components/dashboard/DashboardDetailsModal';
@@ -119,6 +120,7 @@ const GeneratorMaintenanceApp = () => {
   const [nhModalSite, setNhModalSite] = useState(null);
   const [nhForm, setNhForm] = useState({ nhValue: '', readingDate: '' });
   const [nhFormError, setNhFormError] = useState('');
+  const [technicianNhSiteUpdateOpen, setTechnicianNhSiteUpdateOpen] = useState(false);
   const [siteToDelete, setSiteToDelete] = useState(null);
   const [selectedSite, setSelectedSite] = useState(null);
   const [filterTechnician, setFilterTechnician] = useState('all');
@@ -6572,6 +6574,19 @@ return (
             </button>
           )}
 
+          {isTechnician && (
+            <button
+              onClick={() => {
+                setSidebarOpen(false);
+                setTechnicianNhSiteUpdateOpen(true);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
+            >
+              <RotateCcw size={18} />
+              Mettre à jour NH d'un site
+            </button>
+          )}
+
           {!isTechnician && (
             <button
               onClick={async () => {
@@ -8031,6 +8046,17 @@ return (
             setInterventionsZone={setInterventionsZone}
             showZoneFilter={showZoneFilter}
             loadData={loadData}
+          />
+
+          <TechnicianNhSiteUpdateModal
+            open={technicianNhSiteUpdateOpen}
+            sites={filteredSites}
+            today={ymdInTimeZone(new Date(), 'Africa/Brazzaville')}
+            onClose={() => setTechnicianNhSiteUpdateOpen(false)}
+            apiFetchJson={apiFetchJson}
+            loadData={loadData}
+            loadInterventions={loadInterventions}
+            bumpInterventionsUiRev={bumpInterventionsUiRev}
           />
 
           <NotificationsModal
