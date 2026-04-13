@@ -27,6 +27,7 @@ import ScoringModal from './components/scoring/ScoringModal';
 import HistoryModal from './components/history/HistoryModal';
 import UploadBannerModal from './components/fiche/UploadBannerModal';
 import FicheModal from './components/fiche/FicheModal';
+import SuperAdminFicheChoiceModal from './components/fiche/SuperAdminFicheChoiceModal';
 import DayDetailsModal from './components/calendar/DayDetailsModal';
 import TechnicianCalendarModal from './components/calendar/TechnicianCalendarModal';
 
@@ -74,6 +75,8 @@ const GeneratorMaintenanceApp = () => {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showFicheModal, setShowFicheModal] = useState(false);
+  const [superAdminFicheChoiceOpen, setSuperAdminFicheChoiceOpen] = useState(false);
+  const [superAdminFicheChoiceSite, setSuperAdminFicheChoiceSite] = useState(null);
   const [showBannerUpload, setShowBannerUpload] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -3787,7 +3790,7 @@ const GeneratorMaintenanceApp = () => {
     }
   };
 
-  const handleGenerateFiche = async (site) => {
+  const handleGenerateFiche = async (site, opts = {}) => {
     setIsBatchFiche(false);
     setBatchFicheSites([]);
     setBatchFicheIndex(0);
@@ -3795,6 +3798,7 @@ const GeneratorMaintenanceApp = () => {
     setSignatureTypedName('');
     setSignatureDrawnPng('');
     const authZone = String(authUser?.zone || '').trim().toUpperCase();
+    const forceWarehouseReturns = Boolean(opts?.forceWarehouseReturns);
     const isCase2NoWarehouse = Boolean(
       isManager && (authZone === 'PNR/KOUILOU' || authZone === 'UPCN')
     );
@@ -3949,7 +3953,7 @@ const GeneratorMaintenanceApp = () => {
     setShowDayDetailsModal(false);
     const authZone = String(authUser?.zone || '').trim().toUpperCase();
     const isCase2NoWarehouse = Boolean(
-      isManager && (authZone === 'PNR/KOUILOU' || authZone === 'UPCN')
+      forceWarehouseReturns || (isManager && (authZone === 'PNR/KOUILOU' || authZone === 'UPCN'))
     );
 
     setFicheOpenSource(isCase2NoWarehouse ? 'warehouseReturns' : 'history');
@@ -7806,6 +7810,26 @@ return (
           }}
         />
 
+        <SuperAdminFicheChoiceModal
+          open={superAdminFicheChoiceOpen}
+          onClose={() => {
+            setSuperAdminFicheChoiceOpen(false);
+            setSuperAdminFicheChoiceSite(null);
+          }}
+          onSendToWarehouse={() => {
+            const s = superAdminFicheChoiceSite;
+            setSuperAdminFicheChoiceOpen(false);
+            setSuperAdminFicheChoiceSite(null);
+            if (s) handleGenerateFiche(s);
+          }}
+          onSelfCheck={() => {
+            const s = superAdminFicheChoiceSite;
+            setSuperAdminFicheChoiceOpen(false);
+            setSuperAdminFicheChoiceSite(null);
+            if (s) handleGenerateFiche(s, { forceWarehouseReturns: true });
+          }}
+        />
+
         <UploadBannerModal
           open={showBannerUpload}
           handleBannerUpload={handleBannerUpload}
@@ -8292,6 +8316,11 @@ return (
                         {canGenerateFiche && (
                           <button
                             onClick={() => {
+                              if (isSuperAdmin) {
+                                setSuperAdminFicheChoiceSite(site);
+                                setSuperAdminFicheChoiceOpen(true);
+                                return;
+                              }
                               handleGenerateFiche(site);
                             }}
                             className="bg-emerald-600 text-white py-2 rounded-lg hover:bg-emerald-700 text-sm font-semibold"
