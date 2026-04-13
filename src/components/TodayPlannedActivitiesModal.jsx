@@ -17,6 +17,18 @@ const TodayPlannedActivitiesModal = ({
 }) => {
   if (!open) return null;
 
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const toYmdLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const addDaysYmdLocal = (ymd, days) => {
+    const src = String(ymd || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(src)) return '';
+    const [y, m, dd] = src.split('-').map((x) => parseInt(x, 10));
+    const d = new Date(y, (m || 1) - 1, dd || 1);
+    if (Number.isNaN(d.getTime())) return '';
+    d.setDate(d.getDate() + Number(days || 0));
+    return toYmdLocal(d);
+  };
+
   const today = String(todayActivities?.today || '').slice(0, 10);
   const pmToday = Array.isArray(todayActivities?.pmItems) ? todayActivities.pmItems : [];
   const intToday = Array.isArray(todayActivities?.interventions) ? todayActivities.interventions : [];
@@ -38,22 +50,13 @@ const TodayPlannedActivitiesModal = ({
 
   useEffect(() => {
     if (!isSuperAdmin) return;
-    const src = String(today || '').slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(src)) return;
-    const d = new Date(`${src}T00:00:00`);
-    if (Number.isNaN(d.getTime())) return;
-    d.setDate(d.getDate() + 1);
-    const next = d.toISOString().slice(0, 10);
+    const next = addDaysYmdLocal(today, 1);
+    if (!next) return;
     setSelectedDate(next);
   }, [isSuperAdmin, today, open]);
 
   const tomorrowYmd = useMemo(() => {
-    const src = String(today || '').slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(src)) return '';
-    const d = new Date(`${src}T00:00:00`);
-    if (Number.isNaN(d.getTime())) return '';
-    d.setDate(d.getDate() + 1);
-    return d.toISOString().slice(0, 10);
+    return addDaysYmdLocal(today, 1);
   }, [today]);
 
   useEffect(() => {
@@ -109,6 +112,7 @@ const TodayPlannedActivitiesModal = ({
           idSite: site?.idSite != null ? String(site.idSite).trim() : '',
           generateur: site?.generateur != null ? String(site.generateur).trim() : '',
           capacite: site?.capacite != null ? String(site.capacite).trim() : '',
+          diffNHs: site?.diffNHs != null ? String(site.diffNHs).trim() : '',
           dateGenerated: String(f.dateGenerated || '')
         };
       })
@@ -123,15 +127,32 @@ const TodayPlannedActivitiesModal = ({
     if (copyBusy) return;
     try {
       setCopyBusy(true);
+
+      const dpr = typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1;
+      const scale = Math.max(2, Math.min(4, 2 * dpr));
       const canvas = await html2canvas(el, {
         backgroundColor: '#ffffff',
-        scale: 3,
+        scale,
         useCORS: true,
         scrollX: 0,
         scrollY: -window.scrollY,
         onclone: (doc) => {
           const root = doc.body;
           if (root) root.style.overflow = 'visible';
+
+          const capture = doc.querySelector('[data-capture-root="1"]');
+          if (capture) {
+            capture.style.overflow = 'visible';
+            capture.style.maxHeight = 'none';
+            capture.style.height = 'auto';
+          }
+
+          const scrollArea = doc.querySelector('[data-capture-scroll="1"]');
+          if (scrollArea) {
+            scrollArea.style.overflow = 'visible';
+            scrollArea.style.maxHeight = 'none';
+            scrollArea.style.height = 'auto';
+          }
         }
       });
 
@@ -370,7 +391,11 @@ const TodayPlannedActivitiesModal = ({
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-0 sm:p-4">
-      <div ref={captureRef} className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-[95vw] sm:max-h-[92vh]">
+      <div
+        ref={captureRef}
+        data-capture-root="1"
+        className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-[95vw] sm:max-h-[92vh]"
+      >
         <div className="flex items-start justify-between gap-3 px-3 py-3 sm:p-4 border-b bg-indigo-800 text-white">
           <div className="min-w-0 flex items-center gap-2">
             <Activity size={24} className="flex-shrink-0" />
@@ -415,7 +440,7 @@ const TodayPlannedActivitiesModal = ({
           </div>
         </div>
 
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+        <div data-capture-scroll="1" className="p-4 sm:p-6 overflow-y-auto flex-1">
           {busy && <div className="text-sm text-slate-600">Chargement…</div>}
 
           {isSuperAdmin ? (
@@ -450,13 +475,13 @@ const TodayPlannedActivitiesModal = ({
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <div className="text-[11px] font-semibold text-slate-500">Ticket</div>
-                            <div className="font-mono font-bold text-slate-900 truncate" title={c.ticketNumber || ''}>
+                            <div className="font-mono font-bold text-slate-900 break-all" title={c.ticketNumber || ''}>
                               {c.ticketNumber || '-'}
                             </div>
                           </div>
                           <div>
                             <div className="text-[11px] font-semibold text-slate-500">Technicien</div>
-                            <div className="font-semibold text-slate-900 truncate" title={c.technician || ''}>
+                            <div className="font-semibold text-slate-900 break-words" title={c.technician || ''}>
                               {c.technician || '-'}
                             </div>
                           </div>
@@ -472,6 +497,10 @@ const TodayPlannedActivitiesModal = ({
                                 </span>
                               ) : null}
                             </div>
+                          </div>
+                          <div className="col-span-2">
+                            <div className="text-[11px] font-semibold text-slate-500">Diff NHs</div>
+                            <div className="text-sm font-semibold text-slate-900">{c.diffNHs || '-'}</div>
                           </div>
                         </div>
                       </div>
