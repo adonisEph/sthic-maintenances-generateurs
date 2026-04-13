@@ -1,13 +1,19 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Activity, X, RotateCcw, Download } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Activity, X, RotateCcw, Download, Copy } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import html2canvas from 'html2canvas';
 
 const TodayPlannedActivitiesModal = ({
   open,
   onClose,
   busy,
   todayActivities,
-  onRefresh
+  onRefresh,
+  isSuperAdmin,
+  ficheHistory,
+  sites,
+  onRefreshFicheHistory,
+  formatDate
 }) => {
   if (!open) return null;
 
@@ -16,6 +22,9 @@ const TodayPlannedActivitiesModal = ({
   const intToday = Array.isArray(todayActivities?.interventions) ? todayActivities.interventions : [];
 
   const [selectedDate, setSelectedDate] = useState(today || '');
+
+  const cardsRef = useRef(null);
+  const [copyBusy, setCopyBusy] = useState(false);
 
   useEffect(() => {
     const d = String(today || '').slice(0, 10);
@@ -27,13 +36,114 @@ const TodayPlannedActivitiesModal = ({
   }, [today]);
 
   useEffect(() => {
+    if (!isSuperAdmin) return;
+    const src = String(today || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(src)) return;
+    const d = new Date(`${src}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return;
+    d.setDate(d.getDate() + 1);
+    const next = d.toISOString().slice(0, 10);
+    setSelectedDate(next);
+  }, [isSuperAdmin, today]);
+
+  useEffect(() => {
     const d = String(selectedDate || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
+    if (isSuperAdmin) {
+      if (typeof onRefreshFicheHistory !== 'function') return;
+      if (busy || copyBusy) return;
+      onRefreshFicheHistory();
+      return;
+    }
     if (typeof onRefresh !== 'function') return;
     if (busy) return;
     onRefresh(d);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate]);
+  }, [selectedDate, isSuperAdmin, onRefreshFicheHistory, copyBusy]);
+
+  const planningLabel = useMemo(() => {
+    const d = String(selectedDate || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return '';
+    const dt = new Date(`${d}T00:00:00`);
+    if (Number.isNaN(dt.getTime())) return '';
+    const dow = dt.getDay();
+    const fr = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'][dow] || '';
+    const fmt = typeof formatDate === 'function' ? formatDate(d) : d;
+    return `Planning vidanges de (${fr} - ${fmt})`;
+  }, [selectedDate, formatDate]);
+
+  const superAdminCards = useMemo(() => {
+    if (!isSuperAdmin) return [];
+    const list = Array.isArray(ficheHistory) ? ficheHistory : [];
+    const ymdToday = String(today || '').slice(0, 10);
+    const sitesArr = Array.isArray(sites) ? sites : [];
+    const siteById = new Map(sitesArr.filter(Boolean).map((s) => [String(s.id), s]));
+
+    const out = list
+      .filter(Boolean)
+      .filter((f) => String(f.status || '').trim() === 'En attente')
+      .filter((f) => String(f.dateGenerated || '').slice(0, 10) === ymdToday)
+      .filter((f) => {
+        const dt = new Date(String(f.dateGenerated || ''));
+        if (Number.isNaN(dt.getTime())) return false;
+        const h = dt.getHours();
+        return h >= 15 && h <= 18;
+      })
+      .map((f) => {
+        const site = siteById.get(String(f.siteId || '')) || null;
+        return {
+          id: String(f.id || ''),
+          ticketNumber: String(f.ticketNumber || '').trim(),
+          technician: String(f.technician || '').trim(),
+          siteName: String(f.siteName || '').trim(),
+          idSite: site?.idSite != null ? String(site.idSite).trim() : '',
+          generateur: site?.generateur != null ? String(site.generateur).trim() : '',
+          capacite: site?.capacite != null ? String(site.capacite).trim() : '',
+          dateGenerated: String(f.dateGenerated || '')
+        };
+      })
+      .sort((a, b) => String(a.siteName || '').localeCompare(String(b.siteName || '')));
+
+    return out;
+  }, [isSuperAdmin, ficheHistory, today, sites]);
+
+  const copyCardsImage = async () => {
+    if (!cardsRef.current) return;
+    if (copyBusy) return;
+    try {
+      setCopyBusy(true);
+      const canvas = await html2canvas(cardsRef.current, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        useCORS: true
+      });
+
+      const blob = await new Promise((resolve) => canvas.toBlob((b) => resolve(b), 'image/png'));
+      if (!blob) throw new Error('Capture image impossible.');
+
+      const nav = typeof navigator !== 'undefined' ? navigator : null;
+      const canWrite = Boolean(nav?.clipboard && typeof nav.clipboard.write === 'function' && typeof window !== 'undefined' && window.ClipboardItem);
+      if (canWrite) {
+        await nav.clipboard.write([new window.ClipboardItem({ 'image/png': blob })]);
+        alert('✅ Image copiée dans le presse-papiers.');
+        return;
+      }
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `planning-vidanges-${String(selectedDate || today || '').slice(0, 10) || 'date'}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      alert('✅ Image téléchargée (presse-papiers non disponible).');
+    } catch (e) {
+      alert(e?.message || "Erreur lors de la copie de l'image.");
+    } finally {
+      setCopyBusy(false);
+    }
+  };
 
   const [filterLabel, setFilterLabel] = useState('all');
   const [filterZone, setFilterZone] = useState('all');
@@ -248,8 +358,10 @@ const TodayPlannedActivitiesModal = ({
           <div className="min-w-0 flex items-center gap-2">
             <Activity size={24} className="flex-shrink-0" />
             <div className="min-w-0">
-              <div className="text-base sm:text-xl font-bold truncate">Activités planifiées du jour</div>
-              <div className="text-xs text-white/80">Date: {today || '-'}</div>
+              <div className="text-base sm:text-xl font-bold truncate">
+                {isSuperAdmin ? (planningLabel || 'Planning vidanges') : 'Activités planifiées du jour'}
+              </div>
+              <div className="text-xs text-white/80">Date: {isSuperAdmin ? (selectedDate || '-') : (today || '-')}</div>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -257,10 +369,14 @@ const TodayPlannedActivitiesModal = ({
               type="button"
               onClick={() => {
                 const d = String(selectedDate || '').slice(0, 10);
-                if (typeof onRefresh === 'function') onRefresh(/^\d{4}-\d{2}-\d{2}$/.test(d) ? d : undefined);
+                if (isSuperAdmin) {
+                  if (typeof onRefreshFicheHistory === 'function') onRefreshFicheHistory();
+                } else {
+                  if (typeof onRefresh === 'function') onRefresh(/^\d{4}-\d{2}-\d{2}$/.test(d) ? d : undefined);
+                }
               }}
               className="hover:bg-white/10 px-3 py-2 rounded flex items-center gap-2 text-sm font-semibold disabled:opacity-60"
-              disabled={busy || typeof onRefresh !== 'function'}
+              disabled={busy || (isSuperAdmin ? typeof onRefreshFicheHistory !== 'function' : typeof onRefresh !== 'function')}
               title="Rafraîchir"
             >
               <RotateCcw size={16} />
@@ -268,13 +384,13 @@ const TodayPlannedActivitiesModal = ({
             </button>
             <button
               type="button"
-              onClick={exportExcel}
+              onClick={isSuperAdmin ? copyCardsImage : exportExcel}
               className="hover:bg-white/10 px-3 py-2 rounded flex items-center gap-2 text-sm font-semibold disabled:opacity-60"
-              disabled={busy || rowsFiltered.length === 0}
-              title="Exporter en Excel"
+              disabled={busy || (isSuperAdmin ? copyBusy || superAdminCards.length === 0 : rowsFiltered.length === 0)}
+              title={isSuperAdmin ? "Copier l'image" : 'Exporter en Excel'}
             >
-              <Download size={16} />
-              Export Excel
+              {isSuperAdmin ? <Copy size={16} /> : <Download size={16} />}
+              {isSuperAdmin ? "Copier l'image" : 'Export Excel'}
             </button>
             <button onClick={onClose} className="hover:bg-white/10 p-2 rounded" title="Fermer">
               <X size={20} />
@@ -285,6 +401,65 @@ const TodayPlannedActivitiesModal = ({
         <div className="p-4 sm:p-6 overflow-y-auto flex-1">
           {busy && <div className="text-sm text-slate-600">Chargement…</div>}
 
+          {isSuperAdmin ? (
+            <div ref={cardsRef} className="space-y-4">
+              {superAdminCards.length === 0 ? (
+                <div className="text-sm text-slate-600">
+                  Aucune fiche "En attente" trouvée pour aujourd'hui (création entre 15h et 18h).
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {superAdminCards.map((c) => (
+                    <div key={c.id} className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                      <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="font-bold text-slate-900 truncate" title={c.siteName || ''}>
+                              {c.siteName || '-'}
+                            </div>
+                            <div className="text-xs text-slate-600 mt-0.5">
+                              ID Site: <span className="font-mono font-semibold text-slate-800">{c.idSite || '-'}</span>
+                            </div>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <div className="text-[11px] font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-200">
+                              En attente
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-4">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <div className="text-[11px] font-semibold text-slate-500">Ticket</div>
+                            <div className="font-mono font-bold text-slate-900 truncate" title={c.ticketNumber || ''}>
+                              {c.ticketNumber || '-'}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-semibold text-slate-500">Technicien</div>
+                            <div className="font-semibold text-slate-900 truncate" title={c.technician || ''}>
+                              {c.technician || '-'}
+                            </div>
+                          </div>
+                          <div className="col-span-2">
+                            <div className="text-[11px] font-semibold text-slate-500">Générateur</div>
+                            <div className="text-sm text-slate-900">
+                              <span className="font-semibold">{c.generateur || '-'}</span>
+                              {c.capacite ? <span className="text-slate-700"> • {c.capacite} KVA</span> : null}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+
+            <>
           <div className="flex flex-col sm:flex-row sm:items-end gap-3 mb-4">
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">Date</label>
@@ -429,6 +604,8 @@ const TodayPlannedActivitiesModal = ({
                 </tbody>
               </table>
             </div>
+          )}
+            </>
           )}
         </div>
 

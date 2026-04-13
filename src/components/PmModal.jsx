@@ -51,6 +51,9 @@ const PmModal = (props) => {
     pmTodayActivities,
     pmTodayActivitiesBusy,
     loadPmTodayActivities,
+    ficheHistory,
+    sites,
+    loadFicheHistory,
     pmSearch,
     setPmSearch,
     pmFilterFrom,
@@ -795,6 +798,13 @@ const PmModal = (props) => {
                 onRefresh={(dateYmd) => {
                   if (typeof loadPmTodayActivities === 'function') loadPmTodayActivities(dateYmd);
                 }}
+                isSuperAdmin={pmIsSuperAdmin}
+                ficheHistory={ficheHistory}
+                sites={sites}
+                onRefreshFicheHistory={() => {
+                  if (typeof loadFicheHistory === 'function') loadFicheHistory();
+                }}
+                formatDate={formatDate}
               />
 
               {pmMonthlyRecapOpen && (

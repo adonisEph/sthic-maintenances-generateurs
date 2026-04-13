@@ -7971,6 +7971,9 @@ return (
           handlePmSaveReprog={handlePmSaveReprog}
           pmTodayActivities={pmTodayActivities}
           pmTodayActivitiesBusy={pmTodayActivitiesBusy}
+          ficheHistory={ficheHistory}
+          sites={sites}
+          loadFicheHistory={loadFicheHistory}
           loadPmTodayActivities={(dateYmd) => loadPmTodayActivities(pmMonthId, dateYmd)}
           formatDate={formatDate}
           apiFetchJson={apiFetchJson}
