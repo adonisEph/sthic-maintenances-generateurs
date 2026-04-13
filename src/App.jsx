@@ -3800,7 +3800,7 @@ const GeneratorMaintenanceApp = () => {
     const authZone = String(authUser?.zone || '').trim().toUpperCase();
     const forceWarehouseReturns = Boolean(opts?.forceWarehouseReturns);
     const isCase2NoWarehouse = Boolean(
-      isManager && (authZone === 'PNR/KOUILOU' || authZone === 'UPCN')
+      forceWarehouseReturns || (isManager && (authZone === 'PNR/KOUILOU' || authZone === 'UPCN'))
     );
 
     setFicheOpenSource(isCase2NoWarehouse ? 'warehouseReturns' : 'history');
@@ -3953,7 +3953,7 @@ const GeneratorMaintenanceApp = () => {
     setShowDayDetailsModal(false);
     const authZone = String(authUser?.zone || '').trim().toUpperCase();
     const isCase2NoWarehouse = Boolean(
-      forceWarehouseReturns || (isManager && (authZone === 'PNR/KOUILOU' || authZone === 'UPCN'))
+      isManager && (authZone === 'PNR/KOUILOU' || authZone === 'UPCN')
     );
 
     setFicheOpenSource(isCase2NoWarehouse ? 'warehouseReturns' : 'history');
