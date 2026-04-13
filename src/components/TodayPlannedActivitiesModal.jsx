@@ -121,6 +121,15 @@ const TodayPlannedActivitiesModal = ({
     return out;
   }, [isSuperAdmin, ficheHistory, today, sites]);
 
+  const diffNhBadge = (v) => {
+    const raw = String(v ?? '').trim();
+    if (!raw) return { label: '-', cls: 'bg-slate-100 text-slate-700 border-slate-200' };
+    const n = parseFloat(raw.replace(',', '.').replace(/[^0-9.\-]/g, ''));
+    if (Number.isNaN(n)) return { label: raw, cls: 'bg-slate-100 text-slate-700 border-slate-200' };
+    if (n <= 250) return { label: `${Math.round(n)} H`, cls: 'bg-orange-100 text-orange-900 border-orange-200' };
+    return { label: `${Math.round(n)} H`, cls: 'bg-red-100 text-red-900 border-red-200' };
+  };
+
   const copyCardsImage = async () => {
     const el = captureRef.current || cardsRef.current;
     if (!el) return;
@@ -400,7 +409,7 @@ const TodayPlannedActivitiesModal = ({
           <div className="min-w-0 flex items-center gap-2">
             <Activity size={24} className="flex-shrink-0" />
             <div className="min-w-0">
-              <div className="text-base sm:text-xl font-bold truncate">
+              <div className="text-base sm:text-xl font-bold break-words whitespace-normal">
                 {isSuperAdmin ? (planningLabel || 'Planning vidanges') : 'Activités planifiées du jour'}
               </div>
               <div className="text-xs text-white/80">Date: {isSuperAdmin ? (tomorrowYmd || selectedDate || '-') : (today || '-')}</div>
@@ -456,7 +465,7 @@ const TodayPlannedActivitiesModal = ({
                       <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="font-bold text-slate-900 truncate" title={c.siteName || ''}>
+                            <div className="font-bold text-slate-900 break-words whitespace-normal" title={c.siteName || ''}>
                               {c.siteName || '-'}
                             </div>
                             <div className="text-xs text-slate-600 mt-0.5">
@@ -464,7 +473,7 @@ const TodayPlannedActivitiesModal = ({
                             </div>
                           </div>
                           <div className="text-right flex-shrink-0">
-                            <div className="text-[11px] font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-200">
+                            <div className="text-[11px] font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-200 whitespace-nowrap">
                               En attente
                             </div>
                           </div>
@@ -500,7 +509,16 @@ const TodayPlannedActivitiesModal = ({
                           </div>
                           <div className="col-span-2">
                             <div className="text-[11px] font-semibold text-slate-500">Diff NHs</div>
-                            <div className="text-sm font-semibold text-slate-900">{c.diffNHs || '-'}</div>
+                            {(() => {
+                              const b = diffNhBadge(c.diffNHs);
+                              return (
+                                <div className="mt-1">
+                                  <span className={`inline-flex items-center px-3 py-1 rounded-lg border text-base font-extrabold ${b.cls}`}>
+                                    {b.label}
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
                       </div>
