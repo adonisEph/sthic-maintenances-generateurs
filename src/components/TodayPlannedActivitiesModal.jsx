@@ -92,14 +92,22 @@ const TodayPlannedActivitiesModal = ({
     if (!isSuperAdmin) return [];
     const list = Array.isArray(ficheHistory) ? ficheHistory : [];
     const ymdToday = String(today || '').slice(0, 10);
+    const targetDay = String(tomorrowYmd || selectedDate || '').slice(0, 10);
     const sitesArr = Array.isArray(sites) ? sites : [];
     const siteById = new Map(sitesArr.filter(Boolean).map((s) => [String(s.id), s]));
 
     const out = list
       .filter(Boolean)
       .filter((f) => String(f.status || '').trim() === 'En attente')
-      .filter((f) => String(f.dateGenerated || '').slice(0, 10) === ymdToday)
       .filter((f) => {
+        const pd = String(f.plannedDate || '').slice(0, 10);
+        if (targetDay && /^\d{4}-\d{2}-\d{2}$/.test(targetDay) && pd) {
+          return pd === targetDay;
+        }
+
+        // Fallback (legacy): fiches créées aujourd'hui entre 15h et 18h
+        const dgYmd = String(f.dateGenerated || '').slice(0, 10);
+        if (dgYmd !== ymdToday) return false;
         const dt = new Date(String(f.dateGenerated || ''));
         if (Number.isNaN(dt.getTime())) return false;
         const h = dt.getHours();
@@ -124,7 +132,7 @@ const TodayPlannedActivitiesModal = ({
       .sort((a, b) => String(a.siteName || '').localeCompare(String(b.siteName || '')));
 
     return out;
-  }, [isSuperAdmin, ficheHistory, today, sites]);
+  }, [isSuperAdmin, ficheHistory, today, sites, tomorrowYmd, selectedDate]);
 
   const isoWeekKey = (ymd) => {
     const s = String(ymd || '').slice(0, 10);
@@ -592,7 +600,7 @@ const TodayPlannedActivitiesModal = ({
             <div ref={cardsRef} className="space-y-4">
               {superAdminCards.length === 0 ? (
                 <div className="text-sm text-slate-600">
-                  Aucune fiche "En attente" trouvée pour aujourd'hui (création entre 15h et 18h).
+                  Aucune fiche "En attente" trouvée pour la date sélectionnée.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
