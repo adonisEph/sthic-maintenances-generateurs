@@ -145,6 +145,7 @@ const TodayPlannedActivitiesModal = ({
     let enAttenteToday = 0;
     let inWindow = 0;
     let excludedByDone = 0;
+    const hoursCount = new Map();
 
     for (const f of list) {
       if (!f) continue;
@@ -156,6 +157,7 @@ const TodayPlannedActivitiesModal = ({
       enAttenteToday += 1;
       const h = hourInBzv(f.dateGenerated);
       if (h == null) continue;
+      hoursCount.set(h, (hoursCount.get(h) || 0) + 1);
       if (!(h >= 15 && h <= 18)) continue;
       inWindow += 1;
 
@@ -168,7 +170,12 @@ const TodayPlannedActivitiesModal = ({
       }
     }
 
-    return { total, todayCount, enAttenteToday, inWindow, excludedByDone };
+    const hours = Array.from(hoursCount.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([h, c]) => `${String(h).padStart(2, '0')}: ${c}`)
+      .join(' | ');
+
+    return { total, todayCount, enAttenteToday, inWindow, excludedByDone, hours };
   }, [isSuperAdmin, ficheHistory, today, completedByKey]);
 
   const superAdminCards = useMemo(() => {
@@ -674,7 +681,7 @@ const TodayPlannedActivitiesModal = ({
             <div ref={cardsRef} className="space-y-4">
               {superAdminDebug && (
                 <div className="text-xs text-slate-500">
-                  Total fiches: {superAdminDebug.total} • DateGenerated aujourd&apos;hui: {superAdminDebug.todayCount} • En attente aujourd&apos;hui: {superAdminDebug.enAttenteToday} • Fenêtre 15-18h: {superAdminDebug.inWindow} • Exclues car déjà effectuées: {superAdminDebug.excludedByDone}
+                  Total fiches: {superAdminDebug.total} • DateGenerated aujourd&apos;hui: {superAdminDebug.todayCount} • En attente aujourd&apos;hui: {superAdminDebug.enAttenteToday} • Fenêtre 15-18h: {superAdminDebug.inWindow} • Exclues car déjà effectuées: {superAdminDebug.excludedByDone}{superAdminDebug.hours ? ` • Heures(BZV): ${superAdminDebug.hours}` : ''}
                 </div>
               )}
               {superAdminCards.length === 0 ? (
