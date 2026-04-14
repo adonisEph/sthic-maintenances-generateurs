@@ -115,6 +115,42 @@ const TodayPlannedActivitiesModal = ({
     return set;
   }, [ficheHistory]);
 
+  const superAdminDebug = useMemo(() => {
+    if (!isSuperAdmin) return null;
+    const list = Array.isArray(ficheHistory) ? ficheHistory : [];
+    const ymdToday = String(today || '').slice(0, 10);
+    let total = 0;
+    let todayCount = 0;
+    let enAttenteToday = 0;
+    let inWindow = 0;
+    let excludedByDone = 0;
+
+    for (const f of list) {
+      if (!f) continue;
+      total += 1;
+      const dgYmd = String(f.dateGenerated || '').slice(0, 10);
+      if (dgYmd !== ymdToday) continue;
+      todayCount += 1;
+      if (String(f.status || '').trim() !== 'En attente') continue;
+      enAttenteToday += 1;
+      const dt = new Date(String(f.dateGenerated || ''));
+      if (Number.isNaN(dt.getTime())) continue;
+      const h = dt.getHours();
+      if (!(h >= 15 && h <= 18)) continue;
+      inWindow += 1;
+
+      const sid = String(f.siteId || '').trim();
+      const pd = String(f.plannedDate || '').slice(0, 10);
+      const epv = String(f.epvType || '').trim().toUpperCase();
+      if (sid && pd && epv) {
+        const key = `${sid}::${pd}::${epv}`;
+        if (completedByKey.has(key)) excludedByDone += 1;
+      }
+    }
+
+    return { total, todayCount, enAttenteToday, inWindow, excludedByDone };
+  }, [isSuperAdmin, ficheHistory, today, completedByKey]);
+
   const superAdminCards = useMemo(() => {
     if (!isSuperAdmin) return [];
     const list = Array.isArray(ficheHistory) ? ficheHistory : [];
@@ -617,6 +653,11 @@ const TodayPlannedActivitiesModal = ({
 
           {isSuperAdmin ? (
             <div ref={cardsRef} className="space-y-4">
+              {superAdminDebug && (
+                <div className="text-xs text-slate-500">
+                  Total fiches: {superAdminDebug.total} • DateGenerated aujourd&apos;hui: {superAdminDebug.todayCount} • En attente aujourd&apos;hui: {superAdminDebug.enAttenteToday} • Fenêtre 15-18h: {superAdminDebug.inWindow} • Exclues car déjà effectuées: {superAdminDebug.excludedByDone}
+                </div>
+              )}
               {superAdminCards.length === 0 ? (
                 <div className="text-sm text-slate-600">
                   Aucune fiche "En attente" trouvée pour aujourd'hui (création entre 15h et 18h).
