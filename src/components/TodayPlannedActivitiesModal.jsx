@@ -143,7 +143,6 @@ const TodayPlannedActivitiesModal = ({
     let total = 0;
     let todayCount = 0;
     let enAttenteToday = 0;
-    let inWindow = 0;
     let excludedByDone = 0;
     const hoursCount = new Map();
 
@@ -155,19 +154,21 @@ const TodayPlannedActivitiesModal = ({
       todayCount += 1;
       if (String(f.status || '').trim() !== 'En attente') continue;
       enAttenteToday += 1;
-      const h = hourInBzv(f.dateGenerated);
-      if (h == null) continue;
-      hoursCount.set(h, (hoursCount.get(h) || 0) + 1);
-      if (!(h >= 15 && h <= 18)) continue;
-      inWindow += 1;
 
       const sid = String(f.siteId || '').trim();
       const pd = String(f.plannedDate || '').slice(0, 10);
       const epv = String(f.epvType || '').trim().toUpperCase();
       if (sid && pd && epv) {
         const key = `${sid}::${pd}::${epv}`;
-        if (completedByKey.has(key)) excludedByDone += 1;
+        if (completedByKey.has(key)) {
+          excludedByDone += 1;
+          continue;
+        }
       }
+
+      const h = hourInBzv(f.dateGenerated);
+      if (h == null) continue;
+      hoursCount.set(h, (hoursCount.get(h) || 0) + 1);
     }
 
     const hours = Array.from(hoursCount.entries())
@@ -175,7 +176,7 @@ const TodayPlannedActivitiesModal = ({
       .map(([h, c]) => `${String(h).padStart(2, '0')}: ${c}`)
       .join(' | ');
 
-    return { total, todayCount, enAttenteToday, inWindow, excludedByDone, hours };
+    return { total, todayCount, enAttenteToday, excludedByDone, hours };
   }, [isSuperAdmin, ficheHistory, today, completedByKey]);
 
   const superAdminCards = useMemo(() => {
@@ -185,16 +186,12 @@ const TodayPlannedActivitiesModal = ({
     const sitesArr = Array.isArray(sites) ? sites : [];
     const siteById = new Map(sitesArr.filter(Boolean).map((s) => [String(s.id), s]));
 
-    const out = list
+    const baseTodayEnAttente = list
       .filter(Boolean)
       .filter((f) => String(f.status || '').trim() === 'En attente')
       .filter((f) => {
-        // Règle principale: fiches créées aujourd'hui entre 15h et 18h
         const dgYmd = String(f.dateGenerated || '').slice(0, 10);
         if (dgYmd !== ymdToday) return false;
-        const h = hourInBzv(f.dateGenerated);
-        if (h == null) return false;
-        if (!(h >= 15 && h <= 18)) return false;
 
         // Exclure les anciennes fiches restées "En attente" quand une fiche équivalente a été complétée
         const sid = String(f.siteId || '').trim();
@@ -204,8 +201,11 @@ const TodayPlannedActivitiesModal = ({
           const key = `${sid}::${pd}::${epv}`;
           if (completedByKey.has(key)) return false;
         }
+
         return true;
-      })
+      });
+
+    const out = baseTodayEnAttente
       .map((f) => {
         const site = siteById.get(String(f.siteId || '')) || null;
         return {
@@ -681,12 +681,12 @@ const TodayPlannedActivitiesModal = ({
             <div ref={cardsRef} className="space-y-4">
               {superAdminDebug && (
                 <div className="text-xs text-slate-500">
-                  Total fiches: {superAdminDebug.total} • DateGenerated aujourd&apos;hui: {superAdminDebug.todayCount} • En attente aujourd&apos;hui: {superAdminDebug.enAttenteToday} • Fenêtre 15-18h: {superAdminDebug.inWindow} • Exclues car déjà effectuées: {superAdminDebug.excludedByDone}{superAdminDebug.hours ? ` • Heures(BZV): ${superAdminDebug.hours}` : ''}
+                  Total fiches: {superAdminDebug.total} • DateGenerated aujourd&apos;hui: {superAdminDebug.todayCount} • En attente aujourd&apos;hui: {superAdminDebug.enAttenteToday} • Exclues car déjà effectuées: {superAdminDebug.excludedByDone}{superAdminDebug.hours ? ` • Heures(BZV): ${superAdminDebug.hours}` : ''}
                 </div>
               )}
               {superAdminCards.length === 0 ? (
                 <div className="text-sm text-slate-600">
-                  Aucune fiche "En attente" trouvée pour aujourd'hui (création entre 15h et 18h).
+                  Aucune fiche "En attente" trouvée pour aujourd&apos;hui.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
