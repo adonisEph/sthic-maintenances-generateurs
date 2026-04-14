@@ -30,6 +30,27 @@ const TodayPlannedActivitiesModal = ({
     return toYmdLocal(d);
   };
 
+  const hourInBzv = (isoLike) => {
+    const s = String(isoLike || '').trim();
+    if (!s) return null;
+    const dt = new Date(s);
+    if (Number.isNaN(dt.getTime())) return null;
+    try {
+      const parts = new Intl.DateTimeFormat('fr-FR', {
+        timeZone: 'Africa/Brazzaville',
+        hour: '2-digit',
+        hour12: false
+      }).formatToParts(dt);
+      const h = parts.find((p) => p.type === 'hour')?.value;
+      const n = h != null ? parseInt(h, 10) : NaN;
+      return Number.isNaN(n) ? null : n;
+    } catch {
+      // Fallback: local machine time
+      const h = dt.getHours();
+      return Number.isNaN(h) ? null : h;
+    }
+  };
+
   const today = String(todayActivities?.today || '').slice(0, 10);
   const pmToday = Array.isArray(todayActivities?.pmItems) ? todayActivities.pmItems : [];
   const intToday = Array.isArray(todayActivities?.interventions) ? todayActivities.interventions : [];
@@ -133,9 +154,8 @@ const TodayPlannedActivitiesModal = ({
       todayCount += 1;
       if (String(f.status || '').trim() !== 'En attente') continue;
       enAttenteToday += 1;
-      const dt = new Date(String(f.dateGenerated || ''));
-      if (Number.isNaN(dt.getTime())) continue;
-      const h = dt.getHours();
+      const h = hourInBzv(f.dateGenerated);
+      if (h == null) continue;
       if (!(h >= 15 && h <= 18)) continue;
       inWindow += 1;
 
@@ -165,9 +185,8 @@ const TodayPlannedActivitiesModal = ({
         // Règle principale: fiches créées aujourd'hui entre 15h et 18h
         const dgYmd = String(f.dateGenerated || '').slice(0, 10);
         if (dgYmd !== ymdToday) return false;
-        const dt = new Date(String(f.dateGenerated || ''));
-        if (Number.isNaN(dt.getTime())) return false;
-        const h = dt.getHours();
+        const h = hourInBzv(f.dateGenerated);
+        if (h == null) return false;
         if (!(h >= 15 && h <= 18)) return false;
 
         // Exclure les anciennes fiches restées "En attente" quand une fiche équivalente a été complétée
