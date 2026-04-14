@@ -10,6 +10,7 @@ const TodayPlannedActivitiesModal = ({
   todayActivities,
   onRefresh,
   isSuperAdmin,
+  pmItemsMonth,
   ficheHistory,
   sites,
   onRefreshFicheHistory,
@@ -32,6 +33,8 @@ const TodayPlannedActivitiesModal = ({
   const today = String(todayActivities?.today || '').slice(0, 10);
   const pmToday = Array.isArray(todayActivities?.pmItems) ? todayActivities.pmItems : [];
   const intToday = Array.isArray(todayActivities?.interventions) ? todayActivities.interventions : [];
+
+  const campaignMonth = String(today || '').slice(0, 7);
 
   const [selectedDate, setSelectedDate] = useState(today || '');
 
@@ -109,6 +112,8 @@ const TodayPlannedActivitiesModal = ({
           ticketNumber: String(f.ticketNumber || '').trim(),
           technician: String(f.technician || '').trim(),
           siteName: String(f.siteName || '').trim(),
+          epvType: String(f.epvType || '').trim(),
+          plannedDate: String(f.plannedDate || '').slice(0, 10),
           idSite: site?.idSite != null ? String(site.idSite).trim() : '',
           generateur: site?.generateur != null ? String(site.generateur).trim() : '',
           capacite: site?.capacite != null ? String(site.capacite).trim() : '',
@@ -120,6 +125,124 @@ const TodayPlannedActivitiesModal = ({
 
     return out;
   }, [isSuperAdmin, ficheHistory, today, sites]);
+
+  const isoWeekKey = (ymd) => {
+    const s = String(ymd || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+    const [y, m, d] = s.split('-').map((x) => parseInt(x, 10));
+    const dt = new Date(Date.UTC(y, (m || 1) - 1, d || 1));
+    if (Number.isNaN(dt.getTime())) return '';
+    const dayNum = dt.getUTCDay() || 7;
+    dt.setUTCDate(dt.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil(((dt - yearStart) / 86400000 + 1) / 7);
+    return `${dt.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+  };
+
+  const isFicheCompleted = (status) => {
+    const s = String(status || '').trim().toLowerCase();
+    if (!s) return false;
+    return (
+      s.includes('complete') ||
+      s.includes('compl') ||
+      s.includes('réalis') ||
+      s === 'done' ||
+      s === 'closed complete'
+    );
+  };
+
+  const completedEpvInCampaign = useMemo(() => {
+    const list = Array.isArray(ficheHistory) ? ficheHistory : [];
+    const map = new Map();
+    if (!campaignMonth) return map;
+
+    for (const f of list) {
+      if (!f) continue;
+      const sid = String(f.siteId || '').trim();
+      const epv = String(f.epvType || '').trim().toUpperCase();
+      const p = String(f.plannedDate || '').slice(0, 10);
+      if (!sid || !epv || !/^EPV[123]$/.test(epv)) continue;
+      if (String(p).slice(0, 7) !== campaignMonth) continue;
+      if (!isFicheCompleted(f.status)) continue;
+      if (!map.has(sid)) map.set(sid, new Set());
+      map.get(sid).add(epv);
+    }
+    return map;
+  }, [ficheHistory, campaignMonth]);
+
+  const pmMonthItems = useMemo(() => (Array.isArray(pmItemsMonth) ? pmItemsMonth : []), [pmItemsMonth]);
+
+  const pmTicketsBySiteInIsoWeek = useMemo(() => {
+    const bySite = new Map();
+    for (const p of pmMonthItems) {
+      if (!p) continue;
+      const code = String(p.siteCode || '').trim();
+      if (!code) continue;
+      const date = String(p.scheduledWoDate || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+      if (campaignMonth && date.slice(0, 7) !== campaignMonth) continue;
+
+      const wk = isoWeekKey(date);
+      if (!wk) continue;
+
+      const mt = String(p.maintenanceType || '').toLowerCase();
+      const sd = String(p.shortDescription || '').toLowerCase();
+
+      const isFull = mt.includes('fullpmwo') || sd.includes('full');
+      const isDg = mt.includes('dg') || sd.includes('dg');
+
+      if (!isFull && !isDg) continue;
+
+      if (!bySite.has(code)) bySite.set(code, new Map());
+      const byWeek = bySite.get(code);
+      if (!byWeek.has(wk)) byWeek.set(wk, { fullPmwo: '', dgService: '' });
+      const rec = byWeek.get(wk);
+
+      const ticket = String(p.number || '').trim();
+      if (!ticket) continue;
+
+      if (isFull && !rec.fullPmwo) rec.fullPmwo = ticket;
+      if (isDg && !rec.dgService) rec.dgService = ticket;
+    }
+    return bySite;
+  }, [pmMonthItems, campaignMonth]);
+
+  const getExtraTicketForCard = (c) => {
+    const code = String(c?.idSite || '').trim();
+    if (!code) return '';
+    const wk = isoWeekKey(c?.plannedDate || tomorrowYmd || selectedDate);
+    if (!wk) return '';
+    const byWeek = pmTicketsBySiteInIsoWeek.get(code);
+    const rec = byWeek ? byWeek.get(wk) : null;
+
+    const sid = String(c?.siteId || '').trim();
+    const done = sid ? completedEpvInCampaign.get(sid) : null;
+    const epv = String(c?.epvType || '').trim().toUpperCase();
+    const epv1Done = Boolean(done && done.has('EPV1'));
+
+    if (epv === 'EPV1' && !epv1Done) return String(rec?.fullPmwo || '').trim();
+    if ((epv === 'EPV2' || epv === 'EPV3') && epv1Done) return String(rec?.dgService || '').trim();
+    return '';
+  };
+
+  const getTagForCard = (c) => {
+    const sid = String(c?.siteId || '').trim();
+    const done = sid ? completedEpvInCampaign.get(sid) : null;
+    const epv = String(c?.epvType || '').trim().toUpperCase();
+    const epv1Done = Boolean(done && done.has('EPV1'));
+
+    if (epv === 'EPV1') {
+      const code = String(c?.idSite || '').trim();
+      const wk = isoWeekKey(c?.plannedDate || tomorrowYmd || selectedDate);
+      const byWeek = code ? pmTicketsBySiteInIsoWeek.get(code) : null;
+      const rec = byWeek && wk ? byWeek.get(wk) : null;
+      if (rec?.fullPmwo) return 'PM+Vidanges';
+      return 'Vidange Simple';
+    }
+
+    if ((epv === 'EPV2' || epv === 'EPV3') && epv1Done) return 'Vidange Simple';
+    return '';
+  };
 
   const diffNhBadge = (v) => {
     const raw = String(v ?? '').trim();
@@ -154,6 +277,9 @@ const TodayPlannedActivitiesModal = ({
             capture.style.overflow = 'visible';
             capture.style.maxHeight = 'none';
             capture.style.height = 'auto';
+            capture.style.maxWidth = 'none';
+            capture.style.boxSizing = 'border-box';
+            capture.style.width = '1800px';
           }
 
           const scrollArea = doc.querySelector('[data-capture-scroll="1"]');
@@ -162,6 +288,16 @@ const TodayPlannedActivitiesModal = ({
             scrollArea.style.maxHeight = 'none';
             scrollArea.style.height = 'auto';
           }
+
+          const style = doc.createElement('style');
+          style.textContent = `
+            [data-capture-root="1"] { font-size: 19px; line-height: 1.25; }
+            [data-capture-root="1"] .text-xs { font-size: 14px !important; line-height: 1.25 !important; }
+            [data-capture-root="1"] .text-sm { font-size: 17px !important; line-height: 1.25 !important; }
+            [data-capture-root="1"] .text-base { font-size: 19px !important; line-height: 1.25 !important; }
+            [data-capture-root="1"] .text-xl { font-size: 24px !important; line-height: 1.2 !important; }
+          `;
+          doc.head.appendChild(style);
         }
       });
 
@@ -463,7 +599,7 @@ const TodayPlannedActivitiesModal = ({
                   {superAdminCards.map((c) => (
                     <div key={c.id} className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                       <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
-                        <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center justify-between gap-3">
                           <div className="min-w-0">
                             <div className="font-bold text-slate-900 break-words whitespace-normal" title={c.siteName || ''}>
                               {c.siteName || '-'}
@@ -473,7 +609,7 @@ const TodayPlannedActivitiesModal = ({
                             </div>
                           </div>
                           <div className="text-right flex-shrink-0">
-                            <div className="text-[11px] font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-200 whitespace-nowrap">
+                            <div className="inline-flex items-center justify-center text-[11px] font-bold px-3 py-1.5 rounded-full bg-amber-100 text-amber-900 border border-amber-200 whitespace-nowrap">
                               En attente
                             </div>
                           </div>
@@ -495,6 +631,24 @@ const TodayPlannedActivitiesModal = ({
                             </div>
                           </div>
                           <div className="col-span-2">
+                            <div className="text-[11px] font-semibold text-slate-500">Ticket PM / DG Service</div>
+                            <div className="flex items-center gap-2 flex-wrap mt-1">
+                              <span className="font-mono font-bold text-slate-900 break-all">{getExtraTicketForCard(c) || '-'}</span>
+                              {(() => {
+                                const tag = getTagForCard(c);
+                                if (!tag) return null;
+                                const cls = tag === 'PM+Vidanges'
+                                  ? 'bg-indigo-100 text-indigo-900 border-indigo-200'
+                                  : 'bg-slate-100 text-slate-900 border-slate-200';
+                                return (
+                                  <span className={`inline-flex items-center justify-center px-2 py-1 rounded-full border text-[11px] font-bold whitespace-nowrap ${cls}`}>
+                                    {tag}
+                                  </span>
+                                );
+                              })()}
+                            </div>
+                          </div>
+                          <div className="col-span-2">
                             <div className="text-[11px] font-semibold text-slate-500">Générateur</div>
                             <div className="text-sm text-slate-900">
                               <span className="font-semibold">{c.generateur || '-'}</span>
@@ -512,8 +666,8 @@ const TodayPlannedActivitiesModal = ({
                             {(() => {
                               const b = diffNhBadge(c.diffNHs);
                               return (
-                                <div className="mt-1">
-                                  <span className={`inline-flex items-center px-3 py-1 rounded-lg border text-base font-extrabold ${b.cls}`}>
+                                <div className="mt-1 flex items-center justify-center">
+                                  <span className={`inline-flex items-center justify-center min-w-[110px] px-3 py-1.5 rounded-lg border text-base font-extrabold ${b.cls}`}>
                                     {b.label}
                                   </span>
                                 </div>

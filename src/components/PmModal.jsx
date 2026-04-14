@@ -799,6 +799,7 @@ const PmModal = (props) => {
                   if (typeof loadPmTodayActivities === 'function') loadPmTodayActivities(dateYmd);
                 }}
                 isSuperAdmin={pmIsSuperAdmin}
+                pmItemsMonth={pmItems}
                 ficheHistory={ficheHistory}
                 sites={sites}
                 onRefreshFicheHistory={() => {
