@@ -178,18 +178,6 @@ const TodayPlannedActivitiesModal = ({
     return `${dt.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
   };
 
-  const isFicheCompleted = (status) => {
-    const s = String(status || '').trim().toLowerCase();
-    if (!s) return false;
-    return (
-      s.includes('complete') ||
-      s.includes('compl') ||
-      s.includes('réalis') ||
-      s === 'done' ||
-      s === 'closed complete'
-    );
-  };
-
   const completedEpvInCampaign = useMemo(() => {
     const list = Array.isArray(ficheHistory) ? ficheHistory : [];
     const map = new Map();
