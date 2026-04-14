@@ -88,11 +88,37 @@ const TodayPlannedActivitiesModal = ({
     return `Planning vidanges de (${fr} - ${fmt})`;
   }, [tomorrowYmd, selectedDate, formatDate]);
 
+  const isFicheCompleted = (status) => {
+    const s = String(status || '').trim().toLowerCase();
+    if (!s) return false;
+    return (
+      s.includes('complete') ||
+      s.includes('compl') ||
+      s.includes('réalis') ||
+      s === 'done' ||
+      s === 'closed complete'
+    );
+  };
+
+  const completedByKey = useMemo(() => {
+    const set = new Set();
+    const list = Array.isArray(ficheHistory) ? ficheHistory : [];
+    for (const f of list) {
+      if (!f) continue;
+      if (!isFicheCompleted(f.status)) continue;
+      const sid = String(f.siteId || '').trim();
+      const epv = String(f.epvType || '').trim().toUpperCase();
+      const pd = String(f.plannedDate || '').slice(0, 10);
+      if (!sid || !pd || !epv) continue;
+      set.add(`${sid}::${pd}::${epv}`);
+    }
+    return set;
+  }, [ficheHistory]);
+
   const superAdminCards = useMemo(() => {
     if (!isSuperAdmin) return [];
     const list = Array.isArray(ficheHistory) ? ficheHistory : [];
     const ymdToday = String(today || '').slice(0, 10);
-    const targetDay = String(tomorrowYmd || selectedDate || '').slice(0, 10);
     const sitesArr = Array.isArray(sites) ? sites : [];
     const siteById = new Map(sitesArr.filter(Boolean).map((s) => [String(s.id), s]));
 
@@ -100,18 +126,23 @@ const TodayPlannedActivitiesModal = ({
       .filter(Boolean)
       .filter((f) => String(f.status || '').trim() === 'En attente')
       .filter((f) => {
-        const pd = String(f.plannedDate || '').slice(0, 10);
-        if (targetDay && /^\d{4}-\d{2}-\d{2}$/.test(targetDay) && pd) {
-          return pd === targetDay;
-        }
-
-        // Fallback (legacy): fiches créées aujourd'hui entre 15h et 18h
+        // Règle principale: fiches créées aujourd'hui entre 15h et 18h
         const dgYmd = String(f.dateGenerated || '').slice(0, 10);
         if (dgYmd !== ymdToday) return false;
         const dt = new Date(String(f.dateGenerated || ''));
         if (Number.isNaN(dt.getTime())) return false;
         const h = dt.getHours();
-        return h >= 15 && h <= 18;
+        if (!(h >= 15 && h <= 18)) return false;
+
+        // Exclure les anciennes fiches restées "En attente" quand une fiche équivalente a été complétée
+        const sid = String(f.siteId || '').trim();
+        const pd = String(f.plannedDate || '').slice(0, 10);
+        const epv = String(f.epvType || '').trim().toUpperCase();
+        if (sid && pd && epv) {
+          const key = `${sid}::${pd}::${epv}`;
+          if (completedByKey.has(key)) return false;
+        }
+        return true;
       })
       .map((f) => {
         const site = siteById.get(String(f.siteId || '')) || null;
@@ -132,7 +163,7 @@ const TodayPlannedActivitiesModal = ({
       .sort((a, b) => String(a.siteName || '').localeCompare(String(b.siteName || '')));
 
     return out;
-  }, [isSuperAdmin, ficheHistory, today, sites, tomorrowYmd, selectedDate]);
+  }, [isSuperAdmin, ficheHistory, today, sites, completedByKey]);
 
   const isoWeekKey = (ymd) => {
     const s = String(ymd || '').slice(0, 10);
@@ -600,7 +631,7 @@ const TodayPlannedActivitiesModal = ({
             <div ref={cardsRef} className="space-y-4">
               {superAdminCards.length === 0 ? (
                 <div className="text-sm text-slate-600">
-                  Aucune fiche "En attente" trouvée pour la date sélectionnée.
+                  Aucune fiche "En attente" trouvée pour aujourd'hui (création entre 15h et 18h).
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
