@@ -349,46 +349,74 @@ const TodayPlannedActivitiesModal = ({
     try {
       setCopyBusy(true);
 
+      const rect = el.getBoundingClientRect();
+      const width = Math.max(900, Math.ceil(rect.width));
+
+      const inlineStylesDeep = (src, dst) => {
+        if (!(src instanceof Element) || !(dst instanceof Element)) return;
+        const cs = window.getComputedStyle(src);
+        let cssText = '';
+        for (let i = 0; i < cs.length; i += 1) {
+          const prop = cs[i];
+          const val = cs.getPropertyValue(prop);
+          if (!val) continue;
+          cssText += `${prop}:${val};`;
+        }
+        dst.setAttribute('style', cssText);
+        dst.removeAttribute('class');
+
+        const srcChildren = Array.from(src.children || []);
+        const dstChildren = Array.from(dst.children || []);
+        for (let i = 0; i < srcChildren.length; i += 1) {
+          inlineStylesDeep(srcChildren[i], dstChildren[i]);
+        }
+      };
+
+      const wrap = document.createElement('div');
+      wrap.style.position = 'fixed';
+      wrap.style.left = '-10000px';
+      wrap.style.top = '0';
+      wrap.style.width = `${width}px`;
+      wrap.style.background = '#ffffff';
+      wrap.style.padding = '0';
+      wrap.style.margin = '0';
+      wrap.style.zIndex = '2147483647';
+
+      const cloned = el.cloneNode(true);
+      wrap.appendChild(cloned);
+      document.body.appendChild(wrap);
+
+      wrap.style.fontFamily = window.getComputedStyle(el).fontFamily || 'Arial, sans-serif';
+      inlineStylesDeep(el, cloned);
+
+      const capRoot = wrap.querySelector('[data-capture-root="1"]');
+      if (capRoot) {
+        capRoot.style.width = `${width}px`;
+        capRoot.style.maxWidth = 'none';
+        capRoot.style.maxHeight = 'none';
+        capRoot.style.height = 'auto';
+        capRoot.style.overflow = 'visible';
+      }
+      const capScroll = wrap.querySelector('[data-capture-scroll="1"]');
+      if (capScroll) {
+        capScroll.style.maxHeight = 'none';
+        capScroll.style.height = 'auto';
+        capScroll.style.overflow = 'visible';
+      }
+
       const dpr = typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1;
       const scale = Math.max(2, Math.min(4, 2 * dpr));
-      const canvas = await html2canvas(el, {
+      const canvas = await html2canvas(wrap, {
         backgroundColor: '#ffffff',
         scale,
         useCORS: true,
         scrollX: 0,
-        scrollY: -window.scrollY,
-        onclone: (doc) => {
-          const root = doc.body;
-          if (root) root.style.overflow = 'visible';
-
-          const capture = doc.querySelector('[data-capture-root="1"]');
-          if (capture) {
-            capture.style.overflow = 'visible';
-            capture.style.maxHeight = 'none';
-            capture.style.height = 'auto';
-            capture.style.maxWidth = 'none';
-            capture.style.boxSizing = 'border-box';
-            capture.style.width = '1800px';
-          }
-
-          const scrollArea = doc.querySelector('[data-capture-scroll="1"]');
-          if (scrollArea) {
-            scrollArea.style.overflow = 'visible';
-            scrollArea.style.maxHeight = 'none';
-            scrollArea.style.height = 'auto';
-          }
-
-          const style = doc.createElement('style');
-          style.textContent = `
-            [data-capture-root="1"] { font-size: 19px; line-height: 1.25; }
-            [data-capture-root="1"] .text-xs { font-size: 14px !important; line-height: 1.25 !important; }
-            [data-capture-root="1"] .text-sm { font-size: 17px !important; line-height: 1.25 !important; }
-            [data-capture-root="1"] .text-base { font-size: 19px !important; line-height: 1.25 !important; }
-            [data-capture-root="1"] .text-xl { font-size: 24px !important; line-height: 1.2 !important; }
-          `;
-          doc.head.appendChild(style);
-        }
+        scrollY: 0,
+        windowWidth: width,
+        width
       });
+
+      wrap.remove();
 
       const blob = await new Promise((resolve) => canvas.toBlob((b) => resolve(b), 'image/png'));
       if (!blob) throw new Error('Capture image impossible.');
