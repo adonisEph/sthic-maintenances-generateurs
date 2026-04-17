@@ -159,6 +159,7 @@ const GeneratorMaintenanceApp = () => {
   const [signatureTypedName, setSignatureTypedName] = useState('');
   const [signatureDrawnPng, setSignatureDrawnPng] = useState('');
   const [ficheHistory, setFicheHistory] = useState([]);
+  const [ficheHistoryBusy, setFicheHistoryBusy] = useState(false);
   const [authUser, setAuthUser] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [users, setUsers] = useState([]);
@@ -1711,11 +1712,14 @@ const GeneratorMaintenanceApp = () => {
   };
 
   const loadFicheHistory = async () => {
+    setFicheHistoryBusy(true);
     try {
       const data = await apiFetchJson('/api/fiche-history', { method: 'GET' });
       setFicheHistory(Array.isArray(data?.fiches) ? data.fiches : []);
     } catch (error) {
       setFicheHistory([]);
+    } finally {
+      setFicheHistoryBusy(false);
     }
   };
 
