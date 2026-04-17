@@ -350,10 +350,10 @@ export async function onRequestPatch({ request, env, data, params }) {
         .bind(
           ticketNumber,
           'En attente',
-          signatureTypedName,
-          signatureDrawnPng,
-          data?.user?.email ? String(data.user.email) : null,
-          now,
+          null,
+          null,
+          null,
+          null,
           now,
           id
         )
