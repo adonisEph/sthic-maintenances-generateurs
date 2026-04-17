@@ -450,7 +450,6 @@ const GeneratorMaintenanceApp = () => {
     setShowHistory(false);
     setShowFicheModal(false);
     setShowInterventions(false);
-    setShowScoring(false);
     setShowPm(false);
 
     setAuthUser(null);
@@ -1747,7 +1746,6 @@ const GeneratorMaintenanceApp = () => {
     if (showPresenceModal) return 'Consultation présence';
     if (showCalendar) return 'Calendrier';
     if (showHistory) return 'Historique';
-    if (showScoring) return 'Scoring';
     if (showPm) return 'Maintenances (PM)';
     if (showFicheModal) return 'Fiche d\'intervention';
     if (showBannerUpload) return 'Upload bannière';
@@ -6573,8 +6571,6 @@ return (
                 setShowBannerUpload(false);
                 setShowDayDetailsModal(false);
                 setShowInterventions(false);
-                setShowScoring(false);
-                setScoringDetails({ open: false, title: '', kind: '', items: [] });
 
                 setShowPm(true);
                 const m = pmMonth || new Date().toISOString().slice(0, 7);
