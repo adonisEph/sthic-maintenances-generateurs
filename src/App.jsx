@@ -23,8 +23,8 @@ import UsersModal from './components/users/UsersModal';
 import PresenceModal from './components/presence/PresenceModal';
 import ResetConfirmModal from './components/reset/ResetConfirmModal';
 import InterventionsModal from './components/interventions/InterventionsModal';
-import ScoringModal from './components/scoring/ScoringModal';
 import HistoryModal from './components/history/HistoryModal';
+import AirFilterHistoryModal from './components/AirFilterHistoryModal';
 import UploadBannerModal from './components/fiche/UploadBannerModal';
 import FicheModal from './components/fiche/FicheModal';
 import SuperAdminFicheChoiceModal from './components/fiche/SuperAdminFicheChoiceModal';
@@ -41,7 +41,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '4.2.2';
+const APP_VERSION = '4.4.4';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -80,8 +80,8 @@ const GeneratorMaintenanceApp = () => {
   const [showBannerUpload, setShowBannerUpload] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showAirFilterHistory, setShowAirFilterHistory] = useState(false);
   const [showInterventions, setShowInterventions] = useState(false);
-  const [showScoring, setShowScoring] = useState(false);
   const [showPm, setShowPm] = useState(false);
   const [showWarehouseProcess, setShowWarehouseProcess] = useState(false);
   const [warehouseProcessQuery, setWarehouseProcessQuery] = useState('');
@@ -100,8 +100,6 @@ const GeneratorMaintenanceApp = () => {
   const [warehouseRevokeDateTo, setWarehouseRevokeDateTo] = useState('');
   const [warehouseRevokeSort, setWarehouseRevokeSort] = useState('newest');
   const [warehouseRevokeBusyId, setWarehouseRevokeBusyId] = useState('');
-  const [scoringMonth, setScoringMonth] = useState(() => new Date().toISOString().slice(0, 7));
-  const [scoringDetails, setScoringDetails] = useState({ open: false, title: '', kind: '', items: [] });
   const [interventions, setInterventions] = useState([]);
   const [interventionsUiRev, setInterventionsUiRev] = useState(0);
   const [interventionsMonth, setInterventionsMonth] = useState(() => new Date().toISOString().slice(0, 7));
@@ -192,7 +190,6 @@ const GeneratorMaintenanceApp = () => {
   const [calendarZone, setCalendarZone] = useState('ALL');
   const [interventionsZone, setInterventionsZone] = useState('ALL');
   const [historyZone, setHistoryZone] = useState('ALL');
-  const [scoringZone, setScoringZone] = useState('ALL');
   const [dashboardZone, setDashboardZone] = useState('ALL');
   const [techCalendarMonth, setTechCalendarMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [techSelectedDate, setTechSelectedDate] = useState('');
@@ -5051,55 +5048,6 @@ const GeneratorMaintenanceApp = () => {
     if (done) alert('✅ Export Excel généré.');
   };
 
-  const handleExportScoringDetailsExcel = async () => {
-    const ok = window.confirm(`Exporter ces détails Scoring (${scoringMonth}) en Excel ?`);
-    if (!ok) return;
-    const kind = String(scoringDetails?.kind || '');
-    const items = Array.isArray(scoringDetails?.items) ? scoringDetails.items : [];
-    if (!scoringDetails?.open || items.length === 0) return;
-
-    const siteById = new Map(
-      (Array.isArray(sites) ? sites : [])
-        .filter((s) => s && s.id)
-        .map((s) => [String(s.id), s])
-    );
-
-    const rows = kind === 'remaining'
-      ? items.map((it) => {
-        const site = siteById.get(String(it.siteId)) || null;
-        return {
-          Site: site?.nameSite || it.siteId,
-          IdSite: site?.idSite || '',
-          EPV: it.epvType,
-          DatePlanifiée: it.plannedDate,
-          Technicien: it.technicianName,
-          Statut: it.status
-        };
-      })
-      : items.map((f) => ({
-        Site: f.siteName,
-        Ticket: f.ticketNumber,
-        Technicien: f.technician,
-        DateRéalisation: f.dateCompleted,
-        DatePlanifiée: f.plannedDate,
-        EPV: f.epvType,
-        IntervalleHeures: f.intervalHours,
-        Seuil: f.contractSeuil || 250,
-        StatutContractuel: f.isWithinContract === true ? 'Dans délai' : f.isWithinContract === false ? 'Hors délai' : 'N/A'
-      }));
-
-    const done = await runExport({
-      label: 'Export Excel (scoring)…',
-      fn: async () => {
-        exportXlsx({
-          fileBaseName: `Scoring_${scoringMonth}_${kind}_${new Date().toISOString().slice(0, 10)}`,
-          sheets: [{ name: 'Détails', rows }]
-        });
-      }
-    });
-    if (done) alert('✅ Export Excel généré.');
-  };
-
   const handleExportSelectedDayExcel = async () => {
     const ok = window.confirm('Exporter les détails de ce jour en Excel ?');
     if (!ok) return;
@@ -6091,6 +6039,8 @@ const GeneratorMaintenanceApp = () => {
     let isRefreshing = false;
     let isChecking = false;
     let lastVersion = null;
+    let lastCheckedAt = 0;
+    let lastVisibilityCheckAt = 0;
 
     const refreshAll = async () => {
       if (!isActive) return;
@@ -6124,6 +6074,10 @@ const GeneratorMaintenanceApp = () => {
     const checkVersion = async () => {
       if (!isActive) return;
       if (isChecking) return;
+
+      const now = Date.now();
+      if (now - lastCheckedAt < 2 * 60 * 1000) return;
+      lastCheckedAt = now;
       isChecking = true;
       try {
         const data = await apiFetchJson('/api/meta/version', { method: 'GET' });
@@ -6146,10 +6100,19 @@ const GeneratorMaintenanceApp = () => {
     };
 
     checkVersion();
-    const intervalId = setInterval(checkVersion, 4000);
-    const onFocus = () => checkVersion();
+    const intervalId = setInterval(checkVersion, 30 * 60 * 1000);
+    const safeCheckVersion = () => {
+      const now = Date.now();
+
+      // Anti double-trigger (visibility + focus enchaînés)
+      if (now - lastVisibilityCheckAt < 1000) return;
+      lastVisibilityCheckAt = now;
+
+      checkVersion();
+    };
+    const onFocus = () => safeCheckVersion();
     const onVisibility = () => {
-      if (!document.hidden) checkVersion();
+      if (!document.hidden) safeCheckVersion();
     };
 
     window.addEventListener('focus', onFocus);
@@ -6591,23 +6554,6 @@ return (
             </button>
           )}
 
-          {!isTechnician && (
-            <button
-              onClick={async () => {
-                setSidebarOpen(false);
-                const nextMonth = scoringMonth || new Date().toISOString().slice(0, 7);
-                setScoringMonth(nextMonth);
-                setScoringDetails({ open: false, title: '', kind: '', items: [] });
-                setShowScoring(true);
-                await loadInterventions(nextMonth, 'all', 'all');
-              }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
-            >
-              <TrendingUp size={18} />
-              Scoring
-            </button>
-          )}
-
           {canUsePm && (
             <button
               onClick={async () => {
@@ -6682,6 +6628,26 @@ return (
             </button>
           )}
 
+          {(isAdmin || isManager) && (
+            <button
+              onClick={() => {
+                setSidebarOpen(false);
+                (async () => {
+                  try {
+                    await loadFicheHistory();
+                  } catch {
+                    // ignore
+                  }
+                  setShowAirFilterHistory(true);
+                })();
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
+            >
+              <Filter size={18} />
+              <span className="flex-1">Historique filtre à air GE</span>
+            </button>
+          )}
+
           {isWarehouse && (
             <button
               onClick={() => {
@@ -6706,6 +6672,26 @@ return (
               >
                 {warehouseProcessCount}
               </span>
+            </button>
+          )}
+
+          {isWarehouse && (
+            <button
+              onClick={() => {
+                setSidebarOpen(false);
+                (async () => {
+                  try {
+                    await loadFicheHistory();
+                  } catch {
+                    // ignore
+                  }
+                  setShowAirFilterHistory(true);
+                })();
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
+            >
+              <Filter size={18} />
+              <span className="flex-1">Historique filtre à air GE</span>
             </button>
           )}
 
@@ -7729,6 +7715,16 @@ return (
           formatDate={formatDate}
         />
 
+        <AirFilterHistoryModal
+          open={showAirFilterHistory}
+          onClose={() => setShowAirFilterHistory(false)}
+          busy={Boolean(ficheHistoryBusy)}
+          onRefresh={loadFicheHistory}
+          ficheHistory={ficheHistory}
+          sites={sites}
+          formatDate={formatDate}
+        />
+
         <DeleteSiteConfirmModal
           site={showDeleteConfirm ? siteToDelete : null}
           isAdmin={isAdmin}
@@ -7979,30 +7975,6 @@ return (
           apiFetchJson={apiFetchJson}
           isSuperAdmin={Boolean(authUser?.role === 'admin' && authUser?.zone === 'BZV/POOL')}
           authZone={String(authUser?.zone || '')}
-        />
-
-        <ScoringModal
-          open={showScoring}
-          isTechnician={isTechnician}
-          isViewer={isViewer}
-          isAdmin={isAdmin}
-          scoringMonth={scoringMonth}
-          setScoringMonth={setScoringMonth}
-          loadInterventions={loadInterventions}
-          sites={sites}
-          ficheHistory={ficheHistory}
-          interventions={interventions}
-          scoringDetails={scoringDetails}
-          setScoringDetails={setScoringDetails}
-          canExportExcel={canExportExcel}
-          handleExportScoringDetailsExcel={handleExportScoringDetailsExcel}
-          exportBusy={exportBusy}
-          formatDate={formatDate}
-          onClose={() => setShowScoring(false)}
-          scoringZone={scoringZone}
-          setScoringZone={setScoringZone}
-          showZoneFilter={showZoneFilter}
-          authUser={authUser}
         />
 
           <InterventionsModal

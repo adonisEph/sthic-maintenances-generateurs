@@ -53,30 +53,81 @@ const FicheModal = ({
     warehouseCoolant5lOk === null || warehouseCoolant5lOk === undefined ? null : Boolean(warehouseCoolant5lOk)
   );
 
-  const shouldIncludeAirFilter = useMemo(() => {
+  const airFilterRule = useMemo(() => {
     const list = Array.isArray(ficheHistory) ? ficheHistory : [];
-
     const siteId = String(siteForFiche?.id || '').trim();
-    if (!siteId) return true;
+    if (!siteId) return { shouldInclude: true, epv1Status: null, epv2Status: null, campaignMonth: '', currentEpvType: '', showEpv1NotCheckedBadge: false };
 
-    const dateDV = siteForFiche?.dateDV ? String(siteForFiche.dateDV).slice(0, 10) : '';
-    if (!dateDV) return true;
+    const fromHistory = ficheId
+      ? list.find((f) => f && String(f.id || '') === String(ficheId))
+      : null;
 
-    const already = list.some((f) => {
-      if (!f) return false;
-      if (String(f.siteId || '').trim() !== siteId) return false;
-      const dg = f.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
-      if (!dg) return false;
-      if (dg < dateDV) return false;
-      const st = String(f.status || '').trim();
-      if (st.toLowerCase().includes('annul')) return false;
-      if (f.warehouseAirFilterOk !== true) return false;
-      return true;
-    });
+    const currentPlannedDate = fromHistory?.plannedDate ? String(fromHistory.plannedDate).slice(0, 10) : '';
+    const currentDateGenerated = fromHistory?.dateGenerated ? String(fromHistory.dateGenerated).slice(0, 10) : '';
+    const campaignMonth = String(currentPlannedDate || currentDateGenerated || '').slice(0, 7);
 
-    return !already;
-  }, [ficheHistory, siteForFiche]);
+    const currentEpvType = fromHistory?.epvType ? String(fromHistory.epvType).trim().toUpperCase() : '';
 
+    const recs = list
+      .filter(Boolean)
+      .filter((f) => String(f.siteId || '').trim() === siteId)
+      .filter((f) => {
+        const st = String(f.status || '').trim().toLowerCase();
+        if (st.includes('annul')) return false;
+        const pd = f.plannedDate ? String(f.plannedDate).slice(0, 10) : '';
+        const dg = f.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
+        const m = String(pd || dg || '').slice(0, 7);
+        if (!campaignMonth) return false;
+        return m === campaignMonth;
+      });
+
+    const pickLatest = (type) => {
+      const t = String(type || '').trim().toUpperCase();
+      const items = recs.filter((f) => String(f.epvType || '').trim().toUpperCase() === t);
+      if (items.length === 0) return null;
+      const score = (f) => {
+        const a = f.warehouseCheckedAt ? String(f.warehouseCheckedAt) : '';
+        const b = f.dateGenerated ? String(f.dateGenerated) : '';
+        const s = a || b;
+        const dt = s ? new Date(s) : null;
+        const ts = dt && !Number.isNaN(dt.getTime()) ? dt.getTime() : 0;
+        return ts;
+      };
+      return items.slice().sort((a, b) => score(b) - score(a))[0] || null;
+    };
+
+    const epv1Rec = pickLatest('EPV1');
+    const epv2Rec = pickLatest('EPV2');
+
+    const epv1Status = epv1Rec ? (epv1Rec.warehouseAirFilterOk === true ? true : epv1Rec.warehouseAirFilterOk === false ? false : null) : null;
+    const epv2Status = epv2Rec ? (epv2Rec.warehouseAirFilterOk === true ? true : epv2Rec.warehouseAirFilterOk === false ? false : null) : null;
+
+    const anyProvidedTrue = recs.some((f) => f && f.warehouseAirFilterOk === true);
+
+    let shouldInclude = true;
+    let showEpv1NotCheckedBadge = false;
+
+    if (currentEpvType === 'EPV1') {
+      shouldInclude = !anyProvidedTrue || (epv1Rec && String(epv1Rec.id || '') === String(ficheId));
+    } else if (currentEpvType === 'EPV2') {
+      if (epv1Status === false) {
+        shouldInclude = true;
+      } else if (epv1Status === true) {
+        shouldInclude = false;
+      } else {
+        shouldInclude = true;
+        showEpv1NotCheckedBadge = true;
+      }
+    } else if (currentEpvType === 'EPV3') {
+      shouldInclude = epv1Status === false && epv2Status === false;
+    } else {
+      shouldInclude = !anyProvidedTrue;
+    }
+
+    return { shouldInclude, epv1Status, epv2Status, campaignMonth, currentEpvType, showEpv1NotCheckedBadge };
+  }, [ficheHistory, siteForFiche, ficheId]);
+
+  const shouldIncludeAirFilter = Boolean(airFilterRule?.shouldInclude);
   const airFilterAlreadyProvided = !shouldIncludeAirFilter;
 
   const shouldIncludeCoolant = useMemo(() => {
@@ -459,7 +510,14 @@ const FicheModal = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {!airFilterAlreadyProvided && (
                     <div className="border border-gray-200 rounded-lg p-3">
-                      <div className="font-semibold text-gray-800 mb-2">Filtre à air GE</div>
+                      <div className="font-semibold text-gray-800 mb-2 flex items-center gap-2 flex-wrap">
+                        Filtre à air GE
+                        {airFilterRule?.showEpv1NotCheckedBadge ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
+                            EPV1 non contrôlé
+                          </span>
+                        ) : null}
+                      </div>
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
