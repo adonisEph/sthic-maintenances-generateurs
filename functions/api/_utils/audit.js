@@ -49,24 +49,28 @@ export async function writeAuditLog(env, data, details) {
   const userAgent = request?.headers?.get('User-Agent') || details?.userAgent || null;
   const metadataJson = safeJson(details?.metadata);
 
-  await env.DB.prepare(
-    'INSERT INTO audit_logs (id, created_at, created_at_ms, user_id, email, role, action, method, path, query, status, ip, user_agent, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  )
-    .bind(
-      newId(),
-      createdAt,
-      createdAtMs,
-      userId,
-      email,
-      role,
-      action,
-      method,
-      path,
-      query,
-      status,
-      ip,
-      userAgent,
-      metadataJson
+  try {
+    await env.DB.prepare(
+      'INSERT INTO audit_logs (id, created_at, created_at_ms, user_id, email, role, action, method, path, query, status, ip, user_agent, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     )
-    .run();
+      .bind(
+        newId(),
+        createdAt,
+        createdAtMs,
+        userId,
+        email,
+        role,
+        action,
+        method,
+        path,
+        query,
+        status,
+        ip,
+        userAgent,
+        metadataJson
+      )
+      .run();
+  } catch {
+    // best-effort audit logging: never break business flows
+  }
 }
