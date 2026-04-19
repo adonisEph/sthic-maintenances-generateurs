@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../_utils/db.js';
-import { json, requireAdmin, requireAuth } from '../_utils/http.js';
+import { json, requireAuth, isSuperAdmin, userZone } from '../_utils/http.js';
 
 function norm(v) {
   const s = String(v ?? '').trim();
@@ -10,7 +10,14 @@ export async function onRequestGet({ request, env, data }) {
   try {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
-    if (!requireAdmin(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
+
+    const role = String(data?.user?.role || '').trim();
+    const canAudit = role === 'admin' || role === 'manager';
+    if (!canAudit) return json({ error: 'Accès interdit.' }, { status: 403 });
+
+    const viewerZone = String(userZone(data) || 'BZV/POOL');
+    const canSeeAllZones = isSuperAdmin(data);
+    const zoneFilter = canSeeAllZones ? '' : viewerZone;
 
     const url = new URL(request.url);
     const sp = url.searchParams;
@@ -27,6 +34,11 @@ export async function onRequestGet({ request, env, data }) {
 
     const where = [];
     const bind = [];
+
+    if (zoneFilter) {
+      where.push('user_id IN (SELECT id FROM users WHERE zone = ?)');
+      bind.push(zoneFilter);
+    }
 
     if (userId) {
       where.push('user_id = ?');

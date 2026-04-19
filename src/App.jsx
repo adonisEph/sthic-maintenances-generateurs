@@ -52,7 +52,7 @@ const STHIC_LOGO_SRC = '/Logo_sthic.png';
 const SPLASH_MIN_MS = 4000;
 const DISABLE_PUSH_NOTIFICATIONS = false;
 const DISABLE_NOTIFICATIONS_FEATURE = false;
-const DISABLE_PRESENCE_FEATURE = false;
+const DISABLE_PRESENCE_FEATURE = true;
 const DISABLE_META_VERSION_POLLING = false;
 const NOTIFICATION_KINDS_REALTIME = [
   'EPV_ASSIGNED',
@@ -169,7 +169,7 @@ const GeneratorMaintenanceApp = () => {
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [showPresenceModal, setShowPresenceModal] = useState(false);
   const [presenceSessions, setPresenceSessions] = useState([]);
-  const [presenceTab, setPresenceTab] = useState('sessions');
+  const [presenceTab, setPresenceTab] = useState('history');
   const [auditLogs, setAuditLogs] = useState([]);
   const [auditBusy, setAuditBusy] = useState(false);
   const [auditError, setAuditError] = useState('');
@@ -1174,6 +1174,7 @@ const GeneratorMaintenanceApp = () => {
     let intervalId = null;
     let onFocus = null;
     let onSwMessage = null;
+    let lastNotifCheckAt = 0;
 
     (async () => {
       try {
@@ -1187,12 +1188,20 @@ const GeneratorMaintenanceApp = () => {
       }
     })();
 
+    const safeLoadUnread = () => {
+      const now = Date.now();
+      if (now - lastNotifCheckAt < 2 * 60 * 1000) return;
+      lastNotifCheckAt = now;
+      loadNotificationsUnreadCount();
+    };
+
     intervalId = window.setInterval(() => {
       if (disposed) return;
-      loadNotificationsUnreadCount();
-    }, 60 * 1000);
+      safeLoadUnread();
+    }, 5 * 60 * 1000);
 
-    onFocus = () => loadNotificationsUnreadCount();
+    onFocus = () => safeLoadUnread();
+
     window.addEventListener('focus', onFocus);
 
     onSwMessage = async (event) => {
@@ -1265,11 +1274,11 @@ const GeneratorMaintenanceApp = () => {
       }
 
       if (authUser?.role === 'manager') {
-        const data = await apiFetchJson('/api/technicians', { method: 'GET' });
-        const techs = Array.isArray(data?.technicians) ? data.technicians : [];
-        setUsers(techs.map((t) => ({ ...t, role: 'technician' })));
+        const data = await apiFetchJson('/api/users', { method: 'GET' });
+        setUsers(Array.isArray(data?.users) ? data.users : []);
         return data;
       }
+
 
       setUsers([]);
       return { users: [] };
@@ -5658,7 +5667,7 @@ const GeneratorMaintenanceApp = () => {
   }, [showPresenceModal]);
 
   const loadAuditLogs = async () => {
-    if (!isAdmin) return;
+    if (!isAdmin && !isManager) return;
     setAuditBusy(true);
     setAuditError('');
     try {
@@ -5681,7 +5690,7 @@ const GeneratorMaintenanceApp = () => {
 
   useEffect(() => {
     if (!showPresenceModal) return;
-    if (!isAdmin) return;
+    if (!isAdmin && !isManager) return;
     if (presenceTab !== 'history') return;
     if (auditBusy) return;
     if (Array.isArray(auditLogs) && auditLogs.length > 0) return;
@@ -5693,7 +5702,7 @@ const GeneratorMaintenanceApp = () => {
         // ignore
       }
     })();
-  }, [showPresenceModal, presenceTab, isAdmin, auditBusy, auditLogs]);
+  }, [showPresenceModal, presenceTab, isAdmin, isManager, auditBusy, auditLogs]);
 
   const handleExportAuditExcel = async () => {
     const rows = (Array.isArray(auditLogs) ? auditLogs : []).map((l) => ({
@@ -6721,7 +6730,31 @@ return (
             </button>
           )}
 
-          {canManageUsers && (
+          {(isAdmin || isManager) && (
+            <button
+              onClick={async () => {
+                setSidebarOpen(false);
+                setShowPresenceModal(true);
+                setPresenceTab('history');
+                try {
+                  await refreshUsers();
+                } catch {
+                  // ignore
+                }
+                try {
+                  await loadAuditLogs();
+                } catch {
+                  // ignore
+                }
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
+            >
+              <Activity size={18} />
+              Historique connexions
+            </button>
+          )}
+
+          {!DISABLE_PRESENCE_FEATURE && (
             <button
               onClick={() => {
                 setSidebarOpen(false);
@@ -7008,11 +7041,12 @@ return (
           onReset={resetUserForm}
         />
 
+      {(isAdmin || isManager) && (    
         <PresenceModal
           open={showPresenceModal}
-          isAdmin={isAdmin}
+          isAdmin={isAdmin || isManager}
           presenceTab={presenceTab}
-          onSelectSessions={() => setPresenceTab('sessions')}
+          onSelectSessions={() => setPresenceTab('history')}
           onSelectHistory={async () => {
             setPresenceTab('history');
             try {
@@ -7039,6 +7073,7 @@ return (
           presenceSessions={presenceSessions}
           onClose={() => setShowPresenceModal(false)}
         />
+      )}
 
         <ResetConfirmModal
           open={showResetConfirm}

@@ -11,8 +11,6 @@ export async function onRequestGet({ env, data }) {
     const nowMs = Date.now();
     const cutoff = nowMs - ttlMs;
 
-    await env.DB.prepare('DELETE FROM presence_sessions WHERE last_seen_ms < ?').bind(cutoff).run();
-
     const res = await env.DB
       .prepare('SELECT * FROM presence_sessions WHERE last_seen_ms >= ? ORDER BY last_seen_ms DESC LIMIT 500')
       .bind(cutoff)

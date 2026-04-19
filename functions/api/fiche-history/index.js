@@ -81,7 +81,7 @@ export async function onRequestGet({ request, env, data }) {
       LEFT JOIN sites s ON s.id = fh.site_id
       WHERE ${where}
       ORDER BY fh.date_generated DESC
-      LIMIT 2000`
+      LIMIT 500`
     );
     const res = await stmt.bind(...binds).all();
     const rows = Array.isArray(res?.results) ? res.results : [];

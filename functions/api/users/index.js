@@ -1,6 +1,7 @@
 import { hashPassword } from '../../_utils/auth.js';
 import { ensureAdminUser, isoNow, mapUserPublic, newId, normalizeEmailInput } from '../_utils/db.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
+import { requireAuth, isSuperAdmin, userZone } from '../_utils/http.js';
 
 function json(data, init = {}) {
   const headers = new Headers(init.headers || {});
@@ -12,14 +13,28 @@ function requireAdmin(data) {
   return data?.user?.role === 'admin';
 }
 
+function canListUsers(data) {
+  const r = String(data?.user?.role || '').trim();
+  return r === 'admin' || r === 'manager';
+}
+
 export async function onRequestGet({ env, data }) {
   await ensureAdminUser(env);
 
-  if (!requireAdmin(data)) {
+  if (!requireAuth(data)) {
+    return json({ error: 'Non authentifié.' }, { status: 401 });
+  }
+
+  if (!canListUsers(data)) {
     return json({ error: 'Accès interdit.' }, { status: 403 });
   }
 
-  const res = await env.DB.prepare('SELECT * FROM users ORDER BY email ASC').all();
+  const z = String(userZone(data) || 'BZV/POOL');
+  const stmt = isSuperAdmin(data)
+    ? env.DB.prepare('SELECT * FROM users ORDER BY email ASC')
+    : env.DB.prepare('SELECT * FROM users WHERE zone = ? ORDER BY email ASC').bind(z);
+
+  const res = await stmt.all();
   const rows = Array.isArray(res?.results) ? res.results : [];
   return json({ users: rows.map(mapUserPublic) }, { status: 200 });
 }

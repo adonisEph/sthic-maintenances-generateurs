@@ -28,7 +28,6 @@ const PresenceModal = ({
   if (!open) return null;
 
   const auditList = Array.isArray(auditLogs) ? auditLogs : [];
-  const sessionList = Array.isArray(presenceSessions) ? presenceSessions : [];
   const userList = Array.isArray(users) ? users : [];
 
   return (
@@ -47,34 +46,7 @@ const PresenceModal = ({
         </div>
 
         <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-          {isAdmin && (
-            <div className="flex flex-col sm:flex-row gap-2 mb-4">
-              <button
-                type="button"
-                onClick={onSelectSessions}
-                className={`px-3 py-2 rounded-lg text-sm font-semibold ${
-                  presenceTab === 'sessions'
-                    ? 'bg-indigo-700 text-white'
-                    : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-                }`}
-              >
-                Sessions
-              </button>
-              <button
-                type="button"
-                onClick={onSelectHistory}
-                className={`px-3 py-2 rounded-lg text-sm font-semibold ${
-                  presenceTab === 'history'
-                    ? 'bg-indigo-700 text-white'
-                    : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-                }`}
-              >
-                Historique
-              </button>
-            </div>
-          )}
-
-          {presenceTab === 'history' && isAdmin ? (
+          {isAdmin ? (
             <div>
               <div className="text-xs text-gray-600 mb-3">
                 Historique des connexions et actions (audit). Filtre par date/utilisateur/recherche.
@@ -199,50 +171,7 @@ const PresenceModal = ({
               )}
             </div>
           ) : (
-            <div>
-              <div className="text-xs text-gray-600 mb-3">
-                Sessions actives (tous rôles, multi-appareils). Actualisation automatique.
-              </div>
-              {sessionList.length === 0 ? (
-                <div className="text-gray-600">Aucun utilisateur actif détecté.</div>
-              ) : (
-                <div className="space-y-2">
-                  {sessionList.map((s) => {
-                    const lastSeenMs = Number(s.lastSeenMs);
-                    const secondsAgo = Number.isFinite(lastSeenMs)
-                      ? Math.max(0, Math.round((Date.now() - lastSeenMs) / 1000))
-                      : null;
-                    const isActive = secondsAgo !== null && secondsAgo <= 8;
-                    return (
-                      <div
-                        key={s.id || `${s.userId || ''}|${s.tabId || ''}|${s.email || ''}`}
-                        className="border border-gray-200 rounded-lg p-3 flex items-start justify-between gap-3"
-                      >
-                        <div className="min-w-0">
-                          <div className="font-semibold text-gray-800 truncate">{s.email || 'Utilisateur'}</div>
-                          <div className="text-xs text-gray-600">Rôle: {s.role || '-'}</div>
-                          <div className="text-xs text-gray-600 mt-1">
-                            Activité: <span className="font-semibold text-gray-800">{s.activity || '-'}</span>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div
-                            className={`text-xs px-2 py-1 rounded inline-block ${
-                              isActive ? 'bg-sky-100 text-sky-800' : 'bg-gray-100 text-gray-700'
-                            }`}
-                          >
-                            {isActive ? 'Actif' : 'Inactif'}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-2">
-                            {secondsAgo === null ? '-' : `Vu il y a ${secondsAgo}s`}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+            <div className="text-gray-600">Accès interdit.</div>
           )}
         </div>
 
