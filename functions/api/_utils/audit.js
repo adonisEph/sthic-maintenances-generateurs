@@ -27,6 +27,30 @@ function pickIp(request) {
   );
 }
 
+async function purgeOldAuditLogs(env, keepLimit = 50000, purgeBatch = 5000) {
+  if (!env?.DB) return;
+  const safeKeep = Math.max(1000, Math.min(200000, Number(keepLimit) || 50000));
+  const safeBatch = Math.max(100, Math.min(20000, Number(purgeBatch) || 5000));
+
+  const countRow = await env.DB.prepare('SELECT COUNT(1) as c FROM audit_logs').first();
+  const count = Number(countRow?.c || 0);
+  if (!Number.isFinite(count) || count <= safeKeep) return;
+
+  const toDelete = Math.min(safeBatch, Math.max(0, count - safeKeep));
+  if (toDelete <= 0) return;
+
+  await env.DB.prepare(
+    'DELETE FROM audit_logs WHERE id IN (SELECT id FROM audit_logs ORDER BY created_at_ms ASC LIMIT ?)'
+  )
+    .bind(toDelete)
+    .run();
+}
+
+function looksLikeDbSizeError(err) {
+  const msg = String(err?.message || err || '');
+  return /Exceeded maximum DB size/i.test(msg) || /maximum DB size/i.test(msg) || /D1_ERROR/i.test(msg);
+}
+
 export async function writeAuditLog(env, data, details) {
   if (!env?.DB) return;
   const action = String(details?.action || '').trim();
@@ -49,28 +73,39 @@ export async function writeAuditLog(env, data, details) {
   const userAgent = request?.headers?.get('User-Agent') || details?.userAgent || null;
   const metadataJson = safeJson(details?.metadata);
 
-  try {
-    await env.DB.prepare(
+  const stmt = () =>
+    env.DB.prepare(
       'INSERT INTO audit_logs (id, created_at, created_at_ms, user_id, email, role, action, method, path, query, status, ip, user_agent, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    )
-      .bind(
-        newId(),
-        createdAt,
-        createdAtMs,
-        userId,
-        email,
-        role,
-        action,
-        method,
-        path,
-        query,
-        status,
-        ip,
-        userAgent,
-        metadataJson
-      )
-      .run();
-  } catch {
+    ).bind(
+      newId(),
+      createdAt,
+      createdAtMs,
+      userId,
+      email,
+      role,
+      action,
+      method,
+      path,
+      query,
+      status,
+      ip,
+      userAgent,
+      metadataJson
+    );
+
+  try {
+    await stmt().run();
+    return;
+  } catch (e) {
+    if (looksLikeDbSizeError(e)) {
+      try {
+        await purgeOldAuditLogs(env);
+        await stmt().run();
+        return;
+      } catch {
+        // ignore
+      }
+    }
     // best-effort audit logging: never break business flows
   }
 }
