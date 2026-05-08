@@ -5,6 +5,7 @@ const HistoryModal = ({
   open,
   onClose,
   onOpenFiche,
+  onTriggerIntervention,
   onSendToWarehouse,
   canSendToWarehouse,
   allowedStatuses,
@@ -266,10 +267,18 @@ const HistoryModal = ({
 
                     <button
                       type="button"
-                      onClick={() => onOpenFiche(fiche)}
+                      onClick={() => {
+                        if (typeof onTriggerIntervention === 'function') {
+                          onTriggerIntervention(fiche);
+                          return;
+                        }
+                        if (typeof onOpenFiche === 'function') {
+                          onOpenFiche(fiche);
+                        }
+                      }}
                       className="w-full bg-slate-700 text-white py-2 rounded-lg hover:bg-slate-800 font-semibold"
                     >
-                      Ouvrir
+                      Déclencher l'intervention de cette vidange
                     </button>
                 </div>
               ))}

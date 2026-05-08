@@ -1,7 +1,6 @@
 import { ensureAdminUser } from '../_utils/db.js';
 import { json, requireAuth, readJson, isoNow, newId, isSuperAdmin, userZone } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
-import { createNotification, loadPushSubscriptionsForUsers, fanoutWebPushNoPayload } from '../_utils/notifications.js';
 
 export async function onRequestPost({ request, env, data }) {
   try {
@@ -94,28 +93,6 @@ export async function onRequestPost({ request, env, data }) {
 
     if (created > 0 || updated > 0) {
       await touchLastUpdatedAt(env);
-    }
-
-    try {
-      const techIds = Array.from(notifiedTechIds).filter(Boolean);
-      if (techIds.length > 0) {
-        for (const tid of techIds) {
-          await createNotification(env, {
-            userId: tid,
-            title: 'Planning Vidanges assigné',
-            body: derivedMonth
-              ? `Assigné par ${String(data?.user?.email || '').trim() || 'un manager'} • Mois: ${derivedMonth}`
-              : `Assigné par ${String(data?.user?.email || '').trim() || 'un manager'} • Un planning de vidanges a été assigné.`,
-            kind: 'EPV_ASSIGNED',
-            refId: derivedMonth || null,
-            zone: scopeZone || null
-          });
-        }
-        const subs = await loadPushSubscriptionsForUsers(env, techIds);
-        await fanoutWebPushNoPayload(env, subs);
-      }
-    } catch {
-      // ignore push failures
     }
 
     return json({ ok: true, created, updated, sent }, { status: 200 });

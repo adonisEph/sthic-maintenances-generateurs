@@ -1,8 +1,10 @@
 import React from 'react';
 import { X } from 'lucide-react';
 
-const SuperAdminFicheChoiceModal = ({ open, onClose, onSendToWarehouse, onSelfCheck }) => {
+const SuperAdminFicheChoiceModal = ({ open, onClose, onSendToWarehouse, onSelfCheck, busy, summary }) => {
   if (!open) return null;
+
+  const isBusy = Boolean(busy);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
@@ -20,15 +22,26 @@ const SuperAdminFicheChoiceModal = ({ open, onClose, onSendToWarehouse, onSelfCh
         </div>
 
         <div className="p-5">
-          <div className="text-sm text-gray-700">
-            Que souhaites-tu faire ?
-          </div>
+          <div className="text-sm text-gray-700">Que souhaites-tu faire ?</div>
+
+          {summary && !isBusy && (
+            <div className="mt-3 text-xs text-gray-600 border border-gray-200 rounded-lg p-3 bg-gray-50 whitespace-pre-line">
+              {String(summary)}
+            </div>
+          )}
+
+          {isBusy && (
+            <div className="mt-3 text-sm text-gray-700 border border-gray-200 rounded-lg p-3 bg-gray-50 font-semibold">
+              Vérification en cours…
+            </div>
+          )}
 
           <div className="mt-4 grid grid-cols-1 gap-3">
             <button
               type="button"
               onClick={onSendToWarehouse}
-              className="w-full bg-indigo-700 text-white py-3 rounded-lg hover:bg-indigo-800 font-bold"
+              disabled={isBusy}
+              className="w-full bg-indigo-700 text-white py-3 rounded-lg hover:bg-indigo-800 font-bold disabled:bg-indigo-300"
             >
               Envoyer pour contrôle magasin
             </button>
@@ -36,7 +49,8 @@ const SuperAdminFicheChoiceModal = ({ open, onClose, onSendToWarehouse, onSelfCh
             <button
               type="button"
               onClick={onSelfCheck}
-              className="w-full bg-emerald-700 text-white py-3 rounded-lg hover:bg-emerald-800 font-bold"
+              disabled={isBusy}
+              className="w-full bg-emerald-700 text-white py-3 rounded-lg hover:bg-emerald-800 font-bold disabled:bg-emerald-300"
             >
               Faire le contrôle soi-même
             </button>
@@ -44,7 +58,8 @@ const SuperAdminFicheChoiceModal = ({ open, onClose, onSendToWarehouse, onSelfCh
             <button
               type="button"
               onClick={onClose}
-              className="w-full bg-gray-400 text-white py-2.5 rounded-lg hover:bg-gray-500 font-semibold"
+              disabled={isBusy}
+              className="w-full bg-gray-400 text-white py-2.5 rounded-lg hover:bg-gray-500 font-semibold disabled:bg-gray-300"
             >
               Annuler
             </button>

@@ -32,6 +32,9 @@ const CompleteInterventionModal = ({
           <div className="text-sm text-gray-700">
             <div className="font-semibold text-gray-900">{completeModalSite?.nameSite || completeModalIntervention?.siteId || ''}</div>
             {completeModalSite?.idSite && <div className="text-xs text-gray-600">ID: {completeModalSite.idSite}</div>}
+            {completeModalIntervention?.ticketNumber && (
+              <div className="text-xs text-indigo-700 font-bold">Ticket: {String(completeModalIntervention.ticketNumber)}</div>
+            )}
             <div className="text-xs text-gray-600">
               {completeModalIntervention?.epvType} • {formatDate ? formatDate(completeModalIntervention?.plannedDate) : (completeModalIntervention?.plannedDate || '')}
             </div>

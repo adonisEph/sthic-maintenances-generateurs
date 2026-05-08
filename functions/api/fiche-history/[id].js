@@ -1,7 +1,6 @@
 import { ensureAdminUser } from '../_utils/db.js';
 import { json, requireAuth, isSuperAdmin, userZone, readJson, isoNow } from '../_utils/http.js';
 import { nextTicketNumberForZone, touchLastUpdatedAt } from '../_utils/meta.js';
-import { createNotification, loadPushSubscriptionsForUsers, fanoutWebPushNoPayload } from '../_utils/notifications.js';
 
 function mapRow(row, siteZone) {
   if (!row) return null;
@@ -188,35 +187,6 @@ export async function onRequestPatch({ request, env, data, params }) {
         .bind(ticketLabel, 'Envoyée au magasin', null, null, null, null, now, id)
         .run();
 
-      try {
-        const warehouseRes = await env.DB.prepare("SELECT id FROM users WHERE role = 'warehouse' AND zone = ?")
-          .bind(zone)
-          .all();
-        const warehouseIds = (Array.isArray(warehouseRes?.results) ? warehouseRes.results : [])
-          .map((r) => String(r?.id || ''))
-          .filter(Boolean);
-
-        const recipients = warehouseIds;
-        const title = 'Fiche envoyée au magasin';
-        const bodyTxt = `${String(existing?.site_name || '') || 'Site'} - ticket ${ticketLabel}`;
-
-        for (const uid of recipients) {
-          await createNotification(env, {
-            userId: uid,
-            title,
-            body: bodyTxt,
-            kind: 'WAREHOUSE_INBOX',
-            refId: String(id),
-            zone
-          });
-        }
-
-        const subs = await loadPushSubscriptionsForUsers(env, recipients);
-        await fanoutWebPushNoPayload(env, subs);
-      } catch {
-        // ignore notification failures
-      }
-
       const updated = await env.DB.prepare('SELECT * FROM fiche_history WHERE id = ?').bind(id).first();
       return json({ fiche: mapRow(updated, zone) }, { status: 200 });
     }
@@ -251,35 +221,6 @@ export async function onRequestPatch({ request, env, data, params }) {
         )
         .run();
 
-      if (hadNoWarehouseCheck && (air !== null || coolant !== null)) {
-        try {
-          const siteZone = String(zone || 'BZV/POOL');
-
-          const ticket = String(existing?.ticket_number || '').trim();
-          const ticketLabel = ticket ? `ticket ${ticket}` : '';
-
-          const recipients = await loadCollaboratorRecipientIds(env, siteZone);
-          const title = 'Retour magasin - Fiche prête';
-          const bodyTxt = `${String(existing?.site_name || '') || 'Site'}${ticketLabel ? ` - ${ticketLabel}` : ''} - contrôle magasin effectué.`;
-
-          for (const uid of recipients) {
-            await createNotification(env, {
-              userId: uid,
-              title,
-              body: bodyTxt,
-              kind: 'WAREHOUSE_CHECK',
-              refId: String(id),
-              zone: siteZone
-            });
-          }
-
-          const subs = await loadPushSubscriptionsForUsers(env, recipients);
-          await fanoutWebPushNoPayload(env, subs);
-        } catch {
-          // ignore notification failures
-        }
-      }
-
       const updated = await env.DB.prepare('SELECT * FROM fiche_history WHERE id = ?').bind(id).first();
       return json({ fiche: mapRow(updated, zone) }, { status: 200 });
     }
@@ -298,33 +239,6 @@ export async function onRequestPatch({ request, env, data, params }) {
       )
         .bind('Contrôle magasin', now, id)
         .run();
-
-      try {
-        const siteZone = String(zone || 'BZV/POOL');
-
-        const ticket = String(existing?.ticket_number || '').trim();
-        const ticketLabel = ticket ? `ticket ${ticket}` : '';
-
-        const recipients = await loadCollaboratorRecipientIds(env, siteZone);
-        const title = 'Retour magasin - Fiche renvoyée';
-        const bodyTxt = `${String(existing?.site_name || '') || 'Site'}${ticketLabel ? ` - ${ticketLabel}` : ''} - fiche traitée par le magasin et renvoyée pour finalisation.`;
-
-        for (const uid of recipients) {
-          await createNotification(env, {
-            userId: uid,
-            title,
-            body: bodyTxt,
-            kind: 'WAREHOUSE_SUBMIT',
-            refId: String(id),
-            zone: siteZone
-          });
-        }
-
-        const subs = await loadPushSubscriptionsForUsers(env, recipients);
-        await fanoutWebPushNoPayload(env, subs);
-      } catch {
-        // ignore notification failures
-      }
 
       const updated = await env.DB.prepare('SELECT * FROM fiche_history WHERE id = ?').bind(id).first();
       return json({ fiche: mapRow(updated, zone) }, { status: 200 });

@@ -15,6 +15,8 @@ function mapRow(row) {
     status: row.status,
     sentAt: row.sent_at || null,
     doneAt: row.done_at || null,
+    ticketNumber: row.ticket_number || null,
+    ficheId: row.fiche_id || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -61,7 +63,13 @@ export async function onRequestGet({ request, env, data }) {
       binds.push(String(technicianUserId));
     }
 
-    const stmt = env.DB.prepare(`SELECT * FROM interventions WHERE ${where} ORDER BY planned_date ASC`);
+    const stmt = env.DB.prepare(
+      `SELECT i.*, fh.ticket_number, fh.id as fiche_id
+       FROM interventions i
+       LEFT JOIN fiche_history fh ON fh.intervention_id = i.id
+       WHERE ${where}
+       ORDER BY i.planned_date ASC`
+    );
     const res = await stmt.bind(...binds).all();
     const rows = Array.isArray(res?.results) ? res.results : [];
     return json(

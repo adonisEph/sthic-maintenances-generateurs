@@ -19,10 +19,25 @@ const AirFilterHistoryModal = ({
     return new Map(sitesArr.filter(Boolean).map((s) => [String(s.id), s]));
   }, [sitesArr]);
 
+  const currentCampaignMonth = useMemo(() => {
+    try {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Africa/Brazzaville',
+        year: 'numeric',
+        month: '2-digit'
+      }).formatToParts(new Date());
+      const y = parts.find((p) => p.type === 'year')?.value;
+      const m = parts.find((p) => p.type === 'month')?.value;
+      return y && m ? `${y}-${m}` : new Date().toISOString().slice(0, 7);
+    } catch {
+      return new Date().toISOString().slice(0, 7);
+    }
+  }, []);
+
   const toCampaignMonth = (f) => {
-    const pd = f?.plannedDate ? String(f.plannedDate).slice(0, 10) : '';
     const dg = f?.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
-    const d = pd || dg;
+    const pd = f?.plannedDate ? String(f.plannedDate).slice(0, 10) : '';
+    const d = dg || pd;
     return d ? String(d).slice(0, 7) : '';
   };
 
@@ -31,9 +46,78 @@ const AirFilterHistoryModal = ({
     for (const f of list) {
       if (!f) continue;
       const m = toCampaignMonth(f);
-      if (m) set.add(m);
+      if (m && m <= currentCampaignMonth) set.add(m);
     }
     return Array.from(set).sort().reverse();
+  }, [list, currentCampaignMonth]);
+
+  const computePassageMetierByFicheId = useMemo(() => {
+    const bySiteCampaign = new Map();
+
+    const effectiveDate = (f) => {
+      const checked = f?.warehouseCheckedAt ? String(f.warehouseCheckedAt).slice(0, 10) : '';
+      const generated = f?.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
+      const planned = f?.plannedDate ? String(f.plannedDate).slice(0, 10) : '';
+      return checked || generated || planned || '';
+    };
+
+    const nextEpv = (epv) => {
+      if (epv === 'EPV1') return 'EPV2';
+      if (epv === 'EPV2') return 'EPV3';
+      return 'EPV3';
+    };
+
+    for (const f of list.filter(Boolean)) {
+      const camp = toCampaignMonth(f);
+      if (!camp) continue;
+      const sid = String(f.siteId || '').trim();
+      if (!sid) continue;
+      const key = `${sid}__${camp}`;
+      const arr = bySiteCampaign.get(key) || [];
+      arr.push(f);
+      bySiteCampaign.set(key, arr);
+    }
+
+    const result = new Map();
+
+    for (const [, arr] of bySiteCampaign.entries()) {
+      const sorted = [...arr].sort((a, b) => {
+        const da = effectiveDate(a);
+        const db = effectiveDate(b);
+        if (db !== da) return da.localeCompare(db);
+        return String(a?.id || '').localeCompare(String(b?.id || ''));
+      });
+
+      let expected = 'EPV1';
+      let done = false;
+
+      for (const f of sorted) {
+        const id = String(f?.id || '');
+        if (!id) continue;
+
+        if (done) {
+          result.set(id, expected);
+          continue;
+        }
+
+        // Passage métier attendu pour cette fiche (avant d'appliquer la décision magasin)
+        result.set(id, expected);
+
+        const ok = f?.warehouseAirFilterOk;
+        if (ok === true) {
+          done = true;
+          continue;
+        }
+        if (ok === false) {
+          expected = nextEpv(expected);
+          continue;
+        }
+
+        // ok === null => pas contrôlé => on ne progresse pas
+      }
+    }
+
+    return result;
   }, [list]);
 
   const [filterCampaign, setFilterCampaign] = useState('');
@@ -85,9 +169,9 @@ const AirFilterHistoryModal = ({
         const sid = String(f.siteId || '').trim();
         const site = siteById.get(sid) || null;
         const campaignMonth = toCampaignMonth(f);
-        const planned = f?.plannedDate ? String(f.plannedDate).slice(0, 10) : '';
         const generated = f?.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
         const checkedAt = f?.warehouseCheckedAt ? String(f.warehouseCheckedAt) : '';
+        const passageMetier = computePassageMetierByFicheId.get(String(f.id || '')) || '';
         return {
           id: String(f.id || ''),
           campaignMonth,
@@ -95,7 +179,7 @@ const AirFilterHistoryModal = ({
           idSite: site?.idSite != null ? String(site.idSite).trim() : '',
           technician: String(f.technician || '').trim(),
           epvType: String(f.epvType || '').trim().toUpperCase(),
-          plannedDate: planned,
+          passageMetier: String(passageMetier || '').trim(),
           dateGenerated: generated,
           status: f.warehouseAirFilterOk === true ? 'Sorti' : 'Non sorti',
           ticketNumber: String(f.ticketNumber || '').trim(),
@@ -108,7 +192,7 @@ const AirFilterHistoryModal = ({
         const bb = String(b.checkedAt || b.dateGenerated || '');
         return bb.localeCompare(aa);
       });
-  }, [filtered, siteById]);
+  }, [filtered, siteById, computePassageMetierByFicheId]);
 
   const notControlledRows = useMemo(() => {
     return filtered
@@ -117,8 +201,8 @@ const AirFilterHistoryModal = ({
         const sid = String(f.siteId || '').trim();
         const site = siteById.get(sid) || null;
         const campaignMonth = toCampaignMonth(f);
-        const planned = f?.plannedDate ? String(f.plannedDate).slice(0, 10) : '';
         const generated = f?.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
+        const passageMetier = computePassageMetierByFicheId.get(String(f.id || '')) || '';
         return {
           id: String(f.id || ''),
           campaignMonth,
@@ -126,13 +210,13 @@ const AirFilterHistoryModal = ({
           idSite: site?.idSite != null ? String(site.idSite).trim() : '',
           technician: String(f.technician || '').trim(),
           epvType: String(f.epvType || '').trim().toUpperCase(),
-          plannedDate: planned,
+          passageMetier: String(passageMetier || '').trim(),
           dateGenerated: generated,
           ticketNumber: String(f.ticketNumber || '').trim()
         };
       })
       .sort((a, b) => String(b.dateGenerated || '').localeCompare(String(a.dateGenerated || '')));
-  }, [filtered, siteById]);
+  }, [filtered, siteById, computePassageMetierByFicheId]);
 
   const fmtDate = (d) => (typeof formatDate === 'function' ? formatDate(d) : String(d || ''));
 
@@ -238,7 +322,7 @@ const AirFilterHistoryModal = ({
                           <div className="font-semibold text-slate-900">{r.siteName || '-'}</div>
                           <div className="text-xs text-slate-600">ID Site: <span className="font-mono font-semibold">{r.idSite || '-'}</span></div>
                         </td>
-                        <td className="p-3 border-b font-mono">{r.epvType || '-'}</td>
+                        <td className="p-3 border-b font-mono">{r.passageMetier || '-'}</td>
                         <td className="p-3 border-b">
                           <span className={`inline-flex items-center px-2 py-1 rounded-full border text-[11px] font-bold ${r.status === 'Sorti' ? 'bg-emerald-100 text-emerald-900 border-emerald-200' : 'bg-red-100 text-red-900 border-red-200'}`}>
                             {r.status}
@@ -246,7 +330,7 @@ const AirFilterHistoryModal = ({
                         </td>
                         <td className="p-3 border-b">{r.technician || '-'}</td>
                         <td className="p-3 border-b font-mono">{r.ticketNumber || '-'}</td>
-                        <td className="p-3 border-b">{r.checkedAt ? fmtDate(String(r.checkedAt).slice(0, 10)) : (r.dateGenerated ? fmtDate(r.dateGenerated) : '-')}</td>
+                        <td className="p-3 border-b">{r.checkedAt ? fmtDate(String(r.checkedAt).slice(0, 10)) : '-'}</td>
                         <td className="p-3 border-b">{r.checkedBy || '-'}</td>
                       </tr>
                     ))}
@@ -281,7 +365,7 @@ const AirFilterHistoryModal = ({
                           <div className="font-semibold text-slate-900">{r.siteName || '-'}</div>
                           <div className="text-xs text-slate-600">ID Site: <span className="font-mono font-semibold">{r.idSite || '-'}</span></div>
                         </td>
-                        <td className="p-3 border-b font-mono">{r.epvType || '-'}</td>
+                        <td className="p-3 border-b font-mono">{r.passageMetier || '-'}</td>
                         <td className="p-3 border-b">{r.technician || '-'}</td>
                         <td className="p-3 border-b font-mono">{r.ticketNumber || '-'}</td>
                         <td className="p-3 border-b">{r.dateGenerated ? fmtDate(r.dateGenerated) : '-'}</td>

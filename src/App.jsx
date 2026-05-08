@@ -5,7 +5,6 @@ import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { useStorage } from './hooks/useStorage';
 import PmModal from './components/PmModal';
-import NotificationsModal from './components/notifications/NotificationsModal.jsx';
 import CalendarModal from './components/CalendarModal';
 import AddSiteForm from './components/sites/AddSiteForm';
 import UpdateSiteForm from './components/sites/UpdateSiteForm';
@@ -30,6 +29,7 @@ import FicheModal from './components/fiche/FicheModal';
 import SuperAdminFicheChoiceModal from './components/fiche/SuperAdminFicheChoiceModal';
 import DayDetailsModal from './components/calendar/DayDetailsModal';
 import TechnicianCalendarModal from './components/calendar/TechnicianCalendarModal';
+import CenterAlertModal from './components/common/CenterAlertModal';
 
 import {
   calculateRegime,
@@ -41,7 +41,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '4.4.4';
+const APP_VERSION = '5.0.0';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -50,17 +50,10 @@ const APP_VERSION_REQUIRED_KEY = 'gma_app_required_version';
 const DAILY_NH_UPDATE_STORAGE_KEY = 'gma_daily_nh_update_ymd';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
 const SPLASH_MIN_MS = 4000;
-const DISABLE_PUSH_NOTIFICATIONS = false;
-const DISABLE_NOTIFICATIONS_FEATURE = false;
+const DISABLE_PUSH_NOTIFICATIONS = true;
+const DISABLE_NOTIFICATIONS_FEATURE = true;
 const DISABLE_PRESENCE_FEATURE = true;
 const DISABLE_META_VERSION_POLLING = false;
-const NOTIFICATION_KINDS_REALTIME = [
-  'EPV_ASSIGNED',
-  'EPV_DONE',
-  'WAREHOUSE_INBOX',
-  'WAREHOUSE_CHECK',
-  'WAREHOUSE_SUBMIT'
-];
 
 const GeneratorMaintenanceApp = () => {
   const storage = useStorage();
@@ -69,14 +62,15 @@ const GeneratorMaintenanceApp = () => {
   const [sites, setSites] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showUpdateForm, setShowUpdateForm] = useState(false);
-  const [showNotificationsModal, setShowNotificationsModal] = useState(false);
-  const [notificationsToast, setNotificationsToast] = useState('');
   const [showEditForm, setShowEditForm] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showFicheModal, setShowFicheModal] = useState(false);
   const [superAdminFicheChoiceOpen, setSuperAdminFicheChoiceOpen] = useState(false);
   const [superAdminFicheChoiceSite, setSuperAdminFicheChoiceSite] = useState(null);
+  const [superAdminFicheChoiceBusy, setSuperAdminFicheChoiceBusy] = useState(false);
+  const [superAdminFicheChoiceSummary, setSuperAdminFicheChoiceSummary] = useState('');
+  const [superAdminFicheChoiceMeta, setSuperAdminFicheChoiceMeta] = useState(null);
   const [showBannerUpload, setShowBannerUpload] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -146,8 +140,6 @@ const GeneratorMaintenanceApp = () => {
     currentVersion: APP_VERSION,
     serverVersion: ''
   });
-  const [notificationsUnreadCount, setNotificationsUnreadCount] = useState(0);
-  const [pushEnabled, setPushEnabled] = useState(false);
   const [bannerImage, setBannerImage] = useState('');
   const [siteForFiche, setSiteForFiche] = useState(null);
   const [ficheContext, setFicheContext] = useState(null);
@@ -302,15 +294,42 @@ const GeneratorMaintenanceApp = () => {
   const canManageUsers = isAdmin;
   const canUseInterventions = isAdmin || isManager || isTechnician || isViewer;
   const canUsePm = isAdmin || isManager || isViewer;
+  const [centerAlert, setCenterAlert] = useState({
+    open: false,
+    title: '',
+    message: '',
+    primaryLabel: '',
+    primaryAction: null
+  });
+
+  const openCenterAlert = ({ title, message, primaryLabel = '', primaryAction = null }) => {
+    setCenterAlert({
+      open: true,
+      title: String(title || ''),
+      message: String(message || ''),
+      primaryLabel: String(primaryLabel || ''),
+      primaryAction: typeof primaryAction === 'function' ? primaryAction : null,
+      secondaryLabel: 'OK',
+      secondaryAction: null
+    });
+  };
+
+  const closeCenterAlert = () => {
+    setCenterAlert((prev) => ({ ...(prev || {}), open: false }));
+  };
+
   const warehouseProcessCount = useMemo(() => {
     const list = Array.isArray(ficheHistory) ? ficheHistory : [];
-    return list.filter((f) => f && (f.status === 'Envoyée au magasin' || f.status === 'Contrôle magasin')).length;
+    return list.filter((f) => f && f.status === 'Envoyée au magasin').length;
   }, [ficheHistory]);
-  const canWarehouseRevoke = Boolean(
-    isSuperAdmin ||
-    (isManager && ['PNR/KOUILOU', 'UPCN'].includes(String(authUser?.zone || '').trim().toUpperCase()))
-  );
+
+  const warehouseReturnsCount = useMemo(() => {
+    const list = Array.isArray(ficheHistory) ? ficheHistory : [];
+    return list.filter((f) => f && f.status === 'Contrôle magasin').length;
+  }, [ficheHistory]);
+
   const prevWarehouseProcessCountRef = useRef(warehouseProcessCount);
+  const prevWarehouseReturnsCountRef = useRef(warehouseReturnsCount);
 
   useEffect(() => {
     if (!isWarehouse) {
@@ -322,19 +341,19 @@ const GeneratorMaintenanceApp = () => {
     const next = Number(warehouseProcessCount || 0);
 
     if (next > prev) {
-      setNotificationsToast(`📥 ${next} fiche(s) reçue(s) au magasin`);
-      window.setTimeout(() => setNotificationsToast(''), 3500);
+      const delta = next - prev;
+      openCenterAlert({
+        title: 'Nouvelle fiche',
+        message: `+${delta} fiche${delta > 1 ? 's' : ''} vidange à traiter envoyée${delta > 1 ? 's' : ''} par le responsable`,
+        primaryLabel: 'Traiter la fiche',
+        primaryAction: () => {
+          setShowWarehouseProcess(true);
+        }
+      });
     }
 
     prevWarehouseProcessCountRef.current = next;
   }, [warehouseProcessCount, isWarehouse]);
-
-  const warehouseReturnsCount = useMemo(() => {
-    const list = Array.isArray(ficheHistory) ? ficheHistory : [];
-    return list.filter((f) => f && f.status === 'Contrôle magasin').length;
-  }, [ficheHistory]);
-
-  const prevWarehouseReturnsCountRef = useRef(warehouseReturnsCount);
 
   useEffect(() => {
     if (!(isAdmin || isManager)) {
@@ -346,12 +365,66 @@ const GeneratorMaintenanceApp = () => {
     const next = Number(warehouseReturnsCount || 0);
 
     if (next > prev) {
-      setNotificationsToast(`📥 ${next} fiche(s) renvoyée(s) par le magasin`);
-      window.setTimeout(() => setNotificationsToast(''), 3500);
+      const delta = next - prev;
+      openCenterAlert({
+        title: 'Retour magasinier',
+        message: `+${delta} fiche${delta > 1 ? 's' : ''} traitée${delta > 1 ? 's' : ''} et renvoyée${delta > 1 ? 's' : ''} par le magasinier, prière de finaliser`,
+        primaryLabel: 'Finaliser la fiche',
+        primaryAction: () => {
+          setShowWarehouseReturns(true);
+        }
+      });
     }
 
     prevWarehouseReturnsCountRef.current = next;
   }, [warehouseReturnsCount, isAdmin, isManager]);
+
+  const prevDoneInterventionsRef = useRef(new Set());
+
+  useEffect(() => {
+    if (!(isAdmin || isManager)) return;
+    if (!authUser?.id) return;
+
+    let disposed = false;
+
+    const tick = async () => {
+      if (disposed) return;
+      try {
+        await loadInterventions(interventionsMonth, interventionsStatus, interventionsTechnicianUserId);
+
+        const done = (Array.isArray(interventions) ? interventions : [])
+          .filter((it) => String(it?.status || '') === 'done')
+          .slice(0, 50);
+
+        for (const it of done) {
+          const k = String(it?.id || '');
+          if (!k) continue;
+          if (prevDoneInterventionsRef.current.has(k)) continue;
+
+          prevDoneInterventionsRef.current.add(k);
+
+          const site = (Array.isArray(sites) ? sites : []).find((s) => String(s?.id) === String(it?.siteId)) || null;
+          const techName = String(it?.technicianName || '').trim();
+
+          openCenterAlert({
+            title: 'Vidange effectuée',
+            message: `VIDANGE DU SITE ${String(site?.nameSite || it?.siteId || '').trim()} EFFECTUEE par ${techName || 'Technicien'}`,
+            primaryLabel: '',
+            primaryAction: null
+          });
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    tick();
+    const id = window.setInterval(tick, 60 * 1000);
+    return () => {
+      disposed = true;
+      window.clearInterval(id);
+    };
+  }, [authUser?.id, isAdmin, isManager, interventionsMonth, interventionsStatus, interventionsTechnicianUserId, sites, interventions]);
 
 
   const apiFetchJson = async (path, init = {}) => {
@@ -486,30 +559,6 @@ const GeneratorMaintenanceApp = () => {
     }
   };
 
-
-
-  const loadNotificationsUnreadCount = async () => {
-    if (DISABLE_NOTIFICATIONS_FEATURE) {
-      try {
-        setNotificationsUnreadCount(0);
-        await safeSetAppBadge(0);
-      } catch {
-      }
-      return 0;
-    }
-    try {
-      const qs = new URLSearchParams();
-      qs.set('kinds', NOTIFICATION_KINDS_REALTIME.join(','));
-      const res = await apiFetchJson(`/api/notifications/unread-count?${qs.toString()}`, { method: 'GET' });
-      const c = Number(res?.unreadCount || 0);
-      setNotificationsUnreadCount(c);
-      await safeSetAppBadge(c);
-      return c;
-    } catch {
-      return 0;
-    }
-  };
-
   const base64UrlToUint8Array = (b64url) => {
     const src = String(b64url || '').trim();
     if (!src) return null;
@@ -522,67 +571,6 @@ const GeneratorMaintenanceApp = () => {
       return out;
     } catch {
       return null;
-    }
-  };
-
-  const ensurePushSubscription = async () => {
-
-    if (DISABLE_PUSH_NOTIFICATIONS) {
-      try {
-        setPushEnabled(false);
-      } catch {
-      }
-      return false;
-    }
-
-    if (!('serviceWorker' in navigator)) return false;
-    if (!('PushManager' in window)) return false;
-    if (!('Notification' in window)) return false;
-    if (Notification.permission !== 'granted') return false;
-
-    const registration = await navigator.serviceWorker.ready;
-    const existing = await registration.pushManager.getSubscription();
-    if (existing) {
-      setPushEnabled(true);
-      return true;
-    }
-
-    const vapid = await apiFetchJson('/api/push/vapid-public-key', { method: 'GET' });
-    const publicKey = String(vapid?.publicKey || '').trim();
-    const appServerKey = base64UrlToUint8Array(publicKey);
-    if (!appServerKey) return false;
-
-    const sub = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appServerKey });
-    await apiFetchJson('/api/push/subscribe', {
-      method: 'POST',
-      body: JSON.stringify({ subscription: sub, userAgent: navigator.userAgent })
-    });
-    setPushEnabled(true);
-    return true;
-  };
-
-  const requestPushPermissionAndSubscribe = async () => {
-    
-    if (DISABLE_PUSH_NOTIFICATIONS) {
-      try {
-        setPushEnabled(false);
-      } catch {
-      }
-      return false;
-    }
-
-    if (!('Notification' in window)) return false;
-    if (!('serviceWorker' in navigator)) return false;
-    try {
-      const perm = await Notification.requestPermission();
-      if (perm !== 'granted') {
-        setPushEnabled(false);
-        return false;
-      }
-      return await ensurePushSubscription();
-    } catch {
-      setPushEnabled(false);
-      return false;
     }
   };
 
@@ -978,6 +966,11 @@ const GeneratorMaintenanceApp = () => {
       return 0;
     };
 
+    const majorOf = (v) => {
+      const n = Number(String(v || '0').split('.')[0] || 0);
+      return Number.isFinite(n) ? n : 0;
+    };
+
     const checkServerVersion = async () => {
       try {
         const resp = await fetch(`/app-version.json?ts=${Date.now()}`, { cache: 'no-store' });
@@ -1005,9 +998,11 @@ const GeneratorMaintenanceApp = () => {
 
         const msSinceSnooze = snoozedAt > 0 ? Date.now() - snoozedAt : 0;
         const forceAfterMs = APP_VERSION_FORCE_AFTER_DAYS * 24 * 60 * 60 * 1000;
-        const force = snoozedAt > 0 && msSinceSnooze >= forceAfterMs;
+        const forceBySnooze = snoozedAt > 0 && msSinceSnooze >= forceAfterMs;
 
         const dismissedThisVersion = dismissedFor && dismissedFor === serverVersion;
+        const forceByMajor = majorOf(serverVersion) > majorOf(currentVersion);
+        const force = Boolean(forceByMajor || forceBySnooze);
 
         if (canceled) return;
 
@@ -1015,9 +1010,9 @@ const GeneratorMaintenanceApp = () => {
           ...(prev || {}),
           currentVersion,
           serverVersion,
-          available: true,
-          badge: false,
-          forced: true
+          available: Boolean(force && !dismissedThisVersion),
+          badge: true,
+          forced: Boolean(force)
         }));
       } catch {
         // ignore
@@ -1032,7 +1027,7 @@ const GeneratorMaintenanceApp = () => {
     };
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVisibility);
-    intervalId = window.setInterval(checkServerVersion, 5 * 60 * 1000);
+    intervalId = window.setInterval(checkServerVersion, 30 * 60 * 1000);
 
     return () => {
       canceled = true;
@@ -1154,111 +1149,6 @@ const GeneratorMaintenanceApp = () => {
         if (onVisibility) document.removeEventListener('visibilitychange', onVisibility);
       } catch {
         // ignore
-      }
-    };
-  }, [authUser?.id]);
-
-  useEffect(() => {
-    if (!authUser?.id) return;
-    
-    if (DISABLE_NOTIFICATIONS_FEATURE || DISABLE_PUSH_NOTIFICATIONS) {
-      try {
-        setPushEnabled(false);
-        setNotificationsUnreadCount(0);
-      } catch {
-      }
-      return;
-    }
-
-    let disposed = false;
-    let intervalId = null;
-    let onFocus = null;
-    let onSwMessage = null;
-    let lastNotifCheckAt = 0;
-
-    (async () => {
-      try {
-        await loadNotificationsUnreadCount();
-        if (Notification?.permission === 'granted') {
-          await ensurePushSubscription();
-        } else {
-          setPushEnabled(false);
-        }
-      } catch {
-      }
-    })();
-
-    const safeLoadUnread = () => {
-      const now = Date.now();
-      if (now - lastNotifCheckAt < 2 * 60 * 1000) return;
-      lastNotifCheckAt = now;
-      loadNotificationsUnreadCount();
-    };
-
-    intervalId = window.setInterval(() => {
-      if (disposed) return;
-      safeLoadUnread();
-    }, 5 * 60 * 1000);
-
-    onFocus = () => safeLoadUnread();
-
-    window.addEventListener('focus', onFocus);
-
-    onSwMessage = async (event) => {
-      if (!event?.data) return;
-      if (event.data.type === 'PUSH_NOTIFICATION') {
-        await loadNotificationsUnreadCount();
-
-        try {
-          const qs = new URLSearchParams();
-          qs.set('unreadOnly', '1');
-          qs.set('limit', '1');
-          qs.set('kinds', NOTIFICATION_KINDS_REALTIME.join(','));
-          const latest = await apiFetchJson(`/api/notifications?${qs.toString()}`, { method: 'GET' });
-          const n = Array.isArray(latest?.notifications) ? latest.notifications[0] : null;
-          if (n?.title) {
-            setNotificationsToast(String(n.title));
-            window.setTimeout(() => setNotificationsToast(''), 3500);
-          }
-        } catch {
-          // si réseau KO, pas de toast (évite spam/bugs)
-        }
-      
-        // beep simple (si possible)
-        try {
-          const AudioCtx = window.AudioContext || window.webkitAudioContext;
-          if (AudioCtx) {
-            const ctx = new AudioCtx();
-            const o = ctx.createOscillator();
-            const g = ctx.createGain();
-            o.type = 'sine';
-            o.frequency.value = 880;
-            g.gain.value = 0.05;
-            o.connect(g);
-            g.connect(ctx.destination);
-            o.start();
-            window.setTimeout(() => {
-              o.stop();
-              ctx.close();
-            }, 180);
-          }
-        } catch {
-          // ignore
-        }
-      }
-    };
-    try {
-      navigator.serviceWorker?.addEventListener?.('message', onSwMessage);
-    } catch {
-    }
-
-    return () => {
-      disposed = true;
-      try {
-        if (intervalId) window.clearInterval(intervalId);
-        if (onFocus) window.removeEventListener('focus', onFocus);
-        if (onSwMessage) navigator.serviceWorker?.removeEventListener?.('message', onSwMessage);
-      } catch {
       }
     };
   }, [authUser?.id]);
@@ -1674,7 +1564,10 @@ const GeneratorMaintenanceApp = () => {
       await loadInterventions();
       await loadFicheHistory();
       bumpInterventionsUiRev();
-      alert('✅ Intervention marquée comme effectuée.');
+      const techName =
+        String(authUser?.technicianName || authUser?.technician_name || it?.technicianName || it?.technician_name || authUser?.email || '').trim();
+
+      alert(`VIDANGE DU SITE ${String(site?.nameSite || it?.siteId || '').trim()} EFFECTUEE par ${techName || 'Technicien'}`);
     } catch (e) {
       alert(e?.message || 'Erreur serveur.');
     }
@@ -3850,6 +3743,67 @@ const GeneratorMaintenanceApp = () => {
     setShowFicheModal(true);
   };
 
+  const handleOpenSuperAdminFicheChoice = async (site) => {
+    setSuperAdminFicheChoiceSite(site);
+    setSuperAdminFicheChoiceSummary('');
+    setSuperAdminFicheChoiceMeta(null);
+    setSuperAdminFicheChoiceOpen(true);
+    setSuperAdminFicheChoiceBusy(true);
+
+    try {
+      // 1) Refresh historique pour être sûr d'avoir les derniers états
+      await loadFicheHistory();
+
+      // 2) Déterminer EPV/plannedDate comme handleGenerateFiche
+      const today = new Date().toISOString().split('T')[0];
+      const candidates = [
+        { type: 'EPV1', date: site?.epv1 },
+        { type: 'EPV2', date: site?.epv2 },
+        { type: 'EPV3', date: site?.epv3 }
+      ].filter((c) => c?.date);
+
+      const next = candidates.find((c) => c.date >= today) || candidates[0];
+      const plannedDate = next?.date ? String(next.date).slice(0, 10) : '';
+      const epvType = next?.type ? String(next.type).trim() : '';
+
+      const campaignMonth = plannedDate ? String(plannedDate).slice(0, 7) : '';
+
+      // A) nouvelle campagne = dernier mois de fiche du site != campaignMonth
+      const siteId = site?.id ? String(site.id) : '';
+      const list = Array.isArray(ficheHistory) ? ficheHistory : [];
+      const recsSite = list
+        .filter(Boolean)
+        .filter((f) => String(f.siteId || '').trim() === String(siteId).trim())
+        .filter((f) => {
+          const st = String(f.status || '').trim().toLowerCase();
+          if (st.includes('annul')) return false;
+          return true;
+        });
+
+      const lastMonth = recsSite
+        .map((f) => String((f.plannedDate || f.dateGenerated || '')).slice(0, 7))
+        .filter(Boolean)
+        .sort()
+        .slice(-1)[0] || '';
+
+      const isNewCampaign = Boolean(campaignMonth && campaignMonth !== lastMonth);
+
+      // 3) Résumé (on ne bloque AUCUN choix)
+      const summary =
+        `Site: ${String(site?.nameSite || '').trim()}\n` +
+        `Campagne (mois): ${campaignMonth || '-'} ${isNewCampaign ? '(nouvelle)' : '(en cours)'}\n` +
+        `Passage: ${epvType || '-'} • Date prévue: ${plannedDate || '-'}\n` +
+        `Consommables: affichage/masquage appliqué automatiquement sur la fiche selon l'historique.`;
+
+      setSuperAdminFicheChoiceSummary(summary);
+      setSuperAdminFicheChoiceMeta({ plannedDate, epvType, campaignMonth, isNewCampaign });
+    } catch (e) {
+      setSuperAdminFicheChoiceSummary(String(e?.message || 'Erreur lors de la vérification.'));
+    } finally {
+      setSuperAdminFicheChoiceBusy(false);
+    }
+  };
+
   const handleOpenFicheFromHistory = async (fiche) => {
     try {
       if (!fiche?.id) return;
@@ -4366,6 +4320,7 @@ const GeneratorMaintenanceApp = () => {
     });
 
     await loadFicheHistory();
+    alert('FICHES TRAITEES ET RENVOYEES par le Magasinier');
   };
 
   const handleSendToWarehouse = async ({ ficheId }) => {
@@ -4377,6 +4332,36 @@ const GeneratorMaintenanceApp = () => {
     });
 
     await loadFicheHistory();
+  };
+
+  const handleTriggerInterventionFromHistory = async (fiche) => {
+    try {
+      const siteId = fiche?.siteId ? String(fiche.siteId) : '';
+      const plannedDate = fiche?.plannedDate ? String(fiche.plannedDate).slice(0, 10) : '';
+      const epvType = fiche?.epvType ? String(fiche.epvType).trim() : '';
+      const technicianName = fiche?.technician ? String(fiche.technician).trim() : '';
+
+      if (!siteId || !plannedDate || !epvType || !technicianName) {
+        alert("Impossible de déclencher: fiche incomplète (siteId / plannedDate / epvType / technicien).");
+        return;
+      }
+
+      // Option A: pas de notifications. On met juste l'intervention en 'sent'
+      await apiFetchJson('/api/interventions', {
+        method: 'POST',
+        body: JSON.stringify({
+          siteId,
+          plannedDate,
+          epvType,
+          technicianName,
+          status: 'sent'
+        })
+      });
+
+      alert('✅ Intervention déclenchée et envoyée au technicien.');
+    } catch (e) {
+      alert(e?.message || "Erreur lors du déclenchement de l'intervention.");
+    }
   };
 
   const handleRevokeSendToWarehouse = async ({ ficheId }) => {
@@ -6360,12 +6345,6 @@ return (
       {renderPwaUpdateBadge()}
       {renderPwaUpdateBanner()}
 
-      {notificationsToast && (
-        <div className="fixed top-3 right-3 z-[70] bg-slate-900 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-semibold">
-          {notificationsToast}
-        </div>
-      )}
-
       {exportBusy && (
         <div className="fixed inset-0 z-[60] bg-black/30 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-5">
@@ -6513,42 +6492,6 @@ return (
             >
               <Calendar size={18} />
               Calendrier
-            </button>
-          )}
-
-          {canUseInterventions && (
-            <button
-              onClick={async () => {
-                setSidebarOpen(false);
-                setInterventionsStatus('all');
-                setInterventionsTechnicianUserId('all');
-                if (isTechnician) {
-                  setTechnicianInterventionsTab('tomorrow');
-                  setShowTechnicianInterventionsFilters(false);
-                }
-                setShowInterventions(true);
-                if (authUser?.role === 'admin' || authUser?.role === 'manager') {
-                  try {
-                    await refreshUsers();
-                  } catch {
-                    // ignore
-                  }
-                }
-                await loadInterventions();
-
-                if (authUser?.role === 'technician') {
-                await loadPmAssignments(interventionsMonth);
-                }
-              }}
-              className="relative w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
-            >
-              <CheckCircle size={18} />
-              {isTechnician && technicianPendingTasksCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none">
-                  {technicianPendingTasksCount}
-                </span>
-              )}
-              {isTechnician ? 'Mes interventions' : 'Interventions'}
             </button>
           )}
 
@@ -6823,22 +6766,6 @@ return (
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setShowNotificationsModal(true)}
-                      className="relative bg-white text-slate-800 border border-gray-200 px-3 py-2 rounded-lg hover:bg-gray-50 text-sm font-semibold inline-flex items-center gap-2"
-                      title="Notifications"
-                    >
-                      <Bell size={18} />
-                      Notifications
-                      <span
-                        className={`ml-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                          notificationsUnreadCount > 0 ? 'bg-red-600 text-white' : 'bg-white text-slate-700 border border-slate-200'
-                        }`}
-                      >
-                        {Number(notificationsUnreadCount || 0)}
-                      </span>
-                    </button>
 
                   <button
                     onClick={() => {
@@ -6974,9 +6901,6 @@ return (
             setAccountForm(next);
             setAccountError('');
           }}
-          notificationsUnreadCount={notificationsUnreadCount}
-          pushEnabled={pushEnabled}
-          onEnablePush={DISABLE_PUSH_NOTIFICATIONS ? null : requestPushPermissionAndSubscribe}
           accountError={accountError}
           accountSaving={accountSaving}
           onClose={() => {
@@ -7725,6 +7649,7 @@ return (
           open={showHistory}
           onClose={() => setShowHistory(false)}
           onOpenFiche={handleOpenFicheFromHistory}
+          onTriggerIntervention={handleTriggerInterventionFromHistory}
           onSendToWarehouse={handleSendToWarehouse}
           canSendToWarehouse={Boolean(isAdmin || isManager)}
           allowedStatuses={['En attente', 'Effectuée']}
@@ -7859,6 +7784,8 @@ return (
             setSuperAdminFicheChoiceSite(null);
             if (s) handleGenerateFiche(s, { forceWarehouseReturns: true });
           }}
+          busy={superAdminFicheChoiceBusy}
+          summary={superAdminFicheChoiceSummary}
         />
 
         <UploadBannerModal
@@ -8093,14 +8020,6 @@ return (
             bumpInterventionsUiRev={bumpInterventionsUiRev}
           />
 
-          <NotificationsModal
-            open={showNotificationsModal}
-            onClose={() => setShowNotificationsModal(false)}
-            apiFetchJson={apiFetchJson}
-            onMarkedRead={loadNotificationsUnreadCount}
-            kinds={NOTIFICATION_KINDS_REALTIME}
-          />
-
         <div className="mb-6">
           {urgentSites.length > 0 && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
@@ -8327,8 +8246,7 @@ return (
                           <button
                             onClick={() => {
                               if (isSuperAdmin) {
-                                setSuperAdminFicheChoiceSite(site);
-                                setSuperAdminFicheChoiceOpen(true);
+                                handleOpenSuperAdminFicheChoice(site);
                                 return;
                               }
                               handleGenerateFiche(site);
@@ -8356,6 +8274,16 @@ return (
           retiredSitesCount={retiredSitesCountFooter}
           ticketNumber={ticketNumber}
           ticketZone={String(authUser?.zone || '').trim()}
+        />
+
+        <CenterAlertModal
+          open={Boolean(centerAlert?.open)}
+          title={centerAlert?.title}
+          message={centerAlert?.message}
+          primaryLabel={centerAlert?.primaryLabel}
+          onPrimary={centerAlert?.primaryAction ? centerAlert.primaryAction : undefined}
+          secondaryLabel="OK"
+          onSecondary={() => closeCenterAlert()}
         />
 
       </div>
