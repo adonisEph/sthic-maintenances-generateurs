@@ -27,6 +27,8 @@ const InterventionsModal = ({
   users,
   sites,
   filteredSites,
+  doneEpvBySiteId,
+  currentCampaignMonth,
   interventionsMonth,
   setInterventionsMonth,
   interventionsStatus,
@@ -311,6 +313,16 @@ const InterventionsModal = ({
 
                     const add = (site, epvType, rawDate) => {
                       if (!site || site.retired) return;
+
+                      try {
+                        const sid = String(site?.id || '').trim();
+                        const done = doneEpvBySiteId instanceof Map ? doneEpvBySiteId.get(sid) : null;
+                        const doneDate = done ? String(done?.[String(epvType || '').trim().toUpperCase()] || '').slice(0, 10) : '';
+                        if (doneDate && currentCampaignMonth) return;
+                      } catch {
+                        // ignore
+                      }
+
                       const src = norm(rawDate);
                       if (!src) return;
                       const shifted = typeof ymdShiftForWorkdays === 'function' ? ymdShiftForWorkdays(src) : '';
@@ -712,6 +724,16 @@ const InterventionsModal = ({
 
               const add = (site, epvType, rawDate) => {
                 if (!site || site.retired) return;
+
+                try {
+                  const sid = String(site?.id || '').trim();
+                  const done = doneEpvBySiteId instanceof Map ? doneEpvBySiteId.get(sid) : null;
+                  const doneDate = done ? String(done?.[String(epvType || '').trim().toUpperCase()] || '').slice(0, 10) : '';
+                  if (doneDate && currentCampaignMonth) return;
+                } catch {
+                  // ignore
+                }
+
                 const src = norm(rawDate);
                 if (!src) return;
                 const shifted = typeof ymdShiftForWorkdays === 'function' ? ymdShiftForWorkdays(src) : '';

@@ -52,6 +52,13 @@ const CalendarModal = (props) => {
   const [planningBusy, setPlanningBusy] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
+  const [sidebarAccordionOpen, setSidebarAccordionOpen] = useState({
+    nav: true,
+    excel: true,
+    planning: true,
+    admin: true,
+  });
+
   const [showIntelligentWizard, setShowIntelligentWizard] = useState(false);
   const [intelligentTechUserId, setIntelligentTechUserId] = useState('');
   const [intelligentDoneTechIds, setIntelligentDoneTechIds] = useState(() => new Set());
@@ -73,6 +80,34 @@ const CalendarModal = (props) => {
   }, []);
 
   const isIntelligentDay = todayDay === 23;
+
+  const AccordionSection = ({
+    id,
+    title,
+    children,
+    defaultOpen = true,
+  }) => {
+    const isOpen = sidebarAccordionOpen?.[id];
+    const open = typeof isOpen === 'boolean' ? isOpen : Boolean(defaultOpen);
+    return (
+      <div className="rounded-lg border border-white/10 bg-white/5 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => {
+            setSidebarAccordionOpen((prev) => ({
+              ...(prev || {}),
+              [id]: !open,
+            }));
+          }}
+          className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
+        >
+          <div className="text-xs font-bold uppercase tracking-wide text-white/90">{title}</div>
+          <div className="text-white/80 text-sm font-bold">{open ? '–' : '+'}</div>
+        </button>
+        {open && <div className="px-3 pb-3 pt-2">{children}</div>}
+      </div>
+    );
+  };
 
   const zoneForIntelligent = useMemo(() => {
     if (isSuperAdmin) return String(calendarZone || authZone || 'BZV/POOL');
@@ -330,6 +365,8 @@ const CalendarModal = (props) => {
 
   if (!showCalendar || isTechnician) return null;
 
+  const showExcelSection = Boolean(showZoneFilter || canExportExcel);
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-0">
       <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-none sm:max-w-none sm:max-h-[100vh] sm:h-[100vh]">
@@ -349,268 +386,281 @@ const CalendarModal = (props) => {
                     <ChevronLeft size={18} />
                   </button>
                 </div>
-                <div className="p-3 space-y-5">
-                <div>
-                  <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Mois</div>
-                  <div className="grid grid-cols-3 gap-2 items-center">
-                    <button
-                      type="button"
-                      onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
-                      className="bg-white/10 hover:bg-white/15 text-white border border-white/10 px-2 py-2 rounded-lg w-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
-                    >
-                      ←
-                    </button>
-
-                    <div className="text-sm font-bold text-white text-center capitalize">
-                      {currentMonth.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
-                      className="bg-white/10 hover:bg-white/15 text-white border border-white/10 px-2 py-2 rounded-lg w-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
-                    >
-                      →
-                    </button>
-                  </div>
-
-                  {showZoneFilter && (
-                    <div className="mt-3">
-                      <div className="text-xs font-semibold text-white/90 mb-1">Zone</div>
-                      <select
-                        value={calendarZone}
-                        onChange={(e) => setCalendarZone(e.target.value)}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
-                      >
-                        {zones.map((z) => (
-                          <option key={z} value={z}>
-                            {z === 'ALL' ? 'Toutes' : z}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  {canExportExcel && (
-                    <button
-                      type="button"
-                      onClick={handleExportCalendarMonthExcel}
-                      className="mt-3 w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
-                      disabled={exportBusy}
-                    >
-                      <Download size={16} />
-                      Exporter Excel
-                    </button>
-                  )}
-                </div>
-
-                {(isAdmin || isManager) && (
-                  <div>
-                    <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Technicien</div>
-                    <div className="text-xs font-semibold text-white/90 mb-1">Destinataire</div>
-                    <select
-                      value={calendarSendTechUserId}
-                      onChange={(e) => setCalendarSendTechUserId(e.target.value)}
-                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 w-full"
-                      disabled={usersBusy}
-                    >
-                      <option value="">-- Technicien --</option>
-                      {(Array.isArray(users) ? users : [])
-                        .filter((u) => u && u.role === 'technician')
-                        .filter((u) => (isManager ? String(u?.zone || '').trim() === authZone : true))
-                        .slice()
-                        .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')))
-                        .map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.technicianName || u.email}
-                          </option>
-                        ))}
-                    </select>
-
-                    {usersBusy && <div className="mt-1 text-xs text-white/70">Chargement des techniciens…</div>}
-                    {!usersBusy && usersError && <div className="mt-1 text-xs text-rose-300">{usersError}</div>}
-                    {!usersBusy &&
-                      !usersError &&
-                      (Array.isArray(users) ? users : [])
-                        .filter((u) => u && u.role === 'technician')
-                        .filter((u) => (isManager ? String(u?.zone || '').trim() === authZone : true)).length === 0 && (
-                        <div className="mt-1 text-xs text-white/70">Aucun technicien chargé.</div>
-                      )}
-
-                    <div className="mt-2 space-y-2">
-                      {!usersBusy && (
+                <div className="p-3 space-y-4">
+                  <AccordionSection id="nav" title="Navigation / Vues">
+                    <div className="space-y-3">
+                      <div className="text-xs font-semibold text-white/90">Mois</div>
+                      <div className="grid grid-cols-3 gap-2 items-center">
                         <button
                           type="button"
-                          onClick={async () => {
-                            try {
-                              await refreshUsers();
-                            } catch {
-                              // ignore
-                            }
-                          }}
-                          className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
+                          onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
+                          className="bg-white/10 hover:bg-white/15 text-white border border-white/10 px-2 py-2 rounded-lg w-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
                         >
-                          Recharger les techniciens
+                          ←
                         </button>
-                      )}
 
-                      <button
-                        type="button"
-                        onClick={handleSendCalendarMonthPlanning}
-                        className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
-                        disabled={!calendarSendTechUserId || usersBusy}
-                      >
-                        Envoyer planning du mois
-                      </button>
-                    </div>
-                  </div>
-                )}
+                        <div className="text-sm font-bold text-white text-center capitalize">
+                          {currentMonth.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                        </div>
 
-                {(isAdmin || isManager) && (
-                  <div>
-                    <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Actions</div>
-                    <div className="space-y-2">
-                      <button
-                        type="button"
-                        onClick={() => setShowClustering(!showClustering)}
-                        className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
-                      >
-                        <Users size={16} />
-                        {showClustering ? 'Masquer le clustering' : 'Clustering sites'}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={generateIntelligentPlanning}
-                        className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
-                        disabled={planningBusy}
-                      >
-                        <Sparkles size={16} />
-                        {planningBusy ? 'Génération...' : 'Générer planning intelligent'}
-                      </button>
-
-                    </div>
-                  </div>
-                )}
-
-              </div>
-
-              {showClustering && (isAdmin || isManager) && (
-                <div className="bg-white/5 border-t border-white/10 p-3">
-                  <div className="space-y-3">
-                    <div className="text-xs font-semibold text-white/90">Technicien cible</div>
-                    <select
-                      value={clusteringTech}
-                      onChange={(e) => setClusteringTech(e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
-                      disabled={clusteringBusy}
-                    >
-                      <option value="">-- Sélectionner un technicien --</option>
-                      {(Array.isArray(users) ? users : [])
-                        .filter((u) => u && u.role === 'technician')
-                        .slice()
-                        .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')))
-                        .map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.technicianName || u.email}
-                          </option>
-                        ))}
-                    </select>
-
-                    {clusteringTech && (
-                      <button
-                        type="button"
-                        onClick={() => loadTechnicianSites(clusteringTech)}
-                        className="w-full bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 text-sm font-semibold disabled:opacity-60"
-                        disabled={clusteringBusy}
-                      >
-                        {clusteringBusy ? 'Chargement...' : 'Charger les sites'}
-                      </button>
-                    )}
-
-                    {clusteringErrors.length > 0 && (
-                      <div className="text-xs text-red-400 bg-red-900/20 border border-red-800 rounded p-2">
-                        {clusteringErrors.map((err, idx) => (
-                          <div key={idx} className="flex items-start gap-1">
-                            <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />
-                            <span>{err}</span>
-                          </div>
-                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
+                          className="bg-white/10 hover:bg-white/15 text-white border border-white/10 px-2 py-2 rounded-lg w-full text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
+                        >
+                          →
+                        </button>
                       </div>
-                    )}
+                    </div>
+                  </AccordionSection>
 
-                    {clusteringData.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="text-xs font-semibold text-white/90 flex items-center gap-2">
-                          <MapPin size={12} />
-                          Sites à regrouper ({clusteringData.length} sites)
-                        </div>
-                        <div className="text-xs text-white/60 mb-2">Cliquez sur les sites pour les regrouper en paires</div>
-                        <div className="max-h-48 overflow-y-auto space-y-1">
-                          {clusteringData.map((site) => {
-                            const isPaired = selectedPairs.has(site.id);
-                            const pairedWith = isPaired ? clusteringData.find(s => s.id === selectedPairs.get(site.id)) : null;
-                            const isFirst = pairingFirstSiteId && String(pairingFirstSiteId) === String(site.id);
-
-                            return (
-                              <div
-                                key={site.id}
-                                onClick={() => togglePair(site.id)}
-                                className={`bg-white/10 rounded p-2 text-xs cursor-pointer transition-colors border border-transparent ${
-                                  isPaired ? 'bg-teal-800/60 border-teal-400/60' : isFirst ? 'bg-amber-900/40 border-amber-500' : 'hover:bg-white/15 border-white/10'
-                                }`}
-                              >
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <div
-                                      className={`w-2 h-2 rounded-full ${
-                                        isPaired ? 'bg-teal-200' : isFirst ? 'bg-amber-400' : 'bg-white/40'
-                                      }`}
-                                    />
-                                    <span className="font-semibold">{site.code}</span> - {site.name}
-                                  </div>
-                                  <div className="flex items-center gap-2 text-white/60">
-                                    <Clock size={10} />
-                                    <span>{site.regime}</span>
-                                  </div>
-                                </div>
-                                <div className="text-white/60 mt-1">{site.region || site.zone} • Dernière vidange: {site.lastVidange}</div>
-                                {pairedWith && (
-                                  <div className="text-teal-200 mt-1 text-xs">⚭ Jumelé avec: {pairedWith.code} - {pairedWith.name}</div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            className="flex-1 bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700 text-sm font-semibold disabled:opacity-60"
-                            onClick={saveClustering}
-                            disabled={clusteringBusy || selectedPairs.size === 0}
-                          >
-                            {clusteringBusy ? 'Sauvegarde...' : 'Enregistrer les paires'}
-                          </button>
-                          <button
-                            type="button"
-                            className="flex-1 bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
-                            onClick={() => setSelectedPairs(new Map())}
-                          >
-                            Réinitialiser
-                          </button>
-                        </div>
-                        {selectedPairs.size > 0 && (
-                          <div className="text-xs text-teal-200 bg-teal-900/20 border border-teal-800 rounded p-2">
-                            {selectedPairs.size / 2} paire(s) configurée(s)
+                  {showExcelSection && (
+                    <AccordionSection id="excel" title="Excel">
+                      <div className="space-y-3">
+                        {showZoneFilter && (
+                          <div>
+                            <div className="text-xs font-semibold text-white/90 mb-1">Zone</div>
+                            <select
+                              value={calendarZone}
+                              onChange={(e) => setCalendarZone(e.target.value)}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
+                            >
+                              {zones.map((z) => (
+                                <option key={z} value={z}>
+                                  {z === 'ALL' ? 'Toutes' : z}
+                                </option>
+                              ))}
+                            </select>
                           </div>
                         )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
 
-            </div>
+                        {canExportExcel && (
+                          <button
+                            type="button"
+                            onClick={handleExportCalendarMonthExcel}
+                            className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
+                            disabled={exportBusy}
+                          >
+                            <Download size={16} />
+                            Exporter Excel
+                          </button>
+                        )}
+                      </div>
+                    </AccordionSection>
+                  )}
+
+                  {(isAdmin || isManager) && (
+                    <AccordionSection id="planning" title="Mise à jour et Planning / Génération">
+                      <div>
+                        <div className="text-xs font-semibold text-white/90 mb-1">Technicien</div>
+                        <div className="text-xs font-semibold text-white/90 mb-1">Destinataire</div>
+                        <select
+                          value={calendarSendTechUserId}
+                          onChange={(e) => setCalendarSendTechUserId(e.target.value)}
+                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 w-full"
+                          disabled={usersBusy}
+                        >
+                          <option value="">-- Technicien --</option>
+                          {(Array.isArray(users) ? users : [])
+                            .filter((u) => u && u.role === 'technician')
+                            .filter((u) => (isManager ? String(u?.zone || '').trim() === authZone : true))
+                            .slice()
+                            .sort((a, b) =>
+                              String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || ''))
+                            )
+                            .map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.technicianName || u.email}
+                              </option>
+                            ))}
+                        </select>
+
+                        {usersBusy && <div className="mt-1 text-xs text-white/70">Chargement des techniciens…</div>}
+                        {!usersBusy && usersError && <div className="mt-1 text-xs text-rose-300">{usersError}</div>}
+                        {!usersBusy &&
+                          !usersError &&
+                          (Array.isArray(users) ? users : [])
+                            .filter((u) => u && u.role === 'technician')
+                            .filter((u) => (isManager ? String(u?.zone || '').trim() === authZone : true)).length === 0 && (
+                            <div className="mt-1 text-xs text-white/70">Aucun technicien chargé.</div>
+                          )}
+
+                        <div className="mt-2 space-y-2">
+                          {!usersBusy && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  await refreshUsers();
+                                } catch {
+                                  // ignore
+                                }
+                              }}
+                              className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
+                            >
+                              Recharger les techniciens
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={handleSendCalendarMonthPlanning}
+                            className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
+                            disabled={!calendarSendTechUserId || usersBusy}
+                          >
+                            Envoyer planning du mois
+                          </button>
+                        </div>
+                      </div>
+                    </AccordionSection>
+                  )}
+
+                  {(isAdmin || isManager) && (
+                    <AccordionSection id="admin" title="Administration / Outils">
+                      <div className="space-y-2">
+                        <div className="text-xs font-semibold text-white/90">Actions</div>
+                        <button
+                          type="button"
+                          onClick={() => setShowClustering(!showClustering)}
+                          className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
+                        >
+                          <Users size={16} />
+                          {showClustering ? 'Masquer le clustering' : 'Clustering sites'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={generateIntelligentPlanning}
+                          className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
+                          disabled={planningBusy}
+                        >
+                          <Sparkles size={16} />
+                          {planningBusy ? 'Génération...' : 'Générer planning intelligent'}
+                        </button>
+                      </div>
+
+                      {showClustering && (
+                        <div className="mt-3 bg-white/5 border border-white/10 rounded-lg p-3">
+                          <div className="space-y-3">
+                            <div className="text-xs font-semibold text-white/90">Technicien cible</div>
+                            <select
+                              value={clusteringTech}
+                              onChange={(e) => setClusteringTech(e.target.value)}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
+                              disabled={clusteringBusy}
+                            >
+                              <option value="">-- Sélectionner un technicien --</option>
+                              {(Array.isArray(users) ? users : [])
+                                .filter((u) => u && u.role === 'technician')
+                                .slice()
+                                .sort((a, b) =>
+                                  String(a.technicianName || a.email || '').localeCompare(
+                                    String(b.technicianName || b.email || '')
+                                  )
+                                )
+                                .map((u) => (
+                                  <option key={u.id} value={u.id}>
+                                    {u.technicianName || u.email}
+                                  </option>
+                                ))}
+                            </select>
+
+                            {clusteringTech && (
+                              <button
+                                type="button"
+                                onClick={() => loadTechnicianSites(clusteringTech)}
+                                className="w-full bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 text-sm font-semibold disabled:opacity-60"
+                                disabled={clusteringBusy}
+                              >
+                                {clusteringBusy ? 'Chargement...' : 'Charger les sites'}
+                              </button>
+                            )}
+
+                            {clusteringErrors.length > 0 && (
+                              <div className="text-xs text-red-400 bg-red-900/20 border border-red-800 rounded p-2">
+                                {clusteringErrors.map((err, idx) => (
+                                  <div key={idx} className="flex items-start gap-1">
+                                    <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />
+                                    <span>{err}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {clusteringData.length > 0 && (
+                              <div className="space-y-2">
+                                <div className="text-xs font-semibold text-white/90 flex items-center gap-2">
+                                  <MapPin size={12} />
+                                  Sites à regrouper ({clusteringData.length} sites)
+                                </div>
+                                <div className="text-xs text-white/60 mb-2">Cliquez sur les sites pour les regrouper en paires</div>
+                                <div className="max-h-48 overflow-y-auto space-y-1">
+                                  {clusteringData.map((site) => {
+                                    const isPaired = selectedPairs.has(site.id);
+                                    const pairedWith = isPaired ? clusteringData.find(s => s.id === selectedPairs.get(site.id)) : null;
+                                    const isFirst = pairingFirstSiteId && String(pairingFirstSiteId) === String(site.id);
+
+                                    return (
+                                      <div
+                                        key={site.id}
+                                        onClick={() => togglePair(site.id)}
+                                        className={`bg-white/10 rounded p-2 text-xs cursor-pointer transition-colors border border-transparent ${
+                                          isPaired ? 'bg-teal-800/60 border-teal-400/60' : isFirst ? 'bg-amber-900/40 border-amber-500' : 'hover:bg-white/15 border-white/10'
+                                        }`}
+                                      >
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex items-center gap-2">
+                                            <div
+                                              className={`w-2 h-2 rounded-full ${
+                                                isPaired ? 'bg-teal-200' : isFirst ? 'bg-amber-400' : 'bg-white/40'
+                                              }`}
+                                            />
+                                            <span className="font-semibold">{site.code}</span> - {site.name}
+                                          </div>
+                                          <div className="flex items-center gap-2 text-white/60">
+                                            <Clock size={10} />
+                                            <span>{site.regime}</span>
+                                          </div>
+                                        </div>
+                                        <div className="text-white/60 mt-1">{site.region || site.zone} • Dernière vidange: {site.lastVidange}</div>
+                                        {pairedWith && (
+                                          <div className="text-teal-200 mt-1 text-xs">⚭ Jumelé avec: {pairedWith.code} - {pairedWith.name}</div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    className="flex-1 bg-teal-600 text-white px-3 py-2 rounded-lg hover:bg-teal-700 text-sm font-semibold disabled:opacity-60"
+                                    onClick={saveClustering}
+                                    disabled={clusteringBusy || selectedPairs.size === 0}
+                                  >
+                                    {clusteringBusy ? 'Sauvegarde...' : 'Enregistrer les paires'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="flex-1 bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
+                                    onClick={() => setSelectedPairs(new Map())}
+                                  >
+                                    Réinitialiser
+                                  </button>
+                                </div>
+                                {selectedPairs.size > 0 && (
+                                  <div className="text-xs text-teal-200 bg-teal-900/20 border border-teal-800 rounded p-2">
+                                    {selectedPairs.size / 2} paire(s) configurée(s)
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </AccordionSection>
+                  )}
+                </div>
+              </div>
             )}
 
             <div className="flex-1 min-w-0 overflow-y-auto">
@@ -801,10 +851,12 @@ const CalendarModal = (props) => {
                                         ? 'bg-amber-200'
                                         : 'bg-gray-200';
                                 const moved = ev?.originalDate && String(ev.originalDate) !== String(ev.date);
+                                const doneAt = ev?.doneDate ? String(ev.doneDate).slice(0, 10) : '';
                                 return (
                                   <div key={`${ev.site.id}-${ev.type}`} className={`${color} text-white px-1 rounded flex items-start gap-1`}>
                                     <span className={`inline-block w-2 h-2 rounded-full ${dot}`} />
                                     <span className="min-w-0 flex-1 whitespace-pre-line leading-tight break-words">{ev.site.nameSite}</span>
+                                    {doneAt && <span className="text-[10px] font-bold opacity-95">Effectuée le {doneAt}</span>}
                                     {moved && <span className="ml-auto text-[10px] font-bold opacity-90">↔</span>}
                                   </div>
                                 );
@@ -839,9 +891,10 @@ const CalendarModal = (props) => {
           </div>
         </div>
 
+        </div>
+
         <div className="p-3 border-t bg-white" />
       </div>
-    </div>
     </div>
   );
 };

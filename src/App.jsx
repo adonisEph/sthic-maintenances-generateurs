@@ -41,7 +41,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '5.0.0';
+const APP_VERSION = '5.0.1';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -285,6 +285,7 @@ const GeneratorMaintenanceApp = () => {
   const showZoneFilter = Boolean(isViewer || isSuperAdmin);
   const canWriteSites = isAdmin || isManager;
   const canWarehouseCheck = isWarehouse || isAdmin || isManager;
+  const canWarehouseRevoke = isWarehouse || isAdmin || isManager;
   const canImportSites = isAdmin || isManager;
   const canExportExcel = isAdmin || isManager || isViewer;
   const canExportSites = canExportExcel && !isTechnician;
@@ -3711,15 +3712,21 @@ const GeneratorMaintenanceApp = () => {
     setShowBannerUpload(false);
     try {
       const today = new Date().toISOString().split('T')[0];
+
+      const doneByEpv = doneEpvBySiteId.get(String(site?.id || '').trim()) || { EPV1: '', EPV2: '', EPV3: '' };
+
       const candidates = [
-        { type: 'EPV1', date: site.epv1 },
-        { type: 'EPV2', date: site.epv2 },
-        { type: 'EPV3', date: site.epv3 }
+        { type: 'EPV1', date: site.epv1, done: Boolean(doneByEpv.EPV1) },
+        { type: 'EPV2', date: site.epv2, done: Boolean(doneByEpv.EPV2) },
+        { type: 'EPV3', date: site.epv3, done: Boolean(doneByEpv.EPV3) }
       ].filter((c) => c.date);
 
-      const next = candidates.find((c) => c.date >= today) || candidates[0];
-      const plannedDate = next?.date ? String(next.date).slice(0, 10) : null;
-      const epvType = next?.type ? String(next.type).trim() : null;
+      const nextPending = candidates.find((c) => !c.done) || null;
+      const nextByDate = candidates.find((c) => c.date >= today) || candidates[0] || null;
+      const chosen = nextPending || nextByDate;
+
+      const plannedDate = chosen?.date ? String(chosen.date).slice(0, 10) : null;
+      const epvType = chosen?.type ? String(chosen.type).trim() : null;
 
       let interventionId = null;
       try {
@@ -3756,15 +3763,20 @@ const GeneratorMaintenanceApp = () => {
 
       // 2) Déterminer EPV/plannedDate comme handleGenerateFiche
       const today = new Date().toISOString().split('T')[0];
+      const doneByEpv = doneEpvBySiteId.get(String(site?.id || '').trim()) || { EPV1: '', EPV2: '', EPV3: '' };
+
       const candidates = [
-        { type: 'EPV1', date: site?.epv1 },
-        { type: 'EPV2', date: site?.epv2 },
-        { type: 'EPV3', date: site?.epv3 }
+        { type: 'EPV1', date: site?.epv1, done: Boolean(doneByEpv.EPV1) },
+        { type: 'EPV2', date: site?.epv2, done: Boolean(doneByEpv.EPV2) },
+        { type: 'EPV3', date: site?.epv3, done: Boolean(doneByEpv.EPV3) }
       ].filter((c) => c?.date);
 
-      const next = candidates.find((c) => c.date >= today) || candidates[0];
-      const plannedDate = next?.date ? String(next.date).slice(0, 10) : '';
-      const epvType = next?.type ? String(next.type).trim() : '';
+      const nextPending = candidates.find((c) => !c.done) || null;
+      const nextByDate = candidates.find((c) => c.date >= today) || candidates[0] || null;
+      const chosen = nextPending || nextByDate;
+
+      const plannedDate = chosen?.date ? String(chosen.date).slice(0, 10) : '';
+      const epvType = chosen?.type ? String(chosen.type).trim() : '';
 
       const campaignMonth = plannedDate ? String(plannedDate).slice(0, 7) : '';
 
@@ -4784,12 +4796,33 @@ const GeneratorMaintenanceApp = () => {
         const updated = Number(res?.updated || 0);
         const ignored = Number(res?.ignored || 0);
         const skipped = Number(res?.skipped || 0);
+        const ignoredRetired = Number(res?.ignoredRetired || 0);
+        const ignoredMissingId = Number(res?.ignoredMissingId || 0);
+        const ignoredUnknownId = Number(res?.ignoredUnknownId || 0);
+        const ignoredBadDate = Number(res?.ignoredBadDate || 0);
+        const ignoredDateBeforeDv = Number(res?.ignoredDateBeforeDv || 0);
+        const ignoredDecrease = Number(res?.ignoredDecrease || 0);
+        const ignoredNhBelowDv = Number(res?.ignoredNhBelowDv || 0);
+
+        const details =
+          ignored > 0
+            ?
+              `\n\nDétails ignorés:\n` +
+              (ignoredMissingId > 0 ? `- ID Site manquant: ${ignoredMissingId}\n` : '') +
+              (ignoredUnknownId > 0 ? `- ID Site inconnu: ${ignoredUnknownId}\n` : '') +
+              (ignoredRetired > 0 ? `- Site retiré: ${ignoredRetired}\n` : '') +
+              (ignoredBadDate > 0 ? `- Date invalide/dans le futur: ${ignoredBadDate}\n` : '') +
+              (ignoredDateBeforeDv > 0 ? `- Date A < Date DV: ${ignoredDateBeforeDv}\n` : '') +
+              (ignoredDecrease > 0 ? `- Baisse NH bloquée: ${ignoredDecrease}\n` : '') +
+              (ignoredNhBelowDv > 0 ? `- NH < NH1 DV: ${ignoredNhBelowDv}\n` : '')
+            : '';
 
         alert(
           `✅ Import CONSOLE RMS terminé.\n\n` +
           `Sites mis à jour: ${updated}\n` +
-          `Lignes ignorées (ID inconnu / invalide): ${ignored}\n` +
-          `Lignes sans valeur (NH2 A & Date A vides): ${skipped}`
+          `Lignes ignorées (ID inconnu / invalide / site retiré): ${ignored}\n` +
+          `Lignes sans valeur (NH2 A & Date A vides): ${skipped}` +
+          details
         );
       } catch (err) {
         alert(err?.message || 'Erreur lors de l’import CONSOLE RMS.');
@@ -5076,18 +5109,27 @@ const GeneratorMaintenanceApp = () => {
     if (!Number.isFinite(year) || !Number.isFinite(month)) return;
     const yyyymm = `${year}-${String(month + 1).padStart(2, '0')}`;
 
+    const doneMapForMonth = doneEpvBySiteIdByMonth.get(yyyymm) || new Map();
+
     const events = [];
     (Array.isArray(calendarFilteredSites) ? calendarFilteredSites : []).forEach((site) => {
       if (!site || site.retired) return;
       const pushIf = (type, date) => {
         if (!date) return;
         if (String(date).slice(0, 7) !== yyyymm) return;
+
+        const sid = String(site?.id || '').trim();
+        const done = sid ? doneMapForMonth.get(sid) : null;
+        const doneDate = done ? String(done?.[String(type || '').trim().toUpperCase()] || '').slice(0, 10) : '';
+
         events.push({
           Date: date,
           EPV: type,
           Site: site.nameSite,
           IdSite: site.idSite,
-          Technicien: site.technician
+          Technicien: site.technician,
+          Statut: doneDate ? 'Effectuée' : 'En attente',
+          DateEffectuee: doneDate || ''
         });
       };
       pushIf('EPV1', site.epv1);
@@ -5200,30 +5242,143 @@ const GeneratorMaintenanceApp = () => {
       retiredRaw === 1 ||
       retiredRaw === '1' ||
       String(retiredRaw || '').trim().toLowerCase() === 'true';
+    const normYmd = (d) => {
+      const s = String(d || '').slice(0, 10);
+      return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+    };
     const nhEstimated = calculateEstimatedNH(site.nh2A, site.dateA, site.regime);
     const diffEstimated = calculateDiffNHs(site.nh1DV, nhEstimated);
     const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, nhEstimated);
-    
+
+    const epv1 = normYmd(site?.epv1) || normYmd(epvDates?.epv1);
+    const epv2 = normYmd(site?.epv2) || normYmd(epvDates?.epv2);
+    const epv3 = normYmd(site?.epv3) || normYmd(epvDates?.epv3);
+
     return {
       ...site,
       retired,
       nhEstimated,
       diffEstimated,
-      epv1: epvDates.epv1,
-      epv2: epvDates.epv2,
-      epv3: epvDates.epv3,
-      daysUntilEPV1: getDaysUntil(epvDates.epv1)
+      epv1,
+      epv2,
+      epv3,
+      daysUntilEPV1: getDaysUntil(epv1)
     };
+  };
+
+  const currentCampaignMonth = useMemo(() => {
+    try {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Africa/Brazzaville',
+        year: 'numeric',
+        month: '2-digit'
+      }).formatToParts(new Date());
+      const y = parts.find((p) => p.type === 'year')?.value;
+      const m = parts.find((p) => p.type === 'month')?.value;
+      return y && m ? `${y}-${m}` : new Date().toISOString().slice(0, 7);
+    } catch {
+      return new Date().toISOString().slice(0, 7);
+    }
+  }, []);
+
+  const doneEpvBySiteId = useMemo(() => {
+    const map = new Map();
+    const list = Array.isArray(ficheHistory) ? ficheHistory : [];
+
+    const toCampaignMonth = (f) => {
+      const dc = f?.dateCompleted ? String(f.dateCompleted).slice(0, 10) : '';
+      const dg = f?.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
+      const d = dc || dg;
+      return d ? String(d).slice(0, 7) : '';
+    };
+
+    for (const f of list) {
+      if (!f) continue;
+      if (String(f?.status || '').trim() !== 'Effectuée') continue;
+      if (toCampaignMonth(f) !== currentCampaignMonth) continue;
+
+      const siteId = String(f?.siteId || '').trim();
+      if (!siteId) continue;
+
+      const epv = String(f?.epvType || '').trim().toUpperCase();
+      if (!['EPV1', 'EPV2', 'EPV3'].includes(epv)) continue;
+
+      const dc = f?.dateCompleted ? String(f.dateCompleted).slice(0, 10) : '';
+      const dg = f?.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
+      const doneAt = (dc || dg).slice(0, 10);
+      if (!doneAt) continue;
+
+      const cur = map.get(siteId) || { EPV1: '', EPV2: '', EPV3: '' };
+      if (!cur[epv] || String(cur[epv]).localeCompare(doneAt) < 0) cur[epv] = doneAt;
+      map.set(siteId, cur);
+    }
+
+    return map;
+  }, [ficheHistory, currentCampaignMonth]);
+
+  const doneEpvBySiteIdByMonth = useMemo(() => {
+    const byMonth = new Map();
+    const list = Array.isArray(ficheHistory) ? ficheHistory : [];
+
+    for (const f of list) {
+      if (!f) continue;
+      if (String(f?.status || '').trim() !== 'Effectuée') continue;
+
+      const siteId = String(f?.siteId || '').trim();
+      if (!siteId) continue;
+
+      const epv = String(f?.epvType || '').trim().toUpperCase();
+      if (!['EPV1', 'EPV2', 'EPV3'].includes(epv)) continue;
+
+      const dc = f?.dateCompleted ? String(f.dateCompleted).slice(0, 10) : '';
+      const dg = f?.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
+      const doneAt = (dc || dg).slice(0, 10);
+      if (!doneAt) continue;
+
+      const month = String(doneAt).slice(0, 7);
+      if (!month) continue;
+
+      const monthMap = byMonth.get(month) || new Map();
+      const cur = monthMap.get(siteId) || { EPV1: '', EPV2: '', EPV3: '' };
+      if (!cur[epv] || String(cur[epv]).localeCompare(doneAt) < 0) cur[epv] = doneAt;
+      monthMap.set(siteId, cur);
+      byMonth.set(month, monthMap);
+    }
+
+    return byMonth;
+  }, [ficheHistory]);
+
+  const getNextPendingEpvForSite = (site) => {
+    const sid = String(site?.id || '').trim();
+    const doneByEpv = doneEpvBySiteId.get(sid) || { EPV1: '', EPV2: '', EPV3: '' };
+    const candidates = [
+      { epvType: 'EPV1', plannedDate: site?.epv1, done: Boolean(doneByEpv.EPV1) },
+      { epvType: 'EPV2', plannedDate: site?.epv2, done: Boolean(doneByEpv.EPV2) },
+      { epvType: 'EPV3', plannedDate: site?.epv3, done: Boolean(doneByEpv.EPV3) }
+    ].filter((c) => c?.plannedDate && c.plannedDate !== 'N/A');
+
+    const nextPending = candidates.find((c) => !c.done) || null;
+    return nextPending ? { epvType: nextPending.epvType, plannedDate: String(nextPending.plannedDate).slice(0, 10) } : { epvType: '', plannedDate: '' };
   };
 
   const urgentSitesAll = sites
     .map(getUpdatedSite)
-    .filter(site => {
+    .map((site) => {
+      const next = getNextPendingEpvForSite(site);
+      const days = getDaysUntil(next?.plannedDate);
+      return {
+        ...site,
+        nextPendingEpvType: next?.epvType || '',
+        nextPendingEpvDate: next?.plannedDate || '',
+        daysUntilNextPendingEpv: days
+      };
+    })
+    .filter((site) => {
       if (site.retired) return false;
-      const days = getDaysUntil(site.epv1);
+      const days = site?.daysUntilNextPendingEpv;
       return days !== null && days <= 3;
     })
-    .sort((a, b) => getDaysUntil(a.epv1) - getDaysUntil(b.epv1));
+    .sort((a, b) => Number(a?.daysUntilNextPendingEpv ?? 999999) - Number(b?.daysUntilNextPendingEpv ?? 999999));
 
   const urgentSites = urgentSitesAll
   .filter((site) => filterTechnician === 'all' || normTechName(site.technician) === normTechName(filterTechnician))
@@ -5249,7 +5404,7 @@ const GeneratorMaintenanceApp = () => {
 
     // On ne demande que les sites réellement "RETARD" (sinon inutile)
     const lateSites = list.filter((s) => {
-      const d = getDaysUntil(s?.epv1);
+      const d = s?.daysUntilNextPendingEpv ?? getDaysUntil(s?.nextPendingEpvDate);
       return d !== null && d < 0;
     });
 
@@ -5533,6 +5688,9 @@ const GeneratorMaintenanceApp = () => {
     if (!dateStr) return [];
     const events = [];
 
+    const month = String(dateStr).slice(0, 7);
+    const doneMapForMonth = doneEpvBySiteIdByMonth.get(month) || new Map();
+
     calendarFilteredSites.forEach((site) => {
       if (site.retired) return;
 
@@ -5548,7 +5706,12 @@ const GeneratorMaintenanceApp = () => {
           interventionsByKey.get(getInterventionKey(site.id, planned, type)) ||
           interventionsByKey.get(getInterventionKey(site.id, src, type)) ||
           null;
-        events.push({ site, type, date: planned, originalDate: src, intervention, wasRetiredPrevMonth });
+
+        const sid = String(site?.id || '').trim();
+        const done = sid ? doneMapForMonth.get(sid) : null;
+        const doneDate = done ? String(done?.[String(type || '').trim().toUpperCase()] || '').slice(0, 10) : '';
+
+        events.push({ site, type, date: planned, originalDate: src, intervention, wasRetiredPrevMonth, doneDate });
       };
 
       add('EPV1', site.epv1);
@@ -7959,6 +8122,8 @@ return (
             users={users}
             sites={sites}
             filteredSites={filteredSites}
+            doneEpvBySiteId={doneEpvBySiteId}
+            currentCampaignMonth={currentCampaignMonth}
             interventionsMonth={interventionsMonth}
             setInterventionsMonth={setInterventionsMonth}
             interventionsStatus={interventionsStatus}
@@ -8030,7 +8195,7 @@ return (
 
               <div className="space-y-2">
                 {urgentSites.map((site) => {
-                  const days = getDaysUntil(site.epv1);
+                  const days = site?.daysUntilNextPendingEpv ?? getDaysUntil(site?.nextPendingEpvDate);
                   const label = days === null ? '' : days < 0 ? 'RETARD' : days === 0 ? "AUJOURD'HUI" : `${days}j`;
                   return (
                     <div
@@ -8048,36 +8213,34 @@ return (
                         </div>
                       </div>
 
-                      {(() => {
-                        const z = String(site?.zone || '').trim().toUpperCase();
-                        const c = String(site?.idSite || '').trim().toUpperCase();
-                        const key = `${z}|${c}`;
-                        const months = Array.isArray(urgentRetiredMonthsMap?.[key]) ? urgentRetiredMonthsMap[key] : [];
-                        if (months.length === 0) return null;
-
-                        return (
-                          <div className="flex flex-wrap gap-1 justify-end flex-1 pt-1">
-                            <span className="text-[10px] font-semibold text-slate-600 mr-1">Retiré:</span>
-                            {months.slice(0, 6).map((m) => (
-                              <span
-                                key={m}
-                                className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200"
-                              >
-                                {m}
-                              </span>
-                            ))}
-                            {months.length > 6 && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                                +{months.length - 6}
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })()}
-
                       <div className="flex flex-col items-end flex-shrink-0">
                         <div className={days !== null && days < 0 ? 'text-red-700 font-bold' : 'text-gray-700 font-bold'}>{label}</div>
-                        <div className="text-xs text-gray-500 mt-1">{formatDate(site.epv1)}</div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {site?.nextPendingEpvType ? `${String(site.nextPendingEpvType).trim()} • ` : ''}
+                          {formatDate(site?.nextPendingEpvDate || '')}
+                        </div>
+
+                        {(() => {
+                          const z = String(site?.zone || '').trim().toUpperCase();
+                          const c = String(site?.idSite || '').trim().toUpperCase();
+                          const key = `${z}|${c}`;
+                          const months = Array.isArray(urgentRetiredMonthsMap?.[key]) ? urgentRetiredMonthsMap[key] : [];
+                          if (months.length === 0) return null;
+
+                          return (
+                            <div className="flex flex-wrap gap-1 justify-end pt-1">
+                              <span className="text-[10px] font-semibold text-slate-600 mr-1">Retiré:</span>
+                              {months.slice(0, 6).map((m) => (
+                                <span
+                                  key={m}
+                                  className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200"
+                                >
+                                  {m}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   );
@@ -8092,7 +8255,10 @@ return (
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
               {filteredSites.map(site => {
-                const daysUntil = getDaysUntil(site.epv1);
+                const sid = String(site?.id || '').trim();
+                const doneByEpv = doneEpvBySiteId.get(sid) || { EPV1: '', EPV2: '', EPV3: '' };
+                const next = getNextPendingEpvForSite(site);
+                const daysUntil = getDaysUntil(next?.plannedDate);
                 const urgencyClass = getUrgencyClass(daysUntil, site.retired);
 
                 const badgeColor = site.retired
@@ -8155,23 +8321,35 @@ return (
                       <div className="mt-4 grid grid-cols-3 gap-2">
                         <div className="bg-white rounded-lg border border-gray-200 p-2 text-center">
                           <div className="text-[10px] text-gray-500">EPV1</div>
-                          <div className="text-xs font-semibold text-gray-800">{formatDate(site.epv1)}</div>
-                          {!site.retired && getDaysUntil(site.epv1) !== null && (
-                            <div className="text-[10px] text-gray-500">{getDaysUntil(site.epv1)}j</div>
+                          <div className="text-xs font-semibold text-gray-800">{formatDate(doneByEpv.EPV1 || site.epv1)}</div>
+                          {doneByEpv.EPV1 ? (
+                            <div className="text-[10px] text-emerald-700 font-bold">Effectuée le {formatDate(doneByEpv.EPV1)}</div>
+                          ) : (
+                            !site.retired && getDaysUntil(site.epv1) !== null && (
+                              <div className="text-[10px] text-gray-500">{getDaysUntil(site.epv1)}j</div>
+                            )
                           )}
                         </div>
                         <div className="bg-white rounded-lg border border-gray-200 p-2 text-center">
                           <div className="text-[10px] text-gray-500">EPV2</div>
-                          <div className="text-xs font-semibold text-gray-800">{formatDate(site.epv2)}</div>
-                          {!site.retired && getDaysUntil(site.epv2) !== null && (
-                            <div className="text-[10px] text-gray-500">{getDaysUntil(site.epv2)}j</div>
+                          <div className="text-xs font-semibold text-gray-800">{formatDate(doneByEpv.EPV2 || site.epv2)}</div>
+                          {doneByEpv.EPV2 ? (
+                            <div className="text-[10px] text-emerald-700 font-bold">Effectuée le {formatDate(doneByEpv.EPV2)}</div>
+                          ) : (
+                            !site.retired && getDaysUntil(site.epv2) !== null && (
+                              <div className="text-[10px] text-gray-500">{getDaysUntil(site.epv2)}j</div>
+                            )
                           )}
                         </div>
                         <div className="bg-white rounded-lg border border-gray-200 p-2 text-center">
                           <div className="text-[10px] text-gray-500">EPV3</div>
-                          <div className="text-xs font-semibold text-gray-800">{formatDate(site.epv3)}</div>
-                          {!site.retired && getDaysUntil(site.epv3) !== null && (
-                            <div className="text-[10px] text-gray-500">{getDaysUntil(site.epv3)}j</div>
+                          <div className="text-xs font-semibold text-gray-800">{formatDate(doneByEpv.EPV3 || site.epv3)}</div>
+                          {doneByEpv.EPV3 ? (
+                            <div className="text-[10px] text-emerald-700 font-bold">Effectuée le {formatDate(doneByEpv.EPV3)}</div>
+                          ) : (
+                            !site.retired && getDaysUntil(site.epv3) !== null && (
+                              <div className="text-[10px] text-gray-500">{getDaysUntil(site.epv3)}j</div>
+                            )
                           )}
                         </div>
                       </div>

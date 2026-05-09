@@ -265,21 +265,23 @@ const HistoryModal = ({
                       </div>
                     )}
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (typeof onTriggerIntervention === 'function') {
-                          onTriggerIntervention(fiche);
-                          return;
-                        }
-                        if (typeof onOpenFiche === 'function') {
-                          onOpenFiche(fiche);
-                        }
-                      }}
-                      className="w-full bg-slate-700 text-white py-2 rounded-lg hover:bg-slate-800 font-semibold"
-                    >
-                      Déclencher l'intervention de cette vidange
-                    </button>
+                    {String(fiche.status || '').trim() === 'En attente' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (typeof onTriggerIntervention === 'function') {
+                            onTriggerIntervention(fiche);
+                            return;
+                          }
+                          if (typeof onOpenFiche === 'function') {
+                            onOpenFiche(fiche);
+                          }
+                        }}
+                        className="w-full bg-slate-700 text-white py-2 rounded-lg hover:bg-slate-800 font-semibold"
+                      >
+                        Déclencher l'intervention de cette vidange
+                      </button>
+                    )}
                 </div>
               ))}
             </div>

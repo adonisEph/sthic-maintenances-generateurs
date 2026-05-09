@@ -57,6 +57,7 @@ export async function onRequestPost({ request, env, data }) {
     let ignoredMissingId = 0;
     let ignoredUnknownId = 0;
     let ignoredNhBelowDv = 0;
+    let ignoredRetired = 0;
 
     const ignoredSamples = [];
     const pushIgnoredSample = (reason, r, idx, extra = {}) => {
@@ -88,6 +89,19 @@ export async function onRequestPost({ request, env, data }) {
         ignored += 1;
         ignoredUnknownId += 1;
         pushIgnoredSample('unknown_id_site', r, i, { normalizedIdSite: idSite });
+        continue;
+      }
+
+      const retiredRaw = site?.retired;
+      const isRetired =
+        retiredRaw === true ||
+        retiredRaw === 1 ||
+        retiredRaw === '1' ||
+        String(retiredRaw || '').trim().toLowerCase() === 'true';
+      if (isRetired) {
+        ignored += 1;
+        ignoredRetired += 1;
+        pushIgnoredSample('site_retired', r, i, { normalizedIdSite: idSite });
         continue;
       }
 
@@ -228,6 +242,7 @@ export async function onRequestPost({ request, env, data }) {
         ignoredDateBeforeDv,
         ignoredDecrease,
         ignoredNhBelowDv,
+        ignoredRetired,
         ignoredSamples
       },
       { status: 200 }

@@ -119,17 +119,41 @@ function normalizeZone(z) {
     .replace(/\s+/g, ' ');
 }
 
-async function hasNonDoneEpvInMonth(env, siteId, monthYyyyMm, epvType) {
+async function loadDoneEpvBySiteIdForMonth(env, siteIds, monthYyyyMm) {
   const m = String(monthYyyyMm || '').trim();
-  if (!/^\d{4}-\d{2}$/.test(m)) return false;
+  if (!/^\d{4}-\d{2}$/.test(m)) return new Map();
+  const ids = Array.isArray(siteIds) ? siteIds.map((x) => String(x || '').trim()).filter(Boolean) : [];
+  if (ids.length === 0) return new Map();
+
   const from = `${m}-01`;
   const to = `${m}-31`;
-  const row = await env.DB.prepare(
-    'SELECT 1 as one FROM interventions WHERE site_id = ? AND epv_type = ? AND planned_date >= ? AND planned_date <= ? AND status != \'done\' LIMIT 1'
-  )
-    .bind(String(siteId), String(epvType || ''), from, to)
-    .first();
-  return Boolean(row?.one);
+
+  const placeholders = ids.map(() => '?').join(',');
+  const stmt = env.DB.prepare(
+    `SELECT site_id, UPPER(TRIM(epv_type)) as epv_type, MAX(SUBSTR(COALESCE(date_completed, date_generated), 1, 10)) as max_done
+     FROM fiche_history
+     WHERE status = 'Effectuée'
+       AND site_id IN (${placeholders})
+       AND SUBSTR(COALESCE(date_completed, date_generated), 1, 10) >= ?
+       AND SUBSTR(COALESCE(date_completed, date_generated), 1, 10) <= ?
+       AND UPPER(TRIM(epv_type)) IN ('EPV1','EPV2','EPV3')
+     GROUP BY site_id, UPPER(TRIM(epv_type))`
+  );
+
+  const res = await stmt.bind(...ids, from, to).all();
+  const rows = Array.isArray(res?.results) ? res.results : [];
+
+  const map = new Map();
+  for (const r of rows) {
+    const sid = String(r?.site_id || '').trim();
+    const t = String(r?.epv_type || '').trim().toUpperCase();
+    if (!sid || !['EPV1', 'EPV2', 'EPV3'].includes(t)) continue;
+    const cur = map.get(sid) || { EPV1: '', EPV2: '', EPV3: '' };
+    const doneAt = r?.max_done ? String(r.max_done).slice(0, 10) : '';
+    if (doneAt && (!cur[t] || String(cur[t]).localeCompare(doneAt) < 0)) cur[t] = doneAt;
+    map.set(sid, cur);
+  }
+  return map;
 }
 
 function normStr(v) {
@@ -380,7 +404,7 @@ async function replacePlannedInterventions(env, { zone, technicianUserId, techni
   const to = `${month}-31`;
 
   await env.DB.prepare(
-    "DELETE FROM interventions WHERE zone = ? AND technician_user_id = ? AND status != 'done' AND epv_type IN ('EPV1','EPV2','EPV3') AND planned_date >= ? AND planned_date <= ?"
+    "DELETE FROM interventions WHERE zone = ? AND technician_user_id = ? AND status = 'planned' AND epv_type IN ('EPV1','EPV2','EPV3') AND planned_date >= ? AND planned_date <= ?"
   )
     .bind(zone, technicianUserId, from, to)
     .run();
@@ -407,7 +431,7 @@ async function replacePlannedInterventions(env, { zone, technicianUserId, techni
         .run();
 
       await env.DB.prepare(
-        "UPDATE interventions SET technician_user_id = ?, technician_name = ?, status = 'planned', updated_at = ? WHERE site_id = ? AND planned_date = ? AND epv_type = ? AND status != 'done'"
+        "UPDATE interventions SET technician_user_id = ?, technician_name = ?, status = 'planned', updated_at = ? WHERE site_id = ? AND planned_date = ? AND epv_type = ? AND status = 'planned'"
       )
         .bind(technicianUserId, technicianName, now, siteId, plannedDate, d.epvType)
         .run();
@@ -449,7 +473,8 @@ export async function onRequestPost({ request, env, data }) {
 
     const curYear = Number(t[1]);
     const curMonth = Number(t[2]);
-    const currentMonth = `${t[1]}-${t[2]}`;
+    // Source month used to evaluate what is already done (campaign month)
+    const sourceMonth = `${t[1]}-${t[2]}`;
 
     const next = new Date(Date.UTC(curYear, curMonth, 1)); // curMonth is 1-based; Date month is 0-based => this is next month
     const targetMonth = monthLabel(next);
@@ -465,6 +490,12 @@ export async function onRequestPost({ request, env, data }) {
     }
 
     const pairsMap = await loadPairs(env, technicianUserId);
+
+    const doneEpvBySiteIdSourceMonth = await loadDoneEpvBySiteIdForMonth(
+      env,
+      sites.map((s) => String(s?.id || '').trim()).filter(Boolean),
+      sourceMonth
+    );
 
     // Build visits
     const siteById = new Map(sites.map((s) => [String(s.id), s]));
@@ -535,10 +566,11 @@ export async function onRequestPost({ request, env, data }) {
       const nhEstimated = calculateEstimatedNH(Number(urgentSite?.nh2A || 0), String(urgentSite?.dateA || ''), urgentRegime);
       const calculated = calculateEPVDates(urgentRegime, Number(urgentSite?.nh1DV || 0), nhEstimated, SEUIL);
 
-      // Règle B (sans dates interventions comme source):
-      // On ne lit que l'existence d'EPV1/EPV2 non réalisées sur le mois courant pour déclencher les scénarios.
-      const nonDoneEpv1 = await hasNonDoneEpvInMonth(env, v.urgentSiteId, currentMonth, 'EPV1');
-      const nonDoneEpv2 = await hasNonDoneEpvInMonth(env, v.urgentSiteId, currentMonth, 'EPV2');
+      // Règle: se baser sur l'historique de fiches (Effectuée) du mois courant.
+      // Si EPV1/EPV2 ne sont pas effectuées ce mois-ci, elles sont considérées comme "en attente".
+      const doneCur = doneEpvBySiteIdSourceMonth.get(String(v.urgentSiteId)) || { EPV1: '', EPV2: '', EPV3: '' };
+      const nonDoneEpv1 = !Boolean(doneCur.EPV1);
+      const nonDoneEpv2 = !Boolean(doneCur.EPV2);
 
       // Case 1: EPV1 + EPV2 non réalisés => EPV3 calculé devient seed (EPV1 du mois cible), EPV2 sera recalculé après placement.
       // Case 2: EPV1 seul non réalisé => EPV2 calculé devient seed (EPV1 du mois cible) et EPV3 calculé devient EPV2 forcé.

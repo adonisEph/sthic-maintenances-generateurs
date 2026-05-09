@@ -79,6 +79,11 @@ const DayDetailsModal = ({
                               Déplacée (origine: {formatDate(evt.originalDate)})
                             </span>
                           )}
+                          {evt?.doneDate && (
+                            <span className="ml-2 text-[11px] bg-green-50 text-green-900 border border-green-200 px-2 py-0.5 rounded-full font-semibold">
+                              Effectuée le {formatDate(evt.doneDate)}
+                            </span>
+                          )}
                           {evt?.wasRetiredPrevMonth && (
                             <span className="ml-2 text-[11px] bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">
                               Retiré le mois passé

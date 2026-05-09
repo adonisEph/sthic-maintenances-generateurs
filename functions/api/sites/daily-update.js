@@ -72,7 +72,13 @@ export async function onRequestPost({ env, data }) {
     );
 
     for (const row of rows) {
-      if (Number(row?.retired || 0) === 1) continue;
+      const retiredRaw = row?.retired;
+      const isRetired =
+        retiredRaw === true ||
+        retiredRaw === 1 ||
+        retiredRaw === '1' ||
+        String(retiredRaw || '').trim().toLowerCase() === 'true';
+      if (isRetired) continue;
 
       const prevDateA = normalizeDateA(row?.date_a);
       if (!prevDateA) {
