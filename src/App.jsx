@@ -41,7 +41,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '5.0.1';
+const APP_VERSION = '6.0.0';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -1203,7 +1203,6 @@ const GeneratorMaintenanceApp = () => {
             setInterventionsTechnicianUserId('all');
             setTechnicianInterventionsTab('tomorrow');
             setShowTechnicianInterventionsFilters(false);
-            setShowInterventions(true);
             await loadInterventions(interventionsMonth, 'all', 'all');
             await loadPmAssignments(interventionsMonth);
           }
@@ -5361,34 +5360,41 @@ const GeneratorMaintenanceApp = () => {
     return nextPending ? { epvType: nextPending.epvType, plannedDate: String(nextPending.plannedDate).slice(0, 10) } : { epvType: '', plannedDate: '' };
   };
 
-  const urgentSitesAll = sites
-    .map(getUpdatedSite)
-    .map((site) => {
-      const next = getNextPendingEpvForSite(site);
-      const days = getDaysUntil(next?.plannedDate);
-      return {
-        ...site,
-        nextPendingEpvType: next?.epvType || '',
-        nextPendingEpvDate: next?.plannedDate || '',
-        daysUntilNextPendingEpv: days
-      };
-    })
-    .filter((site) => {
-      if (site.retired) return false;
-      const days = site?.daysUntilNextPendingEpv;
-      return days !== null && days <= 3;
-    })
-    .sort((a, b) => Number(a?.daysUntilNextPendingEpv ?? 999999) - Number(b?.daysUntilNextPendingEpv ?? 999999));
+  const urgentSitesAll = useMemo(() => {
+    const list = Array.isArray(sites) ? sites : [];
 
-  const urgentSites = urgentSitesAll
-  .filter((site) => filterTechnician === 'all' || normTechName(site.technician) === normTechName(filterTechnician))
-  .filter((site) => filterSite === 'all' || String(site?.id || '') === String(filterSite))
-  .filter((site) => {
-    if (!showZoneFilter) return true;
-    const z = String(dashboardZone || 'ALL');
-    if (!z || z === 'ALL') return true;
-    return String(site?.zone || '').trim() === z;
-  });
+    return list
+      .map(getUpdatedSite)
+      .map((site) => {
+        const next = getNextPendingEpvForSite(site);
+        const days = getDaysUntil(next?.plannedDate);
+        return {
+          ...site,
+          nextPendingEpvType: next?.epvType || '',
+          nextPendingEpvDate: next?.plannedDate || '',
+          daysUntilNextPendingEpv: days
+        };
+      })
+      .filter((site) => {
+        const days = site?.daysUntilNextPendingEpv;
+        return days !== null && days <= 3;
+      })
+      .sort((a, b) => Number(a?.daysUntilNextPendingEpv ?? 999999) - Number(b?.daysUntilNextPendingEpv ?? 999999));
+  }, [sites, getUpdatedSite, doneEpvBySiteId]);
+
+  const urgentSites = useMemo(() => {
+    const list = Array.isArray(urgentSitesAll) ? urgentSitesAll : [];
+
+    return list
+      .filter((site) => filterTechnician === 'all' || normTechName(site.technician) === normTechName(filterTechnician))
+      .filter((site) => filterSite === 'all' || String(site?.id || '') === String(filterSite))
+      .filter((site) => {
+        if (!showZoneFilter) return true;
+        const z = String(dashboardZone || 'ALL');
+        if (!z || z === 'ALL') return true;
+        return String(site?.zone || '').trim() === z;
+      });
+  }, [urgentSitesAll, filterTechnician, filterSite, showZoneFilter, dashboardZone]);
 
   useEffect(() => {
     if (!(isAdmin || isManager || isViewer || isTechnician)) {
@@ -5974,200 +5980,200 @@ const GeneratorMaintenanceApp = () => {
           String(i.sentAt) > String(technicianSeenSentAt || '')
       ).length
     : 0;
-  const technicianTasksCount = (() => {
-  if (!isTechnician) return { total: 0, remaining: 0 };
+  const technicianTasksCount = useMemo(() => {
+    if (!isTechnician) return { total: 0, remaining: 0 };
 
-  const month = String(interventionsMonth || '').trim();
-  if (!/^\d{4}-\d{2}$/.test(month)) return { total: 0, remaining: 0 };
+    const month = String(interventionsMonth || '').trim();
+    if (!/^\d{4}-\d{2}$/.test(month)) return { total: 0, remaining: 0 };
 
-  const normalizePmType = (v) =>
-    String(v || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, '');
+    const normalizePmType = (v) =>
+      String(v || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '');
 
-  const isPmDone = (p) => {
-    const st = String(p?.pmState || p?.status || '').trim().toUpperCase();
-    return (
-      st === 'EFFECTUEE' ||
-      st === 'DONE' ||
-      st === 'CLOSED' ||
-      st === 'CLOSED COMPLETE' ||
-      st === 'CLOSED_COMPLETE' ||
-      st === 'CLOSEDCOMPLETE' ||
-      st === 'AWAITING CLOSURE' ||
-      st === 'AWAITING_CLOSURE'
-    );
-  };
-
-  const ymdToDate = (ymd) => {
-    const s = String(ymd || '').slice(0, 10);
-    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (!m) return null;
-    return new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00`);
-  };
-
-  const daysBetween = (aYmd, bYmd) => {
-    const a = ymdToDate(aYmd);
-    const b = ymdToDate(bYmd);
-    if (!a || !b) return null;
-    const ms = b.getTime() - a.getTime();
-    return Math.round(ms / (24 * 60 * 60 * 1000));
-  };
-
-  const isRetiredSiteId = (siteId) => {
-    const sid = String(siteId || '').trim();
-    if (!sid) return false;
-    const s = (Array.isArray(sites) ? sites : []).find((x) => String(x?.id || '').trim() === sid);
-    return Boolean(s?.retired);
-  };
-
-  const interventionsByKey = new Map(
-    (Array.isArray(interventions) ? interventions : [])
-      .filter(Boolean)
-      .map((i) => [getInterventionKey(i.siteId, String(i?.plannedDate || '').slice(0, 10), i.epvType), i])
-  );
-
-  const buildVidangeEventsFromSites = () => {
-    const out = [];
-    const list = Array.isArray(sites) ? sites : [];
-    const norm = (d) => {
-      const s = String(d || '').slice(0, 10);
-      return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+    const isPmDone = (p) => {
+      const st = String(p?.pmState || p?.status || '').trim().toUpperCase();
+      return (
+        st === 'EFFECTUEE' ||
+        st === 'DONE' ||
+        st === 'CLOSED' ||
+        st === 'CLOSED COMPLETE' ||
+        st === 'CLOSED_COMPLETE' ||
+        st === 'CLOSEDCOMPLETE' ||
+        st === 'AWAITING CLOSURE' ||
+        st === 'AWAITING_CLOSURE'
+      );
     };
 
-    list
-      .filter((site) => site)
-      .forEach((site) => {
-        const updated = typeof getUpdatedSite === 'function' ? getUpdatedSite(site) : site;
-        if (updated?.retired) return;
+    const ymdToDate = (ymd) => {
+      const s = String(ymd || '').slice(0, 10);
+      const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!m) return null;
+      return new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00`);
+    };
 
-        const pushOne = (epvType, rawDate) => {
-          const src = norm(rawDate);
-          if (!src) return;
-          const shifted = typeof ymdShiftForWorkdays === 'function' ? ymdShiftForWorkdays(src) : '';
-          const plannedDate = String(shifted || src).slice(0, 10);
-          if (String(plannedDate).slice(0, 7) !== month) return;
+    const daysBetween = (aYmd, bYmd) => {
+      const a = ymdToDate(aYmd);
+      const b = ymdToDate(bYmd);
+      if (!a || !b) return null;
+      const ms = b.getTime() - a.getTime();
+      return Math.round(ms / (24 * 60 * 60 * 1000));
+    };
 
-          const intervention =
-            interventionsByKey.get(getInterventionKey(site.id, plannedDate, epvType)) ||
-            interventionsByKey.get(getInterventionKey(site.id, src, epvType)) ||
-            null;
+    const isRetiredSiteId = (siteId) => {
+      const sid = String(siteId || '').trim();
+      if (!sid) return false;
+      const s = (Array.isArray(sites) ? sites : []).find((x) => String(x?.id || '').trim() === sid);
+      return Boolean(s?.retired);
+    };
 
-          out.push({
-            id: intervention?.id || `${site.id}:${epvType}:${plannedDate}`,
-            siteId: String(site.id),
-            plannedDate,
-            epvType,
-            status: String(intervention?.status || 'planned')
-          });
-        };
+    const interventionsByKey = new Map(
+      (Array.isArray(interventions) ? interventions : [])
+        .filter(Boolean)
+        .map((i) => [getInterventionKey(i.siteId, String(i?.plannedDate || '').slice(0, 10), i.epvType), i])
+    );
 
-        pushOne('EPV1', updated?.epv1);
-        pushOne('EPV2', updated?.epv2);
-        pushOne('EPV3', updated?.epv3);
+    const buildVidangeEventsFromSites = () => {
+      const out = [];
+      const list = Array.isArray(sites) ? sites : [];
+      const norm = (d) => {
+        const s = String(d || '').slice(0, 10);
+        return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+      };
+
+      list
+        .filter((site) => site)
+        .forEach((site) => {
+          const updated = typeof getUpdatedSite === 'function' ? getUpdatedSite(site) : site;
+          if (updated?.retired) return;
+
+          const pushOne = (epvType, rawDate) => {
+            const src = norm(rawDate);
+            if (!src) return;
+            const shifted = typeof ymdShiftForWorkdays === 'function' ? ymdShiftForWorkdays(src) : '';
+            const plannedDate = String(shifted || src).slice(0, 10);
+            if (String(plannedDate).slice(0, 7) !== month) return;
+
+            const intervention =
+              interventionsByKey.get(getInterventionKey(site.id, plannedDate, epvType)) ||
+              interventionsByKey.get(getInterventionKey(site.id, src, epvType)) ||
+              null;
+
+            out.push({
+              id: intervention?.id || `${site.id}:${epvType}:${plannedDate}`,
+              siteId: String(site.id),
+              plannedDate,
+              epvType,
+              status: String(intervention?.status || 'planned')
+            });
+          };
+
+          pushOne('EPV1', updated?.epv1);
+          pushOne('EPV2', updated?.epv2);
+          pushOne('EPV3', updated?.epv3);
+        });
+
+      return out;
+    };
+
+    const vidangesInMonth = buildVidangeEventsFromSites().filter((v) => !isRetiredSiteId(v?.siteId));
+
+    const pendingEpv23BySiteId = (() => {
+      const s = new Set();
+      vidangesInMonth.forEach((i) => {
+        if (!i) return;
+        if (String(i?.status || '') === 'done') return;
+        const t = String(i?.epvType || '').trim().toUpperCase();
+        if (t !== 'EPV2' && t !== 'EPV3') return;
+        const sid = String(i?.siteId || '').trim();
+        if (sid) s.add(sid);
       });
+      return s;
+    })();
 
-    return out;
-  };
+    const pmInMonth = (Array.isArray(pmAssignments) ? pmAssignments : [])
+      .filter(Boolean)
+      .filter((p) => String(p?.plannedDate || '').slice(0, 7) === month)
+      .filter((p) => {
+        const mt = normalizePmType(p?.maintenanceType);
+        return mt === 'fullpmwo';
+      })
+      .filter((p) => !isRetiredSiteId(p?.siteId));
 
-  const vidangesInMonth = buildVidangeEventsFromSites().filter((v) => !isRetiredSiteId(v?.siteId));
+    const pendingPm = pmInMonth.filter((p) => !isPmDone(p));
 
-  const pendingEpv23BySiteId = (() => {
-    const s = new Set();
-    vidangesInMonth.forEach((i) => {
-      if (!i) return;
-      if (String(i?.status || '') === 'done') return;
-      const t = String(i?.epvType || '').trim().toUpperCase();
-      if (t !== 'EPV2' && t !== 'EPV3') return;
-      const sid = String(i?.siteId || '').trim();
-      if (sid) s.add(sid);
-    });
-    return s;
-  })();
-
-  const pmInMonth = (Array.isArray(pmAssignments) ? pmAssignments : [])
-    .filter(Boolean)
-    .filter((p) => String(p?.plannedDate || '').slice(0, 7) === month)
-    .filter((p) => {
+    const findLinkedEpv1ForPm = (p) => {
       const mt = normalizePmType(p?.maintenanceType);
-      return mt === 'fullpmwo';
-    })
-    .filter((p) => !isRetiredSiteId(p?.siteId));
+      if (mt !== 'fullpmwo') return null;
 
-  const pendingPm = pmInMonth.filter((p) => !isPmDone(p));
+      const siteId = String(p?.siteId || '').trim();
+      const pd = String(p?.plannedDate || '').slice(0, 10);
+      if (!siteId || !pd) return null;
 
-  const findLinkedEpv1ForPm = (p) => {
-    const mt = normalizePmType(p?.maintenanceType);
-    if (mt !== 'fullpmwo') return null;
+      const candidates = vidangesInMonth
+        .filter((i) => String(i?.epvType || '').trim().toUpperCase() === 'EPV1')
+        .filter((i) => String(i?.siteId || '').trim() === siteId)
+        .filter((i) => i?.plannedDate);
 
-    const siteId = String(p?.siteId || '').trim();
-    const pd = String(p?.plannedDate || '').slice(0, 10);
-    if (!siteId || !pd) return null;
+      let best = null;
+      let bestAbs = null;
+      candidates.forEach((i) => {
+        const diff = daysBetween(pd, i.plannedDate);
+        if (diff === null) return;
+        const abs = Math.abs(diff);
+        const ok = abs === 0 || (abs >= 2 && abs <= 6);
+        if (!ok) return;
+        if (bestAbs === null || abs < bestAbs) {
+          bestAbs = abs;
+          best = i;
+        }
+      });
+      return best;
+    };
 
-    const candidates = vidangesInMonth
-      .filter((i) => String(i?.epvType || '').trim().toUpperCase() === 'EPV1')
-      .filter((i) => String(i?.siteId || '').trim() === siteId)
-      .filter((i) => i?.plannedDate);
+    const today = new Date().toISOString().slice(0, 10);
 
-    let best = null;
-    let bestAbs = null;
-    candidates.forEach((i) => {
-      const diff = daysBetween(pd, i.plannedDate);
-      if (diff === null) return;
-      const abs = Math.abs(diff);
-      const ok = abs === 0 || (abs >= 2 && abs <= 6);
-      if (!ok) return;
-      if (bestAbs === null || abs < bestAbs) {
-        bestAbs = abs;
-        best = i;
+    // Dédup: si une PM pending masque son EPV1 linked (focus PM), on retire cet EPV1 du compteur
+    const hiddenVidangeIds = new Set();
+    pendingPm.forEach((p) => {
+      const linked = findLinkedEpv1ForPm(p);
+      if (!linked) return;
+
+      const linkedOverdue = String(linked?.plannedDate || '').slice(0, 10) < today;
+      const siteId = String(p?.siteId || '').trim();
+      const focusVidange = Boolean(linkedOverdue) || pendingEpv23BySiteId.has(siteId);
+
+      if (!focusVidange && linked?.id) {
+        hiddenVidangeIds.add(String(linked.id));
       }
     });
-    return best;
-  };
 
-  const today = new Date().toISOString().slice(0, 10);
+    const vidangesTotal = vidangesInMonth
+      .filter((i) => {
+        if (String(i?.epvType || '').trim().toUpperCase() !== 'EPV1') return true;
+        return !hiddenVidangeIds.has(String(i?.id || ''));
+      });
 
-  // Dédup: si une PM pending masque son EPV1 linked (focus PM), on retire cet EPV1 du compteur
-  const hiddenVidangeIds = new Set();
-  pendingPm.forEach((p) => {
-    const linked = findLinkedEpv1ForPm(p);
-    if (!linked) return;
+    const pendingVidanges = vidangesInMonth
+      .filter((i) => String(i?.status || '') !== 'done')
+      .filter((i) => {
+        if (String(i?.epvType || '').trim().toUpperCase() !== 'EPV1') return true;
+        return !hiddenVidangeIds.has(String(i?.id || ''));
+      });
 
-    const linkedOverdue = String(linked?.plannedDate || '').slice(0, 10) < today;
-    const siteId = String(p?.siteId || '').trim();
-    const focusVidange = Boolean(linkedOverdue) || pendingEpv23BySiteId.has(siteId);
+    const pmTotal = pmInMonth.length;
+    const pmRemaining = pendingPm.length;
+    const vidTotal = vidangesTotal.length;
+    const vidRemaining = pendingVidanges.length;
 
-    if (!focusVidange && linked?.id) {
-      hiddenVidangeIds.add(String(linked.id));
-    }
-  });
-
-  const vidangesTotal = vidangesInMonth
-    .filter((i) => {
-      if (String(i?.epvType || '').trim().toUpperCase() !== 'EPV1') return true;
-      return !hiddenVidangeIds.has(String(i?.id || ''));
-    });
-
-  const pendingVidanges = vidangesInMonth
-    .filter((i) => String(i?.status || '') !== 'done')
-    .filter((i) => {
-      if (String(i?.epvType || '').trim().toUpperCase() !== 'EPV1') return true;
-      return !hiddenVidangeIds.has(String(i?.id || ''));
-    });
-
-  const pmTotal = pmInMonth.length;
-  const pmRemaining = pendingPm.length;
-  const vidTotal = vidangesTotal.length;
-  const vidRemaining = pendingVidanges.length;
-
-  return {
-    total: pmTotal + vidTotal,
-    remaining: pmRemaining + vidRemaining
-  };
-})();
+    return {
+      total: pmTotal + vidTotal,
+      remaining: pmRemaining + vidRemaining
+    };
+  }, [isTechnician, interventionsMonth, interventions, sites, pmAssignments, getUpdatedSite]);
 
   const technicianPendingTasksCount = technicianTasksCount.remaining;
 
@@ -6668,6 +6674,33 @@ return (
             >
               <RotateCcw size={18} />
               Mettre à jour NH d'un site
+            </button>
+          )}
+
+          {isTechnician && (
+            <button
+              onClick={async () => {
+                setSidebarOpen(false);
+                setInterventionsStatus('all');
+                setInterventionsTechnicianUserId('all');
+                setTechnicianInterventionsTab('tomorrow');
+                setShowTechnicianInterventionsFilters(false);
+                setShowInterventions(true);
+                try {
+                  await loadInterventions(interventionsMonth, 'all', 'all');
+                } catch {
+                  // ignore
+                }
+                try {
+                  await loadPmAssignments(interventionsMonth);
+                } catch {
+                  // ignore
+                }
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
+            >
+              <CheckCircle size={18} />
+              Mes interventions
             </button>
           )}
 

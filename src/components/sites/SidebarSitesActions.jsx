@@ -45,12 +45,12 @@ const SidebarSitesActions = ({
         <button
           type="button"
           onClick={() => setAccordionOpen((prev) => ({ ...(prev || {}), [id]: !prev?.[id] }))}
-          className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
+          className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
         >
-          <span className="text-sm font-bold">{title}</span>
-          <span className="text-xs font-bold text-white/80">{open ? '—' : '+'}</span>
+          <div className="text-xs font-bold uppercase tracking-wide text-white/90">{title}</div>
+          <div className="text-white/80 text-sm font-bold">{open ? '–' : '+'}</div>
         </button>
-        {open && <div className="p-2 space-y-2">{children}</div>}
+        {open && <div className="px-3 pb-3 pt-2 space-y-2">{children}</div>}
       </div>
     );
   };
