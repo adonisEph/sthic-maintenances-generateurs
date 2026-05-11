@@ -382,18 +382,33 @@ const GeneratorMaintenanceApp = () => {
 
   const prevDoneInterventionsRef = useRef(new Set());
 
+  const interventionsPollQuery = useMemo(() => {
+    if (!(isAdmin || isManager)) return '';
+    if (!authUser?.id) return '';
+    const { from, to } = monthRange(interventionsMonth);
+    const qs = new URLSearchParams({ from, to });
+    if (interventionsStatus && interventionsStatus !== 'all') {
+      qs.set('status', String(interventionsStatus));
+    }
+    if (interventionsTechnicianUserId && interventionsTechnicianUserId !== 'all') {
+      qs.set('technicianUserId', String(interventionsTechnicianUserId));
+    }
+    return qs.toString();
+  }, [isAdmin, isManager, authUser?.id, interventionsMonth, interventionsStatus, interventionsTechnicianUserId]);
+
   useEffect(() => {
-    if (!(isAdmin || isManager)) return;
-    if (!authUser?.id) return;
+    if (!interventionsPollQuery) return;
 
     let disposed = false;
 
     const tick = async () => {
       if (disposed) return;
       try {
-        await loadInterventions(interventionsMonth, interventionsStatus, interventionsTechnicianUserId);
+        const data = await apiFetchJson(`/api/interventions?${interventionsPollQuery}`, { method: 'GET' });
+        const nextList = Array.isArray(data?.interventions) ? data.interventions : [];
+        setInterventions(nextList);
 
-        const done = (Array.isArray(interventions) ? interventions : [])
+        const done = nextList
           .filter((it) => String(it?.status || '') === 'done')
           .slice(0, 50);
 
@@ -425,7 +440,7 @@ const GeneratorMaintenanceApp = () => {
       disposed = true;
       window.clearInterval(id);
     };
-  }, [authUser?.id, isAdmin, isManager, interventionsMonth, interventionsStatus, interventionsTechnicianUserId, sites, interventions]);
+  }, [interventionsPollQuery, sites]);
 
 
   const apiFetchJson = async (path, init = {}) => {
@@ -5391,13 +5406,30 @@ const GeneratorMaintenanceApp = () => {
       return list.filter((s) => String(s?.zone || '').trim() === String(authZone).trim());
     }
 
+    const afterZone = (() => {
+      if (!showZoneFilter) return list;
+      const z = String(dashboardZone || 'ALL');
+      if (!z || z === 'ALL') return list;
+      return list.filter((s) => String(s?.zone || '').trim() === z);
+    })();
+
+    const afterTechnician = afterZone.filter((s) => {
+      if (!filterTechnician || filterTechnician === 'all') return true;
+      return normTechName(s?.technician) === normTechName(filterTechnician);
+    });
+
+    const afterSite = afterTechnician.filter((s) => {
+      if (!filterSite || filterSite === 'all') return true;
+      return String(s?.id || '') === String(filterSite);
+    });
+
     // Viewer: zone filtrée
     if (isViewer && dashboardZone && dashboardZone !== 'ALL') {
-      return list.filter((s) => String(s?.zone || '').trim() === String(dashboardZone).trim());
+      return afterSite.filter((s) => String(s?.zone || '').trim() === String(dashboardZone).trim());
     }
 
-    return list;
-  }, [urgentSitesAll, isTechnician, authZone, isViewer, dashboardZone]);
+    return afterSite;
+  }, [urgentSitesAll, isTechnician, authZone, showZoneFilter, dashboardZone, filterTechnician, filterSite, isViewer]);
 
   const urgentRetiredMonthsQuery = useMemo(() => {
     if (!(isAdmin || isManager || isViewer || isTechnician)) return '';
