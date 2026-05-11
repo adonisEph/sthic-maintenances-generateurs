@@ -53,23 +53,23 @@ export async function onRequestGet({ request, env, data }) {
     }
 
     if (from) {
-      where += ' AND planned_date >= ?';
+      where += ' AND a.planned_date >= ?';
       binds.push(from);
     }
     if (to) {
-      where += ' AND planned_date <= ?';
+      where += ' AND a.planned_date <= ?';
       binds.push(to);
     }
     if (status) {
-      where += ' AND status = ?';
+      where += ' AND a.status = ?';
       binds.push(status);
     }
 
     if (data.user.role === 'technician') {
-      where += ' AND technician_user_id = ?';
+      where += ' AND a.technician_user_id = ?';
       binds.push(String(data.user.id));
     } else if (data.user.role === 'admin' && technicianUserId) {
-      where += ' AND technician_user_id = ?';
+      where += ' AND a.technician_user_id = ?';
       binds.push(String(technicianUserId));
     }
 

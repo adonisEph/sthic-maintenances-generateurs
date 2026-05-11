@@ -38,28 +38,28 @@ export async function onRequestGet({ request, env, data }) {
 
     const z = userZone(data);
     if (!isSuperAdmin(data) && (data.user.role === 'manager' || data.user.role === 'technician')) {
-      where += ' AND zone = ?';
+      where += ' AND i.zone = ?';
       binds.push(z);
     }
 
     if (from) {
-      where += ' AND planned_date >= ?';
+      where += ' AND i.planned_date >= ?';
       binds.push(from);
     }
     if (to) {
-      where += ' AND planned_date <= ?';
+      where += ' AND i.planned_date <= ?';
       binds.push(to);
     }
     if (status) {
-      where += ' AND status = ?';
+      where += ' AND i.status = ?';
       binds.push(status);
     }
 
     if (data.user.role === 'technician') {
-      where += ' AND technician_user_id = ?';
+      where += ' AND i.technician_user_id = ?';
       binds.push(data.user.id);
     } else if (data.user.role === 'admin' && technicianUserId) {
-      where += ' AND technician_user_id = ?';
+      where += ' AND i.technician_user_id = ?';
       binds.push(String(technicianUserId));
     }
 

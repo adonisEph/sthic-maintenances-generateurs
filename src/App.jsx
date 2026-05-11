@@ -41,7 +41,7 @@ import {
   getUrgencyClass
 } from './utils/calculations';
 
-const APP_VERSION = '6.0.0';
+const APP_VERSION = '6.1.1';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -49,7 +49,7 @@ const APP_VERSION_FORCE_AFTER_DAYS = 0;
 const APP_VERSION_REQUIRED_KEY = 'gma_app_required_version';
 const DAILY_NH_UPDATE_STORAGE_KEY = 'gma_daily_nh_update_ymd';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
-const SPLASH_MIN_MS = 4000;
+const SPLASH_MIN_MS = 3000;
 const DISABLE_PUSH_NOTIFICATIONS = true;
 const DISABLE_NOTIFICATIONS_FEATURE = true;
 const DISABLE_PRESENCE_FEATURE = true;
@@ -8254,8 +8254,17 @@ return (
                         </div>
 
                         {(() => {
-                          const z = String(site?.zone || '').trim().toUpperCase();
-                          const c = String(site?.idSite || '').trim().toUpperCase();
+                          const z = String(site?.zone || '')
+                            .trim()
+                            .toUpperCase()
+                            .replace(/\s*\/\s*/g, '/')
+                            .replace(/\s+/g, ' ');
+                          const c = String(site?.idSite || '')
+                            .replace(/[\u200B-\u200D\uFEFF]/g, '')
+                            .replace(/\u00A0/g, ' ')
+                            .trim()
+                            .toUpperCase()
+                            .replace(/\s+/g, '');
                           const key = `${z}|${c}`;
                           const months = Array.isArray(urgentRetiredMonthsMap?.[key]) ? urgentRetiredMonthsMap[key] : [];
                           if (months.length === 0) return null;
