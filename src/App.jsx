@@ -5387,8 +5387,8 @@ const GeneratorMaintenanceApp = () => {
     const list = Array.isArray(urgentSitesAll) ? urgentSitesAll : [];
 
     // Technicien: on garde seulement sa zone
-    if (isTechnician && technicianZone) {
-      return list.filter((s) => String(s?.zone || '').trim() === String(technicianZone).trim());
+    if (isTechnician && authZone) {
+      return list.filter((s) => String(s?.zone || '').trim() === String(authZone).trim());
     }
 
     // Viewer: zone filtrée
@@ -5397,7 +5397,7 @@ const GeneratorMaintenanceApp = () => {
     }
 
     return list;
-  }, [urgentSitesAll, isTechnician, technicianZone, isViewer, dashboardZone]);
+  }, [urgentSitesAll, isTechnician, authZone, isViewer, dashboardZone]);
 
   const urgentRetiredMonthsQuery = useMemo(() => {
     if (!(isAdmin || isManager || isViewer || isTechnician)) return '';
