@@ -385,7 +385,19 @@ const GeneratorMaintenanceApp = () => {
   const interventionsPollQuery = useMemo(() => {
     if (!(isAdmin || isManager)) return '';
     if (!authUser?.id) return '';
-    const { from, to } = monthRange(interventionsMonth);
+
+    const { from, to } = (() => {
+      const base = String(interventionsMonth || '').trim();
+      const m = base.match(/^(\d{4})-(\d{2})$/);
+      const yyyyMm = m ? base : new Date().toISOString().slice(0, 7);
+      const fromYmd = `${yyyyMm}-01`;
+      const dt = new Date(`${fromYmd}T00:00:00Z`);
+      dt.setUTCMonth(dt.getUTCMonth() + 1);
+      dt.setUTCDate(0);
+      const toYmd = dt.toISOString().slice(0, 10);
+      return { from: fromYmd, to: toYmd };
+    })();
+
     const qs = new URLSearchParams({ from, to });
     if (interventionsStatus && interventionsStatus !== 'all') {
       qs.set('status', String(interventionsStatus));
