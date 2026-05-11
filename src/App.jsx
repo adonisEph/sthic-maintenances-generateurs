@@ -6204,6 +6204,12 @@ const GeneratorMaintenanceApp = () => {
   }, [isTechnician, authUser?.technicianName]);
 
   useEffect(() => {
+    if (!isWarehouse) return;
+    if (showWarehouseReturns) setShowWarehouseReturns(false);
+    if (warehouseRevokeOpen) setWarehouseRevokeOpen(false);
+  }, [isWarehouse, showWarehouseReturns, warehouseRevokeOpen]);
+
+  useEffect(() => {
     if (!authUser?.id || authUser?.role !== 'technician') return;
     try {
       const k = `tech_seen_sent_at:${String(authUser.id)}`;
@@ -7005,195 +7011,362 @@ return (
 
           <div className="p-2 sm:p-4 md:p-6">
             <div className="max-w-7xl mx-auto">
-            <div className="flex flex-col sm:flex-row sm:items-end gap-3">
-              <div className="flex-1">
-                <SitesTechnicianFilter
-                  isTechnician={isTechnician}
-                  filterTechnician={filterTechnician}
-                  onChange={setFilterTechnician}
-                  technicians={technicians}
-                  filterSite={filterSite}
-                  onChangeSite={setFilterSite}
-                  sites={filteredSites}
-                />
-              </div>
-            </div>
+              {isWarehouse ? (
+                <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 md:mb-6">
+                  {(() => {
+                    const list = Array.isArray(ficheHistory) ? ficheHistory.filter(Boolean) : [];
 
-              <div ref={siteFormAnchorRef} />
+                    const currentCampaignMonth = (() => {
+                      try {
+                        const parts = new Intl.DateTimeFormat('en-CA', {
+                          timeZone: 'Africa/Brazzaville',
+                          year: 'numeric',
+                          month: '2-digit'
+                        }).formatToParts(new Date());
+                        const y = parts.find((p) => p.type === 'year')?.value;
+                        const m = parts.find((p) => p.type === 'month')?.value;
+                        return y && m ? `${y}-${m}` : new Date().toISOString().slice(0, 7);
+                      } catch {
+                        return new Date().toISOString().slice(0, 7);
+                      }
+                    })();
 
-              {showAddForm && (
-                <AddSiteForm
-                  formData={formData}
-                  setFormData={setFormData}
-                  onSubmit={handleAddSite}
-                  onClose={() => setShowAddForm(false)}
-                  onCancel={() => setShowAddForm(false)}
-                />
-              )}
+                    const toCampaignMonth = (f) => {
+                      const dg = f?.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
+                      const pd = f?.plannedDate ? String(f.plannedDate).slice(0, 10) : '';
+                      const d = dg || pd;
+                      return d ? String(d).slice(0, 7) : '';
+                    };
 
-              {showUpdateForm && (
-                <UpdateSiteForm
-                  selectedSite={selectedSite}
-                  formData={formData}
-                  setFormData={setFormData}
-                  onSubmit={handleUpdateSite}
-                  onClose={() => setShowUpdateForm(false)}
-                  onCancel={() => setShowUpdateForm(false)}
-                />
-              )}
+                    const campaign = currentCampaignMonth;
+                    const inCampaign = list.filter((f) => toCampaignMonth(f) === campaign);
+                    const processed = inCampaign.filter((f) => String(f.status || '') === 'Contrôle magasin');
+                    const pending = inCampaign.filter((f) => String(f.status || '') === 'Envoyée au magasin');
 
-              {showEditForm && (
-                <EditSiteForm
-                  selectedSite={selectedSite}
-                  formData={formData}
-                  setFormData={setFormData}
-                  mode={editSiteFormMode}
-                  onSubmit={editSiteFormMode === 'vidange' ? handleManagerCompleteVidange : handleEditSite}
-                  onClose={() => {
-                    setShowEditForm(false);
-                    setEditSiteFormMode('full');
-                  }}
-                  onCancel={() => {
-                    setShowEditForm(false);
-                    setEditSiteFormMode('full');
-                  }}
-                />
-              )}
+                    const airOk = inCampaign.filter((f) => f.warehouseAirFilterOk === true);
+                    const airNo = inCampaign.filter((f) => f.warehouseAirFilterOk === false);
+                    const airUnknown = inCampaign.filter((f) => f.warehouseAirFilterOk !== true && f.warehouseAirFilterOk !== false);
 
-              {siteEditChoiceOpen && siteEditChoiceSite && (
-                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-                  <div className="bg-white rounded-xl shadow-xl border border-gray-200 w-full max-w-md p-4">
-                    <div className="font-bold text-gray-900 mb-1">Choisir une action</div>
-                    <div className="text-sm text-gray-600 mb-4 truncate">{siteEditChoiceSite?.nameSite}</div>
-                    <div className="flex flex-col gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const site = siteEditChoiceSite;
-                          setSiteEditChoiceOpen(false);
-                          setSiteEditChoiceSite(null);
-                          setSelectedSite(site);
-                          setEditSiteFormMode('vidange');
-                          setFormData({
-                            nameSite: site.nameSite,
-                            idSite: site.idSite,
-                            technician: site.technician,
-                            generateur: site.generateur,
-                            capacite: site.capacite,
-                            kitVidange: site.kitVidange,
-                            nh1DV: site.nh1DV,
-                            dateDV: '',
-                            nh2A: site.nh2A,
-                            dateA: site.dateA,
-                            retired: site.retired
-                          });
-                          setShowEditForm(true);
-                          setTimeout(() => {
-                            siteFormAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                          }, 0);
-                        }}
-                        className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 font-semibold"
-                      >
-                        Effectuer une vidange
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const site = siteEditChoiceSite;
-                          setSiteEditChoiceOpen(false);
-                          setSiteEditChoiceSite(null);
-                          setSelectedSite(site);
-                          setFormData({
-                            nameSite: site.nameSite,
-                            idSite: site.idSite,
-                            technician: site.technician,
-                            generateur: site.generateur,
-                            capacite: site.capacite,
-                            kitVidange: site.kitVidange,
-                            nh1DV: site.nh1DV,
-                            dateDV: site.dateDV,
-                            nh2A: '',
-                            dateA: '',
-                            retired: site.retired
-                          });
-                          setShowUpdateForm(true);
-                          setTimeout(() => {
-                            siteFormAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                          }, 0);
-                        }}
-                        className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-semibold"
-                      >
-                        Mettre à jour le NH
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSiteEditChoiceOpen(false);
-                          setSiteEditChoiceSite(null);
-                        }}
-                        className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 font-semibold"
-                      >
-                        Annuler
-                      </button>
+                    const bySite = (() => {
+                      const m = new Map();
+                      for (const f of inCampaign) {
+                        const sid = String(f?.siteId || '').trim();
+                        const name = String(f?.siteName || '').trim();
+                        const key = sid || name || String(f?.id || '');
+                        const prev = m.get(key) || { siteId: sid, siteName: name, total: 0, pending: 0, processed: 0, airOk: 0, airNo: 0, airUnknown: 0 };
+                        prev.total += 1;
+                        if (String(f.status || '') === 'Envoyée au magasin') prev.pending += 1;
+                        if (String(f.status || '') === 'Contrôle magasin') prev.processed += 1;
+                        if (f.warehouseAirFilterOk === true) prev.airOk += 1;
+                        else if (f.warehouseAirFilterOk === false) prev.airNo += 1;
+                        else prev.airUnknown += 1;
+                        m.set(key, prev);
+                      }
+                      return Array.from(m.values()).sort((a, b) => {
+                        if (b.pending !== a.pending) return b.pending - a.pending;
+                        if (b.total !== a.total) return b.total - a.total;
+                        return String(a.siteName || a.siteId || '').localeCompare(String(b.siteName || b.siteId || ''));
+                      });
+                    })();
+
+                    return (
+                      <div className="flex flex-col gap-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-lg font-bold text-gray-900">Dashboard Magasin</div>
+                            <div className="text-xs text-gray-600">Campagne: {campaign}</div>
+                          </div>
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setShowWarehouseProcess(true)}
+                              className="bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-950 font-semibold"
+                            >
+                              Ouvrir Fiches process
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  await loadFicheHistory();
+                                } catch {
+                                  // ignore
+                                }
+                                setShowAirFilterHistory(true);
+                              }}
+                              className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-semibold"
+                            >
+                              Historique filtre à air GE
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                          <div className="border border-gray-200 rounded-xl p-4 bg-white">
+                            <div className="text-xs text-gray-600">À traiter (campagne)</div>
+                            <div className="text-3xl font-extrabold text-gray-900 mt-1">{pending.length}</div>
+                            <div className="text-xs text-gray-500 mt-1">Envoyée au magasin</div>
+                          </div>
+                          <div className="border border-gray-200 rounded-xl p-4 bg-white">
+                            <div className="text-xs text-gray-600">Traitées (campagne)</div>
+                            <div className="text-3xl font-extrabold text-gray-900 mt-1">{processed.length}</div>
+                            <div className="text-xs text-gray-500 mt-1">Contrôle magasin</div>
+                          </div>
+                          <div className="border border-gray-200 rounded-xl p-4 bg-white">
+                            <div className="text-xs text-gray-600">Filtre GE OK (campagne)</div>
+                            <div className="text-3xl font-extrabold text-emerald-700 mt-1">{airOk.length}</div>
+                            <div className="text-xs text-gray-500 mt-1">Sorties validées</div>
+                          </div>
+                          <div className="border border-gray-200 rounded-xl p-4 bg-white">
+                            <div className="text-xs text-gray-600">Filtre GE à vérifier (campagne)</div>
+                            <div className="text-3xl font-extrabold text-amber-700 mt-1">{airUnknown.length}</div>
+                            <div className="text-xs text-gray-500 mt-1">Non renseigné</div>
+                          </div>
+                        </div>
+
+                        <div className="border border-gray-200 rounded-xl overflow-hidden">
+                          <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between gap-3">
+                            <div className="font-bold text-gray-900">Par site (campagne)</div>
+                            <div className="text-xs text-gray-600">Total: {inCampaign.length}</div>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="min-w-full text-sm">
+                              <thead className="bg-white">
+                                <tr className="text-left">
+                                  <th className="px-4 py-2 border-b">Site</th>
+                                  <th className="px-4 py-2 border-b">À traiter</th>
+                                  <th className="px-4 py-2 border-b">Traitées</th>
+                                  <th className="px-4 py-2 border-b">Filtre OK</th>
+                                  <th className="px-4 py-2 border-b">Filtre NON</th>
+                                </tr>
+                              </thead>
+                              <tbody className="bg-white">
+                                {bySite.length === 0 ? (
+                                  <tr>
+                                    <td className="px-4 py-6 text-gray-500" colSpan={5}>
+                                      Aucune fiche sur la campagne {campaign}
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  bySite.slice(0, 20).map((r) => (
+                                    <tr key={`${r.siteId || ''}_${r.siteName || ''}`} className="hover:bg-gray-50">
+                                      <td className="px-4 py-2 border-b font-semibold text-gray-900">{r.siteName || r.siteId || '-'}</td>
+                                      <td className="px-4 py-2 border-b">{r.pending}</td>
+                                      <td className="px-4 py-2 border-b">{r.processed}</td>
+                                      <td className="px-4 py-2 border-b text-emerald-700 font-semibold">{r.airOk}</td>
+                                      <td className="px-4 py-2 border-b text-red-700 font-semibold">{r.airNo}</td>
+                                    </tr>
+                                  ))
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                          {bySite.length > 20 && (
+                            <div className="px-4 py-3 text-xs text-gray-600 bg-white border-t">
+                              Affichage limité aux 20 premiers sites.
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="text-xs text-gray-500">
+                          Le dashboard utilise uniquement les données locales de ficheHistory (pas de polling). Rafraîchis manuellement si besoin.
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+                    <div className="flex-1">
+                      <SitesTechnicianFilter
+                        isTechnician={isTechnician}
+                        filterTechnician={filterTechnician}
+                        onChange={setFilterTechnician}
+                        technicians={technicians}
+                        filterSite={filterSite}
+                        onChangeSite={setFilterSite}
+                        sites={filteredSites}
+                      />
                     </div>
                   </div>
-                </div>
+
+                  <div ref={siteFormAnchorRef} />
+
+                  {showAddForm && (
+                    <AddSiteForm
+                      formData={formData}
+                      setFormData={setFormData}
+                      onSubmit={handleAddSite}
+                      onClose={() => setShowAddForm(false)}
+                      onCancel={() => setShowAddForm(false)}
+                    />
+                  )}
+
+                  {showUpdateForm && (
+                    <UpdateSiteForm
+                      selectedSite={selectedSite}
+                      formData={formData}
+                      setFormData={setFormData}
+                      onSubmit={handleUpdateSite}
+                      onClose={() => setShowUpdateForm(false)}
+                      onCancel={() => setShowUpdateForm(false)}
+                    />
+                  )}
+
+                  {showEditForm && (
+                    <EditSiteForm
+                      selectedSite={selectedSite}
+                      formData={formData}
+                      setFormData={setFormData}
+                      mode={editSiteFormMode}
+                      onSubmit={editSiteFormMode === 'vidange' ? handleManagerCompleteVidange : handleEditSite}
+                      onClose={() => {
+                        setShowEditForm(false);
+                        setEditSiteFormMode('full');
+                      }}
+                      onCancel={() => {
+                        setShowEditForm(false);
+                        setEditSiteFormMode('full');
+                      }}
+                    />
+                  )}
+
+                  {siteEditChoiceOpen && siteEditChoiceSite && (
+                    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+                      <div className="bg-white rounded-xl shadow-xl border border-gray-200 w-full max-w-md p-4">
+                        <div className="font-bold text-gray-900 mb-1">Choisir une action</div>
+                        <div className="text-sm text-gray-600 mb-4 truncate">{siteEditChoiceSite?.nameSite}</div>
+                        <div className="flex flex-col gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const site = siteEditChoiceSite;
+                              setSiteEditChoiceOpen(false);
+                              setSiteEditChoiceSite(null);
+                              setSelectedSite(site);
+                              setEditSiteFormMode('vidange');
+                              setFormData({
+                                nameSite: site.nameSite,
+                                idSite: site.idSite,
+                                technician: site.technician,
+                                generateur: site.generateur,
+                                capacite: site.capacite,
+                                kitVidange: site.kitVidange,
+                                nh1DV: site.nh1DV,
+                                dateDV: '',
+                                nh2A: site.nh2A,
+                                dateA: site.dateA,
+                                retired: site.retired
+                              });
+                              setShowEditForm(true);
+                              setTimeout(() => {
+                                siteFormAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                              }, 0);
+                            }}
+                            className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 font-semibold"
+                          >
+                            Effectuer une vidange
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const site = siteEditChoiceSite;
+                              setSiteEditChoiceOpen(false);
+                              setSiteEditChoiceSite(null);
+                              setSelectedSite(site);
+                              setFormData({
+                                nameSite: site.nameSite,
+                                idSite: site.idSite,
+                                technician: site.technician,
+                                generateur: site.generateur,
+                                capacite: site.capacite,
+                                kitVidange: site.kitVidange,
+                                nh1DV: site.nh1DV,
+                                dateDV: site.dateDV,
+                                nh2A: '',
+                                dateA: '',
+                                retired: site.retired
+                              });
+                              setShowUpdateForm(true);
+                              setTimeout(() => {
+                                siteFormAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                              }, 0);
+                            }}
+                            className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-semibold"
+                          >
+                            Mettre à jour le NH
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSiteEditChoiceOpen(false);
+                              setSiteEditChoiceSite(null);
+                            }}
+                            className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 font-semibold"
+                          >
+                            Annuler
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 md:mb-6">
+                    <DashboardHeader
+                      dashboardMonth={dashboardMonth}
+                      onDashboardMonthChange={setDashboardMonth}
+                      onRefresh={async () => {
+                        try {
+                          await loadData();
+                        } catch {
+                          // ignore
+                        }
+                        try {
+                          await loadFicheHistory();
+                        } catch {
+                          // ignore
+                        }
+                      }}
+                      canExportExcel={canExportExcel}
+                    />
+                  </div>
+                </>
               )}
 
-              <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 md:mb-6">
-          <DashboardHeader
-              dashboardMonth={dashboardMonth}
-              onDashboardMonthChange={setDashboardMonth}
-              onRefresh={async () => {
-                try {
-                  await loadData();
-                } catch {
-                  // ignore
-                }
-                try {
-                  await loadFicheHistory();
-                } catch {
-                  // ignore
-                }
-              }}
-              canExportExcel={canExportExcel}
-              onExportExcel={handleExportDashboardSummaryExcel}
-              exportBusy={exportBusy}
-              dashboardZone={dashboardZone}
-              onDashboardZoneChange={setDashboardZone}
-              showZoneFilter={showZoneFilter}
-          />
+          {!isWarehouse &&
+            (() => {
+              const { plannedEvents, remainingEvents, doneByPlannedDate, contractOk, contractOver } = computeDashboardData(dashboardMonth);
 
-          {(() => {
-            const { plannedEvents, remainingEvents, doneByPlannedDate, contractOk, contractOver } = computeDashboardData(dashboardMonth);
-
-            return (
-              <DashboardKpiGrid
-                contractOk={contractOk}
-                contractOver={contractOver}
-                plannedEvents={plannedEvents}
-                remainingEvents={remainingEvents}
-                doneByPlannedDate={doneByPlannedDate}
-                onOpenDetails={(title, kind, items) =>
-                  setDashboardDetails({ open: true, title, kind, items })
-                }
-              />
-            );
-          })()}
+              return (
+                <DashboardKpiGrid
+                  contractOk={contractOk}
+                  contractOver={contractOver}
+                  plannedEvents={plannedEvents}
+                  remainingEvents={remainingEvents}
+                  doneByPlannedDate={doneByPlannedDate}
+                  onOpenDetails={(title, kind, items) =>
+                    setDashboardDetails({ open: true, title, kind, items })
+                  }
+                />
+              );
+            })()}
         </div>
 
-        <DashboardDetailsModal
-          open={dashboardDetails.open}
-          title={dashboardDetails.title}
-          kind={dashboardDetails.kind}
-          items={dashboardDetails.items}
-          isAdmin={isAdmin}
-          canExportExcel={canExportExcel}
-          exportBusy={exportBusy}
-          onClose={() => setDashboardDetails({ open: false, title: '', kind: '', items: [] })}
-          onExportExcel={handleExportDashboardDetailsExcel}
-          formatDate={formatDate}
-        />  
+        {!isWarehouse && (
+          <DashboardDetailsModal
+            open={dashboardDetails.open}
+            title={dashboardDetails.title}
+            kind={dashboardDetails.kind}
+            items={dashboardDetails.items}
+            isAdmin={isAdmin}
+            canExportExcel={canExportExcel}
+            exportBusy={exportBusy}
+            onClose={() => setDashboardDetails({ open: false, title: '', kind: '', items: [] })}
+            onExportExcel={handleExportDashboardDetailsExcel}
+            formatDate={formatDate}
+          />
+        )}
 
         <AccountModal
           open={showAccountModal}
@@ -7525,7 +7698,7 @@ return (
           </div>
         )}
 
-        {showWarehouseReturns && (
+        {!isWarehouse && showWarehouseReturns && (
           <div className="fixed inset-0 bg-indigo-900/35 flex items-center justify-center z-50 p-0 sm:p-4">
             <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:h-auto sm:max-w-6xl sm:max-h-[92vh] sm:rounded-xl">
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gradient-to-r from-indigo-600 via-sky-600 to-teal-600 text-white">
@@ -8584,10 +8757,9 @@ return (
 
       </div>
     </div>
+      </div>
     </div>
-
-  </div>
-  </div>
+    
   
   );
 };
