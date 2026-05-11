@@ -29,6 +29,7 @@ import FicheModal from './components/fiche/FicheModal';
 import SuperAdminFicheChoiceModal from './components/fiche/SuperAdminFicheChoiceModal';
 import DayDetailsModal from './components/calendar/DayDetailsModal';
 import TechnicianCalendarModal from './components/calendar/TechnicianCalendarModal';
+import PmSiteInfoModal from './components/PmSiteInfoModal';
 
 import {
   calculateRegime,
@@ -262,6 +263,11 @@ const GeneratorMaintenanceApp = () => {
   const [isBatchFiche, setIsBatchFiche] = useState(false);
   const [batchFicheSites, setBatchFicheSites] = useState([]);
   const [batchFicheIndex, setBatchFicheIndex] = useState(0);
+  const [pmSiteInfoOpen, setPmSiteInfoOpen] = useState(false);
+  const [pmSiteInfoBusy, setPmSiteInfoBusy] = useState(false);
+  const [pmSiteInfoError, setPmSiteInfoError] = useState('');
+  const [pmSiteInfoSite, setPmSiteInfoSite] = useState(null);
+  const [pmSiteInfoItem, setPmSiteInfoItem] = useState(null);
   const [formData, setFormData] = useState({
     nameSite: '',
     idSite: '',
@@ -606,6 +612,43 @@ const GeneratorMaintenanceApp = () => {
       return out;
     } catch {
       return null;
+    }
+  };
+
+  const handleOpenPmSiteInfo = async (site) => {
+    try {
+      setPmSiteInfoOpen(true);
+      setPmSiteInfoBusy(true);
+      setPmSiteInfoError('');
+      setPmSiteInfoSite(site || null);
+      setPmSiteInfoItem(null);
+
+      const month = String(pmMonth || new Date().toISOString().slice(0, 7)).trim();
+      const monthId = await ensurePmMonth(month);
+      if (!monthId) throw new Error('Mois PM introuvable.');
+
+      const data = await apiFetchJson(`/api/pm/months/${monthId}/items`, { method: 'GET' });
+      const items = Array.isArray(data?.items) ? data.items : [];
+
+      const code = String(site?.idSite || '').trim().toUpperCase().replace(/\s+/g, '');
+      const matchesSite = (it) => {
+        const itCode = String(it?.siteCode || it?.siteId || '').trim().toUpperCase().replace(/\s+/g, '');
+        return Boolean(code && itCode && itCode === code);
+      };
+
+      const matchesType = (it) => {
+        const t = String(it?.maintenanceType || '').trim().toUpperCase();
+        return t === 'FULLPMWO' || t === 'DG SERVICE' || t === 'DGSERVICE';
+      };
+
+      const candidates = items.filter((it) => matchesSite(it) && matchesType(it));
+      candidates.sort((a, b) => String(a?.scheduledWoDate || '').localeCompare(String(b?.scheduledWoDate || '')));
+
+      setPmSiteInfoItem(candidates[0] || null);
+    } catch (e) {
+      setPmSiteInfoError(e?.message || 'Erreur chargement PM.');
+    } finally {
+      setPmSiteInfoBusy(false);
     }
   };
 
@@ -7337,6 +7380,9 @@ return (
                         }
                       }}
                       canExportExcel={canExportExcel}
+                      dashboardZone={dashboardZone}
+                      onDashboardZoneChange={setDashboardZone}
+                      showZoneFilter={showZoneFilter}
                     />
                   </div>
                 </>
@@ -8337,90 +8383,90 @@ return (
           formatDate={formatDate}
         />
 
-        <PmModal
-          showPm={showPm}
-          appVersion={APP_VERSION}
-          canUsePm={canUsePm}
-          isViewer={isViewer}
-          isAdmin={isAdmin}
-          isManager={isManager}
-          setShowPm={setShowPm}
-          setPmError={setPmError}
-          setPmNotice={setPmNotice}
-          pmMonth={pmMonth}
-          setPmMonth={setPmMonth}
-          refreshPmAll={refreshPmAll}
-          pmBusy={pmBusy}
-          handlePmExportExcel={handlePmExportExcel}
-          pmReprogExportDate={pmReprogExportDate}
-          setPmReprogExportDate={setPmReprogExportDate}
-          handlePmExportReprogExcel={handlePmExportReprogExcel}
-          exportBusy={exportBusy}
-          users={users}
-          pmSendTechUserId={pmSendTechUserId}
-          setPmSendTechUserId={setPmSendTechUserId}
-          pmSendBusy={pmSendBusy}
-          handleSendPmMonthPlanning={handleSendPmMonthPlanning}
-          setPmRejectedDateFilter={setPmRejectedDateFilter}
-          setPmRejectedModalOpen={setPmRejectedModalOpen}
-          pmResetBusy={pmResetBusy}
-          handlePmReset={handlePmReset}
-          handlePmNocImport={handlePmNocImport}
-          handlePmClientImport={handlePmClientImport}
-          handlePmGlobalImport={handlePmGlobalImport}
-          pmError={pmError}
-          pmNotice={pmNotice}
-          pmNocProgress={pmNocProgress}
-          pmNocStep={pmNocStep}
-          pmClientProgress={pmClientProgress}
-          pmClientStep={pmClientStep}
-          pmClientCompare={pmClientCompare}
-          pmGlobalProgress={pmGlobalProgress}
-          pmGlobalStep={pmGlobalStep}
-          pmGlobalCompare={pmGlobalCompare}
-          pmRetiredSites={pmRetiredSites}
-          pmItems={pmItems}
-          pmImports={pmImports}
-          pmSearch={pmSearch}
-          setPmSearch={setPmSearch}
-          pmFilterFrom={pmFilterFrom}
-          setPmFilterFrom={setPmFilterFrom}
-          pmFilterTo={pmFilterTo}
-          setPmFilterTo={setPmFilterTo}
-          pmFilterState={pmFilterState}
-          setPmFilterState={setPmFilterState}
-          pmFilterType={pmFilterType}
-          setPmFilterType={setPmFilterType}
-          pmFilterZone={pmFilterZone}
-          setPmFilterZone={setPmFilterZone}
-          pmFilterReprog={pmFilterReprog}
-          setPmFilterReprog={setPmFilterReprog}
-          pmDetails={pmDetails}
-          setPmDetails={setPmDetails}
-          pmRejectedModalOpen={pmRejectedModalOpen}
-          pmRejectedDateFilter={pmRejectedDateFilter}
-          pmReprogOpen={pmReprogOpen}
-          setPmReprogOpen={setPmReprogOpen}
-          pmReprogItem={pmReprogItem}
-          setPmReprogItem={setPmReprogItem}
-          pmReprogForm={pmReprogForm}
-          setPmReprogForm={setPmReprogForm}
-          pmReprogError={pmReprogError}
-          setPmReprogError={setPmReprogError}
-          pmReprogSaving={pmReprogSaving}
-          handlePmOpenReprog={handlePmOpenReprog}
-          handlePmSaveReprog={handlePmSaveReprog}
-          pmTodayActivities={pmTodayActivities}
-          pmTodayActivitiesBusy={pmTodayActivitiesBusy}
-          ficheHistory={ficheHistory}
-          sites={sites}
-          loadFicheHistory={loadFicheHistory}
-          loadPmTodayActivities={(dateYmd) => loadPmTodayActivities(pmMonthId, dateYmd)}
-          formatDate={formatDate}
-          apiFetchJson={apiFetchJson}
-          isSuperAdmin={Boolean(authUser?.role === 'admin' && authUser?.zone === 'BZV/POOL')}
-          authZone={String(authUser?.zone || '')}
-        />
+          <PmModal
+            showPm={showPm}
+            appVersion={APP_VERSION}
+            canUsePm={canUsePm}
+            isViewer={isViewer}
+            isAdmin={isAdmin}
+            isManager={isManager}
+            setShowPm={setShowPm}
+            setPmError={setPmError}
+            setPmNotice={setPmNotice}
+            pmMonth={pmMonth}
+            setPmMonth={setPmMonth}
+            refreshPmAll={refreshPmAll}
+            pmBusy={pmBusy}
+            handlePmExportExcel={handlePmExportExcel}
+            pmReprogExportDate={pmReprogExportDate}
+            setPmReprogExportDate={setPmReprogExportDate}
+            handlePmExportReprogExcel={handlePmExportReprogExcel}
+            exportBusy={exportBusy}
+            users={users}
+            pmSendTechUserId={pmSendTechUserId}
+            setPmSendTechUserId={setPmSendTechUserId}
+            pmSendBusy={pmSendBusy}
+            handleSendPmMonthPlanning={handleSendPmMonthPlanning}
+            setPmRejectedDateFilter={setPmRejectedDateFilter}
+            setPmRejectedModalOpen={setPmRejectedModalOpen}
+            pmResetBusy={pmResetBusy}
+            handlePmReset={handlePmReset}
+            handlePmNocImport={handlePmNocImport}
+            handlePmClientImport={handlePmClientImport}
+            handlePmGlobalImport={handlePmGlobalImport}
+            pmError={pmError}
+            pmNotice={pmNotice}
+            pmNocProgress={pmNocProgress}
+            pmNocStep={pmNocStep}
+            pmClientProgress={pmClientProgress}
+            pmClientStep={pmClientStep}
+            pmClientCompare={pmClientCompare}
+            pmGlobalProgress={pmGlobalProgress}
+            pmGlobalStep={pmGlobalStep}
+            pmGlobalCompare={pmGlobalCompare}
+            pmRetiredSites={pmRetiredSites}
+            pmItems={pmItems}
+            pmImports={pmImports}
+            pmSearch={pmSearch}
+            setPmSearch={setPmSearch}
+            pmFilterFrom={pmFilterFrom}
+            setPmFilterFrom={setPmFilterFrom}
+            pmFilterTo={pmFilterTo}
+            setPmFilterTo={setPmFilterTo}
+            pmFilterState={pmFilterState}
+            setPmFilterState={setPmFilterState}
+            pmFilterType={pmFilterType}
+            setPmFilterType={setPmFilterType}
+            pmFilterZone={pmFilterZone}
+            setPmFilterZone={setPmFilterZone}
+            pmFilterReprog={pmFilterReprog}
+            setPmFilterReprog={setPmFilterReprog}
+            pmDetails={pmDetails}
+            setPmDetails={setPmDetails}
+            pmRejectedModalOpen={pmRejectedModalOpen}
+            pmRejectedDateFilter={pmRejectedDateFilter}
+            pmReprogOpen={pmReprogOpen}
+            setPmReprogOpen={setPmReprogOpen}
+            pmReprogItem={pmReprogItem}
+            setPmReprogItem={setPmReprogItem}
+            pmReprogForm={pmReprogForm}
+            setPmReprogForm={setPmReprogForm}
+            pmReprogError={pmReprogError}
+            setPmReprogError={setPmReprogError}
+            pmReprogSaving={pmReprogSaving}
+            handlePmOpenReprog={handlePmOpenReprog}
+            handlePmSaveReprog={handlePmSaveReprog}
+            pmTodayActivities={pmTodayActivities}
+            pmTodayActivitiesBusy={pmTodayActivitiesBusy}
+            ficheHistory={ficheHistory}
+            sites={sites}
+            loadFicheHistory={loadFicheHistory}
+            loadPmTodayActivities={(dateYmd) => loadPmTodayActivities(pmMonthId, dateYmd)}
+            formatDate={formatDate}
+            apiFetchJson={apiFetchJson}
+            isSuperAdmin={Boolean(authUser?.role === 'admin' && authUser?.zone === 'BZV/POOL')}
+            authZone={String(authUser?.zone || '')}
+          />
 
           <InterventionsModal
             open={showInterventions}
@@ -8505,8 +8551,30 @@ return (
             bumpInterventionsUiRev={bumpInterventionsUiRev}
           />
 
+          <PmSiteInfoModal
+            open={pmSiteInfoOpen}
+            busy={pmSiteInfoBusy}
+            error={pmSiteInfoError}
+            site={pmSiteInfoSite}
+            item={pmSiteInfoItem}
+            formatDate={formatDate}
+            canTriggerFiche={isManager || isSuperAdmin}
+            onTriggerFiche={() => {
+              const s = pmSiteInfoSite;
+              setPmSiteInfoOpen(false);
+
+              if (!s) return;
+              if (isSuperAdmin) {
+                handleOpenSuperAdminFicheChoice(s);
+                return;
+              }
+              handleGenerateFiche(s);
+            }}
+            onClose={() => setPmSiteInfoOpen(false)}
+          />
+
         {!isWarehouse && (
-          <div className="mb-6">
+          <div className="mt-4 mb-6">
             {urgentSites.length > 0 && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
                 <div className="flex items-center gap-2 font-bold text-red-900 mb-3">
@@ -8613,17 +8681,27 @@ return (
                             </div>
                           </div>
 
-                          <div className="flex flex-col items-end gap-2">
+                        <div className="flex flex-col items-end gap-2">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPmSiteInfo(site)}
+                              className="bg-white border border-gray-200 text-gray-800 px-2.5 py-1 rounded-lg hover:bg-gray-50 text-xs font-semibold"
+                            >
+                              Voir date PM
+                            </button>
+
                             <span className={`${badgeColor} text-white text-xs px-2 py-1 rounded-lg font-semibold`}>
                               {site.retired ? 'RETIRÉ' : 'ACTIF'}
                             </span>
+                          </div>
                             {!site.retired && daysUntil !== null && (
                               <div className="text-sm font-bold text-gray-900">
-                                {daysUntil < 0 ? `Retard ${Math.abs(daysUntil)}j` : daysUntil === 0 ? 'AUJOURD\'HUI' : `${daysUntil}j`}
+                                {daysUntil < 0 ? `Retard ${Math.abs(daysUntil)}j` : daysUntil === 0 ? "AUJOURD'HUI" : `${daysUntil}j`}
                               </div>
                             )}
-                          </div>
-                        </div>
+                        </div>                                                                      
+                      </div>
 
                         <div className="grid grid-cols-3 gap-3 mt-4">
                           <div className="bg-white rounded-lg border border-gray-200 p-2 text-center min-w-0">
