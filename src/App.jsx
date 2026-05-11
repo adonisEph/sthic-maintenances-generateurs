@@ -8755,15 +8755,17 @@ return (
         )}
 
         {/* Statistiques */}
-        <SitesStats
-          canSetNextTicket={isAdmin || isManager}
-          onSetNextTicket={handleSetNextTicketNumber}
-          sitesCount={isTechnician ? filteredSites.length : sites.length}
-          urgentSitesCount={urgentSites.length}
-          retiredSitesCount={retiredSitesCountFooter}
-          ticketNumber={ticketNumber}
-          ticketZone={String(authUser?.zone || '').trim()}
-        />
+        {!isWarehouse && ( 
+            <SitesStats
+              canSetNextTicket={isAdmin || isManager}
+              onSetNextTicket={handleSetNextTicketNumber}
+              sitesCount={isTechnician ? filteredSites.length : sites.length}
+              urgentSitesCount={urgentSites.length}
+              retiredSitesCount={retiredSitesCountFooter}
+              ticketNumber={ticketNumber}
+              ticketZone={String(authUser?.zone || '').trim()}
+            />
+          )}
 
       </div>
     </div>
