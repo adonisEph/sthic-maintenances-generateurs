@@ -91,13 +91,6 @@ const PmModal = (props) => {
   const [pmRetiredSitesZoneFilter, setPmRetiredSitesZoneFilter] = React.useState('ALL');
   const [pmPurgeOpen, setPmPurgeOpen] = React.useState(false);
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
-  const [sidebarAccordionOpen, setSidebarAccordionOpen] = React.useState({
-    nav: true,
-    excel: true,
-    import: true,
-    planning: true,
-    admin: true
-  });
   const [pmPurgeBusy, setPmPurgeBusy] = React.useState(false);
   const [pmPurgeGlobal, setPmPurgeGlobal] = React.useState(false);
   const [pmPurgeClient, setPmPurgeClient] = React.useState(true);
@@ -107,33 +100,6 @@ const PmModal = (props) => {
   const [pmTodayActivitiesOpen, setPmTodayActivitiesOpen] = React.useState(false);
   const [pmFilterPlannedDay, setPmFilterPlannedDay] = React.useState('');
   const [pmMonthlyRecapOpen, setPmMonthlyRecapOpen] = React.useState(false);
-
-  const pmNocInputRef = React.useRef(null);
-  const pmClientInputRef = React.useRef(null);
-  const pmGlobalInputRef = React.useRef(null);
-
-  const AccordionSection = ({ id, title, children, defaultOpen = true }) => {
-    const isOpen = sidebarAccordionOpen?.[id];
-    const open = typeof isOpen === 'boolean' ? isOpen : Boolean(defaultOpen);
-    return (
-      <div className="rounded-lg border border-white/10 bg-white/5 overflow-hidden">
-        <button
-          type="button"
-          onClick={() => {
-            setSidebarAccordionOpen((prev) => ({
-              ...(prev || {}),
-              [id]: !open
-            }));
-          }}
-          className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
-        >
-          <div className="text-xs font-bold uppercase tracking-wide text-white/90">{title}</div>
-          <div className="text-white/80 text-sm font-bold">{open ? '–' : '+'}</div>
-        </button>
-        {open && <div className="px-3 pb-3 pt-2">{children}</div>}
-      </div>
-    );
-  };
 
   const pmIsSuperAdmin = Boolean(props?.isSuperAdmin);
 
@@ -392,248 +358,222 @@ const PmModal = (props) => {
                     <ChevronLeft size={18} />
                   </button>
                 </div>
-                <div className="p-3 space-y-4">
-                  <AccordionSection id="nav" title="Navigation / Vues">
-                    <div className="space-y-3">
-                      <div>
-                        <div className="text-xs font-semibold text-white/90 mb-1">Mois</div>
-                        <input
-                          type="month"
-                          value={pmMonth}
-                          onChange={async (e) => {
-                            const next = String(e.target.value || '').trim();
-                            setPmMonth(next);
-                            await refreshPmAll(next);
-                          }}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
-                          disabled={pmBusy}
-                        />
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          await refreshPmAll(pmMonth);
+                <div className="p-4 space-y-4">
+                  <div>
+                  <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Période</div>
+                  <div className="space-y-2">
+                    <div className="flex flex-col">
+                      <label className="text-xs font-semibold text-white/90 mb-1">Mois</label>
+                      <input
+                        type="month"
+                        value={pmMonth}
+                        onChange={async (e) => {
+                          const next = String(e.target.value || '').trim();
+                          setPmMonth(next);
+                          await refreshPmAll(next);
                         }}
-                        className="w-full bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 text-sm font-semibold"
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
                         disabled={pmBusy}
-                      >
-                        Rafraîchir
-                      </button>
+                      />
                     </div>
-                  </AccordionSection>
 
-                  <AccordionSection id="excel" title="Excel">
-                    <div className="space-y-3">
-                      <button
-                        type="button"
-                        onClick={handlePmExportExcel}
-                        className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await refreshPmAll(pmMonth);
+                      }}
+                      className="w-full bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 text-sm font-semibold"
+                      disabled={pmBusy}
+                    >
+                      Rafraîchir
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handlePmExportExcel}
+                      className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
+                      disabled={pmBusy}
+                    >
+                      <Download size={16} />
+                      Exporter Excel
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Exports</div>
+                  <div className="space-y-2">
+                    <div className="flex flex-col">
+                      <label className="text-xs font-semibold text-white/90 mb-1">Reprogrammations (jour)</label>
+                      <input
+                        type="date"
+                        value={pmReprogExportDate}
+                        onChange={(e) => setPmReprogExportDate(String(e.target.value || ''))}
+                        className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
                         disabled={pmBusy}
-                      >
-                        <Download size={16} />
-                        Exporter Excel
-                      </button>
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handlePmExportReprogExcel}
+                      className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
+                      disabled={pmBusy || exportBusy}
+                    >
+                      <Download size={16} />
+                      Export reprogrammées
+                    </button>
+                  </div>
+                </div>
 
-                      <div>
-                        <div className="text-xs font-semibold text-white/90 mb-1">Reprogrammations (jour)</div>
-                        <input
-                          type="date"
-                          value={pmReprogExportDate}
-                          onChange={(e) => setPmReprogExportDate(String(e.target.value || ''))}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
-                          disabled={pmBusy}
-                        />
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Récapitulatif</div>
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => setPmMonthlyRecapOpen(true)}
+                      className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 disabled:opacity-60 disabled:hover:bg-white/10"
+                      disabled={pmBusy || !recapCanOpen}
+                      title={
+                        recapCanOpen
+                          ? `Ouvrir le récap mensuel (${recapMonth || pmMonth})`
+                          : `Disponible uniquement pour un mois terminé et sans tickets Assigned (reste: ${recapCountAssigned}).`
+                      }
+                    >
+                      RECAP MENSUEL PM
+                    </button>
+                    {!recapCanOpen && (
+                      <div className="text-[11px] text-white/70 leading-snug">
+                        Condition: mois terminé + 0 Assigned (reste: {recapCountAssigned}).
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {(isAdmin || isManager) && (
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Technicien</div>
+                    <div className="space-y-2">
+                      <div className="flex flex-col">
+                        <label className="text-xs font-semibold text-white/90 mb-1">Destinataire</label>
+                        <select
+                          value={pmSendTechUserId}
+                          onChange={(e) => setPmSendTechUserId(e.target.value)}
+                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
+                          disabled={pmBusy || pmSendBusy}
+                        >
+                          <option value="">-- Technicien --</option>
+                          {(Array.isArray(users) ? users : [])
+                            .filter((u) => u && u.role === 'technician')
+                            .filter((u) => (isManager ? String(u?.zone || '').trim() === String(authZone || '').trim() : true))
+                            .slice()
+                            .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')))
+                            .map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.technicianName || u.email}
+                              </option>
+                            ))}
+                        </select>
                       </div>
 
                       <button
                         type="button"
-                        onClick={handlePmExportReprogExcel}
-                        className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
-                        disabled={pmBusy || exportBusy}
+                        onClick={handleSendPmMonthPlanning}
+                        className="w-full bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 text-sm font-semibold disabled:bg-gray-100 disabled:text-gray-400"
+                        disabled={!pmSendTechUserId || pmBusy || pmSendBusy}
                       >
-                        <Download size={16} />
-                        Export reprogrammées
+                        Envoyer planning PM
                       </button>
-                    </div>
-                  </AccordionSection>
 
-                  {(isAdmin || isManager) && (
-                    <AccordionSection id="import" title="Import / Mise à jour">
-                      <div className="space-y-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const input = pmNocInputRef?.current;
-                            if (!input || pmBusy) return;
-                            input.value = '';
-                            input.click();
-                          }}
-                          className={`w-full text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 ${
-                            pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
-                          }`}
-                          disabled={pmBusy}
-                        >
-                          <Upload size={16} />
-                          Import NOC
-                        </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPmRejectedDateFilter('');
+                          setPmRejectedModalOpen(true);
+                        }}
+                        className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
+                        disabled={pmBusy}
+                      >
+                        Voir reprog rejetées
+                      </button>
+
+                      {(Array.isArray(users) ? users : [])
+                        .filter((u) => u && u.role === 'technician')
+                        .filter((u) => (isManager ? String(u?.zone || '').trim() === String(authZone || '').trim() : true)).length === 0 && (
+                        <div className="text-xs text-white/70">
+                          Aucun technicien trouvé.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {(isAdmin || isManager) && (
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Actions</div>
+                    <div className="flex flex-col">
+                      <label
+                        className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-sky-400/70 focus-within:ring-offset-2 focus-within:ring-offset-indigo-950 ${
+                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
+                        }`}
+                      >
+                        <Upload size={16} />
+                        Import NOC
                         <input
-                          ref={pmNocInputRef}
                           type="file"
                           accept=".xlsx,.xls"
                           onChange={handlePmNocImport}
                           className="hidden"
                           disabled={pmBusy}
                         />
+                      </label>
 
-                        {(Number(pmNocProgress || 0) > 0 || String(pmNocStep || '').trim()) && (
-                          <div className="mx-3 mt-2 mb-3">
-                            {String(pmNocStep || '').trim() && <div className="text-[11px] text-white/80 mb-1">{pmNocStep}</div>}
-                            <div className="w-full h-2 rounded bg-white/15 overflow-hidden">
-                              <div
-                                className="h-2 bg-sky-400"
-                                style={{ width: `${Math.max(0, Math.min(100, Number(pmNocProgress || 0)))}%` }}
-                              />
-                            </div>
-                            <div className="text-[11px] text-white/70 mt-1">{Math.max(0, Math.min(100, Number(pmNocProgress || 0)))}%</div>
+                      {(Number(pmNocProgress || 0) > 0 || String(pmNocStep || '').trim()) && (
+                        <div className="mx-3 mt-2 mb-3">
+                          {String(pmNocStep || '').trim() && <div className="text-[11px] text-white/80 mb-1">{pmNocStep}</div>}
+                          <div className="w-full h-2 rounded bg-white/15 overflow-hidden">
+                            <div
+                              className="h-2 bg-sky-400"
+                              style={{ width: `${Math.max(0, Math.min(100, Number(pmNocProgress || 0)))}%` }}
+                            />
                           </div>
-                        )}
+                          <div className="text-[11px] text-white/70 mt-1">{Math.max(0, Math.min(100, Number(pmNocProgress || 0)))}%</div>
+                        </div>
+                      )}
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const input = pmClientInputRef?.current;
-                            if (!input || pmBusy) return;
-                            input.value = '';
-                            input.click();
-                          }}
-                          className={`w-full text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 ${
-                            pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
-                          }`}
-                          disabled={pmBusy}
-                        >
-                          <Upload size={16} />
-                          Import retour client
-                        </button>
+                      <label
+                        className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-sky-400/70 focus-within:ring-offset-2 focus-within:ring-offset-indigo-950 ${
+                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
+                        }`}
+                      >
+                        <Upload size={16} />
+                        Import retour client
                         <input
-                          ref={pmClientInputRef}
                           type="file"
                           accept=".xlsx,.xls"
                           onChange={handlePmClientImport}
                           className="hidden"
                           disabled={pmBusy}
                         />
+                      </label>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const input = pmGlobalInputRef?.current;
-                            if (!input || pmBusy) return;
-                            input.value = '';
-                            input.click();
-                          }}
-                          className={`w-full text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 ${
-                            pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
-                          }`}
-                          disabled={pmBusy}
-                        >
-                          <Upload size={16} />
-                          Import planning PM global
-                        </button>
+                      <label
+                        className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-sky-400/70 focus-within:ring-offset-2 focus-within:ring-offset-indigo-950 ${
+                          pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
+                        }`}
+                      >
+                        <Upload size={16} />
+                        Import planning PM global
                         <input
-                          ref={pmGlobalInputRef}
                           type="file"
                           accept=".xlsx,.xls"
                           onChange={handlePmGlobalImport}
                           className="hidden"
                           disabled={pmBusy}
                         />
-                      </div>
-                    </AccordionSection>
-                  )}
-
-                  {(isAdmin || isManager) && (
-                    <AccordionSection id="planning" title="Planning / Génération">
-                      <div className="space-y-2">
-                        <div className="flex flex-col">
-                          <div className="text-xs font-semibold text-white/90 mb-1">Destinataire</div>
-                          <select
-                            value={pmSendTechUserId}
-                            onChange={(e) => setPmSendTechUserId(e.target.value)}
-                            className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
-                            disabled={pmBusy || pmSendBusy}
-                          >
-                            <option value="">-- Technicien --</option>
-                            {(Array.isArray(users) ? users : [])
-                              .filter((u) => u && u.role === 'technician')
-                              .filter((u) => (isManager ? String(u?.zone || '').trim() === String(authZone || '').trim() : true))
-                              .slice()
-                              .sort((a, b) =>
-                                String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || ''))
-                              )
-                              .map((u) => (
-                                <option key={u.id} value={u.id}>
-                                  {u.technicianName || u.email}
-                                </option>
-                              ))}
-                          </select>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={handleSendPmMonthPlanning}
-                          className="w-full bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 text-sm font-semibold disabled:bg-gray-100 disabled:text-gray-400"
-                          disabled={!pmSendTechUserId || pmBusy || pmSendBusy}
-                        >
-                          Envoyer planning PM
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPmRejectedDateFilter('');
-                            setPmRejectedModalOpen(true);
-                          }}
-                          className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
-                          disabled={pmBusy}
-                        >
-                          Voir reprog rejetées
-                        </button>
-
-                        {(Array.isArray(users) ? users : [])
-                          .filter((u) => u && u.role === 'technician')
-                          .filter((u) => (isManager ? String(u?.zone || '').trim() === String(authZone || '').trim() : true)).length === 0 && (
-                          <div className="text-xs text-white/70">Aucun technicien trouvé.</div>
-                        )}
-                      </div>
-                    </AccordionSection>
-                  )}
-
-                  <AccordionSection id="admin" title="Administration / Outils">
-                    <div className="space-y-3">
-                      <div>
-                        <button
-                          type="button"
-                          onClick={() => setPmMonthlyRecapOpen(true)}
-                          className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 disabled:opacity-60 disabled:hover:bg-white/10"
-                          disabled={pmBusy || !recapCanOpen}
-                          title={
-                            recapCanOpen
-                              ? `Ouvrir le récap mensuel (${recapMonth || pmMonth})`
-                              : `Disponible uniquement pour un mois terminé et sans tickets Assigned (reste: ${recapCountAssigned}).`
-                          }
-                        >
-                          RECAP MENSUEL PM
-                        </button>
-                        {!recapCanOpen && (
-                          <div className="text-[11px] text-white/70 leading-snug">
-                            Condition: mois terminé + 0 Assigned (reste: {recapCountAssigned}).
-                          </div>
-                        )}
-                      </div>
+                      </label>
 
                       {isAdmin && (
-                        <div className="space-y-2">
+                        <>
                           <button
                             type="button"
                             onClick={() => setPmPurgeOpen((v) => !v)}
@@ -756,11 +696,12 @@ const PmModal = (props) => {
                             <RotateCcw size={16} />
                             Reset mois
                           </button>
-                        </div>
+                        </>
                       )}
                     </div>
-                  </AccordionSection>
-                </div>
+                  </div>
+                )}
+              </div>
               </div>
             )}
             <div className="flex-1 min-w-0 overflow-y-auto">
