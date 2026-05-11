@@ -5449,8 +5449,18 @@ const GeneratorMaintenanceApp = () => {
         // Map par clé "ZONE|CODE" pour supporter superadmin multi-zone
         const nextMap = {};
         for (const it of items) {
-          const z = String(it?.zone || '').trim().toUpperCase();
-          const c = String(it?.siteCode || '').trim().toUpperCase();
+          const z = String(it?.zone || '')
+            .trim()
+            .toUpperCase()
+            .replace(/\s*\/\s*/g, '/')
+            .replace(/\s+/g, ' ');
+
+          const c = String(it?.siteCode || '')
+            .replace(/[\u200B-\u200D\uFEFF]/g, '')
+            .replace(/\u00A0/g, ' ')
+            .trim()
+            .toUpperCase()
+            .replace(/\s+/g, '');
           const months = Array.isArray(it?.retiredMonths) ? it.retiredMonths : [];
           if (!z || !c || months.length === 0) continue;
           nextMap[`${z}|${c}`] = months;

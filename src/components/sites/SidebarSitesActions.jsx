@@ -77,7 +77,6 @@ const SidebarSitesActions = ({
         {canImportSites && (
           <div className="flex flex-col gap-2">
             <label
-              onClick={onCloseSidebar}
               className={`w-full px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition-colors focus-within:ring-2 focus-within:ring-sky-400/70 focus-within:ring-offset-2 focus-within:ring-offset-indigo-950 ${
                 importBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
               }`}
@@ -113,7 +112,6 @@ const SidebarSitesActions = ({
         {canImportConsoleRms && (
           <div className="flex flex-col gap-2">
             <label
-              onClick={onCloseSidebar}
               className={`w-full px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-semibold transition-colors focus-within:ring-2 focus-within:ring-sky-400/70 focus-within:ring-offset-2 focus-within:ring-offset-indigo-950 ${
                 consoleRmsImportBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
               }`}

@@ -108,6 +108,10 @@ const PmModal = (props) => {
   const [pmFilterPlannedDay, setPmFilterPlannedDay] = React.useState('');
   const [pmMonthlyRecapOpen, setPmMonthlyRecapOpen] = React.useState(false);
 
+  const pmNocInputRef = React.useRef(null);
+  const pmClientInputRef = React.useRef(null);
+  const pmGlobalInputRef = React.useRef(null);
+
   const AccordionSection = ({ id, title, children, defaultOpen = true }) => {
     const isOpen = sidebarAccordionOpen?.[id];
     const open = typeof isOpen === 'boolean' ? isOpen : Boolean(defaultOpen);
@@ -457,21 +461,30 @@ const PmModal = (props) => {
                   {(isAdmin || isManager) && (
                     <AccordionSection id="import" title="Import / Mise à jour">
                       <div className="space-y-2">
-                        <label
-                          className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-sky-400/70 focus-within:ring-offset-2 focus-within:ring-offset-indigo-950 ${
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const input = pmNocInputRef?.current;
+                            if (!input || pmBusy) return;
+                            input.value = '';
+                            input.click();
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 ${
                             pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
                           }`}
+                          disabled={pmBusy}
                         >
                           <Upload size={16} />
                           Import NOC
-                          <input
-                            type="file"
-                            accept=".xlsx,.xls"
-                            onChange={handlePmNocImport}
-                            className="hidden"
-                            disabled={pmBusy}
-                          />
-                        </label>
+                        </button>
+                        <input
+                          ref={pmNocInputRef}
+                          type="file"
+                          accept=".xlsx,.xls"
+                          onChange={handlePmNocImport}
+                          className="hidden"
+                          disabled={pmBusy}
+                        />
 
                         {(Number(pmNocProgress || 0) > 0 || String(pmNocStep || '').trim()) && (
                           <div className="mx-3 mt-2 mb-3">
@@ -486,37 +499,55 @@ const PmModal = (props) => {
                           </div>
                         )}
 
-                        <label
-                          className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-sky-400/70 focus-within:ring-offset-2 focus-within:ring-offset-indigo-950 ${
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const input = pmClientInputRef?.current;
+                            if (!input || pmBusy) return;
+                            input.value = '';
+                            input.click();
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 ${
                             pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
                           }`}
+                          disabled={pmBusy}
                         >
                           <Upload size={16} />
                           Import retour client
-                          <input
-                            type="file"
-                            accept=".xlsx,.xls"
-                            onChange={handlePmClientImport}
-                            className="hidden"
-                            disabled={pmBusy}
-                          />
-                        </label>
+                        </button>
+                        <input
+                          ref={pmClientInputRef}
+                          type="file"
+                          accept=".xlsx,.xls"
+                          onChange={handlePmClientImport}
+                          className="hidden"
+                          disabled={pmBusy}
+                        />
 
-                        <label
-                          className={`text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-within:ring-2 focus-within:ring-sky-400/70 focus-within:ring-offset-2 focus-within:ring-offset-indigo-950 ${
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const input = pmGlobalInputRef?.current;
+                            if (!input || pmBusy) return;
+                            input.value = '';
+                            input.click();
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 ${
                             pmBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'
                           }`}
+                          disabled={pmBusy}
                         >
                           <Upload size={16} />
                           Import planning PM global
-                          <input
-                            type="file"
-                            accept=".xlsx,.xls"
-                            onChange={handlePmGlobalImport}
-                            className="hidden"
-                            disabled={pmBusy}
-                          />
-                        </label>
+                        </button>
+                        <input
+                          ref={pmGlobalInputRef}
+                          type="file"
+                          accept=".xlsx,.xls"
+                          onChange={handlePmGlobalImport}
+                          className="hidden"
+                          disabled={pmBusy}
+                        />
                       </div>
                     </AccordionSection>
                   )}
