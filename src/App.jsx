@@ -3216,6 +3216,24 @@ const GeneratorMaintenanceApp = () => {
           if (!number) continue;
 
           const state = String(pmGet(row, 'State') || '').trim();
+          const actualWoDate = pmNormalizeDate(pmGet(row, 'Actual WO Date'));
+
+          const runHoursRaw = pmGet(row, 'Generator Run Hours');
+          const generatorRunHours = (() => {
+            const raw = String(runHoursRaw ?? '').replace(',', '.').trim();
+            if (!raw) return null;
+            const n = Number(raw);
+            return Number.isFinite(n) ? n : null;
+          })();
+          const effectiveState = (() => {
+            const s = String(state || '').trim().toLowerCase();
+            if (s !== 'work in progress') return state;
+
+            const hasActualWoDate = Boolean(actualWoDate);
+            const hasRunHours = generatorRunHours !== null;
+
+            return (hasActualWoDate || hasRunHours) ? 'Awaiting Closure' : state;
+          })();
           const closedAt = pmNormalizeDate(pmGet(row, 'Closed', 'Date of closing'));
 
           const siteCode = String(pmGet(row, 'Site') || '').trim();
@@ -3223,7 +3241,7 @@ const GeneratorMaintenanceApp = () => {
           const scheduledWoDate = pmNormalizeDate(pmGet(row, 'Scheduled WO Date', 'Scheduled Wo Date'));
           const assignedTo = String(pmGet(row, 'Assigned to', 'Assigned To') || '').trim();
 
-          rows.push({ number, state, closedAt, siteCode, shortDescription, scheduledWoDate, assignedTo });
+          rows.push({ number, state: effectiveState, closedAt, siteCode, shortDescription, scheduledWoDate, assignedTo });
         }
 
         const CHUNK_SIZE = 500;
