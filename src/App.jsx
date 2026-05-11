@@ -6207,7 +6207,9 @@ const GeneratorMaintenanceApp = () => {
     if (!isWarehouse) return;
     if (showWarehouseReturns) setShowWarehouseReturns(false);
     if (warehouseRevokeOpen) setWarehouseRevokeOpen(false);
-  }, [isWarehouse, showWarehouseReturns, warehouseRevokeOpen]);
+    if (showCalendar) setShowCalendar(false);
+    if (showHistory) setShowHistory(false);
+  }, [isWarehouse, showWarehouseReturns, warehouseRevokeOpen, showCalendar, showHistory]);
 
   useEffect(() => {
     if (!authUser?.id || authUser?.role !== 'technician') return;
@@ -6623,6 +6625,8 @@ return (
 
           <div className="h-px bg-slate-700/60 my-1" />
 
+
+        {!isWarehouse && (
           <SidebarSitesActions
             canWriteSites={canWriteSites}
             canImportSites={canImportSites} 
@@ -6642,8 +6646,9 @@ return (
             consoleRmsImportProgress={consoleRmsImportProgress}
             onImportConsoleRmsChange={handleImportConsoleRms}
           />
+        )}
 
-          {!isTechnician ? (
+          {!isWarehouse && (!isTechnician ? (
             <button
               onClick={async () => {
                 setSidebarOpen(false);
@@ -6687,7 +6692,7 @@ return (
               <Calendar size={18} />
               Calendrier
             </button>
-          )}
+          ))}
 
           {isTechnician && (
             <button
@@ -6756,16 +6761,19 @@ return (
             </button>
           )}
 
-          <button
-            onClick={() => {
-              setSidebarOpen(false);
-              setShowHistory(true);
-            }}
-            className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
-          >
-            <Activity size={18} />
-            Historique
-          </button>
+          {!isWarehouse && (
+            <button
+              onClick={() => {
+                setSidebarOpen(false);
+                setShowHistory(true);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
+            >
+              <Activity size={18} />
+              Historique
+            </button>
+
+          )}
 
           {(isAdmin || isManager) && (
             <button
@@ -8497,252 +8505,254 @@ return (
             bumpInterventionsUiRev={bumpInterventionsUiRev}
           />
 
-        <div className="mb-6">
-          {urgentSites.length > 0 && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
-              <div className="flex items-center gap-2 font-bold text-red-900 mb-3">
-                <AlertCircle size={18} />
-                <span>ALERTES URGENTES - Vidanges à effectuer ({urgentSites.length})</span>
-              </div>
+        {!isWarehouse && (
+          <div className="mb-6">
+            {urgentSites.length > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
+                <div className="flex items-center gap-2 font-bold text-red-900 mb-3">
+                  <AlertCircle size={18} />
+                  <span>ALERTES URGENTES - Vidanges à effectuer ({urgentSites.length})</span>
+                </div>
 
-              <div className="space-y-2">
-                {urgentSites.map((site) => {
-                  const days = site?.daysUntilNextPendingEpv ?? getDaysUntil(site?.nextPendingEpvDate);
-                  const label = days === null ? '' : days < 0 ? 'RETARD' : days === 0 ? "AUJOURD'HUI" : `${days}j`;
-                  return (
-                    <div
-                      key={site.id}
-                      className="bg-white rounded-lg border border-red-100 px-4 py-3 flex items-start justify-between gap-4"
-                      style={{ borderLeftWidth: '4px' }}
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <div className="font-bold text-gray-900 truncate">{site.nameSite}</div>
-                          <span className="text-xs bg-gray-100 px-2 py-0.5 rounded font-mono border border-gray-200">{site.idSite}</span>
+                <div className="space-y-2">
+                  {urgentSites.map((site) => {
+                    const days = site?.daysUntilNextPendingEpv ?? getDaysUntil(site?.nextPendingEpvDate);
+                    const label = days === null ? '' : days < 0 ? 'RETARD' : days === 0 ? "AUJOURD'HUI" : `${days}j`;
+                    return (
+                      <div
+                        key={site.id}
+                        className="bg-white rounded-lg border border-red-100 px-4 py-3 flex items-start justify-between gap-4"
+                        style={{ borderLeftWidth: '4px' }}
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <div className="font-bold text-gray-900 truncate">{site.nameSite}</div>
+                            <span className="text-xs bg-gray-100 px-2 py-0.5 rounded font-mono border border-gray-200">{site.idSite}</span>
+                          </div>
+                          <div className="text-xs text-gray-600 mt-1">
+                            Technicien: {site.technician} | Régime: {Number(site.regime || 0)}H/J | NH Estimé: {Number.isFinite(Number(site.nhEstimated)) ? `${site.nhEstimated}H` : '-'} | Diff: {Number.isFinite(Number(site.diffEstimated)) ? `${site.diffEstimated}H` : '-'}
+                          </div>
                         </div>
-                        <div className="text-xs text-gray-600 mt-1">
-                          Technicien: {site.technician} | Régime: {Number(site.regime || 0)}H/J | NH Estimé: {Number.isFinite(Number(site.nhEstimated)) ? `${site.nhEstimated}H` : '-'} | Diff: {Number.isFinite(Number(site.diffEstimated)) ? `${site.diffEstimated}H` : '-'}
+
+                        <div className="flex flex-col items-end flex-shrink-0">
+                          <div className={days !== null && days < 0 ? 'text-red-700 font-bold' : 'text-gray-700 font-bold'}>{label}</div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            {site?.nextPendingEpvType ? `${String(site.nextPendingEpvType).trim()} • ` : ''}
+                            {formatDate(site?.nextPendingEpvDate || '')}
+                          </div>
+
+                          {(() => {
+                            const z = String(site?.zone || '')
+                              .trim()
+                              .toUpperCase()
+                              .replace(/\s*\/\s*/g, '/')
+                              .replace(/\s+/g, ' ');
+                            const c = String(site?.idSite || '')
+                              .replace(/[\u200B-\u200D\uFEFF]/g, '')
+                              .replace(/\u00A0/g, ' ')
+                              .trim()
+                              .toUpperCase()
+                              .replace(/\s+/g, '');
+                            const key = `${z}|${c}`;
+                            const months = Array.isArray(urgentRetiredMonthsMap?.[key]) ? urgentRetiredMonthsMap[key] : [];
+                            if (months.length === 0) return null;
+
+                            return (
+                              <div className="flex flex-wrap gap-1 justify-end pt-1">
+                                <span className="text-[10px] font-semibold text-slate-600 mr-1">Retiré:</span>
+                                {months.slice(0, 6).map((m) => (
+                                  <span
+                                    key={m}
+                                    className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200"
+                                  >
+                                    {m}
+                                  </span>
+                                ))}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {filteredSites.length === 0 ? (
+              <div className="bg-white rounded-lg shadow-md p-6 text-center text-gray-500">
+                Aucun site trouvé. Ajoutez un site ou importez votre Excel.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
+                {filteredSites.map(site => {
+                  const sid = String(site?.id || '').trim();
+                  const doneByEpv = doneEpvBySiteId.get(sid) || { EPV1: '', EPV2: '', EPV3: '' };
+                  const next = getNextPendingEpvForSite(site);
+                  const daysUntil = getDaysUntil(next?.plannedDate);
+                  const urgencyClass = getUrgencyClass(daysUntil, site.retired);
 
-                      <div className="flex flex-col items-end flex-shrink-0">
-                        <div className={days !== null && days < 0 ? 'text-red-700 font-bold' : 'text-gray-700 font-bold'}>{label}</div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          {site?.nextPendingEpvType ? `${String(site.nextPendingEpvType).trim()} • ` : ''}
-                          {formatDate(site?.nextPendingEpvDate || '')}
+                  const badgeColor = site.retired
+                    ? 'bg-gray-500'
+                    : daysUntil !== null && daysUntil <= 3
+                      ? 'bg-red-600'
+                      : daysUntil !== null && daysUntil <= 7
+                        ? 'bg-orange-600'
+                        : 'bg-green-600';
+
+                  return (
+                    <div key={site.id} className={`bg-white rounded-xl shadow-md border-l-4 ${urgencyClass} overflow-hidden`}>
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="font-bold text-base text-gray-800 truncate">{site.nameSite}</h3>
+                              <span className="text-xs bg-gray-100 px-2 py-1 rounded font-mono border border-gray-200">{site.idSite}</span>
+                            </div>
+                            <div className="text-[10px] text-gray-500 mt-1">
+                              {site.technician} | {site.generateur} | {site.capacite}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col items-end gap-2">
+                            <span className={`${badgeColor} text-white text-xs px-2 py-1 rounded-lg font-semibold`}>
+                              {site.retired ? 'RETIRÉ' : 'ACTIF'}
+                            </span>
+                            {!site.retired && daysUntil !== null && (
+                              <div className="text-sm font-bold text-gray-900">
+                                {daysUntil < 0 ? `Retard ${Math.abs(daysUntil)}j` : daysUntil === 0 ? 'AUJOURD\'HUI' : `${daysUntil}j`}
+                              </div>
+                            )}
+                          </div>
                         </div>
 
-                        {(() => {
-                          const z = String(site?.zone || '')
-                            .trim()
-                            .toUpperCase()
-                            .replace(/\s*\/\s*/g, '/')
-                            .replace(/\s+/g, ' ');
-                          const c = String(site?.idSite || '')
-                            .replace(/[\u200B-\u200D\uFEFF]/g, '')
-                            .replace(/\u00A0/g, ' ')
-                            .trim()
-                            .toUpperCase()
-                            .replace(/\s+/g, '');
-                          const key = `${z}|${c}`;
-                          const months = Array.isArray(urgentRetiredMonthsMap?.[key]) ? urgentRetiredMonthsMap[key] : [];
-                          if (months.length === 0) return null;
-
-                          return (
-                            <div className="flex flex-wrap gap-1 justify-end pt-1">
-                              <span className="text-[10px] font-semibold text-slate-600 mr-1">Retiré:</span>
-                              {months.slice(0, 6).map((m) => (
-                                <span
-                                  key={m}
-                                  className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200"
-                                >
-                                  {m}
+                        <div className="grid grid-cols-3 gap-3 mt-4">
+                          <div className="bg-white rounded-lg border border-gray-200 p-2 text-center min-w-0">
+                            <div className="text-[10px] text-gray-500">NH updaté</div>
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-xs font-semibold text-gray-800 break-words leading-tight">{Number.isFinite(Number(site.nhEstimated)) ? `${site.nhEstimated}H` : '-'}</span>
+                              {daysUntil < 0 && !site.retired && (
+                                <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-800 text-xs font-medium rounded-full">
+                                  En retard
                                 </span>
-                              ))}
+                              )}
+                              {site.status === 'done' && <CheckCircle className="text-green-500" size={16} />}
                             </div>
-                          );
-                        })()}
+                          </div>
+                          <div className="bg-white rounded-lg border border-gray-200 p-2 text-center min-w-0">
+                            <div className="text-[10px] text-gray-500">Diff updatée</div>
+                            <div className="text-xs font-semibold text-gray-800 break-words leading-tight">{site.diffEstimated}H</div>
+                          </div>
+                          <div className="bg-white rounded-lg border border-gray-200 p-2 text-center min-w-0">
+                            <div className="text-[10px] text-gray-500">Date updatée</div>
+                            <div className="text-xs font-semibold text-gray-800 break-words leading-tight">{formatDate(site.dateA)}</div>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-3 gap-2">
+                          <div className="bg-white rounded-lg border border-gray-200 p-2 text-center">
+                            <div className="text-[10px] text-gray-500">EPV1</div>
+                            <div className="text-xs font-semibold text-gray-800">{formatDate(doneByEpv.EPV1 || site.epv1)}</div>
+                            {doneByEpv.EPV1 ? (
+                              <div className="text-[10px] text-emerald-700 font-bold">Effectuée le {formatDate(doneByEpv.EPV1)}</div>
+                            ) : (
+                              !site.retired && getDaysUntil(site.epv1) !== null && (
+                                <div className="text-[10px] text-gray-500">{getDaysUntil(site.epv1)}j</div>
+                              )
+                            )}
+                          </div>
+                          <div className="bg-white rounded-lg border border-gray-200 p-2 text-center">
+                            <div className="text-[10px] text-gray-500">EPV2</div>
+                            <div className="text-xs font-semibold text-gray-800">{formatDate(doneByEpv.EPV2 || site.epv2)}</div>
+                            {doneByEpv.EPV2 ? (
+                              <div className="text-[10px] text-emerald-700 font-bold">Effectuée le {formatDate(doneByEpv.EPV2)}</div>
+                            ) : (
+                              !site.retired && getDaysUntil(site.epv2) !== null && (
+                                <div className="text-[10px] text-gray-500">{getDaysUntil(site.epv2)}j</div>
+                              )
+                            )}
+                          </div>
+                          <div className="bg-white rounded-lg border border-gray-200 p-2 text-center">
+                            <div className="text-[10px] text-gray-500">EPV3</div>
+                            <div className="text-xs font-semibold text-gray-800">{formatDate(doneByEpv.EPV3 || site.epv3)}</div>
+                            {doneByEpv.EPV3 ? (
+                              <div className="text-[10px] text-emerald-700 font-bold">Effectuée le {formatDate(doneByEpv.EPV3)}</div>
+                            ) : (
+                              !site.retired && getDaysUntil(site.epv3) !== null && (
+                                <div className="text-[10px] text-gray-500">{getDaysUntil(site.epv3)}j</div>
+                              )
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2 mt-4">
+                          {canWriteSites && (
+                            <button
+                              onClick={() => {
+                                if (canManagerVidangeActions) {
+                                  setSiteEditChoiceSite(site);
+                                  setSiteEditChoiceOpen(true);
+                                  return;
+                                }
+
+                                setSelectedSite(site);
+                                setEditSiteFormMode('full');
+                                setFormData({
+                                  nameSite: site.nameSite,
+                                  idSite: site.idSite,
+                                  technician: site.technician,
+                                  generateur: site.generateur,
+                                  capacite: site.capacite,
+                                  kitVidange: site.kitVidange,
+                                  nh1DV: site.nh1DV,
+                                  dateDV: site.dateDV,
+                                  nh2A: site.nh2A,
+                                  dateA: site.dateA,
+                                  retired: site.retired
+                                });
+                                setShowEditForm(true);
+                                setTimeout(() => {
+                                  siteFormAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                }, 0);
+                              }}
+                              className="bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 text-sm font-semibold"
+                            >
+                              Modifier
+                            </button>
+                          )}
+                          {canWriteSites && (
+                            <button
+                              onClick={() => {
+                                setSiteToDelete(site);
+                                setShowDeleteConfirm(true);
+                              }}
+                              className="bg-red-600 text-white py-2 rounded-lg hover:bg-red-700 text-sm font-semibold"
+                            >
+                              Suppr.
+                            </button>
+                          )}
+                          {canGenerateFiche && (
+                            <button
+                              onClick={() => {
+                                if (isSuperAdmin) {
+                                  handleOpenSuperAdminFicheChoice(site);
+                                  return;
+                                }
+                                handleGenerateFiche(site);
+                              }}
+                              className="bg-emerald-600 text-white py-2 rounded-lg hover:bg-emerald-700 text-sm font-semibold"
+                            >
+                              Fiches
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
                 })}
               </div>
-            </div>
-          )}
-          {filteredSites.length === 0 ? (
-            <div className="bg-white rounded-lg shadow-md p-6 text-center text-gray-500">
-              Aucun site trouvé. Ajoutez un site ou importez votre Excel.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
-              {filteredSites.map(site => {
-                const sid = String(site?.id || '').trim();
-                const doneByEpv = doneEpvBySiteId.get(sid) || { EPV1: '', EPV2: '', EPV3: '' };
-                const next = getNextPendingEpvForSite(site);
-                const daysUntil = getDaysUntil(next?.plannedDate);
-                const urgencyClass = getUrgencyClass(daysUntil, site.retired);
-
-                const badgeColor = site.retired
-                  ? 'bg-gray-500'
-                  : daysUntil !== null && daysUntil <= 3
-                    ? 'bg-red-600'
-                    : daysUntil !== null && daysUntil <= 7
-                      ? 'bg-orange-600'
-                      : 'bg-green-600';
-
-                return (
-                  <div key={site.id} className={`bg-white rounded-xl shadow-md border-l-4 ${urgencyClass} overflow-hidden`}>
-                    <div className="p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-bold text-base text-gray-800 truncate">{site.nameSite}</h3>
-                            <span className="text-xs bg-gray-100 px-2 py-1 rounded font-mono border border-gray-200">{site.idSite}</span>
-                          </div>
-                          <div className="text-[10px] text-gray-500 mt-1">
-                            {site.technician} | {site.generateur} | {site.capacite}
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col items-end gap-2">
-                          <span className={`${badgeColor} text-white text-xs px-2 py-1 rounded-lg font-semibold`}>
-                            {site.retired ? 'RETIRÉ' : 'ACTIF'}
-                          </span>
-                          {!site.retired && daysUntil !== null && (
-                            <div className="text-sm font-bold text-gray-900">
-                              {daysUntil < 0 ? `Retard ${Math.abs(daysUntil)}j` : daysUntil === 0 ? 'AUJOURD\'HUI' : `${daysUntil}j`}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-3 mt-4">
-                        <div className="bg-white rounded-lg border border-gray-200 p-2 text-center min-w-0">
-                          <div className="text-[10px] text-gray-500">NH updaté</div>
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-xs font-semibold text-gray-800 break-words leading-tight">{Number.isFinite(Number(site.nhEstimated)) ? `${site.nhEstimated}H` : '-'}</span>
-                            {daysUntil < 0 && !site.retired && (
-                              <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-800 text-xs font-medium rounded-full">
-                                En retard
-                              </span>
-                            )}
-                            {site.status === 'done' && <CheckCircle className="text-green-500" size={16} />}
-                          </div>
-                        </div>
-                        <div className="bg-white rounded-lg border border-gray-200 p-2 text-center min-w-0">
-                          <div className="text-[10px] text-gray-500">Diff updatée</div>
-                          <div className="text-xs font-semibold text-gray-800 break-words leading-tight">{site.diffEstimated}H</div>
-                        </div>
-                        <div className="bg-white rounded-lg border border-gray-200 p-2 text-center min-w-0">
-                          <div className="text-[10px] text-gray-500">Date updatée</div>
-                          <div className="text-xs font-semibold text-gray-800 break-words leading-tight">{formatDate(site.dateA)}</div>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 grid grid-cols-3 gap-2">
-                        <div className="bg-white rounded-lg border border-gray-200 p-2 text-center">
-                          <div className="text-[10px] text-gray-500">EPV1</div>
-                          <div className="text-xs font-semibold text-gray-800">{formatDate(doneByEpv.EPV1 || site.epv1)}</div>
-                          {doneByEpv.EPV1 ? (
-                            <div className="text-[10px] text-emerald-700 font-bold">Effectuée le {formatDate(doneByEpv.EPV1)}</div>
-                          ) : (
-                            !site.retired && getDaysUntil(site.epv1) !== null && (
-                              <div className="text-[10px] text-gray-500">{getDaysUntil(site.epv1)}j</div>
-                            )
-                          )}
-                        </div>
-                        <div className="bg-white rounded-lg border border-gray-200 p-2 text-center">
-                          <div className="text-[10px] text-gray-500">EPV2</div>
-                          <div className="text-xs font-semibold text-gray-800">{formatDate(doneByEpv.EPV2 || site.epv2)}</div>
-                          {doneByEpv.EPV2 ? (
-                            <div className="text-[10px] text-emerald-700 font-bold">Effectuée le {formatDate(doneByEpv.EPV2)}</div>
-                          ) : (
-                            !site.retired && getDaysUntil(site.epv2) !== null && (
-                              <div className="text-[10px] text-gray-500">{getDaysUntil(site.epv2)}j</div>
-                            )
-                          )}
-                        </div>
-                        <div className="bg-white rounded-lg border border-gray-200 p-2 text-center">
-                          <div className="text-[10px] text-gray-500">EPV3</div>
-                          <div className="text-xs font-semibold text-gray-800">{formatDate(doneByEpv.EPV3 || site.epv3)}</div>
-                          {doneByEpv.EPV3 ? (
-                            <div className="text-[10px] text-emerald-700 font-bold">Effectuée le {formatDate(doneByEpv.EPV3)}</div>
-                          ) : (
-                            !site.retired && getDaysUntil(site.epv3) !== null && (
-                              <div className="text-[10px] text-gray-500">{getDaysUntil(site.epv3)}j</div>
-                            )
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2 mt-4">
-                        {canWriteSites && (
-                          <button
-                            onClick={() => {
-                              if (canManagerVidangeActions) {
-                                setSiteEditChoiceSite(site);
-                                setSiteEditChoiceOpen(true);
-                                return;
-                              }
-
-                              setSelectedSite(site);
-                              setEditSiteFormMode('full');
-                              setFormData({
-                                nameSite: site.nameSite,
-                                idSite: site.idSite,
-                                technician: site.technician,
-                                generateur: site.generateur,
-                                capacite: site.capacite,
-                                kitVidange: site.kitVidange,
-                                nh1DV: site.nh1DV,
-                                dateDV: site.dateDV,
-                                nh2A: site.nh2A,
-                                dateA: site.dateA,
-                                retired: site.retired
-                              });
-                              setShowEditForm(true);
-                              setTimeout(() => {
-                                siteFormAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                              }, 0);
-                            }}
-                            className="bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 text-sm font-semibold"
-                          >
-                            Modifier
-                          </button>
-                        )}
-                        {canWriteSites && (
-                          <button
-                            onClick={() => {
-                              setSiteToDelete(site);
-                              setShowDeleteConfirm(true);
-                            }}
-                            className="bg-red-600 text-white py-2 rounded-lg hover:bg-red-700 text-sm font-semibold"
-                          >
-                            Suppr.
-                          </button>
-                        )}
-                        {canGenerateFiche && (
-                          <button
-                            onClick={() => {
-                              if (isSuperAdmin) {
-                                handleOpenSuperAdminFicheChoice(site);
-                                return;
-                              }
-                              handleGenerateFiche(site);
-                            }}
-                            className="bg-emerald-600 text-white py-2 rounded-lg hover:bg-emerald-700 text-sm font-semibold"
-                          >
-                            Fiches
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         {/* Statistiques */}
         <SitesStats
