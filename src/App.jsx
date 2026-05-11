@@ -29,7 +29,6 @@ import FicheModal from './components/fiche/FicheModal';
 import SuperAdminFicheChoiceModal from './components/fiche/SuperAdminFicheChoiceModal';
 import DayDetailsModal from './components/calendar/DayDetailsModal';
 import TechnicianCalendarModal from './components/calendar/TechnicianCalendarModal';
-import CenterAlertModal from './components/common/CenterAlertModal';
 
 import {
   calculateRegime,
@@ -53,7 +52,7 @@ const SPLASH_MIN_MS = 3000;
 const DISABLE_PUSH_NOTIFICATIONS = true;
 const DISABLE_NOTIFICATIONS_FEATURE = true;
 const DISABLE_PRESENCE_FEATURE = true;
-const DISABLE_META_VERSION_POLLING = false;
+const DISABLE_META_VERSION_POLLING = true;
 
 const GeneratorMaintenanceApp = () => {
   const storage = useStorage();
@@ -63,6 +62,9 @@ const GeneratorMaintenanceApp = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showUpdateForm, setShowUpdateForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
+  const [editSiteFormMode, setEditSiteFormMode] = useState('full');
+  const [siteEditChoiceOpen, setSiteEditChoiceOpen] = useState(false);
+  const [siteEditChoiceSite, setSiteEditChoiceSite] = useState(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showFicheModal, setShowFicheModal] = useState(false);
@@ -282,6 +284,7 @@ const GeneratorMaintenanceApp = () => {
   const isWarehouse = currentRole === 'warehouse';
   const authZone = String(authUser?.zone || '').trim();
   const isSuperAdmin = isAdmin && authZone === 'BZV/POOL';
+  const canManagerVidangeActions = isSuperAdmin || (isManager && (String(authZone).trim().toUpperCase() === 'PNR/KOUILOU' || String(authZone).trim().toUpperCase() === 'UPCN'));
   const showZoneFilter = Boolean(isViewer || isSuperAdmin);
   const canWriteSites = isAdmin || isManager;
   const canWarehouseCheck = isWarehouse || isAdmin || isManager;
@@ -295,28 +298,93 @@ const GeneratorMaintenanceApp = () => {
   const canManageUsers = isAdmin;
   const canUseInterventions = isAdmin || isManager || isTechnician || isViewer;
   const canUsePm = isAdmin || isManager || isViewer;
-  const [centerAlert, setCenterAlert] = useState({
-    open: false,
-    title: '',
-    message: '',
-    primaryLabel: '',
-    primaryAction: null
-  });
 
-  const openCenterAlert = ({ title, message, primaryLabel = '', primaryAction = null }) => {
-    setCenterAlert({
-      open: true,
-      title: String(title || ''),
-      message: String(message || ''),
-      primaryLabel: String(primaryLabel || ''),
-      primaryAction: typeof primaryAction === 'function' ? primaryAction : null,
-      secondaryLabel: 'OK',
-      secondaryAction: null
-    });
-  };
+  const handleManagerCompleteVidange = async () => {
+    if (!formData.nh1DV || !formData.dateDV) {
+      alert('Veuillez remplir NH1 DV et Date DV');
+      return;
+    }
 
-  const closeCenterAlert = () => {
-    setCenterAlert((prev) => ({ ...(prev || {}), open: false }));
+    try {
+      const site = selectedSite;
+      if (!site?.id) {
+        alert('Site introuvable.');
+        return;
+      }
+
+      const next = getNextPendingEpvForSite(site);
+      const plannedDate = String(next?.plannedDate || '').slice(0, 10);
+      const epvType = String(next?.epvType || '').trim() || 'EPV1';
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(plannedDate)) {
+        alert('Date EPV (planification) introuvable pour ce site.');
+        return;
+      }
+
+      const ok = window.confirm(
+        `Confirmer l'action "Effectuer une vidange" ?\n\nSite: ${site?.nameSite || ''}\nType: ${epvType}\nDate planifiée: ${plannedDate}`
+      );
+      if (!ok) return;
+
+      const doneDate = String(formData.dateDV || '').slice(0, 10);
+      const nhNow = Number(String(formData.nh1DV || '').trim());
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(doneDate)) {
+        alert('Date DV invalide.');
+        return;
+      }
+      if (!Number.isFinite(nhNow)) {
+        alert('NH1 DV invalide.');
+        return;
+      }
+
+      const list = Array.isArray(interventions) ? interventions : [];
+      const existing = list.find(
+        (it) =>
+          it &&
+          String(it.siteId) === String(site.id) &&
+          String(it.plannedDate || '').slice(0, 10) === plannedDate &&
+          String(it.epvType || '').trim() === epvType
+      );
+
+      let interventionId = existing?.id ? String(existing.id) : '';
+
+      if (!interventionId) {
+        const created = await apiFetchJson('/api/interventions', {
+          method: 'POST',
+          body: JSON.stringify({
+            siteId: String(site.id),
+            plannedDate,
+            epvType,
+            technicianName: String(site?.technician || '').trim(),
+            status: 'planned'
+          })
+        });
+        interventionId = String(created?.intervention?.id || '').trim();
+      }
+
+      if (!interventionId) {
+        alert('Intervention introuvable.');
+        return;
+      }
+
+      await apiFetchJson(`/api/interventions/${interventionId}/complete`, {
+        method: 'POST',
+        body: JSON.stringify({ doneDate, nhNow })
+      });
+
+      await loadData();
+      await loadFicheHistory();
+      await loadInterventions();
+      bumpInterventionsUiRev();
+
+      setShowEditForm(false);
+      setSelectedSite(null);
+      setEditSiteFormMode('full');
+      setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
+      alert('✅ Vidange effectuée.');
+    } catch (e) {
+      alert(e?.message || 'Erreur serveur.');
+    }
   };
 
   const warehouseProcessCount = useMemo(() => {
@@ -329,62 +397,12 @@ const GeneratorMaintenanceApp = () => {
     return list.filter((f) => f && f.status === 'Contrôle magasin').length;
   }, [ficheHistory]);
 
-  const prevWarehouseProcessCountRef = useRef(warehouseProcessCount);
-  const prevWarehouseReturnsCountRef = useRef(warehouseReturnsCount);
-
-  useEffect(() => {
-    if (!isWarehouse) {
-      prevWarehouseProcessCountRef.current = warehouseProcessCount;
-      return;
-    }
-
-    const prev = Number(prevWarehouseProcessCountRef.current || 0);
-    const next = Number(warehouseProcessCount || 0);
-
-    if (next > prev) {
-      const delta = next - prev;
-      openCenterAlert({
-        title: 'Nouvelle fiche',
-        message: `+${delta} fiche${delta > 1 ? 's' : ''} vidange à traiter envoyée${delta > 1 ? 's' : ''} par le responsable`,
-        primaryLabel: 'Traiter la fiche',
-        primaryAction: () => {
-          setShowWarehouseProcess(true);
-        }
-      });
-    }
-
-    prevWarehouseProcessCountRef.current = next;
-  }, [warehouseProcessCount, isWarehouse]);
-
-  useEffect(() => {
-    if (!(isAdmin || isManager)) {
-      prevWarehouseReturnsCountRef.current = warehouseReturnsCount;
-      return;
-    }
-
-    const prev = Number(prevWarehouseReturnsCountRef.current || 0);
-    const next = Number(warehouseReturnsCount || 0);
-
-    if (next > prev) {
-      const delta = next - prev;
-      openCenterAlert({
-        title: 'Retour magasinier',
-        message: `+${delta} fiche${delta > 1 ? 's' : ''} traitée${delta > 1 ? 's' : ''} et renvoyée${delta > 1 ? 's' : ''} par le magasinier, prière de finaliser`,
-        primaryLabel: 'Finaliser la fiche',
-        primaryAction: () => {
-          setShowWarehouseReturns(true);
-        }
-      });
-    }
-
-    prevWarehouseReturnsCountRef.current = next;
-  }, [warehouseReturnsCount, isAdmin, isManager]);
-
   const prevDoneInterventionsRef = useRef(new Set());
 
   const interventionsPollQuery = useMemo(() => {
     if (!(isAdmin || isManager)) return '';
     if (!authUser?.id) return '';
+    if (!showInterventions) return '';
 
     const { from, to } = (() => {
       const base = String(interventionsMonth || '').trim();
@@ -406,7 +424,7 @@ const GeneratorMaintenanceApp = () => {
       qs.set('technicianUserId', String(interventionsTechnicianUserId));
     }
     return qs.toString();
-  }, [isAdmin, isManager, authUser?.id, interventionsMonth, interventionsStatus, interventionsTechnicianUserId]);
+  }, [isAdmin, isManager, authUser?.id, showInterventions, interventionsMonth, interventionsStatus, interventionsTechnicianUserId]);
 
   useEffect(() => {
     if (!interventionsPollQuery) return;
@@ -428,18 +446,7 @@ const GeneratorMaintenanceApp = () => {
           const k = String(it?.id || '');
           if (!k) continue;
           if (prevDoneInterventionsRef.current.has(k)) continue;
-
           prevDoneInterventionsRef.current.add(k);
-
-          const site = (Array.isArray(sites) ? sites : []).find((s) => String(s?.id) === String(it?.siteId)) || null;
-          const techName = String(it?.technicianName || '').trim();
-
-          openCenterAlert({
-            title: 'Vidange effectuée',
-            message: `VIDANGE DU SITE ${String(site?.nameSite || it?.siteId || '').trim()} EFFECTUEE par ${techName || 'Technicien'}`,
-            primaryLabel: '',
-            primaryAction: null
-          });
         }
       } catch {
         // ignore
@@ -1055,7 +1062,7 @@ const GeneratorMaintenanceApp = () => {
     };
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVisibility);
-    intervalId = window.setInterval(checkServerVersion, 30 * 60 * 1000);
+    intervalId = null;
 
     return () => {
       canceled = true;
@@ -1136,7 +1143,6 @@ const GeneratorMaintenanceApp = () => {
 
     let active = true;
     let busy = false;
-    let intervalId = null;
     let onFocus = null;
     let onVisibility = null;
 
@@ -1157,10 +1163,6 @@ const GeneratorMaintenanceApp = () => {
     };
 
     tick();
-
-    intervalId = window.setInterval(() => {
-      tick();
-    }, 2 * 60 * 1000);
     
     onFocus = () => tick();
     onVisibility = () => {
@@ -1172,7 +1174,6 @@ const GeneratorMaintenanceApp = () => {
     return () => {
       active = false;
       try {
-        if (intervalId) window.clearInterval(intervalId);
         if (onFocus) window.removeEventListener('focus', onFocus);
         if (onVisibility) document.removeEventListener('visibilitychange', onVisibility);
       } catch {
@@ -5810,6 +5811,7 @@ const GeneratorMaintenanceApp = () => {
   }, [showCalendar, authUser?.role, currentMonth]);
 
   useEffect(() => {
+    if (DISABLE_PRESENCE_FEATURE) return;
     if (!authUser?.email) return;
     (async () => {
       try {
@@ -5818,43 +5820,7 @@ const GeneratorMaintenanceApp = () => {
         // ignore
       }
     })();
-  }, [
-    authUser?.email,
-    authUser?.role,
-    authUser?.technicianName,
-    showUsersModal,
-    showPresenceModal,
-    showCalendar,
-    showHistory,
-    showFicheModal,
-    showBannerUpload,
-    showPm,
-    showDayDetailsModal,
-    showAddForm,
-    showEditForm,
-    showUpdateForm,
-    dashboardDetails.open,
-    showResetConfirm,
-    showInterventions
-  ]);
-
-  useEffect(() => {
-    if (!authUser?.email) return;
-    const tick = () => {
-      (async () => {
-        try {
-          await pingPresence(getCurrentActivityLabel());
-        } catch {
-          // ignore
-        }
-      })();
-    };
-    tick();
-    const interval = setInterval(tick, 60000);
-    return () => {
-      clearInterval(interval);
-    };
-  }, [authUser?.email, authUser?.role, authUser?.technicianName, tabId]);
+  }, [DISABLE_PRESENCE_FEATURE, authUser?.email]);
 
   useEffect(() => {
     if (!showPresenceModal) return;
@@ -5870,10 +5836,7 @@ const GeneratorMaintenanceApp = () => {
     };
 
     refresh();
-    const interval = setInterval(refresh, 10000);
-    return () => {
-      clearInterval(interval);
-    };
+    return () => {};
   }, [showPresenceModal]);
 
   const loadAuditLogs = async () => {
@@ -6321,7 +6284,7 @@ const GeneratorMaintenanceApp = () => {
     };
 
     checkVersion();
-    const intervalId = setInterval(checkVersion, 30 * 60 * 1000);
+    const intervalId = null;
     const safeCheckVersion = () => {
       const now = Date.now();
 
@@ -6341,7 +6304,7 @@ const GeneratorMaintenanceApp = () => {
 
     return () => {
       isActive = false;
-      clearInterval(intervalId);
+      if (intervalId) clearInterval(intervalId);
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibility);
     };
@@ -7084,10 +7047,97 @@ return (
                   selectedSite={selectedSite}
                   formData={formData}
                   setFormData={setFormData}
-                  onSubmit={handleEditSite}
-                  onClose={() => setShowEditForm(false)}
-                  onCancel={() => setShowEditForm(false)}
+                  mode={editSiteFormMode}
+                  onSubmit={editSiteFormMode === 'vidange' ? handleManagerCompleteVidange : handleEditSite}
+                  onClose={() => {
+                    setShowEditForm(false);
+                    setEditSiteFormMode('full');
+                  }}
+                  onCancel={() => {
+                    setShowEditForm(false);
+                    setEditSiteFormMode('full');
+                  }}
                 />
+              )}
+
+              {siteEditChoiceOpen && siteEditChoiceSite && (
+                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-xl shadow-xl border border-gray-200 w-full max-w-md p-4">
+                    <div className="font-bold text-gray-900 mb-1">Choisir une action</div>
+                    <div className="text-sm text-gray-600 mb-4 truncate">{siteEditChoiceSite?.nameSite}</div>
+                    <div className="flex flex-col gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const site = siteEditChoiceSite;
+                          setSiteEditChoiceOpen(false);
+                          setSiteEditChoiceSite(null);
+                          setSelectedSite(site);
+                          setEditSiteFormMode('vidange');
+                          setFormData({
+                            nameSite: site.nameSite,
+                            idSite: site.idSite,
+                            technician: site.technician,
+                            generateur: site.generateur,
+                            capacite: site.capacite,
+                            kitVidange: site.kitVidange,
+                            nh1DV: site.nh1DV,
+                            dateDV: '',
+                            nh2A: site.nh2A,
+                            dateA: site.dateA,
+                            retired: site.retired
+                          });
+                          setShowEditForm(true);
+                          setTimeout(() => {
+                            siteFormAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }, 0);
+                        }}
+                        className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 font-semibold"
+                      >
+                        Effectuer une vidange
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const site = siteEditChoiceSite;
+                          setSiteEditChoiceOpen(false);
+                          setSiteEditChoiceSite(null);
+                          setSelectedSite(site);
+                          setFormData({
+                            nameSite: site.nameSite,
+                            idSite: site.idSite,
+                            technician: site.technician,
+                            generateur: site.generateur,
+                            capacite: site.capacite,
+                            kitVidange: site.kitVidange,
+                            nh1DV: site.nh1DV,
+                            dateDV: site.dateDV,
+                            nh2A: '',
+                            dateA: '',
+                            retired: site.retired
+                          });
+                          setShowUpdateForm(true);
+                          setTimeout(() => {
+                            siteFormAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }, 0);
+                        }}
+                        className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-semibold"
+                      >
+                        Mettre à jour le NH
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSiteEditChoiceOpen(false);
+                          setSiteEditChoiceSite(null);
+                        }}
+                        className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 font-semibold"
+                      >
+                        Annuler
+                      </button>
+                    </div>
+                  </div>
+                </div>
               )}
 
               <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 md:mb-6">
@@ -8456,34 +8506,14 @@ return (
                         {canWriteSites && (
                           <button
                             onClick={() => {
+                              if (canManagerVidangeActions) {
+                                setSiteEditChoiceSite(site);
+                                setSiteEditChoiceOpen(true);
+                                return;
+                              }
+
                               setSelectedSite(site);
-                              setFormData({
-                                nameSite: site.nameSite,
-                                idSite: site.idSite,
-                                technician: site.technician,
-                                generateur: site.generateur,
-                                capacite: site.capacite,
-                                kitVidange: site.kitVidange,
-                                nh1DV: site.nh1DV,
-                                dateDV: site.dateDV,
-                                nh2A: '',
-                                dateA: '',
-                                retired: site.retired
-                              });
-                              setShowUpdateForm(true);
-                              setTimeout(() => {
-                                siteFormAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                              }, 0);
-                            }}
-                            className="bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 text-sm font-semibold"
-                          >
-                            MAJ
-                          </button>
-                        )}
-                        {canWriteSites && (
-                          <button
-                            onClick={() => {
-                              setSelectedSite(site);
+                              setEditSiteFormMode('full');
                               setFormData({
                                 nameSite: site.nameSite,
                                 idSite: site.idSite,
@@ -8550,16 +8580,6 @@ return (
           retiredSitesCount={retiredSitesCountFooter}
           ticketNumber={ticketNumber}
           ticketZone={String(authUser?.zone || '').trim()}
-        />
-
-        <CenterAlertModal
-          open={Boolean(centerAlert?.open)}
-          title={centerAlert?.title}
-          message={centerAlert?.message}
-          primaryLabel={centerAlert?.primaryLabel}
-          onPrimary={centerAlert?.primaryAction ? centerAlert.primaryAction : undefined}
-          secondaryLabel="OK"
-          onSecondary={() => closeCenterAlert()}
         />
 
       </div>

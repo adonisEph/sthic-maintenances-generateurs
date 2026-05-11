@@ -1174,11 +1174,7 @@ const InterventionsModal = ({
                       <button
                         onClick={() => {
                           if (isTechnician) {
-                            if (!it?.intervention?.id) {
-                              alert("Intervention non planifiée en base pour cette date. Merci de contacter le Manager.");
-                              return;
-                            }
-                            setCompleteModalIntervention(it.intervention);
+                            setCompleteModalIntervention(it?.intervention || it);
                             setCompleteModalSite(site);
                             const offset = Number(site?.nhOffset || 0);
                             const raw = Math.max(0, Number(site?.nh2A || 0) - offset);
