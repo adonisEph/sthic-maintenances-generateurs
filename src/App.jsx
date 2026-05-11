@@ -5375,6 +5375,7 @@ const GeneratorMaintenanceApp = () => {
           daysUntilNextPendingEpv: days
         };
       })
+      .filter((site) => !site?.retired)
       .filter((site) => {
         const days = site?.daysUntilNextPendingEpv;
         return days !== null && days <= 3;
@@ -5385,50 +5386,55 @@ const GeneratorMaintenanceApp = () => {
   const urgentSites = useMemo(() => {
     const list = Array.isArray(urgentSitesAll) ? urgentSitesAll : [];
 
-    return list
-      .filter((site) => filterTechnician === 'all' || normTechName(site.technician) === normTechName(filterTechnician))
-      .filter((site) => filterSite === 'all' || String(site?.id || '') === String(filterSite))
-      .filter((site) => {
-        if (!showZoneFilter) return true;
-        const z = String(dashboardZone || 'ALL');
-        if (!z || z === 'ALL') return true;
-        return String(site?.zone || '').trim() === z;
-      });
-  }, [urgentSitesAll, filterTechnician, filterSite, showZoneFilter, dashboardZone]);
-
-  useEffect(() => {
-    if (!(isAdmin || isManager || isViewer || isTechnician)) {
-      setUrgentRetiredMonthsMap({});
-      return;
+    // Technicien: on garde seulement sa zone
+    if (isTechnician && technicianZone) {
+      return list.filter((s) => String(s?.zone || '').trim() === String(technicianZone).trim());
     }
 
+    // Viewer: zone filtrée
+    if (isViewer && dashboardZone && dashboardZone !== 'ALL') {
+      return list.filter((s) => String(s?.zone || '').trim() === String(dashboardZone).trim());
+    }
+
+    return list;
+  }, [urgentSitesAll, isTechnician, technicianZone, isViewer, dashboardZone]);
+
+  const urgentRetiredMonthsQuery = useMemo(() => {
+    if (!(isAdmin || isManager || isViewer || isTechnician)) return '';
     const list = Array.isArray(urgentSites) ? urgentSites : [];
-    if (list.length === 0) {
-      setUrgentRetiredMonthsMap({});
-      return;
-    }
 
-    // On ne demande que les sites réellement "RETARD" (sinon inutile)
     const lateSites = list.filter((s) => {
       const d = s?.daysUntilNextPendingEpv ?? getDaysUntil(s?.nextPendingEpvDate);
       return d !== null && d < 0;
     });
 
-    if (lateSites.length === 0) {
-      setUrgentRetiredMonthsMap({});
-      return;
-    }
+    if (lateSites.length === 0) return '';
 
-    // siteCodes = codes PM (dans ton UI c’est site.idSite)
     const siteCodes = Array.from(
       new Set(
         lateSites
-          .map((s) => String(s?.idSite || '').trim())
+          .map((s) =>
+            String(s?.idSite || '')
+              .replace(/[\u200B-\u200D\uFEFF]/g, '')
+              .replace(/\u00A0/g, ' ')
+              .trim()
+              .toUpperCase()
+              .replace(/\s+/g, '')
+          )
           .filter(Boolean)
       )
-    );
+    ).sort();
 
-    if (siteCodes.length === 0) {
+    if (siteCodes.length === 0) return '';
+
+    const qs = new URLSearchParams();
+    qs.set('siteCodes', siteCodes.join(','));
+    qs.set('maxMonths', '18');
+    return qs.toString();
+  }, [urgentSites, isAdmin, isManager, isViewer, isTechnician]);
+
+  useEffect(() => {
+    if (!urgentRetiredMonthsQuery) {
       setUrgentRetiredMonthsMap({});
       return;
     }
@@ -5439,11 +5445,7 @@ const GeneratorMaintenanceApp = () => {
       try {
         setUrgentRetiredMonthsLoading(true);
 
-        const qs = new URLSearchParams();
-        qs.set('siteCodes', siteCodes.join(','));
-        qs.set('maxMonths', '18');
-
-        const data = await apiFetchJson(`/api/pm/retired-months?${qs.toString()}`, { method: 'GET' });
+        const data = await apiFetchJson(`/api/pm/retired-months?${urgentRetiredMonthsQuery}`, { method: 'GET' });
         const items = Array.isArray(data?.items) ? data.items : [];
 
         // Map par clé "ZONE|CODE" pour supporter superadmin multi-zone
@@ -5477,7 +5479,7 @@ const GeneratorMaintenanceApp = () => {
     return () => {
       cancelled = true;
     };
-  }, [urgentSites, isAdmin, isManager, isViewer, isTechnician]);
+  }, [urgentRetiredMonthsQuery]);
 
   const activeFiche = useMemo(() => {
     const id = ficheContext?.ficheId ? String(ficheContext.ficheId) : '';
