@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AlertCircle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users, Menu, ChevronLeft, Trash2, RotateCcw, Bell } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
@@ -6768,7 +6768,7 @@ return (
             </button>
           )}
 
-          {isTechnician && (
+          {canUseInterventions && (
             <button
               onClick={async () => {
                 setSidebarOpen(false);
@@ -6791,7 +6791,7 @@ return (
               className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
             >
               <CheckCircle size={18} />
-              Mes interventions
+              {isTechnician ? 'Mes interventions' : 'Interventions'}
             </button>
           )}
 
@@ -7365,6 +7365,36 @@ return (
                             className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-semibold"
                           >
                             Mettre à jour le NH
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const site = siteEditChoiceSite;
+                              setSiteEditChoiceOpen(false);
+                              setSiteEditChoiceSite(null);
+                              setSelectedSite(site);
+                              setEditSiteFormMode('full');
+                              setFormData({
+                                nameSite: site.nameSite,
+                                idSite: site.idSite,
+                                technician: site.technician,
+                                generateur: site.generateur,
+                                capacite: site.capacite,
+                                kitVidange: site.kitVidange,
+                                nh1DV: site.nh1DV,
+                                dateDV: site.dateDV,
+                                nh2A: site.nh2A,
+                                dateA: site.dateA,
+                                retired: site.retired
+                              });
+                              setShowEditForm(true);
+                              setTimeout(() => {
+                                siteFormAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                              }, 0);
+                            }}
+                            className="bg-sky-600 text-white px-4 py-2 rounded-lg hover:bg-sky-700 font-semibold"
+                          >
+                            Mettre à jour les infos du site
                           </button>
                           <button
                             type="button"
@@ -8677,6 +8707,12 @@ return (
                   const daysUntil = getDaysUntil(next?.plannedDate);
                   const urgencyClass = getUrgencyClass(daysUntil, site.retired);
 
+                  const isAuthorizedForSite = isSuperAdmin || (
+                    isManager &&
+                    (String(authZone).trim().toUpperCase() === 'PNR/KOUILOU' || String(authZone).trim().toUpperCase() === 'UPCN') &&
+                    String(site?.zone || '').trim().toUpperCase() === String(authZone).trim().toUpperCase()
+                  );
+
                   const badgeColor = site.retired
                     ? 'bg-gray-500'
                     : daysUntil !== null && daysUntil <= 3
@@ -8701,13 +8737,15 @@ return (
 
                         <div className="flex flex-col items-end gap-2">
                           <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenPmSiteInfo(site)}
-                              className="bg-white border border-gray-200 text-gray-800 px-2.5 py-1 rounded-lg hover:bg-gray-50 text-xs font-semibold"
-                            >
-                              Voir date PM
-                            </button>
+                            {isAuthorizedForSite && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPmSiteInfo(site)}
+                                className="bg-white border border-gray-200 text-gray-800 px-2.5 py-1 rounded-lg hover:bg-gray-50 text-xs font-semibold"
+                              >
+                                Voir date PM
+                              </button>
+                            )}
 
                             <span className={`${badgeColor} text-white text-xs px-2 py-1 rounded-lg font-semibold`}>
                               {site.retired ? 'RETIRÉ' : 'ACTIF'}
@@ -8781,37 +8819,15 @@ return (
                         </div>
 
                         <div className="grid grid-cols-3 gap-2 mt-4">
-                          {canWriteSites && (
+                          {isAuthorizedForSite && (
                             <button
                               onClick={() => {
-                                if (canManagerVidangeActions) {
-                                  setSiteEditChoiceSite(site);
-                                  setSiteEditChoiceOpen(true);
-                                  return;
-                                }
-
-                                setSelectedSite(site);
-                                setEditSiteFormMode('full');
-                                setFormData({
-                                  nameSite: site.nameSite,
-                                  idSite: site.idSite,
-                                  technician: site.technician,
-                                  generateur: site.generateur,
-                                  capacite: site.capacite,
-                                  kitVidange: site.kitVidange,
-                                  nh1DV: site.nh1DV,
-                                  dateDV: site.dateDV,
-                                  nh2A: site.nh2A,
-                                  dateA: site.dateA,
-                                  retired: site.retired
-                                });
-                                setShowEditForm(true);
-                                setTimeout(() => {
-                                  siteFormAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                }, 0);
+                                setSiteEditChoiceSite(site);
+                                setSiteEditChoiceOpen(true);
                               }}
-                              className="bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 text-sm font-semibold"
+                              className="bg-sky-100 text-sky-700 px-3 py-2 rounded-lg hover:bg-sky-200 font-semibold text-sm flex items-center justify-center gap-2"
                             >
+                              <Edit size={16} />
                               Modifier
                             </button>
                           )}

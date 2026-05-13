@@ -57,7 +57,21 @@ const EditSiteForm = ({ selectedSite, formData, setFormData, onSubmit, onClose, 
               placeholder="Kit Vidange"
               value={formData.kitVidange}
               onChange={(e) => setFormData({ ...formData, kitVidange: e.target.value })}
-              className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base col-span-1 sm:col-span-2 lg:col-span-3"
+              className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
+            />
+            <input
+              type="text"
+              placeholder="Régime"
+              value={selectedSite.regime || ''}
+              disabled
+              className="border border-gray-300 bg-gray-100 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base cursor-not-allowed"
+            />
+            <input
+              type="text"
+              placeholder="Diff NHs"
+              value={selectedSite.diffEstimated || ''}
+              disabled
+              className="border border-gray-300 bg-gray-100 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base cursor-not-allowed col-span-1 sm:col-span-2 lg:col-span-1"
             />
           </>
         )}
@@ -89,15 +103,15 @@ const EditSiteForm = ({ selectedSite, formData, setFormData, onSubmit, onClose, 
               onChange={(e) => setFormData({ ...formData, dateA: e.target.value })}
               className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
             />
-            <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 sm:px-4 py-2">
+            <div className="flex items-center gap-2 border border-gray-300 bg-gray-50 rounded-lg px-3 sm:px-4 py-2 opacity-70">
               <input
                 type="checkbox"
                 id="retired-edit"
                 checked={formData.retired}
-                onChange={(e) => setFormData({ ...formData, retired: e.target.checked })}
-                className="w-4 h-4"
+                disabled
+                className="w-4 h-4 cursor-not-allowed"
               />
-              <label htmlFor="retired-edit" className="text-sm sm:text-base cursor-pointer">Site Retiré</label>
+              <label htmlFor="retired-edit" className="text-sm sm:text-base cursor-not-allowed">Site Retiré</label>
             </div>
           </>
         )}
