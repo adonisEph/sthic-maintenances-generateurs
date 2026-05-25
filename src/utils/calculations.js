@@ -122,3 +122,74 @@ export const getUrgencyClass = (daysUntil, retired) => {
   if (daysUntil <= 7) return 'bg-orange-50 border-orange-300';
   return 'bg-green-50 border-green-300';
 };
+
+// Obtenir le premier jour du mois en cours
+export const getCurrentMonthStart = () => {
+  const today = new Date();
+  return new Date(today.getFullYear(), today.getMonth(), 1);
+};
+
+// Obtenir le premier jour du mois suivant
+export const getNextMonthStart = () => {
+  const today = new Date();
+  return new Date(today.getFullYear(), today.getMonth() + 1, 1);
+};
+
+// Calculer les EPV pour un mois spécifique à partir d'une date de référence
+export const calculateEPVDatesForMonth = (regime, dateA, nh1DV, nhEstimated, referenceDate) => {
+  const SEUIL = 250;
+  
+  if (regime === 0) {
+    return { epv1: 'N/A', epv2: 'N/A', epv3: 'N/A' };
+  }
+
+  const referenceYmd = ymdInTimeZone(referenceDate, APP_TIME_ZONE);
+  
+  const diffEstimated = nhEstimated - nh1DV;
+  const remainingHours = SEUIL - diffEstimated;
+  const daysToEPV1 = remainingHours / regime;
+  const epv1 = addDays(referenceYmd, daysToEPV1);
+
+  const daysToEPV2 = SEUIL / regime;
+  const epv2 = addDays(epv1, daysToEPV2);
+  const epv3 = addDays(epv2, daysToEPV2);
+
+  return { epv1, epv2, epv3 };
+};
+
+// Calculer les EPV du mois en cours
+export const calculateCurrentMonthEPVDates = (regime, dateA, nh1DV, nhEstimated) => {
+  const currentMonthStart = getCurrentMonthStart();
+  return calculateEPVDatesForMonth(regime, dateA, nh1DV, nhEstimated, currentMonthStart);
+};
+
+// Calculer les EPV du mois suivant
+export const calculateNextMonthEPVDates = (regime, dateA, nh1DV, nhEstimated) => {
+  const nextMonthStart = getNextMonthStart();
+  return calculateEPVDatesForMonth(regime, dateA, nh1DV, nhEstimated, nextMonthStart);
+};
+
+// Déterminer le nombre de tuiles EPV selon le régime
+export const getEPVTilesCount = (regime) => {
+  if (regime === 0) return 0;
+  if (regime <= 8) return 1; // 8H/J = 1 tuile
+  if (regime <= 16) return 2; // 16H/J = 2 tuiles
+  return 3; // 24H/J ou plus = 3 tuiles
+};
+
+// Vérifier si une date appartient au mois en cours
+export const isInCurrentMonth = (dateStr) => {
+  if (!dateStr || dateStr === 'N/A') return false;
+  const date = new Date(dateStr);
+  const today = new Date();
+  return date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear();
+};
+
+// Vérifier si une date appartient au mois suivant
+export const isInNextMonth = (dateStr) => {
+  if (!dateStr || dateStr === 'N/A') return false;
+  const date = new Date(dateStr);
+  const today = new Date();
+  const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  return date.getMonth() === nextMonth.getMonth() && date.getFullYear() === nextMonth.getFullYear();
+};

@@ -38,7 +38,12 @@ import {
   calculateEPVDates,
   formatDate,
   getDaysUntil,
-  getUrgencyClass
+  getUrgencyClass,
+  calculateCurrentMonthEPVDates,
+  calculateNextMonthEPVDates,
+  getEPVTilesCount,
+  isInCurrentMonth,
+  isInNextMonth
 } from './utils/calculations';
 
 const APP_VERSION = '6.1.1';
@@ -8709,7 +8714,7 @@ return (
 
                   const isAuthorizedForSite = isSuperAdmin || (
                     isManager &&
-                    (String(authZone).trim().toUpperCase() === 'PNR/KOUILOU' || String(authZone).trim().toUpperCase() === 'UPCN') &&
+                    authZone &&
                     String(site?.zone || '').trim().toUpperCase() === String(authZone).trim().toUpperCase()
                   );
 
@@ -8782,39 +8787,65 @@ return (
                           </div>
                         </div>
 
-                        <div className="mt-4 grid grid-cols-3 gap-2">
-                          <div className="bg-white rounded-lg border border-gray-200 p-2 text-center">
-                            <div className="text-[10px] text-gray-500">EPV1</div>
-                            <div className="text-xs font-semibold text-gray-800">{formatDate(doneByEpv.EPV1 || site.epv1)}</div>
-                            {doneByEpv.EPV1 ? (
-                              <div className="text-[10px] text-emerald-700 font-bold">Effectuée le {formatDate(doneByEpv.EPV1)}</div>
-                            ) : (
-                              !site.retired && getDaysUntil(site.epv1) !== null && (
-                                <div className="text-[10px] text-gray-500">{getDaysUntil(site.epv1)}j</div>
-                              )
-                            )}
+                        <div className="mt-4">
+                          <div className="text-[10px] font-semibold text-gray-600 mb-2">Échéances du mois en cours</div>
+                          <div className="grid grid-cols-3 gap-2">
+                            {(() => {
+                              const currentMonthEPVs = calculateCurrentMonthEPVDates(site.regime, site.dateA, site.nh1DV, site.nhEstimated);
+                              const tilesCount = getEPVTilesCount(site.regime);
+                              const epvTypes = ['EPV1', 'EPV2', 'EPV3'];
+                              
+                              return epvTypes.slice(0, tilesCount).map((epvType, idx) => {
+                                const epvDate = currentMonthEPVs[`epv${idx + 1}`];
+                                const doneDate = doneByEpv[epvType];
+                                const daysUntil = getDaysUntil(epvDate);
+                                
+                                return (
+                                  <div key={epvType} className="bg-white rounded-lg border border-gray-200 p-2 text-center">
+                                    <div className="text-[10px] text-gray-500">{epvType}</div>
+                                    <div className="text-xs font-semibold text-gray-800">{formatDate(doneDate || epvDate)}</div>
+                                    {doneDate ? (
+                                      <div className="text-[10px] text-emerald-700 font-bold">Effectuée le {formatDate(doneDate)}</div>
+                                    ) : (
+                                      !site.retired && daysUntil !== null && (
+                                        <div className="text-[10px] text-gray-500">{daysUntil}j</div>
+                                      )
+                                    )}
+                                  </div>
+                                );
+                              });
+                            })()}
                           </div>
-                          <div className="bg-white rounded-lg border border-gray-200 p-2 text-center">
-                            <div className="text-[10px] text-gray-500">EPV2</div>
-                            <div className="text-xs font-semibold text-gray-800">{formatDate(doneByEpv.EPV2 || site.epv2)}</div>
-                            {doneByEpv.EPV2 ? (
-                              <div className="text-[10px] text-emerald-700 font-bold">Effectuée le {formatDate(doneByEpv.EPV2)}</div>
-                            ) : (
-                              !site.retired && getDaysUntil(site.epv2) !== null && (
-                                <div className="text-[10px] text-gray-500">{getDaysUntil(site.epv2)}j</div>
-                              )
-                            )}
-                          </div>
-                          <div className="bg-white rounded-lg border border-gray-200 p-2 text-center">
-                            <div className="text-[10px] text-gray-500">EPV3</div>
-                            <div className="text-xs font-semibold text-gray-800">{formatDate(doneByEpv.EPV3 || site.epv3)}</div>
-                            {doneByEpv.EPV3 ? (
-                              <div className="text-[10px] text-emerald-700 font-bold">Effectuée le {formatDate(doneByEpv.EPV3)}</div>
-                            ) : (
-                              !site.retired && getDaysUntil(site.epv3) !== null && (
-                                <div className="text-[10px] text-gray-500">{getDaysUntil(site.epv3)}j</div>
-                              )
-                            )}
+                        </div>
+
+                        <div className="mt-4">
+                          <div className="text-[10px] font-semibold text-gray-600 mb-2">Prochaines échéances</div>
+                          <div className="grid grid-cols-3 gap-2">
+                            {(() => {
+                              const nextMonthEPVs = calculateNextMonthEPVDates(site.regime, site.dateA, site.nh1DV, site.nhEstimated);
+                              const tilesCount = getEPVTilesCount(site.regime);
+                              const epvTypes = ['EPV1', 'EPV2', 'EPV3'];
+                              
+                              return epvTypes.slice(0, tilesCount).map((epvType, idx) => {
+                                const epvDate = nextMonthEPVs[`epv${idx + 1}`];
+                                const doneDate = doneByEpv[epvType];
+                                const daysUntil = getDaysUntil(epvDate);
+                                
+                                return (
+                                  <div key={`next-${epvType}`} className="bg-white rounded-lg border border-gray-200 p-2 text-center">
+                                    <div className="text-[10px] text-gray-500">{epvType}</div>
+                                    <div className="text-xs font-semibold text-gray-800">{formatDate(doneDate || epvDate)}</div>
+                                    {doneDate ? (
+                                      <div className="text-[10px] text-emerald-700 font-bold">Effectuée le {formatDate(doneDate)}</div>
+                                    ) : (
+                                      !site.retired && daysUntil !== null && (
+                                        <div className="text-[10px] text-gray-500">{daysUntil}j</div>
+                                      )
+                                    )}
+                                  </div>
+                                );
+                              });
+                            })()}
                           </div>
                         </div>
 
