@@ -8831,18 +8831,14 @@ return (
                                 const daysUntil = getDaysUntil(epvDate);
                                 
                                 // N'afficher que si la date est dans le mois suivant
-                                if (!isInNextMonth(epvDate) && !doneDate) return null;
+                                if (!isInNextMonth(epvDate)) return null;
                                 
                                 return (
                                   <div key={`next-${epvType}`} className="bg-white rounded-lg border border-gray-200 p-2 text-center">
                                     <div className="text-[10px] text-gray-500">{epvType}</div>
-                                    <div className="text-xs font-semibold text-gray-800">{formatDate(doneDate || epvDate)}</div>
-                                    {doneDate ? (
-                                      <div className="text-[10px] text-emerald-700 font-bold">Effectuée le {formatDate(doneDate)}</div>
-                                    ) : (
-                                      !site.retired && daysUntil !== null && (
-                                        <div className="text-[10px] text-gray-500">{daysUntil}j</div>
-                                      )
+                                    <div className="text-xs font-semibold text-gray-800">{formatDate(epvDate)}</div>
+                                    {!site.retired && daysUntil !== null && (
+                                      <div className="text-[10px] text-gray-500">{daysUntil}j</div>
                                     )}
                                   </div>
                                 );
