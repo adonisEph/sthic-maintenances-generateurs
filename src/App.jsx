@@ -5452,6 +5452,20 @@ const GeneratorMaintenanceApp = () => {
     return nextPending ? { epvType: nextPending.epvType, plannedDate: String(nextPending.plannedDate).slice(0, 10) } : { epvType: '', plannedDate: '' };
   };
 
+  const getNextPendingEpvForSiteRecalculated = (site) => {
+    const sid = String(site?.id || '').trim();
+    const doneByEpv = doneEpvBySiteId.get(sid) || { EPV1: '', EPV2: '', EPV3: '' };
+    const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, site.nhEstimated);
+    const candidates = [
+      { epvType: 'EPV1', plannedDate: epvDates.epv1, done: Boolean(doneByEpv.EPV1) },
+      { epvType: 'EPV2', plannedDate: epvDates.epv2, done: Boolean(doneByEpv.EPV2) },
+      { epvType: 'EPV3', plannedDate: epvDates.epv3, done: Boolean(doneByEpv.EPV3) }
+    ].filter((c) => c?.plannedDate && c.plannedDate !== 'N/A');
+
+    const nextPending = candidates.find((c) => !c.done) || null;
+    return nextPending ? { epvType: nextPending.epvType, plannedDate: String(nextPending.plannedDate).slice(0, 10) } : { epvType: '', plannedDate: '' };
+  };
+
   const urgentSitesAll = useMemo(() => {
     const list = Array.isArray(sites) ? sites : [];
 
@@ -8706,7 +8720,7 @@ return (
                 {filteredSites.map(site => {
                   const sid = String(site?.id || '').trim();
                   const doneByEpv = doneEpvBySiteId.get(sid) || { EPV1: '', EPV2: '', EPV3: '' };
-                  const next = getNextPendingEpvForSite(site);
+                  const next = getNextPendingEpvForSiteRecalculated(site);
                   const daysUntil = getDaysUntil(next?.plannedDate);
                   const urgencyClass = getUrgencyClass(daysUntil, site.retired);
 
@@ -8790,22 +8804,27 @@ return (
                           <div className="grid grid-cols-3 gap-2">
                             {(() => {
                               const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, site.nhEstimated);
-                              const epvTypes = ['EPV1', 'EPV2', 'EPV3'];
+                              const epvList = [
+                                { type: 'EPV1', date: epvDates.epv1, done: doneByEpv.EPV1 },
+                                { type: 'EPV2', date: epvDates.epv2, done: doneByEpv.EPV2 },
+                                { type: 'EPV3', date: epvDates.epv3, done: doneByEpv.EPV3 }
+                              ].filter(e => e.date && e.date !== 'N/A');
                               
-                              return epvTypes.map((epvType, idx) => {
-                                const epvDate = epvDates[`epv${idx + 1}`];
-                                const doneDate = doneByEpv[epvType];
-                                const daysUntil = getDaysUntil(epvDate);
-                                
-                                // N'afficher que si la date est dans le mois en cours
-                                if (!isInCurrentMonth(epvDate) && !doneDate) return null;
+                              // Filtrer les EPV du mois en cours
+                              const currentMonthEPVs = epvList.filter(e => isInCurrentMonth(e.date) || e.done);
+                              
+                              // Trier par date chronologique
+                              currentMonthEPVs.sort((a, b) => new Date(a.date) - new Date(b.date));
+                              
+                              return currentMonthEPVs.map((epv, idx) => {
+                                const daysUntil = getDaysUntil(epv.date);
                                 
                                 return (
-                                  <div key={epvType} className="bg-white rounded-lg border border-gray-200 p-2 text-center">
-                                    <div className="text-[10px] text-gray-500">{epvType}</div>
-                                    <div className="text-xs font-semibold text-gray-800">{formatDate(doneDate || epvDate)}</div>
-                                    {doneDate ? (
-                                      <div className="text-[10px] text-emerald-700 font-bold">Effectuée le {formatDate(doneDate)}</div>
+                                  <div key={epv.type} className="bg-white rounded-lg border border-gray-200 p-2 text-center">
+                                    <div className="text-[10px] text-gray-500">{idx + 1}ère</div>
+                                    <div className="text-xs font-semibold text-gray-800">{formatDate(epv.done || epv.date)}</div>
+                                    {epv.done ? (
+                                      <div className="text-[10px] text-emerald-700 font-bold">Effectuée le {formatDate(epv.done)}</div>
                                     ) : (
                                       !site.retired && daysUntil !== null && (
                                         <div className="text-[10px] text-gray-500">{daysUntil}j</div>
@@ -8813,7 +8832,7 @@ return (
                                     )}
                                   </div>
                                 );
-                              }).filter(Boolean);
+                              });
                             })()}
                           </div>
                         </div>
@@ -8823,26 +8842,31 @@ return (
                           <div className="grid grid-cols-3 gap-2">
                             {(() => {
                               const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, site.nhEstimated);
-                              const epvTypes = ['EPV1', 'EPV2', 'EPV3'];
+                              const epvList = [
+                                { type: 'EPV1', date: epvDates.epv1 },
+                                { type: 'EPV2', date: epvDates.epv2 },
+                                { type: 'EPV3', date: epvDates.epv3 }
+                              ].filter(e => e.date && e.date !== 'N/A');
                               
-                              return epvTypes.map((epvType, idx) => {
-                                const epvDate = epvDates[`epv${idx + 1}`];
-                                const doneDate = doneByEpv[epvType];
-                                const daysUntil = getDaysUntil(epvDate);
-                                
-                                // N'afficher que si la date est dans le mois suivant
-                                if (!isInNextMonth(epvDate)) return null;
+                              // Filtrer les EPV du mois suivant
+                              const nextMonthEPVs = epvList.filter(e => isInNextMonth(e.date));
+                              
+                              // Trier par date chronologique
+                              nextMonthEPVs.sort((a, b) => new Date(a.date) - new Date(b.date));
+                              
+                              return nextMonthEPVs.map((epv, idx) => {
+                                const daysUntil = getDaysUntil(epv.date);
                                 
                                 return (
-                                  <div key={`next-${epvType}`} className="bg-white rounded-lg border border-gray-200 p-2 text-center">
-                                    <div className="text-[10px] text-gray-500">{epvType}</div>
-                                    <div className="text-xs font-semibold text-gray-800">{formatDate(epvDate)}</div>
+                                  <div key={epv.type} className="bg-white rounded-lg border border-gray-200 p-2 text-center">
+                                    <div className="text-[10px] text-gray-500">{idx + 1}ère</div>
+                                    <div className="text-xs font-semibold text-gray-800">{formatDate(epv.date)}</div>
                                     {!site.retired && daysUntil !== null && (
                                       <div className="text-[10px] text-gray-500">{daysUntil}j</div>
                                     )}
                                   </div>
                                 );
-                              }).filter(Boolean);
+                              });
                             })()}
                           </div>
                         </div>
