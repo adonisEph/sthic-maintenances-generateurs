@@ -80,15 +80,18 @@ export const calculateEPVDates = (regime, dateA, nh1DV, nhEstimated) => {
     return { epv1: 'N/A', epv2: 'N/A', epv3: 'N/A' };
   }
 
-  const todayYmd = ymdInTimeZone(new Date(), APP_TIME_ZONE);
+  // Formule Excel : Diff NHs = NH2 A - NH1 DV
+  const diffNHs = nhEstimated - nh1DV;
   
-  const diffEstimated = nhEstimated - nh1DV;
-  const remainingHours = SEUIL - diffEstimated;
-  const daysToEPV1 = remainingHours / regime;
-  const epv1 = addDays(todayYmd, daysToEPV1);
+  // Formule Excel : EPV1 = (Seuil - Diff NHs) / Régime + Date A
+  const daysToEPV1 = (SEUIL - diffNHs) / regime;
+  const epv1 = addDays(dateA, daysToEPV1);
 
+  // Formule Excel : EPV2 = (Seuil / Régime) + Date EPV1
   const daysToEPV2 = SEUIL / regime;
   const epv2 = addDays(epv1, daysToEPV2);
+
+  // Formule Excel : EPV3 = (Seuil / Régime) + Date EPV2
   const epv3 = addDays(epv2, daysToEPV2);
 
   return { epv1, epv2, epv3 };
@@ -133,40 +136,6 @@ export const getCurrentMonthStart = () => {
 export const getNextMonthStart = () => {
   const today = new Date();
   return new Date(today.getFullYear(), today.getMonth() + 1, 1);
-};
-
-// Calculer les EPV pour un mois spécifique à partir d'une date de référence
-export const calculateEPVDatesForMonth = (regime, dateA, nh1DV, nhEstimated, referenceDate) => {
-  const SEUIL = 250;
-  
-  if (regime === 0) {
-    return { epv1: 'N/A', epv2: 'N/A', epv3: 'N/A' };
-  }
-
-  const referenceYmd = ymdInTimeZone(referenceDate, APP_TIME_ZONE);
-  
-  const diffEstimated = nhEstimated - nh1DV;
-  const remainingHours = SEUIL - diffEstimated;
-  const daysToEPV1 = remainingHours / regime;
-  const epv1 = addDays(referenceYmd, daysToEPV1);
-
-  const daysToEPV2 = SEUIL / regime;
-  const epv2 = addDays(epv1, daysToEPV2);
-  const epv3 = addDays(epv2, daysToEPV2);
-
-  return { epv1, epv2, epv3 };
-};
-
-// Calculer les EPV du mois en cours
-export const calculateCurrentMonthEPVDates = (regime, dateA, nh1DV, nhEstimated) => {
-  const currentMonthStart = getCurrentMonthStart();
-  return calculateEPVDatesForMonth(regime, dateA, nh1DV, nhEstimated, currentMonthStart);
-};
-
-// Calculer les EPV du mois suivant
-export const calculateNextMonthEPVDates = (regime, dateA, nh1DV, nhEstimated) => {
-  const nextMonthStart = getNextMonthStart();
-  return calculateEPVDatesForMonth(regime, dateA, nh1DV, nhEstimated, nextMonthStart);
 };
 
 // Déterminer le nombre de tuiles EPV selon le régime

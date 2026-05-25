@@ -39,8 +39,6 @@ import {
   formatDate,
   getDaysUntil,
   getUrgencyClass,
-  calculateCurrentMonthEPVDates,
-  calculateNextMonthEPVDates,
   getEPVTilesCount,
   isInCurrentMonth,
   isInNextMonth
@@ -8791,14 +8789,16 @@ return (
                           <div className="text-[10px] font-semibold text-gray-600 mb-2">Échéances du mois en cours</div>
                           <div className="grid grid-cols-3 gap-2">
                             {(() => {
-                              const currentMonthEPVs = calculateCurrentMonthEPVDates(site.regime, site.dateA, site.nh1DV, site.nhEstimated);
-                              const tilesCount = getEPVTilesCount(site.regime);
+                              const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, site.nhEstimated);
                               const epvTypes = ['EPV1', 'EPV2', 'EPV3'];
                               
-                              return epvTypes.slice(0, tilesCount).map((epvType, idx) => {
-                                const epvDate = currentMonthEPVs[`epv${idx + 1}`];
+                              return epvTypes.map((epvType, idx) => {
+                                const epvDate = epvDates[`epv${idx + 1}`];
                                 const doneDate = doneByEpv[epvType];
                                 const daysUntil = getDaysUntil(epvDate);
+                                
+                                // N'afficher que si la date est dans le mois en cours
+                                if (!isInCurrentMonth(epvDate) && !doneDate) return null;
                                 
                                 return (
                                   <div key={epvType} className="bg-white rounded-lg border border-gray-200 p-2 text-center">
@@ -8813,7 +8813,7 @@ return (
                                     )}
                                   </div>
                                 );
-                              });
+                              }).filter(Boolean);
                             })()}
                           </div>
                         </div>
@@ -8822,14 +8822,16 @@ return (
                           <div className="text-[10px] font-semibold text-gray-600 mb-2">Prochaines échéances</div>
                           <div className="grid grid-cols-3 gap-2">
                             {(() => {
-                              const nextMonthEPVs = calculateNextMonthEPVDates(site.regime, site.dateA, site.nh1DV, site.nhEstimated);
-                              const tilesCount = getEPVTilesCount(site.regime);
+                              const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, site.nhEstimated);
                               const epvTypes = ['EPV1', 'EPV2', 'EPV3'];
                               
-                              return epvTypes.slice(0, tilesCount).map((epvType, idx) => {
-                                const epvDate = nextMonthEPVs[`epv${idx + 1}`];
+                              return epvTypes.map((epvType, idx) => {
+                                const epvDate = epvDates[`epv${idx + 1}`];
                                 const doneDate = doneByEpv[epvType];
                                 const daysUntil = getDaysUntil(epvDate);
+                                
+                                // N'afficher que si la date est dans le mois suivant
+                                if (!isInNextMonth(epvDate) && !doneDate) return null;
                                 
                                 return (
                                   <div key={`next-${epvType}`} className="bg-white rounded-lg border border-gray-200 p-2 text-center">
@@ -8844,7 +8846,7 @@ return (
                                     )}
                                   </div>
                                 );
-                              });
+                              }).filter(Boolean);
                             })()}
                           </div>
                         </div>
