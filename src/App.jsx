@@ -3804,16 +3804,10 @@ const GeneratorMaintenanceApp = () => {
     try {
       const today = new Date().toISOString().split('T')[0];
 
-      const doneByEpv = doneEpvBySiteId.get(String(site?.id || '').trim()) || { EPV1: '', EPV2: '', EPV3: '' };
-
-      const candidates = [
-        { type: 'EPV1', date: site.epv1, done: Boolean(doneByEpv.EPV1) },
-        { type: 'EPV2', date: site.epv2, done: Boolean(doneByEpv.EPV2) },
-        { type: 'EPV3', date: site.epv3, done: Boolean(doneByEpv.EPV3) }
-      ].filter((c) => c.date);
-
-      const nextPending = candidates.find((c) => !c.done) || null;
-      const nextByDate = candidates.find((c) => c.date >= today) || candidates[0] || null;
+      const epvDates = { epv1: site?.epv1, epv2: site?.epv2, epv3: site?.epv3 };
+      const allPassages = getSitePassages(site, epvDates);
+      const nextPending = allPassages.find((c) => !c.done) || null;
+      const nextByDate = allPassages.find((c) => c.date >= today) || allPassages[0] || null;
       const chosen = nextPending || nextByDate;
 
       const plannedDate = chosen?.date ? String(chosen.date).slice(0, 10) : null;
@@ -3854,16 +3848,10 @@ const GeneratorMaintenanceApp = () => {
 
       // 2) Déterminer EPV/plannedDate comme handleGenerateFiche
       const today = new Date().toISOString().split('T')[0];
-      const doneByEpv = doneEpvBySiteId.get(String(site?.id || '').trim()) || { EPV1: '', EPV2: '', EPV3: '' };
-
-      const candidates = [
-        { type: 'EPV1', date: site?.epv1, done: Boolean(doneByEpv.EPV1) },
-        { type: 'EPV2', date: site?.epv2, done: Boolean(doneByEpv.EPV2) },
-        { type: 'EPV3', date: site?.epv3, done: Boolean(doneByEpv.EPV3) }
-      ].filter((c) => c?.date);
-
-      const nextPending = candidates.find((c) => !c.done) || null;
-      const nextByDate = candidates.find((c) => c.date >= today) || candidates[0] || null;
+      const epvDates = { epv1: site?.epv1, epv2: site?.epv2, epv3: site?.epv3 };
+      const allPassages = getSitePassages(site, epvDates);
+      const nextPending = allPassages.find((c) => !c.done) || null;
+      const nextByDate = allPassages.find((c) => c.date >= today) || allPassages[0] || null;
       const chosen = nextPending || nextByDate;
 
       const plannedDate = chosen?.date ? String(chosen.date).slice(0, 10) : '';
@@ -5372,16 +5360,18 @@ const GeneratorMaintenanceApp = () => {
     }
   }, []);
 
-  const doneEpvBySiteId = useMemo(() => {
+  // --- Helper: extract campaign month from a fiche ---
+  const toCampaignMonth = (f) => {
+    const dc = f?.dateCompleted ? String(f.dateCompleted).slice(0, 10) : '';
+    const dg = f?.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
+    const d = dc || dg;
+    return d ? String(d).slice(0, 7) : '';
+  };
+
+  // --- Count-based completed fiches per site for current month ---
+  const completedFichesBySiteId = useMemo(() => {
     const map = new Map();
     const list = Array.isArray(ficheHistory) ? ficheHistory : [];
-
-    const toCampaignMonth = (f) => {
-      const dc = f?.dateCompleted ? String(f.dateCompleted).slice(0, 10) : '';
-      const dg = f?.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
-      const d = dc || dg;
-      return d ? String(d).slice(0, 7) : '';
-    };
 
     for (const f of list) {
       if (!f) continue;
@@ -5391,21 +5381,38 @@ const GeneratorMaintenanceApp = () => {
       const siteId = String(f?.siteId || '').trim();
       if (!siteId) continue;
 
-      const epv = String(f?.epvType || '').trim().toUpperCase();
-      if (!['EPV1', 'EPV2', 'EPV3'].includes(epv)) continue;
-
       const dc = f?.dateCompleted ? String(f.dateCompleted).slice(0, 10) : '';
       const dg = f?.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
       const doneAt = (dc || dg).slice(0, 10);
       if (!doneAt) continue;
 
-      const cur = map.get(siteId) || { EPV1: '', EPV2: '', EPV3: '' };
-      if (!cur[epv] || String(cur[epv]).localeCompare(doneAt) < 0) cur[epv] = doneAt;
-      map.set(siteId, cur);
+      const arr = map.get(siteId) || [];
+      arr.push({ ...f, _doneAt: doneAt });
+      map.set(siteId, arr);
+    }
+
+    // Sort each site's fiches chronologically
+    for (const [siteId, arr] of map) {
+      arr.sort((a, b) => new Date(a._doneAt) - new Date(b._doneAt));
     }
 
     return map;
   }, [ficheHistory, currentCampaignMonth]);
+
+  // --- Backward-compat: build doneEpvBySiteId from completedFichesBySiteId ---
+  // Some downstream components (DashboardKpiGrid, calendar, etc.) still expect the old format.
+  const doneEpvBySiteId = useMemo(() => {
+    const map = new Map();
+    for (const [siteId, fiches] of completedFichesBySiteId) {
+      const rec = { EPV1: '', EPV2: '', EPV3: '' };
+      for (let i = 0; i < fiches.length && i < 3; i++) {
+        const key = `EPV${i + 1}`;
+        rec[key] = fiches[i]._doneAt;
+      }
+      map.set(siteId, rec);
+    }
+    return map;
+  }, [completedFichesBySiteId]);
 
   const doneEpvBySiteIdByMonth = useMemo(() => {
     const byMonth = new Map();
@@ -5418,9 +5425,6 @@ const GeneratorMaintenanceApp = () => {
       const siteId = String(f?.siteId || '').trim();
       if (!siteId) continue;
 
-      const epv = String(f?.epvType || '').trim().toUpperCase();
-      if (!['EPV1', 'EPV2', 'EPV3'].includes(epv)) continue;
-
       const dc = f?.dateCompleted ? String(f.dateCompleted).slice(0, 10) : '';
       const dg = f?.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
       const doneAt = (dc || dg).slice(0, 10);
@@ -5429,41 +5433,87 @@ const GeneratorMaintenanceApp = () => {
       const month = String(doneAt).slice(0, 7);
       if (!month) continue;
 
+      // Collect all completed fiches per site per month
       const monthMap = byMonth.get(month) || new Map();
-      const cur = monthMap.get(siteId) || { EPV1: '', EPV2: '', EPV3: '' };
-      if (!cur[epv] || String(cur[epv]).localeCompare(doneAt) < 0) cur[epv] = doneAt;
-      monthMap.set(siteId, cur);
+      const arr = monthMap.get(siteId) || [];
+      arr.push({ ...f, _doneAt: doneAt });
+      monthMap.set(siteId, arr);
       byMonth.set(month, monthMap);
     }
 
-    return byMonth;
+    // Sort and convert to backward-compat format
+    const result = new Map();
+    for (const [month, monthMap] of byMonth) {
+      const convertedMap = new Map();
+      for (const [siteId, arr] of monthMap) {
+        arr.sort((a, b) => new Date(a._doneAt) - new Date(b._doneAt));
+        const rec = { EPV1: '', EPV2: '', EPV3: '' };
+        for (let i = 0; i < arr.length && i < 3; i++) {
+          rec[`EPV${i + 1}`] = arr[i]._doneAt;
+        }
+        convertedMap.set(siteId, rec);
+      }
+      result.set(month, convertedMap);
+    }
+
+    return result;
   }, [ficheHistory]);
 
-  const getNextPendingEpvForSite = (site) => {
+  // --- Dynamic passage builder ---
+  // Builds an ordered list of passages for a site:
+  //   - First N entries are completed (from ficheHistory for this month)
+  //   - Remaining entries are pending (from calculated epvDates)
+  const getSitePassages = (site, epvDates) => {
     const sid = String(site?.id || '').trim();
-    const doneByEpv = doneEpvBySiteId.get(sid) || { EPV1: '', EPV2: '', EPV3: '' };
-    const candidates = [
-      { epvType: 'EPV1', plannedDate: site?.epv1, done: Boolean(doneByEpv.EPV1) },
-      { epvType: 'EPV2', plannedDate: site?.epv2, done: Boolean(doneByEpv.EPV2) },
-      { epvType: 'EPV3', plannedDate: site?.epv3, done: Boolean(doneByEpv.EPV3) }
-    ].filter((c) => c?.plannedDate && c.plannedDate !== 'N/A');
+    const completedFiches = completedFichesBySiteId.get(sid) || [];
+    const N = completedFiches.length;
 
-    const nextPending = candidates.find((c) => !c.done) || null;
-    return nextPending ? { epvType: nextPending.epvType, plannedDate: String(nextPending.plannedDate).slice(0, 10) } : { epvType: '', plannedDate: '' };
+    const allPassages = [];
+
+    // 1) Completed passages
+    for (let i = 0; i < N; i++) {
+      const f = completedFiches[i];
+      const doneAt = f._doneAt;
+      allPassages.push({
+        type: `EPV${i + 1}`,
+        date: doneAt,
+        done: true,
+        doneDate: doneAt,
+        ticketNumber: f.ticketNumber || ''
+      });
+    }
+
+    // 2) Pending passages from calculated dates
+    if (epvDates?.epv1 && epvDates.epv1 !== 'N/A') {
+      allPassages.push({ type: `EPV${N + 1}`, date: epvDates.epv1, done: false });
+    }
+    if (epvDates?.epv2 && epvDates.epv2 !== 'N/A') {
+      allPassages.push({ type: `EPV${N + 2}`, date: epvDates.epv2, done: false });
+    }
+    if (epvDates?.epv3 && epvDates.epv3 !== 'N/A') {
+      allPassages.push({ type: `EPV${N + 3}`, date: epvDates.epv3, done: false });
+    }
+
+    return allPassages;
+  };
+
+  // --- Simplified next-pending helpers using dynamic passages ---
+  const getNextPendingEpvForSite = (site) => {
+    const epvDates = { epv1: site?.epv1, epv2: site?.epv2, epv3: site?.epv3 };
+    const passages = getSitePassages(site, epvDates);
+    const nextPending = passages.find(p => !p.done) || null;
+    return nextPending
+      ? { epvType: nextPending.type, plannedDate: String(nextPending.date).slice(0, 10) }
+      : { epvType: '', plannedDate: '' };
   };
 
   const getNextPendingEpvForSiteRecalculated = (site) => {
-    const sid = String(site?.id || '').trim();
-    const doneByEpv = doneEpvBySiteId.get(sid) || { EPV1: '', EPV2: '', EPV3: '' };
     const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, site.nhEstimated);
-    const candidates = [
-      { epvType: 'EPV1', plannedDate: epvDates.epv1, done: Boolean(doneByEpv.EPV1) },
-      { epvType: 'EPV2', plannedDate: epvDates.epv2, done: Boolean(doneByEpv.EPV2) },
-      { epvType: 'EPV3', plannedDate: epvDates.epv3, done: Boolean(doneByEpv.EPV3) }
-    ].filter((c) => c?.plannedDate && c.plannedDate !== 'N/A');
-
-    const nextPending = candidates.find((c) => !c.done) || null;
-    return nextPending ? { epvType: nextPending.epvType, plannedDate: String(nextPending.plannedDate).slice(0, 10) } : { epvType: '', plannedDate: '' };
+    const passages = getSitePassages(site, epvDates);
+    const nextPending = passages.find(p => !p.done) || null;
+    return nextPending
+      ? { epvType: nextPending.type, plannedDate: String(nextPending.date).slice(0, 10) }
+      : { epvType: '', plannedDate: '' };
   };
 
   const urgentSitesAll = useMemo(() => {
@@ -8718,8 +8768,6 @@ return (
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
                 {filteredSites.map(site => {
-                  const sid = String(site?.id || '').trim();
-                  const doneByEpv = doneEpvBySiteId.get(sid) || { EPV1: '', EPV2: '', EPV3: '' };
                   const next = getNextPendingEpvForSiteRecalculated(site);
                   const daysUntil = getDaysUntil(next?.plannedDate);
                   const urgencyClass = getUrgencyClass(daysUntil, site.retired);
@@ -8804,27 +8852,25 @@ return (
                           <div className="grid grid-cols-3 gap-2">
                             {(() => {
                               const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, site.nhEstimated);
-                              const epvList = [
-                                { type: 'EPV1', date: epvDates.epv1, done: doneByEpv.EPV1 },
-                                { type: 'EPV2', date: epvDates.epv2, done: doneByEpv.EPV2 },
-                                { type: 'EPV3', date: epvDates.epv3, done: doneByEpv.EPV3 }
-                              ].filter(e => e.date && e.date !== 'N/A');
+                              const allPassages = getSitePassages(site, epvDates);
                               
-                              // Filtrer les EPV du mois en cours
-                              const currentMonthEPVs = epvList.filter(e => isInCurrentMonth(e.date) || e.done);
+                              // Current month: completed passages + pending passages in current month
+                              const currentMonthPassages = allPassages.filter(p =>
+                                p.done || isInCurrentMonth(p.date)
+                              );
                               
-                              // Trier par date chronologique
-                              currentMonthEPVs.sort((a, b) => new Date(a.date) - new Date(b.date));
+                              // Sort chronologically
+                              currentMonthPassages.sort((a, b) => new Date(a.date) - new Date(b.date));
                               
-                              return currentMonthEPVs.map((epv, idx) => {
-                                const daysUntil = getDaysUntil(epv.date);
+                              return currentMonthPassages.map((passage, idx) => {
+                                const daysUntil = getDaysUntil(passage.date);
                                 
                                 return (
-                                  <div key={epv.type} className="bg-white rounded-lg border border-gray-200 p-2 text-center">
-                                    <div className="text-[10px] text-gray-500">{idx + 1}ère</div>
-                                    <div className="text-xs font-semibold text-gray-800">{formatDate(epv.done || epv.date)}</div>
-                                    {epv.done ? (
-                                      <div className="text-[10px] text-emerald-700 font-bold">Effectuée le {formatDate(epv.done)}</div>
+                                  <div key={`passage-current-${idx}`} className="bg-white rounded-lg border border-gray-200 p-2 text-center">
+                                    <div className="text-[10px] text-gray-500">{idx + 1}{idx === 0 ? 'er' : 'e'} passage</div>
+                                    <div className="text-xs font-semibold text-gray-800">{formatDate(passage.doneDate || passage.date)}</div>
+                                    {passage.done ? (
+                                      <div className="text-[10px] text-emerald-700 font-bold">Effectuée le {formatDate(passage.doneDate)}</div>
                                     ) : (
                                       !site.retired && daysUntil !== null && (
                                         <div className="text-[10px] text-gray-500">{daysUntil}j</div>
@@ -8842,25 +8888,23 @@ return (
                           <div className="grid grid-cols-3 gap-2">
                             {(() => {
                               const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, site.nhEstimated);
-                              const epvList = [
-                                { type: 'EPV1', date: epvDates.epv1 },
-                                { type: 'EPV2', date: epvDates.epv2 },
-                                { type: 'EPV3', date: epvDates.epv3 }
-                              ].filter(e => e.date && e.date !== 'N/A');
+                              const allPassages = getSitePassages(site, epvDates);
                               
-                              // Filtrer les EPV du mois suivant
-                              const nextMonthEPVs = epvList.filter(e => isInNextMonth(e.date));
+                              // Next month: only pending passages whose dates fall in the next month
+                              const nextMonthPassages = allPassages.filter(p =>
+                                !p.done && isInNextMonth(p.date)
+                              );
                               
-                              // Trier par date chronologique
-                              nextMonthEPVs.sort((a, b) => new Date(a.date) - new Date(b.date));
+                              // Sort chronologically
+                              nextMonthPassages.sort((a, b) => new Date(a.date) - new Date(b.date));
                               
-                              return nextMonthEPVs.map((epv, idx) => {
-                                const daysUntil = getDaysUntil(epv.date);
+                              return nextMonthPassages.map((passage, idx) => {
+                                const daysUntil = getDaysUntil(passage.date);
                                 
                                 return (
-                                  <div key={epv.type} className="bg-white rounded-lg border border-gray-200 p-2 text-center">
-                                    <div className="text-[10px] text-gray-500">{idx + 1}ère</div>
-                                    <div className="text-xs font-semibold text-gray-800">{formatDate(epv.date)}</div>
+                                  <div key={`passage-next-${idx}`} className="bg-white rounded-lg border border-gray-200 p-2 text-center">
+                                    <div className="text-[10px] text-gray-500">{idx + 1}{idx === 0 ? 'er' : 'e'} passage</div>
+                                    <div className="text-xs font-semibold text-gray-800">{formatDate(passage.date)}</div>
                                     {!site.retired && daysUntil !== null && (
                                       <div className="text-[10px] text-gray-500">{daysUntil}j</div>
                                     )}
