@@ -80,18 +80,15 @@ export const calculateEPVDates = (regime, dateA, nh1DV, nhEstimated) => {
     return { epv1: 'N/A', epv2: 'N/A', epv3: 'N/A' };
   }
 
-  // Formule Excel : Diff NHs = NH2 A - NH1 DV
-  const diffNHs = nhEstimated - nh1DV;
-  
-  // Formule Excel : EPV1 = (Seuil - Diff NHs) / Régime + Date A
-  const daysToEPV1 = (SEUIL - diffNHs) / regime;
-  const epv1 = addDays(dateA, daysToEPV1);
+  const r = Number(regime);
+  const diffNHs = Number(nhEstimated) - Number(nh1DV);
+  const daysToEPV1 = (SEUIL - diffNHs) / r;
 
-  // Formule Excel : EPV2 = (Seuil / Régime) + Date EPV1
-  const daysToEPV2 = SEUIL / regime;
+  const todayYmd = ymdInTimeZone(new Date(), APP_TIME_ZONE);
+  const epv1 = addDays(todayYmd, daysToEPV1);
+
+  const daysToEPV2 = SEUIL / r;
   const epv2 = addDays(epv1, daysToEPV2);
-
-  // Formule Excel : EPV3 = (Seuil / Régime) + Date EPV2
   const epv3 = addDays(epv2, daysToEPV2);
 
   return { epv1, epv2, epv3 };

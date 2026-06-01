@@ -4583,7 +4583,7 @@ const GeneratorMaintenanceApp = () => {
       if (s.id === fiche.siteId) {
         const newNh1DV = s.nh2A;
         const newDateDV = new Date().toISOString().split('T')[0];
-        const regime = calculateRegime(newNh1DV, s.nh2A, newDateDV, s.dateA);
+        const regime = s.regime;
         const nhEstimated = calculateEstimatedNH(s.nh2A, s.dateA, regime);
         const diffNHs = 0; // Compteur repart à zéro
         const diffEstimated = calculateDiffNHs(newNh1DV, nhEstimated);

@@ -189,7 +189,10 @@ export async function onRequestPost({ request, env, data }) {
         }
       }
 
-      const regime = calculateRegime(prevNh1DV, effectiveNh, prevDateDV, readingDate);
+      let regime = calculateRegime(prevNh1DV, effectiveNh, prevDateDV, readingDate);
+      if (regime === 0 && Number(site.regime) > 0) {
+        regime = Number(site.regime);
+      }
       const nhEstimated = calculateEstimatedNH(effectiveNh, readingDate, regime);
       const diffNHs = calculateDiffNHs(prevNh1DV, effectiveNh);
       const diffEstimated = calculateDiffNHs(prevNh1DV, nhEstimated);

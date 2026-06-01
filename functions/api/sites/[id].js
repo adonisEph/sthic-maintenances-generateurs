@@ -84,7 +84,10 @@ export async function onRequestPatch({ request, env, data, params }) {
         return json({ error: "Le compteur (NH) ne peut pas être inférieur au NH1 DV du site." }, { status: 400 });
       }
 
-      const regime = calculateRegime(next.nh1DV, next.nh2A, next.dateDV, next.dateA);
+      let regime = calculateRegime(next.nh1DV, next.nh2A, next.dateDV, next.dateA);
+      if (regime === 0 && Number(existing.regime) > 0) {
+        regime = Number(existing.regime);
+      }
       const nhEstimated = calculateEstimatedNH(next.nh2A, next.dateA, regime);
       const diffNHs = calculateDiffNHs(next.nh1DV, next.nh2A);
       const diffEstimated = calculateDiffNHs(next.nh1DV, nhEstimated);
