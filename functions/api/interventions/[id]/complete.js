@@ -41,7 +41,11 @@ export async function onRequestPost({ request, env, data, params }) {
     const userNhNowRaw = body?.nhNow;
 
     const doneDate = /^\d{4}-\d{2}-\d{2}$/.test(userDoneDate) ? userDoneDate : ymdToday();
-    const nhNow = Number.isFinite(Number(userNhNowRaw)) ? Number(userNhNowRaw) : Number(site.nh_estimated || site.nh2_a || 0);
+    const offset = site.nh_offset == null ? 0 : Number(site.nh_offset);
+    let nhNow = Number.isFinite(Number(userNhNowRaw)) ? Number(userNhNowRaw) : Number(site.nh_estimated || site.nh2_a || 0);
+    if (offset > 0 && nhNow < offset) {
+      nhNow = offset + nhNow;
+    }
 
     if (data.user.role === 'technician') {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(userDoneDate)) {
@@ -50,7 +54,7 @@ export async function onRequestPost({ request, env, data, params }) {
       if (!Number.isFinite(Number(userNhNowRaw))) {
         return json({ error: 'Compteur (NH) invalide.' }, { status: 400 });
       }
-      if (Number(site.nh1_dv) > Number(userNhNowRaw)) {
+      if (Number(site.nh1_dv) > nhNow) {
         return json({ error: "Le compteur (NH) ne peut pas être inférieur au NH1 DV du site." }, { status: 400 });
       }
     }

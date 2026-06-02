@@ -3464,7 +3464,8 @@ const GeneratorMaintenanceApp = () => {
         body: JSON.stringify({
           readingDate: formData.dateA,
           nhValue: nh2,
-          reset: false
+          reset: false,
+          assumeEffectiveNh: true
         })
       });
 
@@ -5088,7 +5089,7 @@ const GeneratorMaintenanceApp = () => {
     const completedKeys = new Set(doneByPlannedDate.map((f) => `${f.siteId}|${f.epvType || ''}|${f.plannedDate}`));
     const remainingEvents = plannedEventsFiltered.filter((ev) => !completedKeys.has(String(ev.key)));
 
-    return { plannedEvents: plannedEventsFiltered, remainingEvents, doneByPlannedDate, contractOk, contractOver };
+    return { plannedEvents: plannedEventsFiltered, remainingEvents, doneByPlannedDate: completedFichesInMonth, contractOk, contractOver };
   };
 
   const handleExportDashboardSummaryExcel = async () => {

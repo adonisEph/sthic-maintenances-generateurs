@@ -125,7 +125,8 @@ export const useSites = ({ sites, setSites }) => {
         body: JSON.stringify({
           readingDate: formData.dateA,
           nhValue: nh2,
-          reset: false
+          reset: false,
+          assumeEffectiveNh: true
         })
       });
 

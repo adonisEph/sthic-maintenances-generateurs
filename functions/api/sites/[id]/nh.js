@@ -86,7 +86,7 @@ export async function onRequestPost({ request, env, data, params }) {
     const prevRaw = prevEffective - prevOffset;
 
     const hasPrev = Number.isFinite(Number(prevNh2A));
-    const inputLooksEffective = assumeEffectiveNh || (prevOffset > 0 && rawNh >= prevEffective);
+    const inputLooksEffective = assumeEffectiveNh || (prevOffset > 0 && (rawNh >= prevEffective || (rawNh > prevRaw && Math.abs(rawNh - prevEffective) < Math.abs(rawNh - prevRaw))));
     if (!allowDecrease) {
       if (inputLooksEffective && rawNh < prevEffective && !forceReset) {
         return json({ error: 'Baisse de NH détectée. Utilisez le mode reset (ou allowDecrease).' }, { status: 400 });

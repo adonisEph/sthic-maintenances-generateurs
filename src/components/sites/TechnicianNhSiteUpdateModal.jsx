@@ -97,7 +97,7 @@ const TechnicianNhSiteUpdateModal = ({
 
       const data = await apiFetchJson(`/api/sites/${String(selectedSite.id)}/nh`, {
         method: 'POST',
-        body: JSON.stringify({ readingDate, nhValue, reset: false })
+        body: JSON.stringify({ readingDate, nhValue, reset: false, assumeEffectiveNh: true })
       });
 
       await loadData?.();

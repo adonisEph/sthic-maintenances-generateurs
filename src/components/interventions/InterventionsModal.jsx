@@ -1403,7 +1403,12 @@ const InterventionsModal = ({
               try {
                 const data = await apiFetchJson(`/api/sites/${siteId}/nh`, {
                   method: 'POST',
-                  body: JSON.stringify({ readingDate, nhValue, reset: Boolean(nhForm?.reset) })
+                  body: JSON.stringify({
+                    readingDate,
+                    nhValue,
+                    reset: Boolean(nhForm?.reset),
+                    assumeEffectiveNh: !Boolean(nhForm?.reset)
+                  })
                 });
                 await loadData();
                 await loadInterventions();
