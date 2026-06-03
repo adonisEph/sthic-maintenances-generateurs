@@ -52,7 +52,7 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     try {
       navigator.serviceWorker
-        .register('/sw.js', { scope: '/' })
+        .register('/sw.js', { scope: '/', updateViaCache: 'none' })
         .then((reg) => {
           try {
             reg.update().catch(() => {});

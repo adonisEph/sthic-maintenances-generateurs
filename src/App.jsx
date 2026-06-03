@@ -44,7 +44,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.2.4';
+const APP_VERSION = '6.2.6';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -1116,6 +1116,7 @@ const GeneratorMaintenanceApp = () => {
                   try {
                     if ('serviceWorker' in navigator) {
                       const regs = await navigator.serviceWorker.getRegistrations();
+                      await Promise.all((regs || []).map((r) => r.update?.().catch(() => false)));
                       await Promise.all((regs || []).map((r) => r.unregister().catch(() => false)));
                     }
                   } catch {
@@ -1130,7 +1131,7 @@ const GeneratorMaintenanceApp = () => {
                     // ignore
                   }
                   try {
-                    const base = `${window.location.origin}${window.location.pathname}`;
+                    const base = `${window.location.origin}/index.html`;
                     const next = `${base}?update=${Date.now()}`;
                     window.location.replace(next);
                   } catch {

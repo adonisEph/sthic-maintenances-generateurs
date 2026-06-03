@@ -1,11 +1,11 @@
-const CACHE = 'gmga-pwa-v21';
-const CORE_ASSETS = ['/', '/index.html', '/manifest.webmanifest', '/icon-192.svg', '/icon-512.svg'];
+const CACHE = 'gmga-pwa-v22';
+const CORE_ASSETS = ['/index.html', '/manifest.webmanifest', '/icon-192.svg', '/icon-512.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(CACHE)
-      .then((cache) => cache.addAll(CORE_ASSETS))
+      .then((cache) => cache.addAll(CORE_ASSETS.map((u) => new Request(u, { cache: 'reload' }))))
       .then(() => self.skipWaiting())
   );
 });
@@ -73,6 +73,12 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(req)
         .then((resp) => {
+          try {
+            const copy = resp.clone();
+            caches.open(CACHE).then((cache) => cache.put('/index.html', copy));
+          } catch {
+            // ignore
+          }
           return resp;
         })
         .catch(() => caches.match('/index.html'))
