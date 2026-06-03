@@ -215,12 +215,6 @@ const PmModal = (props) => {
     }
   };
 
-  if (!showPm || !canUsePm) return null;
-
-  const pmRetired = pmRetiredSites && typeof pmRetiredSites === 'object' ? pmRetiredSites : null;
-  const pmRetiredScopeZones = Array.isArray(pmRetired?.scopeZones) ? pmRetired.scopeZones : [];
-  const pmRetiredItemsAll = Array.isArray(pmRetired?.items) ? pmRetired.items : [];
-
   const pmSitesByCode = React.useMemo(() => {
     const map = new Map();
     for (const s of Array.isArray(sites) ? sites : []) {
@@ -243,6 +237,12 @@ const PmModal = (props) => {
       .trim()
       .toUpperCase()
       .replace(/\s+/g, '');
+
+  if (!showPm || !canUsePm) return null;
+
+  const pmRetired = pmRetiredSites && typeof pmRetiredSites === 'object' ? pmRetiredSites : null;
+  const pmRetiredScopeZones = Array.isArray(pmRetired?.scopeZones) ? pmRetired.scopeZones : [];
+  const pmRetiredItemsAll = Array.isArray(pmRetired?.items) ? pmRetired.items : [];
 
   const pmEffectiveRetiredZoneFilter = pmIsSuperAdmin ? String(pmRetiredSitesZoneFilter || 'ALL') : 'ALL';
   const pmRetiredItems =
