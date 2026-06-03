@@ -44,7 +44,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.2.2';
+const APP_VERSION = '6.2.3';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -322,9 +322,32 @@ const GeneratorMaintenanceApp = () => {
         return;
       }
 
-      const next = getNextPendingEpvForSite(site);
-      const plannedDate = String(next?.plannedDate || '').slice(0, 10);
-      const epvType = String(next?.epvType || '').trim() || 'EPV1';
+      let plannedDate = '';
+      let epvType = '';
+      let resolvedInterventionId = '';
+
+      try {
+        const data = await apiFetchJson(`/api/interventions?siteId=${encodeURIComponent(String(site.id))}`, { method: 'GET' });
+        const rows = Array.isArray(data?.interventions) ? data.interventions : [];
+        const pending = rows
+          .filter((it) => it && String(it.siteId) === String(site.id))
+          .filter((it) => String(it.status || '') !== 'done')
+          .slice()
+          .sort((a, b) => String(a?.plannedDate || '').localeCompare(String(b?.plannedDate || '')));
+
+        const fallback = pending[0] || null;
+        if (fallback?.id) {
+          resolvedInterventionId = String(fallback.id);
+          plannedDate = String(fallback.plannedDate || '').slice(0, 10);
+          epvType = String(fallback.epvType || '').trim();
+        }
+      } catch {}
+
+      if (!plannedDate || !epvType) {
+        const next = getNextPendingEpvForSite(site);
+        plannedDate = String(next?.plannedDate || '').slice(0, 10);
+        epvType = String(next?.epvType || '').trim() || 'EPV1';
+      }
 
       if (!/^\d{4}-\d{2}-\d{2}$/.test(plannedDate)) {
         alert('Date EPV (planification) introuvable pour ce site.');
@@ -356,7 +379,7 @@ const GeneratorMaintenanceApp = () => {
           String(it.epvType || '').trim() === epvType
       );
 
-      let interventionId = existing?.id ? String(existing.id) : '';
+      let interventionId = resolvedInterventionId || (existing?.id ? String(existing.id) : '');
 
       if (!interventionId) {
         const created = await apiFetchJson('/api/interventions', {

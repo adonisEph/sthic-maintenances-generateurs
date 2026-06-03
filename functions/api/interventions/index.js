@@ -32,6 +32,7 @@ export async function onRequestGet({ request, env, data }) {
     const to = url.searchParams.get('to');
     const status = url.searchParams.get('status');
     const technicianUserId = url.searchParams.get('technicianUserId');
+    const siteId = url.searchParams.get('siteId');
 
     let where = '1=1';
     const binds = [];
@@ -57,6 +58,11 @@ export async function onRequestGet({ request, env, data }) {
     if (status) {
       where += ' AND i.status = ?';
       binds.push(status);
+    }
+
+    if (siteId) {
+      where += ' AND i.site_id = ?';
+      binds.push(String(siteId));
     }
 
     if (data.user.role === 'technician') {
