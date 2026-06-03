@@ -34,6 +34,13 @@ const CalendarModal = (props) => {
     setShowDayDetailsModal,
     isViewer,
     isSuperAdmin,
+    calendarHolidaySet,
+    calendarHolidays,
+    calendarHolidaysBusy,
+    calendarHolidaysError,
+    refreshCalendarHolidays,
+    onAddHoliday,
+    onDeleteHoliday,
   } = props;
 
   const isManager = String(authUser?.role || '') === 'manager';
@@ -51,6 +58,10 @@ const CalendarModal = (props) => {
 
   const [planningBusy, setPlanningBusy] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  const [showHolidays, setShowHolidays] = useState(false);
+  const [holidayDateYmd, setHolidayDateYmd] = useState('');
+  const [holidayLabel, setHolidayLabel] = useState('');
 
   const [showIntelligentWizard, setShowIntelligentWizard] = useState(false);
   const [intelligentTechUserId, setIntelligentTechUserId] = useState('');
@@ -493,6 +504,115 @@ const CalendarModal = (props) => {
                   </div>
                 )}
 
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowHolidays((v) => !v);
+                    try {
+                      if (typeof refreshCalendarHolidays === 'function') refreshCalendarHolidays();
+                    } catch {}
+                  }}
+                  className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
+                >
+                  <Calendar size={16} />
+                  {showHolidays ? 'Masquer jours fériés' : 'Jours fériés'}
+                </button>
+
+                {showHolidays && (
+                  <div className="bg-white/5 border-t border-white/10 p-3">
+                    <div className="text-xs font-bold uppercase tracking-wide text-white/90 mb-2">Jours fériés</div>
+
+                    {calendarHolidaysError && (
+                      <div className="text-xs text-rose-300 bg-rose-900/20 border border-rose-800 rounded p-2 mb-2">
+                        {calendarHolidaysError}
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 mb-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          try {
+                            if (typeof refreshCalendarHolidays === 'function') refreshCalendarHolidays();
+                          } catch {}
+                        }}
+                        className="flex-1 bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold disabled:opacity-60"
+                        disabled={Boolean(calendarHolidaysBusy)}
+                      >
+                        {calendarHolidaysBusy ? 'Chargement...' : 'Rafraîchir'}
+                      </button>
+                    </div>
+
+                    {(isAdmin || isManager) && (
+                      <div className="space-y-2 mb-3">
+                        <input
+                          type="date"
+                          value={holidayDateYmd}
+                          onChange={(e) => setHolidayDateYmd(e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
+                        />
+                        <input
+                          type="text"
+                          value={holidayLabel}
+                          onChange={(e) => setHolidayLabel(e.target.value)}
+                          placeholder="Libellé (optionnel)"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
+                        />
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              if (typeof onAddHoliday === 'function') {
+                                await onAddHoliday({ dateYmd: holidayDateYmd, label: holidayLabel });
+                                setHolidayDateYmd('');
+                                setHolidayLabel('');
+                              }
+                            } catch {}
+                          }}
+                          className="w-full bg-emerald-600 text-white px-3 py-2 rounded-lg hover:bg-emerald-700 text-sm font-semibold disabled:opacity-60"
+                          disabled={!holidayDateYmd}
+                        >
+                          Ajouter
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="max-h-48 overflow-y-auto space-y-1">
+                      {(Array.isArray(calendarHolidays) ? calendarHolidays : []).length === 0 && !calendarHolidaysBusy && (
+                        <div className="text-xs text-white/70">Aucun jour férié enregistré.</div>
+                      )}
+                      {(Array.isArray(calendarHolidays) ? calendarHolidays : []).map((h) => {
+                        const d = String(h?.dateYmd || '').slice(0, 10);
+                        const label = String(h?.label || '').trim();
+                        return (
+                          <div
+                            key={String(h?.id || d)}
+                            className="bg-white/10 rounded p-2 text-xs border border-white/10 flex items-center gap-2"
+                          >
+                            <div className="font-semibold text-white">{d}</div>
+                            <div className="text-white/70 min-w-0 flex-1 truncate">{label || ''}</div>
+                            {(isAdmin || isManager) && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    if (typeof onDeleteHoliday === 'function') {
+                                      await onDeleteHoliday({ id: h?.id, dateYmd: d });
+                                    }
+                                  } catch {}
+                                }}
+                                className="text-rose-200 hover:text-rose-100 font-bold"
+                              >
+                                Suppr.
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
               </div>
 
               {showClustering && (isAdmin || isManager) && (
@@ -724,7 +844,7 @@ const CalendarModal = (props) => {
                   {intelligentLastStats && (
                     <div className="mt-3 text-xs text-indigo-900 bg-white border border-indigo-200 rounded p-2">
                       <div className="font-semibold">Résultat</div>
-                      <div>Sites: {intelligentLastStats.sites} • Visites: {intelligentLastStats.visits} • Cadence: {intelligentLastStats.capacityVisitsPerDay} visite(s)/jour</div>
+                      <div>Sites: {intelligentLastStats.sites} • Visites: {intelligentLastStats.visits} • Cadence: {intelligentLastStats.capacitySitesPerDay} site(s)/jour</div>
                       <div>Jours ouvrés: {intelligentLastStats.workdays} • Snapshot: {intelligentLastStats.snapshotInserted} lignes • Interventions: {intelligentLastStats.interventionsUpserted}</div>
                     </div>
                   )}
@@ -760,6 +880,7 @@ const CalendarModal = (props) => {
                       const isSelected = selectedDate === dateStr;
                       const dow = new Date(`${dateStr}T00:00:00`).getDay();
                       const isWeekend = dow === 0 || dow === 6;
+                      const isHoliday = Boolean(calendarHolidaySet && calendarHolidaySet.has(dateStr));
 
                       if (isWeekend) {
                         days.push(
@@ -767,6 +888,18 @@ const CalendarModal = (props) => {
                             key={day}
                             className={`h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full bg-slate-200/70 border-gray-300`}
                           />
+                        );
+                        continue;
+                      }
+
+                      if (isHoliday) {
+                        days.push(
+                          <div
+                            key={day}
+                            className={`h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full bg-slate-200/70 border-gray-300`}
+                          >
+                            <div className="text-sm font-semibold text-gray-500">{day}</div>
+                          </div>
                         );
                         continue;
                       }

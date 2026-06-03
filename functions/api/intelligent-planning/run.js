@@ -3,7 +3,7 @@ import { json, requireAuth, readJson, isoNow, newId, ymdToday, isSuperAdmin, use
 import { touchLastUpdatedAt } from '../_utils/meta.js';
 import { calculateEstimatedNH, calculateEPVDates } from '../_utils/calc.js';
 
-const SEUIL = 250;
+const DEFAULT_SEUIL = 250;
 
 function pad2(n) {
   return String(n).padStart(2, '0');
@@ -119,6 +119,69 @@ function normalizeZone(z) {
     .replace(/\s+/g, ' ');
 }
 
+function getEasterSundayUtc(year) {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function ymdFromUtcDate(d) {
+  return new Date(d.getTime()).toISOString().slice(0, 10);
+}
+
+function addDefaultHolidaysForYear(set, year) {
+  if (!Number.isFinite(Number(year)) || Number(year) < 1970) return;
+
+  const fixedMmDd = ['01-01', '05-01', '06-10', '08-15', '11-01', '11-28', '12-25'];
+  for (const mmdd of fixedMmDd) {
+    set.add(`${String(year)}-${mmdd}`);
+  }
+
+  const easterSunday = getEasterSundayUtc(Number(year));
+  const easterMonday = new Date(easterSunday.getTime());
+  easterMonday.setUTCDate(easterMonday.getUTCDate() + 1);
+  const ascension = new Date(easterSunday.getTime());
+  ascension.setUTCDate(ascension.getUTCDate() + 39);
+  const pentecostMonday = new Date(easterSunday.getTime());
+  pentecostMonday.setUTCDate(pentecostMonday.getUTCDate() + 50);
+
+  set.add(ymdFromUtcDate(easterMonday));
+  set.add(ymdFromUtcDate(ascension));
+  set.add(ymdFromUtcDate(pentecostMonday));
+}
+
+function defaultHolidaysBetween(fromYmd, toYmd) {
+  const from = String(fromYmd || '').slice(0, 10);
+  const to = String(toYmd || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return new Set();
+
+  const y1 = Number(from.slice(0, 4));
+  const y2 = Number(to.slice(0, 4));
+  if (!Number.isFinite(y1) || !Number.isFinite(y2)) return new Set();
+
+  const out = new Set();
+  for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y += 1) {
+    addDefaultHolidaysForYear(out, y);
+  }
+
+  for (const d of Array.from(out)) {
+    if (d < from || d > to) out.delete(d);
+  }
+  return out;
+}
+
 async function loadDoneEpvBySiteIdForMonth(env, siteIds, monthYyyyMm) {
   const m = String(monthYyyyMm || '').trim();
   if (!/^\d{4}-\d{2}$/.test(m)) return new Map();
@@ -167,9 +230,11 @@ function sitePriorityTuple(site) {
   const nh1DV = Number(site?.nh1DV || 0);
   const diffHours = nh2A - nh1DV;
   const retired = Boolean(site?.retired);
+  const seuilRaw = Number(site?.seuil);
+  const seuil = Number.isFinite(seuilRaw) && seuilRaw > 0 ? seuilRaw : DEFAULT_SEUIL;
 
   // Primary: active sites that have reached or exceeded the threshold are top priority.
-  const urgentActive = !retired && diffHours >= SEUIL;
+  const urgentActive = !retired && diffHours >= seuil;
 
   // Secondary: active sites must always be prioritized over sites retired during the current month.
   const active = !retired;
@@ -214,7 +279,12 @@ async function loadHolidays(env, fromYmd, toYmd) {
 
   const res = await env.DB.prepare(`SELECT date_ymd FROM holidays WHERE ${where}`).bind(...bind).all();
   const rows = Array.isArray(res?.results) ? res.results : [];
-  return new Set(rows.map((r) => String(r?.date_ymd || '').slice(0, 10)).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x)));
+
+  const db = new Set(rows.map((r) => String(r?.date_ymd || '').slice(0, 10)).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x)));
+  const def = defaultHolidaysBetween(from, to);
+
+  for (const d of def) db.add(d);
+  return db;
 }
 
 async function loadTechnician(env, techUserId) {
@@ -254,6 +324,7 @@ async function loadSitesForTechnician(env, technicianName, technicianEmail, zone
     nameSite: String(r.name_site || ''),
     zone: normalizeZone((r?.zone == null || String(r.zone).trim() === '' ? zoneScope : r.zone) || 'BZV/POOL'),
     regime: Number(r.regime || 0),
+    seuil: Number(r.seuil || DEFAULT_SEUIL),
     nh1DV: Number(r.nh1_dv || 0),
     nh2A: Number(r.nh2_a || 0),
     dateA: String(r.date_a || '').slice(0, 10),
@@ -296,15 +367,17 @@ function findSlotInMonth(workdays, startIdx, requiredSlots, capacitySitesPerDay,
   return { date: workdays[workdays.length - 1], idx: workdays.length - 1 };
 }
 
-function intervalDays(regime) {
+function intervalDays(regime, seuil) {
   const r = Number(regime || 0);
   if (!r) return 0;
-  return SEUIL / r;
+  const sRaw = Number(seuil);
+  const s = Number.isFinite(sRaw) && sRaw > 0 ? sRaw : DEFAULT_SEUIL;
+  return s / r;
 }
 
-function computeEpvDatesFromBase(epv1Ymd, regime, holidaySet) {
+function computeEpvDatesFromBase(epv1Ymd, regime, seuil, holidaySet) {
   const d1 = shiftForWorkdaysAndHolidays(epv1Ymd, holidaySet);
-  const delta = intervalDays(regime);
+  const delta = intervalDays(regime, seuil);
   const d2 = shiftForWorkdaysAndHolidays(ymdAddDays(d1, delta), holidaySet);
   const d3 = shiftForWorkdaysAndHolidays(ymdAddDays(d2, delta), holidaySet);
   return { epv1: d1, epv2: d2, epv3: d3 };
@@ -562,9 +635,11 @@ export async function onRequestPost({ request, env, data }) {
       // Determine base EPV1 from the SiteCard-equivalent calculated EPV dates (source of truth).
       const urgentSite = siteById.get(String(v.urgentSiteId));
       const urgentRegime = Number(urgentSite?.regime || v.urgentRegime || 0);
+      const urgentSeuilRaw = Number(urgentSite?.seuil);
+      const urgentSeuil = Number.isFinite(urgentSeuilRaw) && urgentSeuilRaw > 0 ? urgentSeuilRaw : DEFAULT_SEUIL;
 
       const nhEstimated = calculateEstimatedNH(Number(urgentSite?.nh2A || 0), String(urgentSite?.dateA || ''), urgentRegime);
-      const calculated = calculateEPVDates(urgentRegime, Number(urgentSite?.nh1DV || 0), nhEstimated, SEUIL);
+      const calculated = calculateEPVDates(urgentRegime, Number(urgentSite?.nh1DV || 0), nhEstimated, urgentSeuil);
 
       // Règle: se baser sur l'historique de fiches (Effectuée) du mois courant.
       // Si EPV1/EPV2 ne sont pas effectuées ce mois-ci, elles sont considérées comme "en attente".
@@ -605,10 +680,12 @@ export async function onRequestPost({ request, env, data }) {
       // Compute EPV2/EPV3 from the placed EPV1.
       // IMPORTANT: if EPV2/EPV3 are outside the target month, we leave them empty.
       // If EPV2 is forced (case EPV1 seul non réalisé), we use the calculated EPV3 as EPV2 and recompute EPV3 from there.
-      const computed = computeEpvDatesFromBase(epv1, urgentRegime, holidays);
+      const computed = computeEpvDatesFromBase(epv1, urgentRegime, urgentSeuil, holidays);
       const forcedEpv2 = forcedEpv2Seed ? dateIfInTargetMonth(forcedEpv2Seed, targetMonth, holidays) : '';
       const epv2Base = forcedEpv2 || dateIfInTargetMonth(computed.epv2, targetMonth, holidays);
-      const epv3 = epv2Base ? dateIfInTargetMonth(computeEpvDatesFromBase(epv2Base, urgentRegime, holidays).epv3, targetMonth, holidays) : '';
+      const epv3 = epv2Base
+        ? dateIfInTargetMonth(computeEpvDatesFromBase(epv2Base, urgentRegime, urgentSeuil, holidays).epv3, targetMonth, holidays)
+        : '';
       const epv2 = epv2Base;
 
       for (const sid of v.sites) {
@@ -636,7 +713,9 @@ export async function onRequestPost({ request, env, data }) {
     for (const s of sites) {
       if (covered.has(String(s.id))) continue;
       const last = workdays[workdays.length - 1];
-      const epv = computeEpvDatesFromBase(last, Number(s.regime || 0), holidays);
+      const sSeuilRaw = Number(s?.seuil);
+      const sSeuil = Number.isFinite(sSeuilRaw) && sSeuilRaw > 0 ? sSeuilRaw : DEFAULT_SEUIL;
+      const epv = computeEpvDatesFromBase(last, Number(s.regime || 0), sSeuil, holidays);
       assignments.push({
         siteId: String(s.id),
         siteCode: s.idSite,

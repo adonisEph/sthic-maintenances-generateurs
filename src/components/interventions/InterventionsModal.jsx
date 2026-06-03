@@ -357,7 +357,7 @@ const InterventionsModal = ({
                       }
 
                       const nhEstimated = calculateEstimatedNH(site?.nh2A, site?.dateA, site?.regime);
-                      const epvDates = calculateEPVDates(site?.regime, site?.dateA, site?.nh1DV, nhEstimated);
+                      const epvDates = calculateEPVDates(site?.regime, site?.dateA, site?.nh1DV, nhEstimated, site?.seuil);
                       add(site, 'EPV1', epvDates?.epv1);
                       add(site, 'EPV2', epvDates?.epv2);
                       add(site, 'EPV3', epvDates?.epv3);
@@ -775,7 +775,7 @@ const InterventionsModal = ({
                 }
 
                 const nhEstimated = calculateEstimatedNH(site?.nh2A, site?.dateA, site?.regime);
-                const epvDates = calculateEPVDates(site?.regime, site?.dateA, site?.nh1DV, nhEstimated);
+                const epvDates = calculateEPVDates(site?.regime, site?.dateA, site?.nh1DV, nhEstimated, site?.seuil);
                 add(site, 'EPV1', epvDates?.epv1);
                 add(site, 'EPV2', epvDates?.epv2);
                 add(site, 'EPV3', epvDates?.epv3);

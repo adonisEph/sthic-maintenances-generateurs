@@ -67,7 +67,7 @@ export const useSites = ({ sites, setSites }) => {
     const nhEstimated = calculateEstimatedNH(nh2, formData.dateA, regime);
     const diffNHs = calculateDiffNHs(nh1, nh2);
     const diffEstimated = calculateDiffNHs(nh1, nhEstimated);
-    const epvDates = calculateEPVDates(regime, formData.dateA, nh1, nhEstimated);
+    const epvDates = calculateEPVDates(regime, formData.dateA, nh1, nhEstimated, 250);
 
     const newSite = {
       nameSite: formData.nameSite,

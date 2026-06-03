@@ -37,7 +37,11 @@ export async function onRequestGet({ request, env, data }) {
     const binds = [];
 
     const z = userZone(data);
-    if (!isSuperAdmin(data) && (data.user.role === 'manager' || data.user.role === 'technician')) {
+    if (!isSuperAdmin(data) && data.user.role === 'admin') {
+      where += ' AND i.zone = ?';
+      binds.push(z);
+    }
+    if (!isSuperAdmin(data) && data.user.role === 'technician') {
       where += ' AND i.zone = ?';
       binds.push(z);
     }
@@ -115,7 +119,7 @@ export async function onRequestPost({ request, env, data }) {
     const site = await env.DB.prepare('SELECT id, zone FROM sites WHERE id = ?').bind(siteId).first();
     if (!site) return json({ error: 'Site introuvable.' }, { status: 404 });
     const zone = String(site.zone || 'BZV/POOL');
-    if (!isSuperAdmin(data)) {
+    if (role === 'admin' && !isSuperAdmin(data)) {
       const z = userZone(data);
       if (zone !== z) return json({ error: 'Accès interdit.' }, { status: 403 });
     }
@@ -252,7 +256,7 @@ export async function onRequestDelete({ request, env, data }) {
     const row = await env.DB.prepare('SELECT * FROM interventions WHERE id = ?').bind(id).first();
     if (!row) return json({ ok: true, deleted: 0 }, { status: 200 });
 
-    if (!isSuperAdmin(data)) {
+    if (role === 'admin' && !isSuperAdmin(data)) {
       const z = userZone(data);
       if (String(row.zone || 'BZV/POOL') !== z) {
         return json({ error: 'Accès interdit.' }, { status: 403 });

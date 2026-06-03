@@ -205,6 +205,7 @@ const FicheModal = ({
   }, [ficheHistory, siteForFiche, ficheId]);
 
   const shouldIncludeCoolant = Boolean(coolantRule?.shouldInclude);
+  const coolantAlreadyProvided = !shouldIncludeCoolant;
 
   const warehouseIncludeAirFilter = localWarehouseAirFilterOk === true;
   const warehouseIncludeCoolant = localWarehouseCoolant5lOk === true;
@@ -219,7 +220,11 @@ const FicheModal = ({
     : canShowWarehouseControls
       ? localWarehouseAirFilterOk !== false
       : shouldIncludeAirFilter;
-  const effectiveIncludeCoolant = canShowWarehouseControls ? localWarehouseCoolant5lOk !== false : shouldIncludeCoolant;
+  const effectiveIncludeCoolant = coolantAlreadyProvided
+    ? false
+    : canShowWarehouseControls
+      ? localWarehouseCoolant5lOk !== false
+      : shouldIncludeCoolant;
 
   const shouldIncludeAirAndCoolant = effectiveIncludeAirFilter || effectiveIncludeCoolant;
 
@@ -352,7 +357,7 @@ const FicheModal = ({
 
   const canShowBannerBlock = !isWarehouseView && !Boolean(disableSignatureAutofetch);
 
-  const shouldShowFinalizeArtifacts = !canShowFinalize || Boolean(bannerImage);
+  const shouldShowFinalizeArtifacts = true;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
@@ -545,6 +550,16 @@ const FicheModal = ({
                   <button
                     type="button"
                     onClick={async () => {
+                      if (canShowWarehouseControls && !isWarehouseReadOnly) {
+                        if (!airFilterAlreadyProvided && (localWarehouseAirFilterOk === null || localWarehouseAirFilterOk === undefined)) {
+                          alert('Veuillez sélectionner la disponibilité du Filtre à air GE.');
+                          return;
+                        }
+                        if (!coolantAlreadyProvided && (localWarehouseCoolant5lOk === null || localWarehouseCoolant5lOk === undefined)) {
+                          alert('Veuillez sélectionner la disponibilité du liquide de refroidissement.');
+                          return;
+                        }
+                      }
                       await onFinalizeFiche({ ficheId });
                     }}
                     disabled={Boolean(finalizeBusy)}
@@ -556,7 +571,7 @@ const FicheModal = ({
               )}
             </div>
 
-            {canShowWarehouseControls && (
+            {canShowWarehouseControls && (!airFilterAlreadyProvided || !coolantAlreadyProvided) && (
               <div className="mb-4 border border-gray-300 rounded-lg p-3 text-sm">
                 <div className="font-bold text-gray-800 mb-2">{warehouseControlsLabel}</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -574,13 +589,19 @@ const FicheModal = ({
                         <button
                           type="button"
                           disabled={isWarehouseReadOnly}
-                          onClick={() => {
-                            setLocalWarehouseAirFilterOk(true);
-                            onSaveWarehouseCheck && onSaveWarehouseCheck({
-                              ficheId,
-                              warehouseAirFilterOk: true,
-                              warehouseCoolant5lOk: localWarehouseCoolant5lOk
-                            });
+                          onClick={async () => {
+                            const prev = localWarehouseAirFilterOk;
+                            try {
+                              setLocalWarehouseAirFilterOk(true);
+                              await (onSaveWarehouseCheck && onSaveWarehouseCheck({
+                                ficheId,
+                                warehouseAirFilterOk: true,
+                                warehouseCoolant5lOk: localWarehouseCoolant5lOk
+                              }));
+                            } catch (e) {
+                              setLocalWarehouseAirFilterOk(prev);
+                              alert(e?.message || 'Erreur serveur.');
+                            }
                           }}
                           className={`px-3 py-2 rounded-lg font-semibold border ${localWarehouseAirFilterOk === true ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-white text-gray-800 border-gray-300'}`}
                         >
@@ -589,13 +610,19 @@ const FicheModal = ({
                         <button
                           type="button"
                           disabled={isWarehouseReadOnly}
-                          onClick={() => {
-                            setLocalWarehouseAirFilterOk(false);
-                            onSaveWarehouseCheck && onSaveWarehouseCheck({
-                              ficheId,
-                              warehouseAirFilterOk: false,
-                              warehouseCoolant5lOk: localWarehouseCoolant5lOk
-                            });
+                          onClick={async () => {
+                            const prev = localWarehouseAirFilterOk;
+                            try {
+                              setLocalWarehouseAirFilterOk(false);
+                              await (onSaveWarehouseCheck && onSaveWarehouseCheck({
+                                ficheId,
+                                warehouseAirFilterOk: false,
+                                warehouseCoolant5lOk: localWarehouseCoolant5lOk
+                              }));
+                            } catch (e) {
+                              setLocalWarehouseAirFilterOk(prev);
+                              alert(e?.message || 'Erreur serveur.');
+                            }
                           }}
                           className={`px-3 py-2 rounded-lg font-semibold border ${localWarehouseAirFilterOk === false ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-800 border-gray-300'}`}
                         >
@@ -605,41 +632,55 @@ const FicheModal = ({
                     </div>
                   )}
 
-                  <div className="border border-gray-200 rounded-lg p-3">
-                    <div className="font-semibold text-gray-800 mb-2">05 Litres liquide de refroidissement</div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        disabled={isWarehouseReadOnly}
-                        onClick={() => {
-                          setLocalWarehouseCoolant5lOk(true);
-                          onSaveWarehouseCheck && onSaveWarehouseCheck({
-                            ficheId,
-                            warehouseAirFilterOk: localWarehouseAirFilterOk,
-                            warehouseCoolant5lOk: true
-                          });
-                        }}
-                        className={`px-3 py-2 rounded-lg font-semibold border ${localWarehouseCoolant5lOk === true ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-white text-gray-800 border-gray-300'}`}
-                      >
-                        ✅ Disponible
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isWarehouseReadOnly}
-                        onClick={() => {
-                          setLocalWarehouseCoolant5lOk(false);
-                          onSaveWarehouseCheck && onSaveWarehouseCheck({
-                            ficheId,
-                            warehouseAirFilterOk: localWarehouseAirFilterOk,
-                            warehouseCoolant5lOk: false
-                          });
-                        }}
-                        className={`px-3 py-2 rounded-lg font-semibold border ${localWarehouseCoolant5lOk === false ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-800 border-gray-300'}`}
-                      >
-                        ❌ Indispo
-                      </button>
+                  {!coolantAlreadyProvided && (
+                    <div className="border border-gray-200 rounded-lg p-3">
+                      <div className="font-semibold text-gray-800 mb-2">05 Litres liquide de refroidissement</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          disabled={isWarehouseReadOnly}
+                          onClick={async () => {
+                            const prev = localWarehouseCoolant5lOk;
+                            try {
+                              setLocalWarehouseCoolant5lOk(true);
+                              await (onSaveWarehouseCheck && onSaveWarehouseCheck({
+                                ficheId,
+                                warehouseAirFilterOk: localWarehouseAirFilterOk,
+                                warehouseCoolant5lOk: true
+                              }));
+                            } catch (e) {
+                              setLocalWarehouseCoolant5lOk(prev);
+                              alert(e?.message || 'Erreur serveur.');
+                            }
+                          }}
+                          className={`px-3 py-2 rounded-lg font-semibold border ${localWarehouseCoolant5lOk === true ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-white text-gray-800 border-gray-300'}`}
+                        >
+                          ✅ Disponible
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isWarehouseReadOnly}
+                          onClick={async () => {
+                            const prev = localWarehouseCoolant5lOk;
+                            try {
+                              setLocalWarehouseCoolant5lOk(false);
+                              await (onSaveWarehouseCheck && onSaveWarehouseCheck({
+                                ficheId,
+                                warehouseAirFilterOk: localWarehouseAirFilterOk,
+                                warehouseCoolant5lOk: false
+                              }));
+                            } catch (e) {
+                              setLocalWarehouseCoolant5lOk(prev);
+                              alert(e?.message || 'Erreur serveur.');
+                            }
+                          }}
+                          className={`px-3 py-2 rounded-lg font-semibold border ${localWarehouseCoolant5lOk === false ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-800 border-gray-300'}`}
+                        >
+                          ❌ Indispo
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 {!isWarehouseReadOnly && (
@@ -658,6 +699,8 @@ const FicheModal = ({
                               warehouseCoolant5lOk: localWarehouseCoolant5lOk
                             });
                             setWarehouseSubmitSuccessOpen(true);
+                          } catch (e) {
+                            alert(e?.message || 'Erreur serveur.');
                           } finally {
                             setWarehouseSubmitBusy(false);
                           }

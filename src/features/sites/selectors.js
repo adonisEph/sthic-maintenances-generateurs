@@ -8,7 +8,7 @@ import {
 export const getUpdatedSite = (site) => {
   const nhEstimated = calculateEstimatedNH(site.nh2A, site.dateA, site.regime);
   const diffEstimated = calculateDiffNHs(site.nh1DV, nhEstimated);
-  const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, nhEstimated);
+  const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, nhEstimated, site?.seuil);
 
   const normYmd = (d) => {
     const s = String(d || '').slice(0, 10);

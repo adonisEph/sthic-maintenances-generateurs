@@ -139,7 +139,7 @@ export async function onRequestPatch({ request, env, data, params }) {
       if (zone !== z) return json({ error: 'Accès interdit.' }, { status: 403 });
     }
 
-    if (role === 'admin' || role === 'manager') {
+    if (role === 'admin' && !isSuperAdmin(data)) {
       const z = String(userZone(data) || 'BZV/POOL');
       if (zone !== z) return json({ error: 'Accès interdit.' }, { status: 403 });
     }
@@ -202,6 +202,27 @@ export async function onRequestPatch({ request, env, data, params }) {
 
       const air = boolToDb(body?.warehouseAirFilterOk);
       const coolant = boolToDb(body?.warehouseCoolant5lOk);
+
+      if (air === 1) {
+        const campaignMonth = String((existing?.planned_date || existing?.date_generated || '')).slice(0, 7);
+        if (campaignMonth) {
+          const already = await env.DB.prepare(
+            `SELECT id
+             FROM fiche_history
+             WHERE site_id = ?
+               AND id != ?
+               AND warehouse_air_filter_ok = 1
+               AND substr(COALESCE(planned_date, date_generated), 1, 7) = ?
+               AND (status IS NULL OR status != 'Annulée')
+             LIMIT 1`
+          )
+            .bind(String(existing.site_id), id, campaignMonth)
+            .first();
+          if (already?.id) {
+            return json({ error: 'Filtre à air GE déjà sorti pour cette campagne.' }, { status: 409 });
+          }
+        }
+      }
 
       const hadNoWarehouseCheck =
         existing?.warehouse_air_filter_ok === null &&

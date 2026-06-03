@@ -29,7 +29,7 @@ import FicheModal from './components/fiche/FicheModal';
 import SuperAdminFicheChoiceModal from './components/fiche/SuperAdminFicheChoiceModal';
 import DayDetailsModal from './components/calendar/DayDetailsModal';
 import TechnicianCalendarModal from './components/calendar/TechnicianCalendarModal';
-import PmSiteInfoModal from './components/PmSiteInfoModal';
+ 
 
 import {
   calculateRegime,
@@ -44,11 +44,12 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.1.1';
+const APP_VERSION = '6.2.0';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
 const APP_VERSION_FORCE_AFTER_DAYS = 0;
+const APP_VERSION_FORCE_FOR_ANY_UPDATE = true;
 const APP_VERSION_REQUIRED_KEY = 'gma_app_required_version';
 const DAILY_NH_UPDATE_STORAGE_KEY = 'gma_daily_nh_update_ymd';
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
@@ -207,6 +208,7 @@ const GeneratorMaintenanceApp = () => {
   const [historyDateFrom, setHistoryDateFrom] = useState('');
   const [historyDateTo, setHistoryDateTo] = useState('');
   const [historyStatus, setHistoryStatus] = useState('all');
+  const [historyInterventionStatus, setHistoryInterventionStatus] = useState('all');
   const [historySort, setHistorySort] = useState('newest');
   const [pmMonth, setPmMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [pmMonthId, setPmMonthId] = useState('');
@@ -248,6 +250,9 @@ const GeneratorMaintenanceApp = () => {
   const [pmReprogError, setPmReprogError] = useState('');
   const [pmReprogSaving, setPmReprogSaving] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [calendarHolidays, setCalendarHolidays] = useState([]);
+  const [calendarHolidaysBusy, setCalendarHolidaysBusy] = useState(false);
+  const [calendarHolidaysError, setCalendarHolidaysError] = useState('');
   const [calendarSendTechUserId, setCalendarSendTechUserId] = useState('');
   const [pmSendTechUserId, setPmSendTechUserId] = useState('');
   const [pmSendBusy, setPmSendBusy] = useState(false);
@@ -266,11 +271,7 @@ const GeneratorMaintenanceApp = () => {
   const [isBatchFiche, setIsBatchFiche] = useState(false);
   const [batchFicheSites, setBatchFicheSites] = useState([]);
   const [batchFicheIndex, setBatchFicheIndex] = useState(0);
-  const [pmSiteInfoOpen, setPmSiteInfoOpen] = useState(false);
-  const [pmSiteInfoBusy, setPmSiteInfoBusy] = useState(false);
-  const [pmSiteInfoError, setPmSiteInfoError] = useState('');
-  const [pmSiteInfoSite, setPmSiteInfoSite] = useState(null);
-  const [pmSiteInfoItem, setPmSiteInfoItem] = useState(null);
+  const [pmSitesItems, setPmSitesItems] = useState([]);
   const [formData, setFormData] = useState({
     nameSite: '',
     idSite: '',
@@ -394,6 +395,23 @@ const GeneratorMaintenanceApp = () => {
     } catch (e) {
       alert(e?.message || 'Erreur serveur.');
     }
+  };
+
+  const closeFicheModal = () => {
+    setTicketLabel('');
+    setShowFicheModal(false);
+    setSiteForFiche(null);
+    setBannerImage('');
+    setFicheContext(null);
+    setSignatureTypedName('');
+    setSignatureDrawnPng('');
+    setIsBatchFiche(false);
+    setBatchFicheSites([]);
+    setBatchFicheIndex(0);
+    setFicheOpenSource('');
+    setFicheFlowMode('');
+    setHideProcessButtonsOverride(false);
+    setFinalizeBusy(false);
   };
 
   const warehouseProcessCount = useMemo(() => {
@@ -618,42 +636,43 @@ const GeneratorMaintenanceApp = () => {
     }
   };
 
-  const handleOpenPmSiteInfo = async (site) => {
-    try {
-      setPmSiteInfoOpen(true);
-      setPmSiteInfoBusy(true);
-      setPmSiteInfoError('');
-      setPmSiteInfoSite(site || null);
-      setPmSiteInfoItem(null);
+  const pmSitesItemsKeyRef = useRef('');
+  const pmSitesItemsBusyRef = useRef(false);
 
-      const month = String(pmMonth || new Date().toISOString().slice(0, 7)).trim();
-      const monthId = await ensurePmMonth(month);
-      if (!monthId) throw new Error('Mois PM introuvable.');
+  useEffect(() => {
+    (async () => {
+      try {
+        const role = String(authUser?.role || '').trim();
+        const canRead = role === 'admin' || role === 'manager' || role === 'viewer';
+        if (!canRead) {
+          setPmSitesItems([]);
+          pmSitesItemsKeyRef.current = '';
+          return;
+        }
 
-      const data = await apiFetchJson(`/api/pm/months/${monthId}/items`, { method: 'GET' });
-      const items = Array.isArray(data?.items) ? data.items : [];
+        const month = String(pmMonth || new Date().toISOString().slice(0, 7)).trim();
+        if (!/^\d{4}-\d{2}$/.test(month)) return;
 
-      const code = String(site?.idSite || '').trim().toUpperCase().replace(/\s+/g, '');
-      const matchesSite = (it) => {
-        const itCode = String(it?.siteCode || it?.siteId || '').trim().toUpperCase().replace(/\s+/g, '');
-        return Boolean(code && itCode && itCode === code);
-      };
+        const monthId = pmMonthId || (await ensurePmMonth(month));
+        if (!monthId) return;
 
-      const matchesType = (it) => {
-        const t = String(it?.maintenanceType || '').trim().toUpperCase();
-        return t === 'FULLPMWO' || t === 'DG SERVICE' || t === 'DGSERVICE';
-      };
+        if (!pmMonthId) setPmMonthId(monthId);
 
-      const candidates = items.filter((it) => matchesSite(it) && matchesType(it));
-      candidates.sort((a, b) => String(a?.scheduledWoDate || '').localeCompare(String(b?.scheduledWoDate || '')));
+        const key = `${month}|${monthId}`;
+        if (pmSitesItemsKeyRef.current === key) return;
+        if (pmSitesItemsBusyRef.current) return;
 
-      setPmSiteInfoItem(candidates[0] || null);
-    } catch (e) {
-      setPmSiteInfoError(e?.message || 'Erreur chargement PM.');
-    } finally {
-      setPmSiteInfoBusy(false);
-    }
-  };
+        pmSitesItemsBusyRef.current = true;
+        const data = await apiFetchJson(`/api/pm/months/${monthId}/items`, { method: 'GET' });
+        setPmSitesItems(Array.isArray(data?.items) ? data.items : []);
+        pmSitesItemsKeyRef.current = key;
+      } catch {
+        setPmSitesItems([]);
+      } finally {
+        pmSitesItemsBusyRef.current = false;
+      }
+    })();
+  }, [authUser?.id, authUser?.role, pmMonth, pmMonthId]);
 
   const handleSendCalendarMonthPlanning = async () => {
     try {
@@ -718,6 +737,71 @@ const GeneratorMaintenanceApp = () => {
       await loadInterventions(month, 'all', 'all');
     } catch (e) {
       alert(e?.message || 'Erreur lors de l\'envoi du planning mensuel.');
+    }
+  };
+
+  const loadCalendarHolidays = async (year) => {
+    setCalendarHolidaysBusy(true);
+    setCalendarHolidaysError('');
+    try {
+      const years = Array.isArray(year) ? year : [year];
+      const parsed = years
+        .map((v) => Number(v))
+        .filter((v) => Number.isFinite(v) && v >= 1970);
+      if (parsed.length === 0) {
+        setCalendarHolidays([]);
+        return;
+      }
+      const minYear = Math.min(...parsed);
+      const maxYear = Math.max(...parsed);
+      const from = `${String(minYear - 1)}-01-01`;
+      const to = `${String(maxYear + 1)}-12-31`;
+      const data = await apiFetchJson(`/api/holidays?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
+        method: 'GET'
+      });
+      setCalendarHolidays(Array.isArray(data?.holidays) ? data.holidays : []);
+    } catch (e) {
+      setCalendarHolidays([]);
+      setCalendarHolidaysError(e?.message || 'Erreur chargement jours fériés.');
+    } finally {
+      setCalendarHolidaysBusy(false);
+    }
+  };
+
+  const handleAddCalendarHoliday = async ({ dateYmd, label }) => {
+    try {
+      if (!isAdmin && !isManager) return;
+      const d = String(dateYmd || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+        alert('Date invalide.');
+        return;
+      }
+      await apiFetchJson('/api/holidays', {
+        method: 'POST',
+        body: JSON.stringify({ dateYmd: d, label: String(label || '').trim() })
+      });
+      const y = Number(d.slice(0, 4));
+      await loadCalendarHolidays(y);
+    } catch (e) {
+      alert(e?.message || 'Erreur ajout jour férié.');
+    }
+  };
+
+  const handleDeleteCalendarHoliday = async ({ id, dateYmd }) => {
+    try {
+      if (!isAdmin && !isManager) return;
+      const payload = {};
+      if (id) payload.id = String(id);
+      if (dateYmd) payload.dateYmd = String(dateYmd).slice(0, 10);
+      if (!payload.id && !payload.dateYmd) return;
+      await apiFetchJson('/api/holidays', {
+        method: 'DELETE',
+        body: JSON.stringify(payload)
+      });
+      const y = payload.dateYmd ? Number(String(payload.dateYmd).slice(0, 4)) : Number(currentMonth?.getFullYear?.() || new Date().getFullYear());
+      await loadCalendarHolidays(y);
+    } catch (e) {
+      alert(e?.message || 'Erreur suppression jour férié.');
     }
   };
 
@@ -1054,7 +1138,7 @@ const GeneratorMaintenanceApp = () => {
 
     const checkServerVersion = async () => {
       try {
-        const resp = await fetch(`/app-version.json?ts=${Date.now()}`, { cache: 'no-store' });
+        const resp = await fetch('/app-version.json', { cache: 'no-store' });
         const raw = await resp.text();
         const data = raw ? JSON.parse(raw) : null;
 
@@ -1083,7 +1167,7 @@ const GeneratorMaintenanceApp = () => {
 
         const dismissedThisVersion = dismissedFor && dismissedFor === serverVersion;
         const forceByMajor = majorOf(serverVersion) > majorOf(currentVersion);
-        const force = Boolean(forceByMajor || forceBySnooze);
+        const force = Boolean(APP_VERSION_FORCE_FOR_ANY_UPDATE || forceByMajor || forceBySnooze);
 
         if (canceled) return;
 
@@ -1106,9 +1190,11 @@ const GeneratorMaintenanceApp = () => {
     onVisibility = () => {
       if (document.visibilityState === 'visible') checkServerVersion();
     };
+    const onOnline = () => checkServerVersion();
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVisibility);
-    intervalId = null;
+    window.addEventListener('online', onOnline);
+    intervalId = window.setInterval(() => checkServerVersion(), 60 * 1000);
 
     return () => {
       canceled = true;
@@ -1116,6 +1202,7 @@ const GeneratorMaintenanceApp = () => {
         if (intervalId) window.clearInterval(intervalId);
         if (onFocus) window.removeEventListener('focus', onFocus);
         if (onVisibility) document.removeEventListener('visibilitychange', onVisibility);
+        window.removeEventListener('online', onOnline);
       } catch {
         // ignore
       }
@@ -1320,7 +1407,7 @@ const GeneratorMaintenanceApp = () => {
           String(retiredRaw || '').trim().toLowerCase() === 'true';
         const nhEstimated = calculateEstimatedNH(site.nh2A, site.dateA, site.regime);
         const diffEstimated = calculateDiffNHs(site.nh1DV, nhEstimated);
-        const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, nhEstimated);
+        const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, nhEstimated, site?.seuil);
         const epv1 = normYmd(site.epv1) || normYmd(epvDates.epv1);
         const epv2 = normYmd(site.epv2) || normYmd(epvDates.epv2);
         const epv3 = normYmd(site.epv3) || normYmd(epvDates.epv3);
@@ -3407,7 +3494,7 @@ const GeneratorMaintenanceApp = () => {
     const nhEstimated = calculateEstimatedNH(nh2, formData.dateA, regime);
     const diffNHs = calculateDiffNHs(nh1, nh2);
     const diffEstimated = calculateDiffNHs(nh1, nhEstimated);
-    const epvDates = calculateEPVDates(regime, formData.dateA, nh1, nhEstimated);
+    const epvDates = calculateEPVDates(regime, formData.dateA, nh1, nhEstimated, 250);
 
     const newSite = {
       nameSite: formData.nameSite,
@@ -4066,7 +4153,7 @@ const GeneratorMaintenanceApp = () => {
         setFinalizeBusy(false);
 
         // Option UX: fermer la fiche après finalisation
-        setShowFicheModal(false);
+        closeFicheModal();
       };
 
       window.addEventListener('afterprint', afterPrint);
@@ -4183,15 +4270,7 @@ const GeneratorMaintenanceApp = () => {
           setTicketLabel('');
 
         } else {
-          setIsBatchFiche(false);
-          setBatchFicheSites([]);
-          setBatchFicheIndex(0);
-          setShowFicheModal(false);
-          setSiteForFiche(null);
-          setBannerImage('');
-          setFicheContext(null);
-          setSignatureTypedName('');
-          setSignatureDrawnPng('');
+          closeFicheModal();
         }
       }
     })();
@@ -4333,15 +4412,7 @@ const GeneratorMaintenanceApp = () => {
           setTicketLabel('');
 
         } else {
-          setIsBatchFiche(false);
-          setBatchFicheSites([]);
-          setBatchFicheIndex(0);
-          setShowFicheModal(false);
-          setSiteForFiche(null);
-          setBannerImage('');
-          setFicheContext(null);
-          setSignatureTypedName('');
-          setSignatureDrawnPng('');
+          closeFicheModal();
         }
       }
     } catch (e) {
@@ -4432,23 +4503,33 @@ const GeneratorMaintenanceApp = () => {
       const plannedDate = fiche?.plannedDate ? String(fiche.plannedDate).slice(0, 10) : '';
       const epvType = fiche?.epvType ? String(fiche.epvType).trim() : '';
       const technicianName = fiche?.technician ? String(fiche.technician).trim() : '';
+      const interventionId = fiche?.interventionId ? String(fiche.interventionId).trim() : '';
+      const resolvedInterventionId = fiche?.resolvedInterventionId ? String(fiche.resolvedInterventionId).trim() : '';
+      const idToSend = interventionId || resolvedInterventionId;
 
-      if (!siteId || !plannedDate || !epvType || !technicianName) {
-        alert("Impossible de déclencher: fiche incomplète (siteId / plannedDate / epvType / technicien).");
-        return;
+      if (idToSend) {
+        await apiFetchJson(`/api/interventions/${encodeURIComponent(idToSend)}/send`, {
+          method: 'POST'
+        });
+      } else {
+        if (!siteId || !plannedDate || !epvType || !technicianName) {
+          alert("Impossible de déclencher: fiche incomplète (siteId / plannedDate / epvType / technicien).");
+          return;
+        }
+        await apiFetchJson('/api/interventions', {
+          method: 'POST',
+          body: JSON.stringify({
+            siteId,
+            plannedDate,
+            epvType,
+            technicianName,
+            status: 'sent'
+          })
+        });
       }
 
-      // Option A: pas de notifications. On met juste l'intervention en 'sent'
-      await apiFetchJson('/api/interventions', {
-        method: 'POST',
-        body: JSON.stringify({
-          siteId,
-          plannedDate,
-          epvType,
-          technicianName,
-          status: 'sent'
-        })
-      });
+      await loadInterventions();
+      await loadFicheHistory();
 
       alert('✅ Intervention déclenchée et envoyée au technicien.');
     } catch (e) {
@@ -4576,7 +4657,7 @@ const GeneratorMaintenanceApp = () => {
         const nhEstimated = calculateEstimatedNH(s.nh2A, s.dateA, regime);
         const diffNHs = 0; // Compteur repart à zéro
         const diffEstimated = calculateDiffNHs(newNh1DV, nhEstimated);
-        const epvDates = calculateEPVDates(regime, s.dateA, newNh1DV, nhEstimated);
+        const epvDates = calculateEPVDates(regime, s.dateA, newNh1DV, nhEstimated, s?.seuil);
 
         return {
           ...s,
@@ -4692,7 +4773,7 @@ const GeneratorMaintenanceApp = () => {
           const nhEstimated = calculateEstimatedNH(nh2, dateAStr, regime);
           const diffNHs = calculateDiffNHs(nh1, nh2);
           const diffEstimated = calculateDiffNHs(nh1, nhEstimated);
-          const epvDates = calculateEPVDates(regime, dateAStr, nh1, nhEstimated);
+          const epvDates = calculateEPVDates(regime, dateAStr, nh1, nhEstimated, 250);
 
           let retired = false;
           const retireValue = row['Retiré'] || row['Retire'] || row['retired'];
@@ -5328,7 +5409,7 @@ const GeneratorMaintenanceApp = () => {
     };
     const nhEstimated = calculateEstimatedNH(site.nh2A, site.dateA, site.regime);
     const diffEstimated = calculateDiffNHs(site.nh1DV, nhEstimated);
-    const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, nhEstimated);
+    const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, nhEstimated, site?.seuil);
 
     const epv1 = normYmd(site?.epv1) || normYmd(epvDates?.epv1);
     const epv2 = normYmd(site?.epv2) || normYmd(epvDates?.epv2);
@@ -5509,7 +5590,7 @@ const GeneratorMaintenanceApp = () => {
   };
 
   const getNextPendingEpvForSiteRecalculated = (site) => {
-    const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, site.nhEstimated);
+    const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, site.nhEstimated, site?.seuil);
     const passages = getSitePassages(site, epvDates);
     const nextPending = passages.find(p => !p.done) || null;
     return nextPending
@@ -5675,6 +5756,58 @@ const GeneratorMaintenanceApp = () => {
       return String(site?.zone || '').trim() === z;
     });
 
+  const pmInfoBySiteCode = useMemo(() => {
+    const items = Array.isArray(pmSitesItems) ? pmSitesItems : [];
+    const map = new Map();
+
+    const normCode = (v) => String(v || '').trim().toUpperCase().replace(/\s+/g, '');
+    const matchesType = (it) => {
+      const t = String(it?.maintenanceType || '').trim().toUpperCase();
+      return t === 'FULLPMWO' || t === 'DG SERVICE' || t === 'DGSERVICE';
+    };
+
+    for (const it of items) {
+      if (!it) continue;
+      if (!matchesType(it)) continue;
+      const code = normCode(it?.siteCode || it?.siteId || '');
+      if (!code) continue;
+      const scheduled = it?.scheduledWoDate ? String(it.scheduledWoDate).slice(0, 10) : '';
+      if (!scheduled) continue;
+
+      const prev = map.get(code);
+      if (!prev || String(scheduled).localeCompare(String(prev?.scheduled || '')) < 0) {
+        map.set(code, {
+          scheduled,
+          state: it?.state ? String(it.state).trim() : '',
+          maintenanceType: it?.maintenanceType ? String(it.maintenanceType).trim() : ''
+        });
+      }
+    }
+
+    return map;
+  }, [pmSitesItems]);
+
+  const sortedSites = useMemo(() => {
+    const list = Array.isArray(filteredSites) ? [...filteredSites] : [];
+    const normCode = (v) => String(v || '').trim().toUpperCase().replace(/\s+/g, '');
+    const dateOf = (site) => {
+      const code = normCode(site?.idSite || '');
+      const info = code ? pmInfoBySiteCode.get(code) : null;
+      return info?.scheduled ? String(info.scheduled) : '';
+    };
+
+    list.sort((a, b) => {
+      const da = dateOf(a);
+      const db = dateOf(b);
+      if (da && db) return da.localeCompare(db);
+      if (da) return -1;
+      if (db) return 1;
+      return String(a?.nameSite || '').localeCompare(String(b?.nameSite || ''));
+    });
+
+    return list;
+  }, [filteredSites, pmInfoBySiteCode]);
+
     const footerZoneActive =
       showZoneFilter && dashboardZone && dashboardZone !== 'ALL' ? String(dashboardZone) : '';
 
@@ -5755,6 +5888,29 @@ const GeneratorMaintenanceApp = () => {
     }
   }, [showCalendar, calendarMonthKey, sites]);
 
+  const calendarYear = (() => {
+    try {
+      return currentMonth?.getFullYear ? Number(currentMonth.getFullYear()) : new Date().getFullYear();
+    } catch {
+      return new Date().getFullYear();
+    }
+  })();
+
+  useEffect(() => {
+    if (!showCalendar) return;
+    (async () => {
+      try {
+        const years = new Set([calendarYear]);
+        const mm = String(techCalendarMonth || '').trim().match(/^(\d{4})-(\d{2})$/);
+        if (mm) {
+          const y = Number(mm[1]);
+          if (Number.isFinite(y) && y >= 1970) years.add(y);
+        }
+        await loadCalendarHolidays(Array.from(years));
+      } catch {}
+    })();
+  }, [showCalendar, calendarYear, techCalendarMonth]);
+
   const calendarFilteredSites = sites
     .map(getUpdatedSite)
     .filter((site) => {
@@ -5769,6 +5925,75 @@ const GeneratorMaintenanceApp = () => {
   const interventionsByKey = new Map(
     (Array.isArray(interventions) ? interventions : []).filter(Boolean).map((i) => [getInterventionKey(i.siteId, i.plannedDate, i.epvType), i])
   );
+
+  const calendarHolidaySet = useMemo(() => {
+    const out = new Set();
+
+    const fixedMmDd = ['01-01', '05-01', '06-10', '08-15', '11-01', '11-28', '12-25'];
+
+    const getEasterSunday = (year) => {
+      const a = year % 19;
+      const b = Math.floor(year / 100);
+      const c = year % 100;
+      const d = Math.floor(b / 4);
+      const e = b % 4;
+      const f = Math.floor((b + 8) / 25);
+      const g = Math.floor((b - f + 1) / 3);
+      const h = (19 * a + b - d - g + 15) % 30;
+      const i = Math.floor(c / 4);
+      const k = c % 4;
+      const l = (32 + 2 * e + 2 * i - h - k) % 7;
+      const m = Math.floor((a + 11 * h + 22 * l) / 451);
+      const month = Math.floor((h + l - 7 * m + 114) / 31);
+      const day = ((h + l - 7 * m + 114) % 31) + 1;
+      return new Date(Date.UTC(year, month - 1, day));
+    };
+
+    const ymdFromUtcDate = (d) => new Date(d.getTime()).toISOString().slice(0, 10);
+
+    const addYear = (year) => {
+      const y = Number(year);
+      if (!Number.isFinite(y) || y < 1970) return;
+      for (const mmdd of fixedMmDd) out.add(`${String(y)}-${mmdd}`);
+
+      const easterSunday = getEasterSunday(y);
+      const easterMonday = new Date(easterSunday.getTime());
+      easterMonday.setUTCDate(easterMonday.getUTCDate() + 1);
+      const ascension = new Date(easterSunday.getTime());
+      ascension.setUTCDate(ascension.getUTCDate() + 39);
+      const pentecostMonday = new Date(easterSunday.getTime());
+      pentecostMonday.setUTCDate(pentecostMonday.getUTCDate() + 50);
+
+      out.add(ymdFromUtcDate(easterMonday));
+      out.add(ymdFromUtcDate(ascension));
+      out.add(ymdFromUtcDate(pentecostMonday));
+    };
+
+    const years = new Set();
+    years.add(calendarYear);
+    const mm = String(techCalendarMonth || '').trim().match(/^(\d{4})-(\d{2})$/);
+    if (mm) {
+      const y = Number(mm[1]);
+      if (Number.isFinite(y) && y >= 1970) years.add(y);
+    }
+
+    const arr = Array.isArray(calendarHolidays) ? calendarHolidays : [];
+    for (const h of arr) {
+      const d = String(h?.dateYmd || '').slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+        out.add(d);
+        const y = Number(d.slice(0, 4));
+        if (Number.isFinite(y) && y >= 1970) years.add(y);
+      }
+    }
+
+    const yearsArr = Array.from(years);
+    const minYear = yearsArr.length ? Math.min(...yearsArr) : calendarYear;
+    const maxYear = yearsArr.length ? Math.max(...yearsArr) : calendarYear;
+    for (let y = minYear - 1; y <= maxYear + 1; y += 1) addYear(y);
+
+    return out;
+  }, [calendarHolidays, calendarYear, techCalendarMonth]);
 
   const ymdShiftForWorkdays = (ymd, opts) => {
     const v = String(ymd || '').slice(0, 10);
@@ -5799,6 +6024,8 @@ const GeneratorMaintenanceApp = () => {
     };
 
     const isHolidayYmd = (ymdStr) => {
+      const d0 = String(ymdStr).slice(0, 10);
+      if (calendarHolidaySet && calendarHolidaySet.has(d0)) return true;
       const mmdd = String(ymdStr).slice(5, 10);
       if (fixedHolidaysMmDd.has(mmdd)) return true;
 
@@ -6475,6 +6702,15 @@ const GeneratorMaintenanceApp = () => {
     .filter((fiche) => {
       if (historyStatus !== 'all' && fiche.status !== historyStatus) return false;
 
+      if (historyInterventionStatus !== 'all') {
+        const st = String(fiche?.interventionStatus || '').trim();
+        if (historyInterventionStatus === 'none') {
+          if (st) return false;
+        } else {
+          if (st !== historyInterventionStatus) return false;
+        }
+      }
+
       const query = historyQuery.trim().toLowerCase();
       if (query) {
         const haystack = [
@@ -6512,6 +6748,14 @@ const GeneratorMaintenanceApp = () => {
       }
       if (historySort === 'ticket') {
         return String(a.ticketNumber).localeCompare(String(b.ticketNumber));
+      }
+      if (historySort === 'planned') {
+        const da = String(a?.plannedDate || '').slice(0, 10);
+        const db = String(b?.plannedDate || '').slice(0, 10);
+        if (da && db) return da.localeCompare(db);
+        if (da) return -1;
+        if (db) return 1;
+        return new Date(b.dateGenerated) - new Date(a.dateGenerated);
       }
       return new Date(b.dateGenerated) - new Date(a.dateGenerated);
     });
@@ -8306,6 +8550,8 @@ return (
           setHistoryDateTo={setHistoryDateTo}
           historyStatus={historyStatus}
           setHistoryStatus={setHistoryStatus}
+          historyInterventionStatus={historyInterventionStatus}
+          setHistoryInterventionStatus={setHistoryInterventionStatus}
           historySort={historySort}
           setHistorySort={setHistorySort}
           historyZone={historyZone}
@@ -8356,6 +8602,7 @@ return (
             techCalendarPmTypeLabel={techCalendarPmTypeLabel}
             formatDate={formatDate}
             getDaysUntil={getDaysUntil}
+            calendarHolidaySet={calendarHolidaySet}
             onClose={() => setShowCalendar(false)}
           />
         ) : (
@@ -8390,6 +8637,21 @@ return (
             setShowDayDetailsModal={setShowDayDetailsModal}
             isViewer={isViewer}
             isSuperAdmin={isSuperAdmin}
+            calendarHolidaySet={calendarHolidaySet}
+            calendarHolidays={calendarHolidays}
+            calendarHolidaysBusy={calendarHolidaysBusy}
+            calendarHolidaysError={calendarHolidaysError}
+            refreshCalendarHolidays={() => {
+              const years = new Set([calendarYear]);
+              const mm = String(techCalendarMonth || '').trim().match(/^(\d{4})-(\d{2})$/);
+              if (mm) {
+                const y = Number(mm[1]);
+                if (Number.isFinite(y) && y >= 1970) years.add(y);
+              }
+              return loadCalendarHolidays(Array.from(years));
+            }}
+            onAddHoliday={handleAddCalendarHoliday}
+            onDeleteHoliday={handleDeleteCalendarHoliday}
           />
         )}
 
@@ -8480,22 +8742,7 @@ return (
               ? null
               : handleSubmitWarehouseCheck
           }
-          onClose={() => {
-            setTicketLabel('');
-            setShowFicheModal(false);
-            setSiteForFiche(null);
-            setBannerImage('');
-            setFicheContext(null);
-            setSignatureTypedName('');
-            setSignatureDrawnPng('');
-            setIsBatchFiche(false);
-            setBatchFicheSites([]);
-            setBatchFicheIndex(0);
-            setFicheOpenSource('');
-            setFicheFlowMode('');
-            setHideProcessButtonsOverride(false);
-            setFinalizeBusy(false);
-          }}
+          onClose={closeFicheModal}
           formatDate={formatDate}
         />
 
@@ -8667,28 +8914,6 @@ return (
             bumpInterventionsUiRev={bumpInterventionsUiRev}
           />
 
-          <PmSiteInfoModal
-            open={pmSiteInfoOpen}
-            busy={pmSiteInfoBusy}
-            error={pmSiteInfoError}
-            site={pmSiteInfoSite}
-            item={pmSiteInfoItem}
-            formatDate={formatDate}
-            canTriggerFiche={isManager || isSuperAdmin}
-            onTriggerFiche={() => {
-              const s = pmSiteInfoSite;
-              setPmSiteInfoOpen(false);
-
-              if (!s) return;
-              if (isSuperAdmin) {
-                handleOpenSuperAdminFicheChoice(s);
-                return;
-              }
-              handleGenerateFiche(s);
-            }}
-            onClose={() => setPmSiteInfoOpen(false)}
-          />
-
         {!isWarehouse && (
           <div className="mt-4 mb-6">
             {urgentSites.length > 0 && (
@@ -8768,7 +8993,7 @@ return (
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
-                {filteredSites.map(site => {
+                {sortedSites.map(site => {
                   const next = getNextPendingEpvForSiteRecalculated(site);
                   const daysUntil = getDaysUntil(next?.plannedDate);
                   const urgencyClass = getUrgencyClass(daysUntil, site.retired);
@@ -8787,6 +9012,11 @@ return (
                         ? 'bg-orange-600'
                         : 'bg-green-600';
 
+                  const siteCode = String(site?.idSite || '').trim().toUpperCase().replace(/\s+/g, '');
+                  const pmInfo = siteCode ? pmInfoBySiteCode.get(siteCode) : null;
+                  const pmDate = pmInfo?.scheduled ? String(pmInfo.scheduled).slice(0, 10) : '';
+                  const pmState = pmInfo?.state ? String(pmInfo.state).trim() : '';
+
                   return (
                     <div key={site.id} className={`bg-white rounded-xl shadow-md border-l-4 ${urgencyClass} overflow-hidden`}>
                       <div className="p-4">
@@ -8803,19 +9033,16 @@ return (
 
                         <div className="flex flex-col items-end gap-2">
                           <div className="flex items-center gap-2">
-                            {isAuthorizedForSite && (
-                              <button
-                                type="button"
-                                onClick={() => handleOpenPmSiteInfo(site)}
-                                className="bg-white border border-gray-200 text-gray-800 px-2.5 py-1 rounded-lg hover:bg-gray-50 text-xs font-semibold"
-                              >
-                                Voir date PM
-                              </button>
-                            )}
-
                             <span className={`${badgeColor} text-white text-xs px-2 py-1 rounded-lg font-semibold`}>
                               {site.retired ? 'RETIRÉ' : 'ACTIF'}
                             </span>
+                          </div>
+
+                          <div className="text-[11px] text-gray-700 font-semibold">
+                            PM: {pmDate ? formatDate(pmDate) : '-'}
+                          </div>
+                          <div className="text-[10px] text-gray-500">
+                            Statut PM: {pmState || '-'}
                           </div>
                             {!site.retired && daysUntil !== null && (
                               <div className="text-sm font-bold text-gray-900">
@@ -8852,7 +9079,7 @@ return (
                           <div className="text-[10px] font-semibold text-gray-600 mb-2">Échéances du mois en cours</div>
                           <div className="grid grid-cols-3 gap-2">
                             {(() => {
-                              const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, site.nhEstimated);
+                              const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, site.nhEstimated, site?.seuil);
                               const allPassages = getSitePassages(site, epvDates);
                               
                               // Current month: completed passages + pending passages in current month
@@ -8888,7 +9115,7 @@ return (
                           <div className="text-[10px] font-semibold text-gray-600 mb-2">Prochaines échéances</div>
                           <div className="grid grid-cols-3 gap-2">
                             {(() => {
-                              const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, site.nhEstimated);
+                              const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, site.nhEstimated, site?.seuil);
                               const allPassages = getSitePassages(site, epvDates);
                               
                               // Next month: only pending passages whose dates fall in the next month

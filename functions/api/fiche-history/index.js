@@ -23,6 +23,9 @@ function mapRow(row) {
     dateDV: row.date_dv === undefined ? undefined : row.date_dv,
     nhNow: row.nh_now === undefined ? undefined : row.nh_now,
     interventionId: row.intervention_id,
+    resolvedInterventionId: row.resolved_intervention_id || row.intervention_id || null,
+    interventionStatus: row.intervention_status || null,
+    interventionSentAt: row.intervention_sent_at || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     signatureTypedName: row.signature_typed_name || null,
@@ -70,18 +73,29 @@ export async function onRequestGet({ request, env, data }) {
       binds.push(String(data.user.technicianName || ''));
     }
 
-    if (role === 'admin' || role === 'manager' || role === 'technician') {
+    if (role === 'admin' && !isSuperAdmin(data)) {
       where += ' AND s.zone = ?';
       binds.push(String(userZone(data) || 'BZV/POOL'));
     }
 
     const stmt = env.DB.prepare(
-      `SELECT fh.*, s.zone as site_zone 
-      FROM fiche_history fh
-      LEFT JOIN sites s ON s.id = fh.site_id
-      WHERE ${where}
-      ORDER BY fh.date_generated DESC
-      LIMIT 500`
+      `SELECT fh.*, s.zone as site_zone,
+              i.id as resolved_intervention_id,
+              i.status as intervention_status,
+              i.sent_at as intervention_sent_at
+       FROM fiche_history fh
+       LEFT JOIN sites s ON s.id = fh.site_id
+       LEFT JOIN interventions i
+         ON i.id = fh.intervention_id
+         OR (
+           fh.intervention_id IS NULL
+           AND i.site_id = fh.site_id
+           AND i.planned_date IS fh.planned_date
+           AND i.epv_type IS fh.epv_type
+         )
+       WHERE ${where}
+       ORDER BY fh.date_generated DESC
+       LIMIT 500`
     );
     const res = await stmt.bind(...binds).all();
     const rows = Array.isArray(res?.results) ? res.results : [];
@@ -151,7 +165,7 @@ export async function onRequestPost({ request, env, data }) {
     if (!site) return json({ error: 'Site introuvable.' }, { status: 404 });
 
     const zone = String(site.zone || 'BZV/POOL');
-    if (role === 'admin' || role === 'manager') {
+    if (role === 'admin' && !isSuperAdmin(data)) {
       const z = String(userZone(data) || 'BZV/POOL');
       if (zone !== z) return json({ error: 'Accès interdit.' }, { status: 403 });
     }

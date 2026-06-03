@@ -73,9 +73,10 @@ export const addDays = (date, days) => {
   }
 };
 
-export const calculateEPVDates = (regime, dateA, nh1DV, nhEstimated) => {
-  const SEUIL = 250;
-  
+export const calculateEPVDates = (regime, dateA, nh1DV, nhEstimated, seuil) => {
+  const sRaw = Number(seuil);
+  const SEUIL = Number.isFinite(sRaw) && sRaw > 0 ? sRaw : 250;
+
   if (regime === 0) {
     return { epv1: 'N/A', epv2: 'N/A', epv3: 'N/A' };
   }

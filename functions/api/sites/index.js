@@ -144,7 +144,7 @@ export async function onRequestGet({ request, env, data }) {
         stmt = env.DB.prepare('SELECT * FROM sites WHERE UPPER(TRIM(zone)) = ? ORDER BY id_site ASC').bind(z);
       }
     } else if (role === 'manager') {
-      stmt = env.DB.prepare('SELECT * FROM sites WHERE UPPER(TRIM(zone)) = ? ORDER BY id_site ASC').bind(z);
+      stmt = env.DB.prepare('SELECT * FROM sites ORDER BY id_site ASC');
     }
 
     const res = await stmt.all();

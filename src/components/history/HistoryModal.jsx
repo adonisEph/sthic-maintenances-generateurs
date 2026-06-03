@@ -17,6 +17,8 @@ const HistoryModal = ({
   setHistoryDateTo,
   historyStatus,
   setHistoryStatus,
+  historyInterventionStatus,
+  setHistoryInterventionStatus,
   historySort,
   setHistorySort,
   historyZone,
@@ -64,7 +66,7 @@ const HistoryModal = ({
 
         <div className="p-4 sm:p-6 overflow-y-auto flex-1">
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-start">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3 items-start">
               <div className="flex flex-col w-full min-w-0">
                 <span className="text-xs text-gray-600 mb-1">Recherche</span>
                 <input
@@ -109,6 +111,22 @@ const HistoryModal = ({
                   {statusOptions.includes('Effectuée') && <option value="Effectuée">Effectuée</option>}
                 </select>
               </div>
+
+              <div className="flex flex-col w-full min-w-0">
+                <span className="text-xs text-gray-600 mb-1">Intervention</span>
+                <select
+                  value={historyInterventionStatus}
+                  onChange={(e) => setHistoryInterventionStatus(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full"
+                >
+                  <option value="all">Toutes</option>
+                  <option value="none">Non déclenchée</option>
+                  <option value="planned">planned</option>
+                  <option value="sent">sent</option>
+                  <option value="done">done</option>
+                </select>
+              </div>
+
               <div className="flex flex-col w-full min-w-0">
                 <span className="text-xs text-gray-600 mb-1">Tri</span>
                 <select
@@ -119,6 +137,7 @@ const HistoryModal = ({
                   <option value="newest">Plus récent</option>
                   <option value="oldest">Plus ancien</option>
                   <option value="ticket">Ticket (A→Z)</option>
+                  <option value="planned">Date planifiée</option>
                 </select>
               </div>
             </div>
@@ -150,6 +169,7 @@ const HistoryModal = ({
                   setHistoryDateFrom('');
                   setHistoryDateTo('');
                   setHistoryStatus('all');
+                  setHistoryInterventionStatus('all');
                   setHistorySort('newest');
                   if (showZoneFilter) setHistoryZone('ALL');
                 }}
@@ -174,7 +194,17 @@ const HistoryModal = ({
             </div>
           ) : (
             <div className="space-y-3">
-              {list.map((fiche) => (
+              {list.map((fiche) => {
+                const interventionStatus = String(fiche?.interventionStatus || '').trim();
+                const interventionStatusLower = interventionStatus.toLowerCase();
+                const hasIntervention = Boolean(String(fiche?.resolvedInterventionId || fiche?.interventionId || '').trim());
+                const interventionLabel = interventionStatus ? interventionStatus : hasIntervention ? 'planned' : 'Non déclenchée';
+                const canTriggerIntervention =
+                  String(fiche?.status || '').trim() === 'En attente' &&
+                  !(interventionStatusLower === 'sent' || interventionStatusLower === 'done') &&
+                  !isViewer;
+
+                return (
                 <div
                   key={fiche.id}
                   className={`border-2 rounded-lg p-4 ${fiche.status === 'Effectuée' ? 'bg-green-50 border-green-300' : 'bg-yellow-50 border-yellow-300'}`}
@@ -207,6 +237,18 @@ const HistoryModal = ({
                     <div className="min-w-0 flex flex-wrap items-baseline">
                       <span className="text-gray-600">Technicien:</span>
                       <span className="ml-2 font-semibold break-words">{fiche.technician}</span>
+                    </div>
+                    <div className="min-w-0 flex flex-wrap items-baseline">
+                      <span className="text-gray-600">Intervention:</span>
+                      <span className="ml-2 font-semibold break-words">{interventionLabel}</span>
+                    </div>
+                    <div className="min-w-0 flex flex-wrap items-baseline">
+                      <span className="text-gray-600">Planifiée:</span>
+                      <span className="ml-2 break-words">{fiche.plannedDate ? formatDate(fiche.plannedDate) : '-'}</span>
+                    </div>
+                    <div className="min-w-0 flex flex-wrap items-baseline">
+                      <span className="text-gray-600">Type:</span>
+                      <span className="ml-2 font-semibold break-words">{fiche.epvType || '-'}</span>
                     </div>
                     <div className="min-w-0 flex flex-wrap items-baseline">
                       <span className="text-gray-600">Heures vidangées:</span>
@@ -266,24 +308,31 @@ const HistoryModal = ({
                     )}
 
                     {String(fiche.status || '').trim() === 'En attente' && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (typeof onTriggerIntervention === 'function') {
-                            onTriggerIntervention(fiche);
-                            return;
-                          }
-                          if (typeof onOpenFiche === 'function') {
-                            onOpenFiche(fiche);
-                          }
-                        }}
-                        className="w-full bg-slate-700 text-white py-2 rounded-lg hover:bg-slate-800 font-semibold"
-                      >
-                        Déclencher l'intervention de cette vidange
-                      </button>
+                      canTriggerIntervention ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (typeof onTriggerIntervention === 'function') {
+                              onTriggerIntervention(fiche);
+                              return;
+                            }
+                            if (typeof onOpenFiche === 'function') {
+                              onOpenFiche(fiche);
+                            }
+                          }}
+                          className="w-full bg-slate-700 text-white py-2 rounded-lg hover:bg-slate-800 font-semibold"
+                        >
+                          Déclencher l'intervention de cette vidange
+                        </button>
+                      ) : (
+                        <div className="w-full text-xs text-gray-600 font-semibold text-center">
+                          Intervention déjà envoyée.
+                        </div>
+                      )
                     )}
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </div>

@@ -16,6 +16,7 @@ const TechnicianCalendarModal = ({
   techCalendarPmTypeLabel,
   formatDate,
   getDaysUntil,
+  calendarHolidaySet,
   onClose
 }) => {
   if (!open || !isTechnician) return null;
@@ -98,6 +99,7 @@ const TechnicianCalendarModal = ({
                     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                     const dow = new Date(`${dateStr}T00:00:00`).getDay();
                     const isWeekend = dow === 0 || dow === 6;
+                    const isHoliday = Boolean(calendarHolidaySet && calendarHolidaySet.has(dateStr));
 
                     if (isWeekend) {
                       days.push(
@@ -105,6 +107,18 @@ const TechnicianCalendarModal = ({
                           key={day}
                           className="h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full bg-slate-200/70 border-gray-300"
                         />
+                      );
+                      continue;
+                    }
+
+                    if (isHoliday) {
+                      days.push(
+                        <div
+                          key={day}
+                          className="h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full bg-slate-200/70 border-gray-300"
+                        >
+                          <div className="text-sm font-semibold text-gray-500">{day}</div>
+                        </div>
                       );
                       continue;
                     }

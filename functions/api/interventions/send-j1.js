@@ -26,7 +26,7 @@ export async function onRequestPost({ request, env, data }) {
 
     const z = userZone(data);
 
-    const stmt = isSuperAdmin(data)
+    const stmt = isSuperAdmin(data) || role === 'manager'
       ? env.DB.prepare(
           "UPDATE interventions SET status = 'sent', sent_at = COALESCE(sent_at, ?), updated_at = ? WHERE planned_date = ? AND status = 'planned'"
         ).bind(now, now, plannedDate)

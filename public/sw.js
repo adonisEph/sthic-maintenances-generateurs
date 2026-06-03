@@ -1,4 +1,4 @@
-const CACHE = 'gmga-pwa-v15';
+const CACHE = 'gmga-pwa-v16';
 const CORE_ASSETS = ['/', '/index.html', '/manifest.webmanifest', '/icon-192.svg', '/icon-512.svg'];
 
 self.addEventListener('install', (event) => {
@@ -55,6 +55,10 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/')) return;
+  if (url.pathname === '/app-version.json') {
+    event.respondWith(fetch(req));
+    return;
+  }
   if (
     url.pathname === '/signature_responsable.png' ||
     url.pathname === '/signature_responsable.PNG' ||

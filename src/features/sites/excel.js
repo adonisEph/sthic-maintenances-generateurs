@@ -58,7 +58,7 @@ export const buildImportedSitesFromRows = (jsonRows, onProgress, options = {}) =
     const nhEstimated = calculateEstimatedNH(nh2, dateAStr, regime);
     const diffNHs = calculateDiffNHs(nh1, nh2);
     const diffEstimated = calculateDiffNHs(nh1, nhEstimated);
-    const epvDates = calculateEPVDates(regime, dateAStr, nh1, nhEstimated);
+    const epvDates = calculateEPVDates(regime, dateAStr, nh1, nhEstimated, 250);
 
     importedSites.push({
       id: Date.now() + index,

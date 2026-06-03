@@ -14,9 +14,11 @@ export async function onRequestPost({ request, env, data, params }) {
     const intervention = await env.DB.prepare('SELECT * FROM interventions WHERE id = ?').bind(id).first();
     if (!intervention) return json({ error: 'Intervention introuvable.' }, { status: 404 });
 
-    const isAdmin = data.user.role === 'admin';
+    const role = String(data?.user?.role || '').trim();
+    const isAdmin = role === 'admin';
+    const isManager = role === 'manager';
     const isAssignedTech = intervention.technician_user_id && intervention.technician_user_id === data.user.id;
-    if (!isAdmin && !isAssignedTech) {
+    if (!isAdmin && !isManager && !isAssignedTech) {
       return json({ error: 'Accès interdit.' }, { status: 403 });
     }
 
@@ -27,7 +29,7 @@ export async function onRequestPost({ request, env, data, params }) {
     const site = await env.DB.prepare('SELECT * FROM sites WHERE id = ?').bind(intervention.site_id).first();
     if (!site) return json({ error: 'Site introuvable.' }, { status: 404 });
 
-    if (!isSuperAdmin(data)) {
+    if (!isSuperAdmin(data) && !isManager) {
       const z = userZone(data);
       if (String(site.zone || 'BZV/POOL') !== z) {
         return json({ error: 'Accès interdit.' }, { status: 403 });
@@ -47,7 +49,7 @@ export async function onRequestPost({ request, env, data, params }) {
       nhNow = offset + nhNow;
     }
 
-    if (data.user.role === 'technician') {
+    if (role === 'technician') {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(userDoneDate)) {
         return json({ error: 'Date de vidange invalide.' }, { status: 400 });
       }
@@ -117,12 +119,11 @@ export async function onRequestPost({ request, env, data, params }) {
            WHERE site_id = ?
              AND planned_date IS ?
              AND epv_type IS ?
-             AND technician = ?
-             AND status IN ('En attente', 'Envoyée au magasin', 'Contrôle magasin')
+             AND (status IS NULL OR status != 'Annulée')
            ORDER BY created_at DESC
            LIMIT 1`
         )
-          .bind(site.id, intervention.planned_date || null, intervention.epv_type || null, intervention.technician_name)
+          .bind(site.id, intervention.planned_date || null, intervention.epv_type || null)
           .first()
       : null;
 

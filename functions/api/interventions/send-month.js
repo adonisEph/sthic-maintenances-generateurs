@@ -17,7 +17,7 @@ export async function onRequestPost({ request, env, data }) {
     }
 
     const now = isoNow();
-    const scopeZone = isSuperAdmin(data) ? null : userZone(data);
+    const scopeZone = isSuperAdmin(data) || role === 'manager' ? null : userZone(data);
 
     let created = 0;
     let updated = 0;
