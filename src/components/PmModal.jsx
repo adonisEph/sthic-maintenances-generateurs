@@ -83,6 +83,7 @@ const PmModal = (props) => {
     pmReprogSaving,
     handlePmOpenReprog,
     handlePmSaveReprog,
+    handlePmExportRetiredSitesExcel,
     formatDate,
     authZone,
   } = props;
@@ -219,6 +220,29 @@ const PmModal = (props) => {
   const pmRetired = pmRetiredSites && typeof pmRetiredSites === 'object' ? pmRetiredSites : null;
   const pmRetiredScopeZones = Array.isArray(pmRetired?.scopeZones) ? pmRetired.scopeZones : [];
   const pmRetiredItemsAll = Array.isArray(pmRetired?.items) ? pmRetired.items : [];
+
+  const pmSitesByCode = React.useMemo(() => {
+    const map = new Map();
+    for (const s of Array.isArray(sites) ? sites : []) {
+      const code = String(s?.idSite || '')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/\u00A0/g, ' ')
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, '');
+      if (!code) continue;
+      map.set(code, s);
+    }
+    return map;
+  }, [sites]);
+
+  const pmNormalizeSiteCode = (v) =>
+    String(v || '')
+      .replace(/[\u200B-\u200D\uFEFF]/g, '')
+      .replace(/\u00A0/g, ' ')
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, '');
 
   const pmEffectiveRetiredZoneFilter = pmIsSuperAdmin ? String(pmRetiredSitesZoneFilter || 'ALL') : 'ALL';
   const pmRetiredItems =
@@ -949,16 +973,37 @@ const PmModal = (props) => {
 
               {pmRetired && pmRetiredSitesOpen && (
                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
-                  <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
+                  <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[90vh]">
                     <div className="flex justify-between items-center p-4 border-b bg-fuchsia-800 text-white">
                       <div className="font-bold">Sites retirés pour la campagne ({pmRetired.month})</div>
-                      <button
-                        type="button"
-                        onClick={() => setPmRetiredSitesOpen(false)}
-                        className="hover:bg-fuchsia-900 p-2 rounded"
-                      >
-                        <X size={18} />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (typeof handlePmExportRetiredSitesExcel !== 'function') return;
+                            const filter = String(pmRetiredSitesZoneFilter || 'ALL');
+                            const zone = filter && filter !== 'ALL' ? filter : '';
+                            await handlePmExportRetiredSitesExcel({
+                              month: pmRetired.month,
+                              zone,
+                              items: pmRetiredItems
+                            });
+                          }}
+                          className="bg-white/10 hover:bg-white/15 text-white border border-white/20 px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 disabled:opacity-60"
+                          disabled={pmBusy || pmRetiredItems.length === 0}
+                          title="Exporter la liste (filtre zone)"
+                        >
+                          <Download size={16} />
+                          Exporter xlsx
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPmRetiredSitesOpen(false)}
+                          className="hover:bg-fuchsia-900 p-2 rounded"
+                        >
+                          <X size={18} />
+                        </button>
+                      </div>
                     </div>
 
                     {pmIsSuperAdmin && pmRetiredScopeZones.length > 0 && (
@@ -993,19 +1038,20 @@ const PmModal = (props) => {
                     )}
 
                     <div className="p-4 overflow-auto">
-                      <table className="min-w-[800px] w-full text-sm">
+                      <table className="min-w-[980px] w-full text-sm">
                         <thead className="bg-fuchsia-50 sticky top-0 z-10">
                           <tr className="text-left text-xs text-fuchsia-900 border-b border-fuchsia-200">
                             <th className="px-3 py-2 font-semibold whitespace-nowrap">Zone</th>
                             <th className="px-3 py-2 font-semibold whitespace-nowrap">Site</th>
                             <th className="px-3 py-2 font-semibold whitespace-nowrap">Site Name</th>
+                            <th className="px-3 py-2 font-semibold whitespace-nowrap">Technicien</th>
                             <th className="px-3 py-2 font-semibold whitespace-nowrap">Type</th>
                           </tr>
                         </thead>
                         <tbody>
                           {pmRetiredItems.length === 0 ? (
                             <tr>
-                              <td className="px-4 py-4 text-gray-600" colSpan={4}>
+                              <td className="px-4 py-4 text-gray-600" colSpan={5}>
                                 Aucun site.
                               </td>
                             </tr>
@@ -1018,6 +1064,7 @@ const PmModal = (props) => {
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.zone || '-'}</td>
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap font-semibold">{it?.siteCode || '-'}</td>
                                 <td className="px-3 py-2 text-slate-900 max-w-[360px] whitespace-pre-line leading-tight break-words">{it?.siteName || '-'}</td>
+                                <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.technician || '-'}</td>
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.maintenanceType || 'FullPMWO'}</td>
                               </tr>
                             ))
@@ -1370,7 +1417,10 @@ const PmModal = (props) => {
                                 const reprogStatus = effectiveReprogStatus(it);
                                 const reprog = it?.reprogrammationDate ? String(it.reprogrammationDate).slice(0, 10) : '';
                                 const reason = String(it?.reprogrammationReason || '').trim();
-                                const siteLabel = [it?.siteName, it?.siteCode].filter(Boolean).join('\n');
+                                const siteCode = pmNormalizeSiteCode(it?.siteCode);
+                                const localSite = siteCode ? pmSitesByCode.get(siteCode) : null;
+                                const siteName = String(it?.siteName || localSite?.nameSite || '').trim();
+                                const siteLabel = [siteName, siteCode].filter(Boolean).join('\n');
                                 const st = stateLabel(it?.state);
                                 return (
                                   <tr key={it?.id || it?.number || idx} className={`border-b border-slate-200 hover:bg-slate-100/60 ${idx % 2 === 1 ? 'bg-white' : 'bg-slate-50'}`}>
@@ -1461,7 +1511,10 @@ const PmModal = (props) => {
                                   const sched = it?.scheduledWoDate ? String(it.scheduledWoDate).slice(0, 10) : '';
                                   const reprog = it?.reprogrammationDate ? String(it.reprogrammationDate).slice(0, 10) : '';
                                   const reason = String(it?.reprogrammationReason || '').trim();
-                                  const siteLabel = [it?.siteName, it?.siteCode].filter(Boolean).join('\n');
+                                  const siteCode = pmNormalizeSiteCode(it?.siteCode);
+                                  const localSite = siteCode ? pmSitesByCode.get(siteCode) : null;
+                                  const siteName = String(it?.siteName || localSite?.nameSite || '').trim();
+                                  const siteLabel = [siteName, siteCode].filter(Boolean).join('\n');
                                   return (
                                     <tr key={it?.id || it?.number || idx} className={`border-b border-slate-200 ${idx % 2 === 1 ? 'bg-white' : 'bg-slate-50'}`}>
                                       <td className="px-3 py-2 font-semibold text-slate-900 whitespace-nowrap">{it?.number || '-'}</td>
@@ -1691,7 +1744,10 @@ const PmModal = (props) => {
                             const reprogStatus = effectiveReprogStatus(it);
                             const reprog = it?.reprogrammationDate ? String(it.reprogrammationDate).slice(0, 10) : '';
                             const reason = String(it?.reprogrammationReason || '').trim();
-                            const siteLabel = [it?.siteName, it?.siteCode].filter(Boolean).join('\n');
+                            const siteCode = pmNormalizeSiteCode(it?.siteCode);
+                            const localSite = siteCode ? pmSitesByCode.get(siteCode) : null;
+                            const siteName = String(it?.siteName || localSite?.nameSite || '').trim();
+                            const siteLabel = [siteName, siteCode].filter(Boolean).join('\n');
                             const st = stateLabel(it?.state);
                             return (
                               <tr key={it?.id || it?.number} className={`border-b border-slate-200 hover:bg-slate-100/60 ${idx % 2 === 1 ? 'bg-white' : 'bg-slate-50'}`}>

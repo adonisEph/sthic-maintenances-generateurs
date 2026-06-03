@@ -2164,6 +2164,16 @@ const GeneratorMaintenanceApp = () => {
     const globalItemsRaw = Array.isArray(globalRes?.items) ? globalRes.items : [];
     const clientItemsRaw = Array.isArray(clientRes?.items) ? clientRes.items : [];
 
+    const sitesByCode = new Map(
+      (Array.isArray(sites) ? sites : [])
+        .filter(Boolean)
+        .map((s) => {
+          const code = normalizeSiteCode(s?.idSite);
+          return [code, s];
+        })
+        .filter(([k]) => Boolean(k))
+    );
+
     // Global: ensemble de sites (par zone scope)
     const globalSites = new Map();
     for (const it of globalItemsRaw) {
@@ -2172,11 +2182,14 @@ const GeneratorMaintenanceApp = () => {
       if (!siteCode || !zone) continue;
       if (!scopeZonesNorm.includes(zone)) continue;
 
+      const localSite = sitesByCode.get(siteCode) || null;
+
       const key = `${zone}|${siteCode}`;
       if (!globalSites.has(key)) {
         globalSites.set(key, {
           siteCode,
-          siteName: String(it?.siteName || '').trim(),
+          siteName: String(it?.siteName || localSite?.nameSite || '').trim(),
+          technician: String(localSite?.technician || '').trim(),
           zone,
           maintenanceType: it?.maintenanceType || ''
         });
@@ -2233,6 +2246,36 @@ const GeneratorMaintenanceApp = () => {
 
     setPmRetiredSites(payload);
     return payload;
+  };
+
+  const handlePmExportRetiredSitesExcel = async ({ month, zone, items }) => {
+    if (!canUsePm) return;
+    const m = String(month || '').trim() || String(pmMonth || '').trim();
+    const z = String(zone || '').trim();
+    const list = Array.isArray(items) ? items : [];
+    const ok = window.confirm(
+      `Exporter les sites retirés en Excel ?\n\nMois: ${m || '-'}\nZone: ${z || 'Toutes'}\nSites: ${list.length}`
+    );
+    if (!ok) return;
+
+    const rows = list.map((it) => ({
+      Zone: String(it?.zone || '').trim(),
+      Site: String(it?.siteCode || '').trim(),
+      'Site Name': String(it?.siteName || '').trim(),
+      Technicien: String(it?.technician || '').trim(),
+      Type: String(it?.maintenanceType || '').trim() || 'FullPMWO'
+    }));
+
+    const done = await runExport({
+      label: 'Export Excel (sites retirés)…',
+      fn: async () => {
+        exportXlsx({
+          fileBaseName: `PM_SITES_RETIRES_${m}_${z || 'TOUTES'}_${new Date().toISOString().split('T')[0]}`,
+          sheets: [{ name: `RETIRES-${m}`, rows }]
+        });
+      }
+    });
+    if (done) alert('✅ Export Excel généré.');
   };
   
 
@@ -3385,23 +3428,17 @@ const GeneratorMaintenanceApp = () => {
           if (!number) continue;
 
           const state = String(pmGet(row, 'State') || '').trim();
-          const actualWoDate = pmNormalizeDate(pmGet(row, 'Actual WO Date'));
 
-          const runHoursRaw = pmGet(row, 'Generator Run Hours');
-          const generatorRunHours = (() => {
-            const raw = String(runHoursRaw ?? '').replace(',', '.').trim();
-            if (!raw) return null;
-            const n = Number(raw);
-            return Number.isFinite(n) ? n : null;
-          })();
+          const siteAccessRequest = String(pmGet(row, 'Site Access Request') || '').trim();
+          const uniqueSarId = String(pmGet(row, 'Unique SAR ID') || '').trim();
           const effectiveState = (() => {
             const s = String(state || '').trim().toLowerCase();
             if (s !== 'work in progress') return state;
 
-            const hasActualWoDate = Boolean(actualWoDate);
-            const hasRunHours = generatorRunHours !== null;
+            const hasSar = Boolean(siteAccessRequest);
+            const hasUnique = Boolean(uniqueSarId);
 
-            return (hasActualWoDate || hasRunHours) ? 'Awaiting Closure' : state;
+            return (hasSar && hasUnique) ? 'Awaiting Closure' : state;
           })();
           const closedAt = pmNormalizeDate(pmGet(row, 'Closed', 'Date of closing'));
 
@@ -8917,6 +8954,7 @@ return (
             pmReprogExportDate={pmReprogExportDate}
             setPmReprogExportDate={setPmReprogExportDate}
             handlePmExportReprogExcel={handlePmExportReprogExcel}
+            handlePmExportRetiredSitesExcel={handlePmExportRetiredSitesExcel}
             exportBusy={exportBusy}
             users={users}
             pmSendTechUserId={pmSendTechUserId}
