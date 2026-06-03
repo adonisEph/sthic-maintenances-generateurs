@@ -44,7 +44,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.2.0';
+const APP_VERSION = '6.2.2';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -9031,24 +9031,27 @@ return (
                             </div>
                           </div>
 
-                        <div className="flex flex-col items-end gap-2">
-                          <div className="flex items-center gap-2">
+                        <div className="flex flex-col items-start sm:items-end gap-2 w-full sm:w-auto">
+                          <div className="flex items-center gap-2 w-full sm:w-auto justify-start sm:justify-end">
                             <span className={`${badgeColor} text-white text-xs px-2 py-1 rounded-lg font-semibold`}>
                               {site.retired ? 'RETIRÉ' : 'ACTIF'}
                             </span>
                           </div>
 
-                          <div className="text-[11px] text-gray-700 font-semibold">
-                            PM: {pmDate ? formatDate(pmDate) : '-'}
+                          <div className="w-full sm:w-auto flex flex-wrap items-start sm:items-end justify-start sm:justify-end gap-1">
+                            <div className="text-xs sm:text-[11px] text-gray-700 font-semibold bg-slate-50 border border-slate-200 px-2 py-1 rounded-lg leading-tight">
+                              PM: {pmDate ? formatDate(pmDate) : '-'}
+                            </div>
+                            <div className="text-xs sm:text-[10px] text-gray-600 bg-slate-50 border border-slate-200 px-2 py-1 rounded-lg leading-tight">
+                              Statut PM: {pmState || '-'}
+                            </div>
                           </div>
-                          <div className="text-[10px] text-gray-500">
-                            Statut PM: {pmState || '-'}
-                          </div>
-                            {!site.retired && daysUntil !== null && (
-                              <div className="text-sm font-bold text-gray-900">
-                                {daysUntil < 0 ? `Retard ${Math.abs(daysUntil)}j` : daysUntil === 0 ? "AUJOURD'HUI" : `${daysUntil}j`}
-                              </div>
-                            )}
+
+                          {!site.retired && daysUntil !== null && (
+                            <div className="text-sm font-bold text-gray-900">
+                              {daysUntil < 0 ? `Retard ${Math.abs(daysUntil)}j` : daysUntil === 0 ? "AUJOURD'HUI" : `${daysUntil}j`}
+                            </div>
+                          )}
                         </div>                                                                      
                       </div>
 

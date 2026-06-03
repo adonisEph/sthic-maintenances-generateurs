@@ -93,6 +93,7 @@ export async function onRequestGet({ request, env, data }) {
 }
 
 export async function onRequestPost({ request, env, data }) {
+  let body = null;
   try {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
@@ -100,7 +101,7 @@ export async function onRequestPost({ request, env, data }) {
     const role = String(data?.user?.role || '');
     if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
 
-    const body = await readJson(request);
+    body = await readJson(request);
     const plannedDate = String(body.plannedDate || '');
     const epvType = String(body.epvType || '');
     const siteId = String(body.siteId || '');
@@ -171,7 +172,10 @@ export async function onRequestPost({ request, env, data }) {
     const msg = String(e?.message || 'Erreur serveur.');
     if (msg.toLowerCase().includes('unique')) {
       try {
-        const body = await readJson(request);
+        if (!body) {
+          return json({ error: 'Intervention déjà planifiée.' }, { status: 409 });
+        }
+
         const plannedDate = String(body.plannedDate || '');
         const epvType = String(body.epvType || '');
         const siteId = String(body.siteId || '');
