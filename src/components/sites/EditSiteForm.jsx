@@ -1,10 +1,13 @@
 import React from 'react';
 import { X } from 'lucide-react';
 
-const EditSiteForm = ({ selectedSite, formData, setFormData, onSubmit, onClose, onCancel, mode = 'full' }) => {
+const EditSiteForm = ({ selectedSite, vidangeIntervention, formData, setFormData, onSubmit, onClose, onCancel, mode = 'full' }) => {
   if (!selectedSite) return null;
 
   const isVidange = String(mode || 'full') === 'vidange';
+  const vidangePlannedDate = isVidange ? String(vidangeIntervention?.plannedDate || '').slice(0, 10) : '';
+  const vidangeEpvType = isVidange ? String(vidangeIntervention?.epvType || '').trim() : '';
+  const vidangeStatus = isVidange ? String(vidangeIntervention?.status || '').trim() : '';
 
   return (
     <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 md:p-6 mb-4 md:mb-6">
@@ -14,6 +17,14 @@ const EditSiteForm = ({ selectedSite, formData, setFormData, onSubmit, onClose, 
           <X size={24} />
         </button>
       </div>
+      {isVidange && vidangeIntervention?.id && (
+        <div className="mb-3">
+          <div className="text-xs text-gray-600 font-semibold">Intervention sélectionnée</div>
+          <div className="text-sm text-gray-900">
+            {vidangeEpvType || '-'} - {vidangePlannedDate || '-'}{vidangeStatus ? ` (${vidangeStatus})` : ''}
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {!isVidange && (
           <>

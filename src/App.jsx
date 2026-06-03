@@ -44,7 +44,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.2.3';
+const APP_VERSION = '6.2.4';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -70,6 +70,12 @@ const GeneratorMaintenanceApp = () => {
   const [editSiteFormMode, setEditSiteFormMode] = useState('full');
   const [siteEditChoiceOpen, setSiteEditChoiceOpen] = useState(false);
   const [siteEditChoiceSite, setSiteEditChoiceSite] = useState(null);
+  const [vidangeInterventionChoiceOpen, setVidangeInterventionChoiceOpen] = useState(false);
+  const [vidangeInterventionChoiceSite, setVidangeInterventionChoiceSite] = useState(null);
+  const [vidangeInterventionChoiceItems, setVidangeInterventionChoiceItems] = useState([]);
+  const [vidangeInterventionChoiceBusy, setVidangeInterventionChoiceBusy] = useState(false);
+  const [vidangeInterventionChoiceError, setVidangeInterventionChoiceError] = useState('');
+  const [vidangeChosenIntervention, setVidangeChosenIntervention] = useState(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showFicheModal, setShowFicheModal] = useState(false);
@@ -309,6 +315,65 @@ const GeneratorMaintenanceApp = () => {
   const canUseInterventions = isAdmin || isManager || isTechnician || isViewer;
   const canUsePm = isAdmin || isManager || isViewer;
 
+  const openVidangeFormForSite = (site, chosenIntervention = null) => {
+    setSelectedSite(site);
+    setEditSiteFormMode('vidange');
+    setVidangeChosenIntervention(chosenIntervention);
+    setFormData({
+      nameSite: site.nameSite,
+      idSite: site.idSite,
+      technician: site.technician,
+      generateur: site.generateur,
+      capacite: site.capacite,
+      kitVidange: site.kitVidange,
+      nh1DV: site.nh1DV,
+      dateDV: '',
+      nh2A: site.nh2A,
+      dateA: site.dateA,
+      retired: site.retired
+    });
+    setShowEditForm(true);
+    setTimeout(() => {
+      siteFormAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  };
+
+  const loadPendingInterventionsForSite = async (siteId) => {
+    const data = await apiFetchJson(`/api/interventions?siteId=${encodeURIComponent(String(siteId))}`, { method: 'GET' });
+    const rows = Array.isArray(data?.interventions) ? data.interventions : [];
+    return rows
+      .filter((it) => it && String(it.siteId) === String(siteId))
+      .filter((it) => String(it.status || '') !== 'done')
+      .slice()
+      .sort((a, b) => String(a?.plannedDate || '').localeCompare(String(b?.plannedDate || '')));
+  };
+
+  const handleStartManagerVidange = async (site) => {
+    if (!site?.id) return;
+
+    setVidangeInterventionChoiceOpen(false);
+    setVidangeInterventionChoiceSite(null);
+    setVidangeInterventionChoiceItems([]);
+    setVidangeInterventionChoiceError('');
+    setVidangeInterventionChoiceBusy(true);
+    try {
+      const pending = await loadPendingInterventionsForSite(site.id);
+      if (pending.length <= 1) {
+        openVidangeFormForSite(site, pending[0] || null);
+        return;
+      }
+
+      setVidangeInterventionChoiceSite(site);
+      setVidangeInterventionChoiceItems(pending);
+      setVidangeChosenIntervention(null);
+      setVidangeInterventionChoiceOpen(true);
+    } catch (e) {
+      setVidangeInterventionChoiceError(e?.message || 'Erreur serveur.');
+    } finally {
+      setVidangeInterventionChoiceBusy(false);
+    }
+  };
+
   const handleManagerCompleteVidange = async () => {
     if (!formData.nh1DV || !formData.dateDV) {
       alert('Veuillez remplir NH1 DV et Date DV');
@@ -322,42 +387,57 @@ const GeneratorMaintenanceApp = () => {
         return;
       }
 
-      let plannedDate = '';
-      let epvType = '';
-      let resolvedInterventionId = '';
+      const chosen = vidangeChosenIntervention && String(vidangeChosenIntervention?.siteId || '') === String(site.id) ? vidangeChosenIntervention : null;
+      let interventionId = chosen?.id ? String(chosen.id) : '';
+      let chosenPlannedDate = chosen?.plannedDate ? String(chosen.plannedDate).slice(0, 10) : '';
+      let chosenEpvType = String(chosen?.epvType || '').trim();
 
-      try {
-        const data = await apiFetchJson(`/api/interventions?siteId=${encodeURIComponent(String(site.id))}`, { method: 'GET' });
-        const rows = Array.isArray(data?.interventions) ? data.interventions : [];
-        const pending = rows
-          .filter((it) => it && String(it.siteId) === String(site.id))
-          .filter((it) => String(it.status || '') !== 'done')
-          .slice()
-          .sort((a, b) => String(a?.plannedDate || '').localeCompare(String(b?.plannedDate || '')));
+      if (!interventionId) {
+        let pending = [];
+        try {
+          pending = await loadPendingInterventionsForSite(site.id);
+        } catch {}
 
-        const fallback = pending[0] || null;
-        if (fallback?.id) {
-          resolvedInterventionId = String(fallback.id);
-          plannedDate = String(fallback.plannedDate || '').slice(0, 10);
-          epvType = String(fallback.epvType || '').trim();
+        if (pending.length > 0) {
+          alert('Veuillez sélectionner l\'intervention à clôturer.');
+          setVidangeInterventionChoiceSite(site);
+          setVidangeInterventionChoiceItems(pending);
+          setVidangeChosenIntervention(null);
+          setVidangeInterventionChoiceOpen(true);
+          return;
         }
-      } catch {}
 
-      if (!plannedDate || !epvType) {
         const next = getNextPendingEpvForSite(site);
-        plannedDate = String(next?.plannedDate || '').slice(0, 10);
-        epvType = String(next?.epvType || '').trim() || 'EPV1';
-      }
+        chosenPlannedDate = String(next?.plannedDate || '').slice(0, 10);
+        chosenEpvType = String(next?.epvType || '').trim() || 'EPV1';
 
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(plannedDate)) {
-        alert('Date EPV (planification) introuvable pour ce site.');
-        return;
-      }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(chosenPlannedDate)) {
+          alert('Date EPV (planification) introuvable pour ce site.');
+          return;
+        }
 
-      const ok = window.confirm(
-        `Confirmer l'action "Effectuer une vidange" ?\n\nSite: ${site?.nameSite || ''}\nType: ${epvType}\nDate planifiée: ${plannedDate}`
-      );
-      if (!ok) return;
+        const ok = window.confirm(
+          `Aucune intervention planifiée trouvée pour ce site.\n\nCréer une intervention puis effectuer la vidange ?\n\nSite: ${site?.nameSite || ''}\nType: ${chosenEpvType}\nDate planifiée: ${chosenPlannedDate}`
+        );
+        if (!ok) return;
+
+        const created = await apiFetchJson('/api/interventions', {
+          method: 'POST',
+          body: JSON.stringify({
+            siteId: String(site.id),
+            plannedDate: chosenPlannedDate,
+            epvType: chosenEpvType,
+            technicianName: String(site?.technician || '').trim(),
+            status: 'planned'
+          })
+        });
+        interventionId = String(created?.intervention?.id || '').trim();
+      } else {
+        const ok = window.confirm(
+          `Confirmer l'action "Effectuer une vidange" ?\n\nSite: ${site?.nameSite || ''}\nType: ${chosenEpvType || ''}\nDate planifiée: ${chosenPlannedDate || ''}`
+        );
+        if (!ok) return;
+      }
 
       const doneDate = String(formData.dateDV || '').slice(0, 10);
       const nhNow = Number(String(formData.nh1DV || '').trim());
@@ -368,31 +448,6 @@ const GeneratorMaintenanceApp = () => {
       if (!Number.isFinite(nhNow)) {
         alert('NH1 DV invalide.');
         return;
-      }
-
-      const list = Array.isArray(interventions) ? interventions : [];
-      const existing = list.find(
-        (it) =>
-          it &&
-          String(it.siteId) === String(site.id) &&
-          String(it.plannedDate || '').slice(0, 10) === plannedDate &&
-          String(it.epvType || '').trim() === epvType
-      );
-
-      let interventionId = resolvedInterventionId || (existing?.id ? String(existing.id) : '');
-
-      if (!interventionId) {
-        const created = await apiFetchJson('/api/interventions', {
-          method: 'POST',
-          body: JSON.stringify({
-            siteId: String(site.id),
-            plannedDate,
-            epvType,
-            technicianName: String(site?.technician || '').trim(),
-            status: 'planned'
-          })
-        });
-        interventionId = String(created?.intervention?.id || '').trim();
       }
 
       if (!interventionId) {
@@ -413,6 +468,7 @@ const GeneratorMaintenanceApp = () => {
       setShowEditForm(false);
       setSelectedSite(null);
       setEditSiteFormMode('full');
+      setVidangeChosenIntervention(null);
       setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
       alert('✅ Vidange effectuée.');
     } catch (e) {
@@ -7621,6 +7677,7 @@ return (
                   {showEditForm && (
                     <EditSiteForm
                       selectedSite={selectedSite}
+                      vidangeIntervention={String(editSiteFormMode || '') === 'vidange' ? vidangeChosenIntervention : null}
                       formData={formData}
                       setFormData={setFormData}
                       mode={editSiteFormMode}
@@ -7628,10 +7685,12 @@ return (
                       onClose={() => {
                         setShowEditForm(false);
                         setEditSiteFormMode('full');
+                        setVidangeChosenIntervention(null);
                       }}
                       onCancel={() => {
                         setShowEditForm(false);
                         setEditSiteFormMode('full');
+                        setVidangeChosenIntervention(null);
                       }}
                     />
                   )}
@@ -7644,29 +7703,11 @@ return (
                         <div className="flex flex-col gap-2">
                           <button
                             type="button"
-                            onClick={() => {
+                            onClick={async () => {
                               const site = siteEditChoiceSite;
                               setSiteEditChoiceOpen(false);
                               setSiteEditChoiceSite(null);
-                              setSelectedSite(site);
-                              setEditSiteFormMode('vidange');
-                              setFormData({
-                                nameSite: site.nameSite,
-                                idSite: site.idSite,
-                                technician: site.technician,
-                                generateur: site.generateur,
-                                capacite: site.capacite,
-                                kitVidange: site.kitVidange,
-                                nh1DV: site.nh1DV,
-                                dateDV: '',
-                                nh2A: site.nh2A,
-                                dateA: site.dateA,
-                                retired: site.retired
-                              });
-                              setShowEditForm(true);
-                              setTimeout(() => {
-                                siteFormAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                              }, 0);
+                              await handleStartManagerVidange(site);
                             }}
                             className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 font-semibold"
                           >
@@ -7740,6 +7781,95 @@ return (
                             className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 font-semibold"
                           >
                             Annuler
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {vidangeInterventionChoiceOpen && vidangeInterventionChoiceSite && (
+                    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+                      <div className="bg-white rounded-xl shadow-xl border border-gray-200 w-full max-w-lg p-4">
+                        <div className="font-bold text-gray-900 mb-1">Choisir l'intervention à clôturer</div>
+                        <div className="text-sm text-gray-600 mb-3 truncate">{vidangeInterventionChoiceSite?.nameSite}</div>
+
+                        {vidangeInterventionChoiceError && (
+                          <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">
+                            {vidangeInterventionChoiceError}
+                          </div>
+                        )}
+
+                        <div className="max-h-[50vh] overflow-auto border border-gray-200 rounded-lg">
+                          {(Array.isArray(vidangeInterventionChoiceItems) ? vidangeInterventionChoiceItems : []).map((it) => {
+                            const checked = String(vidangeChosenIntervention?.id || '') === String(it?.id || '');
+                            return (
+                              <label
+                                key={String(it?.id || '')}
+                                className={`flex items-start gap-3 px-3 py-2 border-b border-gray-100 cursor-pointer hover:bg-gray-50 ${checked ? 'bg-sky-50' : ''}`}
+                              >
+                                <input
+                                  type="radio"
+                                  name="vidange_intervention_choice"
+                                  checked={checked}
+                                  onChange={() => setVidangeChosenIntervention(it)}
+                                  className="mt-1"
+                                />
+                                <div className="flex-1">
+                                  <div className="font-semibold text-gray-900">
+                                    {String(it?.epvType || '').trim() || '-'}
+                                    {' - '}
+                                    {String(it?.plannedDate || '').slice(0, 10) || '-'}
+                                  </div>
+                                  <div className="text-xs text-gray-600">
+                                    Statut: {String(it?.status || '').trim() || '-'}
+                                  </div>
+                                </div>
+                              </label>
+                            );
+                          })}
+                          {(Array.isArray(vidangeInterventionChoiceItems) ? vidangeInterventionChoiceItems : []).length === 0 && (
+                            <div className="px-3 py-3 text-sm text-gray-600">Aucune intervention à afficher.</div>
+                          )}
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row gap-2 mt-4">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setVidangeInterventionChoiceOpen(false);
+                              setVidangeInterventionChoiceSite(null);
+                              setVidangeInterventionChoiceItems([]);
+                              setVidangeInterventionChoiceError('');
+                              setVidangeChosenIntervention(null);
+                            }}
+                            className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 font-semibold"
+                          >
+                            Annuler
+                          </button>
+                          <button
+                            type="button"
+                            disabled={vidangeInterventionChoiceBusy}
+                            onClick={() => {
+                              const site = vidangeInterventionChoiceSite;
+                              const chosen = vidangeChosenIntervention;
+                              const id = String(chosen?.id || '').trim();
+                              if (!id) {
+                                setVidangeInterventionChoiceError('Veuillez sélectionner une intervention.');
+                                return;
+                              }
+                              setVidangeInterventionChoiceOpen(false);
+                              setVidangeInterventionChoiceSite(null);
+                              setVidangeInterventionChoiceItems([]);
+                              setVidangeInterventionChoiceError('');
+                              if (showEditForm && String(editSiteFormMode || '') === 'vidange' && String(selectedSite?.id || '') === String(site?.id || '')) {
+                                setVidangeChosenIntervention(chosen);
+                                return;
+                              }
+                              openVidangeFormForSite(site, chosen);
+                            }}
+                            className={`px-4 py-2 rounded-lg font-semibold ${vidangeInterventionChoiceBusy ? 'bg-emerald-300 text-white cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}
+                          >
+                            Continuer
                           </button>
                         </div>
                       </div>
