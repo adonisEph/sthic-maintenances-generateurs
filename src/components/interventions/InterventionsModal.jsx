@@ -83,10 +83,11 @@ const InterventionsModal = ({
 
   const isManager = String(authUser?.role || '') === 'manager';
   const authZone = String(authUser?.zone || '').trim();
+  const managerZoneLock = (isManager && authZone) ? authZone : '';
 
   const zones = ['ALL', 'BZV/POOL', 'PNR/KOUILOU', 'UPCN'];
   const interventionsAll = Array.isArray(interventions) ? interventions : [];
-  const zoneActive = showZoneFilter && interventionsZone && interventionsZone !== 'ALL' ? String(interventionsZone) : '';
+  const zoneActive = managerZoneLock || (showZoneFilter && interventionsZone && interventionsZone !== 'ALL' ? String(interventionsZone) : '');
   const interventionsScoped = zoneActive
     ? interventionsAll.filter((i) => String(i?.zone || '').trim() === zoneActive)
     : interventionsAll;

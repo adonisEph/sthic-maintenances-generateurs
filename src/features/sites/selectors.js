@@ -15,9 +15,9 @@ export const getUpdatedSite = (site) => {
     return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
   };
 
-  const epv1 = normYmd(site?.epv1) || normYmd(epvDates?.epv1);
-  const epv2 = normYmd(site?.epv2) || normYmd(epvDates?.epv2);
-  const epv3 = normYmd(site?.epv3) || normYmd(epvDates?.epv3);
+  const epv1 = normYmd(epvDates?.epv1) || normYmd(site?.epv1);
+  const epv2 = normYmd(epvDates?.epv2) || normYmd(site?.epv2);
+  const epv3 = normYmd(epvDates?.epv3) || normYmd(site?.epv3);
 
   return {
     ...site,

@@ -44,7 +44,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.2.6';
+const APP_VERSION = '6.3.0';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -302,6 +302,7 @@ const GeneratorMaintenanceApp = () => {
   const isSuperAdmin = isAdmin && authZone === 'BZV/POOL';
   const canManagerVidangeActions = isSuperAdmin || (isManager && (String(authZone).trim().toUpperCase() === 'PNR/KOUILOU' || String(authZone).trim().toUpperCase() === 'UPCN'));
   const showZoneFilter = Boolean(isViewer || isSuperAdmin);
+  const managerZoneLock = (isManager && authZone) ? authZone : '';
   const canWriteSites = isAdmin || isManager;
   const canWarehouseCheck = isWarehouse || isAdmin || isManager;
   const canWarehouseRevoke = isWarehouse || isAdmin || isManager;
@@ -341,9 +342,16 @@ const GeneratorMaintenanceApp = () => {
   const loadPendingInterventionsForSite = async (siteId) => {
     const data = await apiFetchJson(`/api/interventions?siteId=${encodeURIComponent(String(siteId))}`, { method: 'GET' });
     const rows = Array.isArray(data?.interventions) ? data.interventions : [];
+    const todayYmd = new Date().toISOString().slice(0, 10);
+    const currentMonth = todayYmd.slice(0, 7);
     return rows
       .filter((it) => it && String(it.siteId) === String(siteId))
       .filter((it) => String(it.status || '') !== 'done')
+      .filter((it) => {
+        const pd = String(it?.plannedDate || '').slice(0, 10);
+        if (!pd) return true;
+        return pd.slice(0, 7) <= currentMonth;
+      })
       .slice()
       .sort((a, b) => String(a?.plannedDate || '').localeCompare(String(b?.plannedDate || '')));
   };
@@ -495,13 +503,19 @@ const GeneratorMaintenanceApp = () => {
 
   const warehouseProcessCount = useMemo(() => {
     const list = Array.isArray(ficheHistory) ? ficheHistory : [];
-    return list.filter((f) => f && f.status === 'Envoyée au magasin').length;
-  }, [ficheHistory]);
+    return list
+      .filter((f) => f && f.status === 'Envoyée au magasin')
+      .filter((f) => !managerZoneLock || String(f?.zone || '').trim() === managerZoneLock)
+      .length;
+  }, [ficheHistory, managerZoneLock]);
 
   const warehouseReturnsCount = useMemo(() => {
     const list = Array.isArray(ficheHistory) ? ficheHistory : [];
-    return list.filter((f) => f && f.status === 'Contrôle magasin').length;
-  }, [ficheHistory]);
+    return list
+      .filter((f) => f && f.status === 'Contrôle magasin')
+      .filter((f) => !managerZoneLock || String(f?.zone || '').trim() === managerZoneLock)
+      .length;
+  }, [ficheHistory, managerZoneLock]);
 
   const prevDoneInterventionsRef = useRef(new Set());
 
@@ -1488,9 +1502,9 @@ const GeneratorMaintenanceApp = () => {
         const nhEstimated = calculateEstimatedNH(site.nh2A, site.dateA, site.regime);
         const diffEstimated = calculateDiffNHs(site.nh1DV, nhEstimated);
         const epvDates = calculateEPVDates(site.regime, site.dateA, site.nh1DV, nhEstimated, site?.seuil);
-        const epv1 = normYmd(site.epv1) || normYmd(epvDates.epv1);
-        const epv2 = normYmd(site.epv2) || normYmd(epvDates.epv2);
-        const epv3 = normYmd(site.epv3) || normYmd(epvDates.epv3);
+        const epv1 = normYmd(epvDates.epv1) || normYmd(site.epv1);
+        const epv2 = normYmd(epvDates.epv2) || normYmd(site.epv2);
+        const epv3 = normYmd(epvDates.epv3) || normYmd(site.epv3);
         return {
           ...site,
           retired,
@@ -3733,6 +3747,7 @@ const GeneratorMaintenanceApp = () => {
       if (data?.site?.id) {
         setSites(sites.map((s) => (String(s.id) === String(data.site.id) ? data.site : s)));
       }
+      await loadData();
 
       setShowEditForm(false);
       setSelectedSite(null);
@@ -5227,7 +5242,7 @@ const GeneratorMaintenanceApp = () => {
 
   const computeDashboardData = (yyyymm) => {
     const techFilter = String(filterTechnician || 'all');
-    const zoneActive = showZoneFilter && dashboardZone && dashboardZone !== 'ALL' ? String(dashboardZone) : '';
+    const zoneActive = managerZoneLock || (showZoneFilter && dashboardZone && dashboardZone !== 'ALL' ? String(dashboardZone) : '');
     const dashboardSites = sites
       .map(getUpdatedSite)
       .filter((s) => !zoneActive || String(s?.zone || '').trim() === zoneActive);
@@ -5747,6 +5762,7 @@ const GeneratorMaintenanceApp = () => {
     }
 
     const afterZone = (() => {
+      if (managerZoneLock) return list.filter((s) => String(s?.zone || '').trim() === managerZoneLock);
       if (!showZoneFilter) return list;
       const z = String(dashboardZone || 'ALL');
       if (!z || z === 'ALL') return list;
@@ -5769,7 +5785,7 @@ const GeneratorMaintenanceApp = () => {
     }
 
     return afterSite;
-  }, [urgentSitesAll, isTechnician, authZone, showZoneFilter, dashboardZone, filterTechnician, filterSite, isViewer]);
+  }, [urgentSitesAll, isTechnician, isManager, authZone, showZoneFilter, dashboardZone, filterTechnician, filterSite, isViewer, managerZoneLock]);
 
   const urgentRetiredMonthsQuery = useMemo(() => {
     if (!(isAdmin || isManager || isViewer || isTechnician)) return '';
@@ -5861,12 +5877,18 @@ const GeneratorMaintenanceApp = () => {
     return list.find((f) => String(f?.id || '') === id) || null;
   }, [ficheContext?.ficheId, ficheHistory]);
 
-  const technicians = ['all', ...new Set(sites.map(s => String(s?.technician || '').trim()).filter(Boolean))];
+  const technicians = ['all', ...new Set(
+    sites
+      .filter((s) => !managerZoneLock || String(s?.zone || '').trim() === managerZoneLock)
+      .map(s => String(s?.technician || '').trim())
+      .filter(Boolean)
+  )];
   const filteredSites = sites
     .map(getUpdatedSite)
     .filter((site) => filterTechnician === 'all' || normTechName(site.technician) === normTechName(filterTechnician))
     .filter((site) => filterSite === 'all' || String(site?.id || '') === String(filterSite))
     .filter((site) => {
+      if (managerZoneLock) return String(site?.zone || '').trim() === managerZoneLock;
       if (!showZoneFilter) return true;
       const z = String(dashboardZone || 'ALL');
       if (!z || z === 'ALL') return true;
@@ -5926,7 +5948,13 @@ const GeneratorMaintenanceApp = () => {
   }, [filteredSites, pmInfoBySiteCode]);
 
     const footerZoneActive =
-      showZoneFilter && dashboardZone && dashboardZone !== 'ALL' ? String(dashboardZone) : '';
+      managerZoneLock || (showZoneFilter && dashboardZone && dashboardZone !== 'ALL' ? String(dashboardZone) : '');
+
+    const totalSitesFooterCount = isTechnician
+      ? filteredSites.length
+      : footerZoneActive
+        ? sites.filter((s) => String(s?.zone || '').trim() === footerZoneActive).length
+        : sites.length;
 
     const retiredSitesCountFooterBase = isTechnician ? filteredSites : sites;
 
@@ -6031,7 +6059,8 @@ const GeneratorMaintenanceApp = () => {
   const calendarFilteredSites = sites
     .map(getUpdatedSite)
     .filter((site) => {
-      if (showZoneFilter) {
+      if (managerZoneLock && String(site?.zone || '').trim() !== managerZoneLock) return false;
+      if (!managerZoneLock && showZoneFilter) {
         const z = String(calendarZone || 'ALL');
         if (z && z !== 'ALL' && String(site?.zone || '').trim() !== z) return false;
       }
@@ -6816,6 +6845,7 @@ const GeneratorMaintenanceApp = () => {
   };
 
   const filteredFicheHistory = ficheHistory
+    .filter((fiche) => !managerZoneLock || String(fiche?.zone || '').trim() === managerZoneLock)
     .filter((fiche) => {
       if (historyStatus !== 'all' && fiche.status !== historyStatus) return false;
 
@@ -8431,9 +8461,9 @@ return (
                       </div>
 
                       {(() => {
-                        const listAll = (Array.isArray(ficheHistory) ? ficheHistory : []).filter(
-                          (f) => f && f.status === 'Envoyée au magasin'
-                        );
+                        const listAll = (Array.isArray(ficheHistory) ? ficheHistory : [])
+                          .filter((f) => f && f.status === 'Envoyée au magasin')
+                          .filter((f) => !managerZoneLock || String(f?.zone || '').trim() === managerZoneLock);
 
                         const q = String(warehouseRevokeQuery || '').trim().toLowerCase();
                         const from = String(warehouseRevokeDateFrom || '').slice(0, 10);
@@ -8607,9 +8637,9 @@ return (
                 </div>
 
                 {(() => {
-                  const listAll = (Array.isArray(ficheHistory) ? ficheHistory : []).filter(
-                    (f) => f && f.status === 'Contrôle magasin'
-                  );
+                  const listAll = (Array.isArray(ficheHistory) ? ficheHistory : [])
+                    .filter((f) => f && f.status === 'Contrôle magasin')
+                    .filter((f) => !managerZoneLock || String(f?.zone || '').trim() === managerZoneLock);
 
                   const q = String(warehouseReturnsQuery || '').trim().toLowerCase();
                   const from = String(warehouseReturnsDateFrom || '').slice(0, 10);
@@ -8762,8 +8792,8 @@ return (
           onClose={() => setShowAirFilterHistory(false)}
           busy={Boolean(ficheHistoryBusy)}
           onRefresh={loadFicheHistory}
-          ficheHistory={ficheHistory}
-          sites={sites}
+          ficheHistory={managerZoneLock ? ficheHistory.filter((f) => String(f?.zone || '').trim() === managerZoneLock) : ficheHistory}
+          sites={managerZoneLock ? sites.filter((s) => String(s?.zone || '').trim() === managerZoneLock) : sites}
           formatDate={formatDate}
         />
 
@@ -8806,7 +8836,7 @@ return (
             currentMonth={currentMonth}
             setCurrentMonth={setCurrentMonth}
             isAdmin={isAdmin}
-            sites={sites}
+            sites={calendarFilteredSites}
             calendarZone={calendarZone}
             setCalendarZone={setCalendarZone}
             showZoneFilter={showZoneFilter}
@@ -9391,7 +9421,7 @@ return (
             <SitesStats
               canSetNextTicket={isAdmin || isManager}
               onSetNextTicket={handleSetNextTicketNumber}
-              sitesCount={isTechnician ? filteredSites.length : sites.length}
+              sitesCount={totalSitesFooterCount}
               urgentSitesCount={urgentSites.length}
               retiredSitesCount={retiredSitesCountFooter}
               ticketNumber={ticketNumber}
