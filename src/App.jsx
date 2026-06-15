@@ -44,7 +44,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.3.1';
+const APP_VERSION = '6.3.2';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -4714,12 +4714,31 @@ const GeneratorMaintenanceApp = () => {
         onclone: (clonedDoc) => {
           const clonedEl = clonedDoc.getElementById('revoke-fiches-grid');
           if (clonedEl) {
-            clonedEl.style.padding = '24px';
+            clonedEl.style.padding = '32px';
             clonedEl.style.backgroundColor = '#ffffff';
             clonedEl.style.height = 'auto';
             clonedEl.style.maxHeight = 'none';
             clonedEl.style.overflow = 'visible';
             clonedEl.style.width = '1200px';
+
+            const itemCount = clonedEl.children.length || 0;
+            const cols = itemCount === 1 ? '1' : itemCount === 2 ? '2' : '3';
+            clonedEl.style.display = 'grid';
+            clonedEl.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+            clonedEl.style.gap = '20px';
+
+            clonedEl.querySelectorAll('.truncate').forEach((node) => {
+              node.classList.remove('truncate');
+              node.style.whiteSpace = 'normal';
+              node.style.overflow = 'visible';
+              node.style.textOverflow = 'clip';
+              node.style.wordBreak = 'break-word';
+            });
+
+            clonedEl.querySelectorAll('.min-w-0').forEach((node) => {
+              node.style.minWidth = '0';
+              node.style.flex = '1 1 0%';
+            });
           }
         }
       });
@@ -4727,13 +4746,24 @@ const GeneratorMaintenanceApp = () => {
       const imgData = canvas.toDataURL('image/png');
       const filename = `Planning_Revocations_${new Date().toISOString().slice(0, 10)}.png`;
 
+      let copiedToClipboard = false;
+      if (navigator.clipboard && navigator.clipboard.write) {
+        try {
+          const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+          if (blob) {
+            const item = new ClipboardItem({ [blob.type]: blob });
+            await navigator.clipboard.write([item]);
+            copiedToClipboard = true;
+          }
+        } catch (clipErr) {
+          console.error('Erreur lors de la copie dans le presse-papiers:', clipErr);
+        }
+      }
+
       if (navigator.share && navigator.canShare) {
         try {
-          canvas.toBlob(async (blob) => {
-            if (!blob) {
-              triggerImgDownload(imgData, filename);
-              return;
-            }
+          const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+          if (blob) {
             const file = new File([blob], filename, { type: 'image/png' });
             if (navigator.canShare({ files: [file] })) {
               await navigator.share({
@@ -4741,17 +4771,24 @@ const GeneratorMaintenanceApp = () => {
                 title: 'Planning Révocations',
                 text: 'Voici le planning des fiches envoyées au magasin à révoquer.'
               });
-            } else {
-              triggerImgDownload(imgData, filename);
+              if (copiedToClipboard) {
+                alert("✅ Planning partagé !\n\nL'image a également été copiée dans votre presse-papiers (vous pouvez faire CTRL+V directement sur WhatsApp).");
+              }
+              return;
             }
-          }, 'image/png');
-          return;
-        } catch (err) {
-          console.error('Erreur Web Share:', err);
+          }
+        } catch (shareErr) {
+          console.error('Erreur Web Share:', shareErr);
         }
       }
 
       triggerImgDownload(imgData, filename);
+
+      if (copiedToClipboard) {
+        alert("✅ Planning généré et téléchargé !\n\nL'image a été automatiquement copiée dans votre presse-papiers. Vous pouvez faire CTRL+V directement dans votre groupe WhatsApp pour l'envoyer !");
+      } else {
+        alert("✅ Planning généré et téléchargé !\n\nL'image a été enregistrée sur votre appareil.");
+      }
     } catch (e) {
       alert("Une erreur est survenue lors de la capture d'image : " + (e?.message || e));
     } finally {
@@ -8586,7 +8623,7 @@ return (
                                       <div className="font-bold text-lg text-gray-800 truncate">{fiche.ticketNumber || '-'}</div>
                                       <div className="text-sm text-gray-600 truncate">{fiche.siteName}</div>
                                     </div>
-                                    <span className="px-3 py-1 rounded-full text-sm font-semibold self-start bg-indigo-700 text-white">
+                                    <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-indigo-700 text-white inline-flex items-center justify-center text-center leading-none self-start h-fit min-h-[28px]">
                                       Envoyée au magasin
                                     </span>
                                   </div>
@@ -8613,7 +8650,7 @@ return (
                                     if (!ok) return;
                                     await handleRevokeSendToWarehouse({ ficheId: fiche.id });
                                   }}
-                                  className="w-full bg-red-700 text-white py-2 rounded-lg hover:bg-red-800 font-semibold disabled:bg-red-300"
+                                  className="w-full bg-red-700 text-white py-2.5 rounded-lg hover:bg-red-800 font-bold disabled:bg-red-300 inline-flex items-center justify-center text-center leading-none min-h-[42px]"
                                 >
                                   {warehouseRevokeBusyId === String(fiche.id) ? 'Annulation...' : 'Annuler la fiche'}
                                 </button>
