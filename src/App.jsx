@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { AlertCircle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users, Menu, ChevronLeft, Trash2, RotateCcw, Bell } from 'lucide-react';
+import { AlertCircle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users, Menu, ChevronLeft, Trash2, RotateCcw, Bell, Share2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -44,7 +44,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.3.0';
+const APP_VERSION = '6.3.1';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -107,6 +107,7 @@ const GeneratorMaintenanceApp = () => {
   const [warehouseRevokeDateTo, setWarehouseRevokeDateTo] = useState('');
   const [warehouseRevokeSort, setWarehouseRevokeSort] = useState('newest');
   const [warehouseRevokeBusyId, setWarehouseRevokeBusyId] = useState('');
+  const [shareRevokeBusy, setShareRevokeBusy] = useState(false);
   const [interventions, setInterventions] = useState([]);
   const [interventionsUiRev, setInterventionsUiRev] = useState(0);
   const [interventionsMonth, setInterventionsMonth] = useState(() => new Date().toISOString().slice(0, 7));
@@ -4684,6 +4685,80 @@ const GeneratorMaintenanceApp = () => {
     }
   };
 
+  const triggerImgDownload = (imgData, filename) => {
+    const link = document.createElement('a');
+    link.href = imgData;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleShareRevokePlanning = async () => {
+    const el = document.getElementById('revoke-fiches-grid');
+    if (!el) {
+      alert('Aucune fiche à capturer.');
+      return;
+    }
+
+    setShareRevokeBusy(true);
+    try {
+      await new Promise((r) => setTimeout(r, 150));
+
+      const canvas = await html2canvas(el, {
+        scale: 3,
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: '#ffffff',
+        logging: false,
+        onclone: (clonedDoc) => {
+          const clonedEl = clonedDoc.getElementById('revoke-fiches-grid');
+          if (clonedEl) {
+            clonedEl.style.padding = '24px';
+            clonedEl.style.backgroundColor = '#ffffff';
+            clonedEl.style.height = 'auto';
+            clonedEl.style.maxHeight = 'none';
+            clonedEl.style.overflow = 'visible';
+            clonedEl.style.width = '1200px';
+          }
+        }
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const filename = `Planning_Revocations_${new Date().toISOString().slice(0, 10)}.png`;
+
+      if (navigator.share && navigator.canShare) {
+        try {
+          canvas.toBlob(async (blob) => {
+            if (!blob) {
+              triggerImgDownload(imgData, filename);
+              return;
+            }
+            const file = new File([blob], filename, { type: 'image/png' });
+            if (navigator.canShare({ files: [file] })) {
+              await navigator.share({
+                files: [file],
+                title: 'Planning Révocations',
+                text: 'Voici le planning des fiches envoyées au magasin à révoquer.'
+              });
+            } else {
+              triggerImgDownload(imgData, filename);
+            }
+          }, 'image/png');
+          return;
+        } catch (err) {
+          console.error('Erreur Web Share:', err);
+        }
+      }
+
+      triggerImgDownload(imgData, filename);
+    } catch (e) {
+      alert("Une erreur est survenue lors de la capture d'image : " + (e?.message || e));
+    } finally {
+      setShareRevokeBusy(false);
+    }
+  };
+
   const persistFicheHistory = async (ticketNumberFull) => {
     let interventionId = ficheContext?.interventionId ? String(ficheContext.interventionId) : null;
     // GARANTIE: si l'interventionId est absent, on la crée/récupère ici avant de persister la fiche.
@@ -8374,8 +8449,8 @@ return (
               </div>
 
               {warehouseRevokeOpen && (
-                <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4">
-                  <div className="bg-white w-full max-w-5xl rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
+                <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-2 sm:p-4">
+                  <div className="bg-white w-full max-w-[95vw] lg:max-w-7xl xl:max-w-[90vw] rounded-xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col max-h-[92vh]">
                     <div className="flex items-center justify-between gap-3 p-4 border-b bg-slate-900 text-white">
                       <div className="text-lg font-bold">Révocation fiches magasin</div>
                       <button
@@ -8387,7 +8462,7 @@ return (
                       </button>
                     </div>
 
-                    <div className="p-4 sm:p-6">
+                    <div className="p-4 sm:p-6 overflow-y-auto flex-1 bg-white">
                       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-start">
                           <div className="flex flex-col w-full min-w-0">
@@ -8502,7 +8577,7 @@ return (
                         }
 
                         return (
-                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                          <div id="revoke-fiches-grid" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 bg-white p-2">
                             {list.map((fiche) => (
                               <div key={fiche.id} className="border-2 rounded-lg p-4 bg-white border-gray-200">
                                 <div className="flex flex-col gap-2 mb-3">
@@ -8549,11 +8624,20 @@ return (
                       })()}
                     </div>
 
-                    <div className="p-3 border-t bg-white flex justify-end">
+                    <div className="p-3 border-t bg-slate-50 flex justify-end gap-2.5">
+                      <button
+                        type="button"
+                        disabled={shareRevokeBusy}
+                        onClick={handleShareRevokePlanning}
+                        className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 font-semibold flex items-center gap-1.5 transition-colors disabled:bg-teal-300"
+                      >
+                        <Share2 size={18} />
+                        {shareRevokeBusy ? 'Génération...' : 'Partager planning'}
+                      </button>
                       <button
                         type="button"
                         onClick={() => setWarehouseRevokeOpen(false)}
-                        className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold"
+                        className="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900 font-semibold transition-colors"
                       >
                         Fermer
                       </button>
