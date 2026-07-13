@@ -47,7 +47,11 @@ const CalendarModal = (props) => {
   const isManager = role === 'manager' || role === 'manager_bzv_pool';
   const isFieldSupervisor = role === 'field_supervisor';
   const authZone = String(authUser?.zone || '').trim();
+  const isZonalLocked = role === 'manager' || role === 'field_supervisor';
   const zones = ['ALL', 'BZV/POOL', 'PNR/KOUILOU', 'UPCN'];
+  const techFilterZone = isZonalLocked
+    ? String(authZone || '').trim()
+    : (showZoneFilter && calendarZone && calendarZone !== 'ALL' ? String(calendarZone || '').trim() : '');
 
   // State for clustering functionality
   const [showClustering, setShowClustering] = useState(false);
@@ -89,18 +93,18 @@ const CalendarModal = (props) => {
 
   const zoneForIntelligent = useMemo(() => {
     if (isSuperAdmin) return String(calendarZone || authZone || 'BZV/POOL');
-    if (isManager || isFieldSupervisor) return String(authZone || 'BZV/POOL');
+    if (isZonalLocked) return String(authZone || 'BZV/POOL');
     return String(calendarZone || authZone || 'BZV/POOL');
-  }, [isSuperAdmin, calendarZone, authZone, isManager, isFieldSupervisor]);
+  }, [isSuperAdmin, calendarZone, authZone, isZonalLocked]);
 
   const zoneTechnicians = useMemo(() => {
     const all = (Array.isArray(users) ? users : []).filter((u) => u && u.role === 'technician');
     const z = String(zoneForIntelligent || '').trim();
-    const scoped = isSuperAdmin && (calendarZone === 'ALL' || !calendarZone) ? all : all.filter((u) => String(u?.zone || '').trim() === z);
+    const scoped = !z || z === 'ALL' ? all : all.filter((u) => String(u?.zone || '').trim() === z);
     return scoped
       .slice()
       .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')));
-  }, [users, zoneForIntelligent, isSuperAdmin, calendarZone]);
+  }, [users, zoneForIntelligent]);
 
   const targetMonthLabel = useMemo(() => {
     try {
@@ -430,7 +434,7 @@ const CalendarModal = (props) => {
                       <option value="">-- Technicien --</option>
                       {(Array.isArray(users) ? users : [])
                         .filter((u) => u && u.role === 'technician')
-                        .filter((u) => (isManager ? String(u?.zone || '').trim() === authZone : true))
+                        .filter((u) => (techFilterZone ? String(u?.zone || '').trim() === techFilterZone : true))
                         .slice()
                         .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')))
                         .map((u) => (
@@ -446,7 +450,7 @@ const CalendarModal = (props) => {
                       !usersError &&
                       (Array.isArray(users) ? users : [])
                         .filter((u) => u && u.role === 'technician')
-                        .filter((u) => (isManager ? String(u?.zone || '').trim() === authZone : true)).length === 0 && (
+                        .filter((u) => (techFilterZone ? String(u?.zone || '').trim() === techFilterZone : true)).length === 0 && (
                         <div className="mt-1 text-xs text-white/70">Aucun technicien chargé.</div>
                       )}
 

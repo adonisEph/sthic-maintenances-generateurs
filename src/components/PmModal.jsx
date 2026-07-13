@@ -103,6 +103,8 @@ const PmModal = (props) => {
   const [pmMonthlyRecapOpen, setPmMonthlyRecapOpen] = React.useState(false);
 
   const pmIsSuperAdmin = Boolean(props?.isSuperAdmin);
+  const managerZoneLock = String(props?.managerZoneLock || '').trim();
+  const pmTechFilterZone = managerZoneLock || (pmFilterZone && pmFilterZone !== 'all' ? String(pmFilterZone || '').trim() : '');
 
   React.useEffect(() => {
     if (!pmIsSuperAdmin) return;
@@ -271,9 +273,9 @@ const PmModal = (props) => {
     if (t !== 'FULLPMWO') return false;
     const m = String(it?.scheduledWoDate || '').slice(0, 7);
     if (recapMonth && m && m !== recapMonth) return false;
-    if (isManager && !pmIsSuperAdmin && !isViewer) {
+    if (managerZoneLock && !pmIsSuperAdmin && !isViewer) {
       const z = String(it?.zone || it?.region || '').trim();
-      const az = String(authZone || '').trim();
+      const az = String(managerZoneLock || '').trim();
       if (az) {
         if (!z) return false;
         if (z !== az) return false;
@@ -488,7 +490,7 @@ const PmModal = (props) => {
                           <option value="">-- Technicien --</option>
                           {(Array.isArray(users) ? users : [])
                             .filter((u) => u && u.role === 'technician')
-                            .filter((u) => (isManager ? String(u?.zone || '').trim() === String(authZone || '').trim() : true))
+                            .filter((u) => (pmTechFilterZone ? String(u?.zone || '').trim() === String(pmTechFilterZone || '').trim() : true))
                             .slice()
                             .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')))
                             .map((u) => (
@@ -522,7 +524,7 @@ const PmModal = (props) => {
 
                       {(Array.isArray(users) ? users : [])
                         .filter((u) => u && u.role === 'technician')
-                        .filter((u) => (isManager ? String(u?.zone || '').trim() === String(authZone || '').trim() : true)).length === 0 && (
+                        .filter((u) => (pmTechFilterZone ? String(u?.zone || '').trim() === String(pmTechFilterZone || '').trim() : true)).length === 0 && (
                         <div className="text-xs text-white/70">
                           Aucun technicien trouvé.
                         </div>

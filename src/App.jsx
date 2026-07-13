@@ -44,7 +44,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.4.1';
+const APP_VERSION = '6.4.2';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -2143,8 +2143,9 @@ const GeneratorMaintenanceApp = () => {
     }
 
     const authZone = String(authUser?.zone || '').trim();
-    const superAdmin = Boolean(authUser?.role === 'admin' && authZone === 'BZV/POOL');
-    const viewer = Boolean(authUser?.role === 'viewer');
+    const role = String(authUser?.role || '').trim();
+    const superAdmin = Boolean(role === 'admin' && authZone === 'BZV/POOL');
+    const canAllZones = superAdmin || role === 'viewer' || role === 'controller' || role === 'manager_bzv_pool';
 
     const normalizeZone = (z) =>
       String(z || '')
@@ -2161,7 +2162,7 @@ const GeneratorMaintenanceApp = () => {
         .toUpperCase()
         .replace(/\s+/g, '');
 
-    const scopeZones = (superAdmin || viewer) ? ['BZV/POOL', 'PNR/KOUILOU', 'UPCN'] : authZone ? [authZone] : [];
+    const scopeZones = canAllZones ? ['BZV/POOL', 'PNR/KOUILOU', 'UPCN'] : authZone ? [authZone] : [];
     const scopeZonesNorm = scopeZones.map(normalizeZone).filter(Boolean);
     if (scopeZones.length === 0) {
       setPmRetiredSites(null);
@@ -9099,6 +9100,7 @@ return (
             isViewer={isViewer}
             isAdmin={isAdmin}
             isManager={isAnyManager}
+            managerZoneLock={managerZoneLock}
             setShowPm={setShowPm}
             setPmError={setPmError}
             setPmNotice={setPmNotice}

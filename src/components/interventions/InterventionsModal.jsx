@@ -90,6 +90,7 @@ const InterventionsModal = ({
   const zones = ['ALL', 'BZV/POOL', 'PNR/KOUILOU', 'UPCN'];
   const interventionsAll = Array.isArray(interventions) ? interventions : [];
   const zoneActive = managerZoneLock || (showZoneFilter && interventionsZone && interventionsZone !== 'ALL' ? String(interventionsZone) : '');
+  const zoneTechFilter = managerZoneLock || (showZoneFilter && interventionsZone && interventionsZone !== 'ALL' ? String(interventionsZone).trim() : '');
   const interventionsScoped = zoneActive
     ? interventionsAll.filter((i) => String(i?.zone || '').trim() === zoneActive)
     : interventionsAll;
@@ -469,7 +470,7 @@ const InterventionsModal = ({
                       <option value="all">Tous</option>
                       {(Array.isArray(users) ? users : [])
                         .filter((u) => u && u.role === 'technician')
-                        .filter((u) => (isManager ? String(u?.zone || '').trim() === authZone : true))
+                        .filter((u) => (zoneTechFilter ? String(u?.zone || '').trim() === zoneTechFilter : true))
                         .slice()
                         .sort((a, b) =>
                           String(a.technicianName || a.email || '').localeCompare(
@@ -542,7 +543,7 @@ const InterventionsModal = ({
               {(() => {
                 const techUsers = (Array.isArray(users) ? users : [])
                   .filter((u) => u && u.role === 'technician')
-                  .filter((u) => (isManager ? String(u?.zone || '').trim() === authZone : true))
+                  .filter((u) => (zoneTechFilter ? String(u?.zone || '').trim() === zoneTechFilter : true))
                   .slice()
                   .sort((a, b) =>
                     String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || ''))
