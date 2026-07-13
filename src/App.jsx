@@ -44,7 +44,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.4.0';
+const APP_VERSION = '6.4.1';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -308,10 +308,10 @@ const GeneratorMaintenanceApp = () => {
   const canManagerVidangeActions = isSuperAdmin || isManagerBzvPool || (isManager && (String(authZone).trim().toUpperCase() === 'PNR/KOUILOU' || String(authZone).trim().toUpperCase() === 'UPCN'));
   const showZoneFilter = Boolean(isController || isSuperAdmin || isManagerBzvPool);
   const managerZoneLock = ((isManager || isFieldSupervisor) && authZone) ? authZone : '';
-  const canWriteSites = isAdmin || isAnyManager;
+  const canWriteSites = isAdmin || isManager;
   const canWarehouseCheck = isWarehouse || isAdmin || isAnyManager;
   const canWarehouseRevoke = isWarehouse || isAdmin || isAnyManager;
-  const canImportSites = isAdmin || isAnyManager;
+  const canImportSites = isAdmin || isManager;
   const canExportExcel = isAdmin || isAnyManager || isController || isFieldSupervisor;
   const canExportSites = canExportExcel && !isTechnician;
   const canReset = isAdmin;
@@ -8886,7 +8886,7 @@ return (
           onOpenFiche={handleOpenFicheFromHistory}
           onTriggerIntervention={handleTriggerInterventionFromHistory}
           onSendToWarehouse={handleSendToWarehouse}
-          canSendToWarehouse={Boolean(isAdmin || isManager)}
+          canSendToWarehouse={Boolean(isAdmin || isAnyManager)}
           allowedStatuses={['En attente', 'Effectuée']}
           historyQuery={historyQuery}
           setHistoryQuery={setHistoryQuery}
@@ -9061,7 +9061,7 @@ return (
           finalizeBusy={finalizeBusy}
           hideWarehouseSection={Boolean(ficheFlowMode === 'preSend')}
           showSendToWarehouseInObjet={Boolean(ficheFlowMode === 'preSend')}
-          canSendToWarehouse={Boolean(isAdmin || isManager)}
+          canSendToWarehouse={Boolean(isAdmin || isAnyManager)}
           onSendToWarehouse={handleSendToWarehouse}
           disableSignatureAutofetch={Boolean(ficheFlowMode === 'preSend')}
           onFinalizeFiche={handleFinalizeWarehouseReturn}

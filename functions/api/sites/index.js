@@ -32,7 +32,7 @@ export async function onRequestGet({ request, env, data }) {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
-    const role = String(data?.user?.role || '');
+    const role = String(data?.user?.role || '').trim();
     const z = userZone(data);
     const zLoose = String(z || '')
       .trim()

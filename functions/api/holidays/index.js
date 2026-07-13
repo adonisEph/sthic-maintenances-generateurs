@@ -23,8 +23,8 @@ export async function onRequestGet({ request, env, data }) {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
-    const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'manager' && role !== 'viewer') {
+    const role = String(data?.user?.role || '').trim();
+    if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool' && role !== 'controller' && role !== 'field_supervisor' && role !== 'viewer') {
       return json({ error: 'Accès interdit.' }, { status: 403 });
     }
 
@@ -48,7 +48,8 @@ export async function onRequestGet({ request, env, data }) {
     const res = await stmt.all();
     const rows = Array.isArray(res?.results) ? res.results : [];
 
-    const scopeZone = (role === 'admin' || role === 'manager') && !isSuperAdmin(data) ? userZone(data) : null;
+    const canAllZones = isSuperAdmin(data) || role === 'viewer' || role === 'controller' || role === 'manager_bzv_pool';
+    const scopeZone = (!canAllZones && (role === 'admin' || role === 'manager' || role === 'field_supervisor')) ? userZone(data) : null;
 
     return json({ holidays: rows.map(mapRow).filter(Boolean), scopeZone }, { status: 200 });
   } catch (e) {

@@ -82,6 +82,7 @@ const InterventionsModal = ({
   const [pmError, setPmError] = React.useState('');
 
   const role = String(authUser?.role || '').trim();
+  const isManager = role === 'manager' || role === 'manager_bzv_pool';
   const authZone = String(authUser?.zone || '').trim();
   const isZonalLocked = role === 'manager' || role === 'field_supervisor';
   const managerZoneLock = (isZonalLocked && authZone) ? authZone : '';
