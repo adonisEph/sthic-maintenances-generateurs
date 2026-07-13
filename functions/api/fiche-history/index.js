@@ -60,7 +60,10 @@ export async function onRequestGet({ request, env, data }) {
       binds.push(to);
     }
 
-    const role = String(data?.user?.role || '');
+    const role = String(data?.user?.role || '').trim();
+    if (!['admin', 'manager', 'manager_bzv_pool', 'warehouse', 'technician', 'controller', 'field_supervisor', 'viewer'].includes(role)) {
+      return json({ error: 'Accès interdit.' }, { status: 403 });
+    }
 
     if (role === 'warehouse') {
       where += ' AND s.zone = ?';
@@ -71,6 +74,11 @@ export async function onRequestGet({ request, env, data }) {
     if (role === 'technician') {
       where += ' AND fh.technician = ?';
       binds.push(String(data.user.technicianName || ''));
+    }
+
+    if (role === 'manager' || role === 'field_supervisor') {
+      where += ' AND s.zone = ?';
+      binds.push(String(userZone(data) || 'BZV/POOL'));
     }
 
     if (role === 'admin' && !isSuperAdmin(data)) {
@@ -122,7 +130,7 @@ export async function onRequestPost({ request, env, data }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
     const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
+    if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const body = await readJson(request);
 
@@ -166,6 +174,11 @@ export async function onRequestPost({ request, env, data }) {
 
     const zone = String(site.zone || 'BZV/POOL');
     if (role === 'admin' && !isSuperAdmin(data)) {
+      const z = String(userZone(data) || 'BZV/POOL');
+      if (zone !== z) return json({ error: 'Accès interdit.' }, { status: 403 });
+    }
+
+    if (role === 'manager') {
       const z = String(userZone(data) || 'BZV/POOL');
       if (zone !== z) return json({ error: 'Accès interdit.' }, { status: 403 });
     }

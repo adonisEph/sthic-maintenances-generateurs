@@ -3,7 +3,14 @@ import { json, requireAuth, requireAdmin, isSuperAdmin, userZone } from '../../.
 
 function requireAdminOrViewer(data) {
   const role = String(data?.user?.role || '');
-  return role === 'admin' || role === 'viewer' || role === 'manager';
+  return (
+    role === 'admin' ||
+    role === 'viewer' ||
+    role === 'controller' ||
+    role === 'field_supervisor' ||
+    role === 'manager' ||
+    role === 'manager_bzv_pool'
+  );
 }
 
 function mapRow(r) {
@@ -52,7 +59,7 @@ export async function onRequestGet({ request, env, data, params }) {
     const qPlanId = String(sp.get('planId') || '').trim();
 
     const zones = (() => {
-      if (isSuperAdmin(data) || role === 'viewer') {
+      if (isSuperAdmin(data) || role === 'viewer' || role === 'controller' || role === 'manager_bzv_pool') {
         if (qZone) return [qZone];
         return null; // all zones
       }

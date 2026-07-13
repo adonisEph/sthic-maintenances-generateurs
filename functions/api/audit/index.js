@@ -12,11 +12,17 @@ export async function onRequestGet({ request, env, data }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
     const role = String(data?.user?.role || '').trim();
-    const canAudit = role === 'admin' || role === 'manager';
+    const canAudit =
+      role === 'admin' ||
+      role === 'manager' ||
+      role === 'manager_bzv_pool' ||
+      role === 'controller' ||
+      role === 'field_supervisor' ||
+      role === 'viewer';
     if (!canAudit) return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const viewerZone = String(userZone(data) || 'BZV/POOL');
-    const canSeeAllZones = isSuperAdmin(data);
+    const canSeeAllZones = isSuperAdmin(data) || role === 'controller' || role === 'manager_bzv_pool' || role === 'viewer';
     const zoneFilter = canSeeAllZones ? '' : viewerZone;
 
     const url = new URL(request.url);

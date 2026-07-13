@@ -33,7 +33,7 @@ export async function onRequestGet({ request, env, data }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
     const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'technician' && role !== 'manager') {
+    if (role !== 'admin' && role !== 'technician' && role !== 'manager' && role !== 'manager_bzv_pool' && role !== 'controller' && role !== 'field_supervisor' && role !== 'viewer') {
       return json({ error: 'Accès interdit.' }, { status: 403 });
     }
 
@@ -46,8 +46,8 @@ export async function onRequestGet({ request, env, data }) {
     let where = '1=1';
     const binds = [];
 
-    // Scope zone: admin non-super-admin + manager => zone limitée
-    if ((role === 'admin' || role === 'manager') && !isSuperAdmin(data)) {
+    // Scope zone: admin non-super-admin + zonal collaborators => zone limitée
+    if ((role === 'admin' || role === 'manager' || role === 'field_supervisor') && !isSuperAdmin(data)) {
       where += ' AND s.zone = ?';
       binds.push(userZone(data));
     }
@@ -96,7 +96,7 @@ export async function onRequestDelete({ request, env, data }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
     const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
+    if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const body = await readJson(request);
     const id = String(body?.id || '').trim();

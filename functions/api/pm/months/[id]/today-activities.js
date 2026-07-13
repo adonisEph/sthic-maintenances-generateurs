@@ -4,7 +4,14 @@ import { calculateEPVDates, calculateEstimatedNH } from '../../../_utils/calc.js
 
 function requireAdminOrViewer(data) {
   const role = String(data?.user?.role || '');
-  return role === 'admin' || role === 'viewer' || role === 'manager';
+  return (
+    role === 'admin' ||
+    role === 'viewer' ||
+    role === 'controller' ||
+    role === 'field_supervisor' ||
+    role === 'manager' ||
+    role === 'manager_bzv_pool'
+  );
 }
 
 function mapPmRow(r) {
@@ -63,7 +70,8 @@ export async function onRequestGet({ request, env, data, params }) {
 
     const monthYyyyMm = String(today).slice(0, 7);
 
-    const scopeZone = isSuperAdmin(data) || role === 'viewer' ? null : String(userZone(data) || 'BZV/POOL');
+    const canAllZones = isSuperAdmin(data) || role === 'viewer' || role === 'controller' || role === 'manager_bzv_pool';
+    const scopeZone = canAllZones ? null : String(userZone(data) || 'BZV/POOL');
 
     const pmStmt = scopeZone
       ? env.DB.prepare(

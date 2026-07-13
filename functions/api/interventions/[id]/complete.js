@@ -17,8 +17,9 @@ export async function onRequestPost({ request, env, data, params }) {
     const role = String(data?.user?.role || '').trim();
     const isAdmin = role === 'admin';
     const isManager = role === 'manager';
+    const isManagerBzvPool = role === 'manager_bzv_pool';
     const isAssignedTech = intervention.technician_user_id && intervention.technician_user_id === data.user.id;
-    if (!isAdmin && !isManager && !isAssignedTech) {
+    if (!isAdmin && !isManager && !isManagerBzvPool && !isAssignedTech) {
       return json({ error: 'Accès interdit.' }, { status: 403 });
     }
 
@@ -29,7 +30,7 @@ export async function onRequestPost({ request, env, data, params }) {
     const site = await env.DB.prepare('SELECT * FROM sites WHERE id = ?').bind(intervention.site_id).first();
     if (!site) return json({ error: 'Site introuvable.' }, { status: 404 });
 
-    if (!isSuperAdmin(data) && !isManager) {
+    if (!isSuperAdmin(data) && !isManager && !isManagerBzvPool) {
       const z = userZone(data);
       if (String(site.zone || 'BZV/POOL') !== z) {
         return json({ error: 'Accès interdit.' }, { status: 403 });

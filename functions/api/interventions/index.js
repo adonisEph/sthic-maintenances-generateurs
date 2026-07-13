@@ -27,6 +27,11 @@ export async function onRequestGet({ request, env, data }) {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
+    const role = String(data?.user?.role || '').trim();
+    if (!['admin', 'technician', 'manager', 'manager_bzv_pool', 'controller', 'field_supervisor', 'viewer'].includes(role)) {
+      return json({ error: 'Accès interdit.' }, { status: 403 });
+    }
+
     const url = new URL(request.url);
     const from = url.searchParams.get('from');
     const to = url.searchParams.get('to');
@@ -38,11 +43,15 @@ export async function onRequestGet({ request, env, data }) {
     const binds = [];
 
     const z = userZone(data);
-    if (!isSuperAdmin(data) && data.user.role === 'admin') {
+    if (!isSuperAdmin(data) && role === 'admin') {
       where += ' AND i.zone = ?';
       binds.push(z);
     }
-    if (!isSuperAdmin(data) && data.user.role === 'technician') {
+    if (!isSuperAdmin(data) && role === 'technician') {
+      where += ' AND i.zone = ?';
+      binds.push(z);
+    }
+    if (role === 'manager' || role === 'field_supervisor') {
       where += ' AND i.zone = ?';
       binds.push(z);
     }
@@ -65,10 +74,10 @@ export async function onRequestGet({ request, env, data }) {
       binds.push(String(siteId));
     }
 
-    if (data.user.role === 'technician') {
+    if (role === 'technician') {
       where += ' AND i.technician_user_id = ?';
       binds.push(data.user.id);
-    } else if (data.user.role === 'admin' && technicianUserId) {
+    } else if ((role === 'admin' && isSuperAdmin(data)) && technicianUserId) {
       where += ' AND i.technician_user_id = ?';
       binds.push(String(technicianUserId));
     }
@@ -105,7 +114,7 @@ export async function onRequestPost({ request, env, data }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
     const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
+    if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     body = await readJson(request);
     const plannedDate = String(body.plannedDate || '');

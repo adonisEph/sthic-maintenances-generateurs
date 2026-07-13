@@ -4,7 +4,14 @@ import { touchLastUpdatedAt } from '../../_utils/meta.js';
 
 function requireAdminOrViewer(data) {
   const role = String(data?.user?.role || '');
-  return role === 'admin' || role === 'viewer' || role === 'manager';
+  return (
+    role === 'admin' ||
+    role === 'viewer' ||
+    role === 'controller' ||
+    role === 'field_supervisor' ||
+    role === 'manager' ||
+    role === 'manager_bzv_pool'
+  );
 }
 
 export async function onRequestGet({ env, data }) {
@@ -14,7 +21,8 @@ export async function onRequestGet({ env, data }) {
     if (!requireAdminOrViewer(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const role = String(data?.user?.role || '');
-    const scopeZone = isSuperAdmin(data) || role === 'viewer' ? null : String(userZone(data) || 'BZV/POOL');
+    const canAllZones = isSuperAdmin(data) || role === 'viewer' || role === 'controller' || role === 'manager_bzv_pool';
+    const scopeZone = canAllZones ? null : String(userZone(data) || 'BZV/POOL');
 
     const res = await env.DB.prepare('SELECT * FROM pm_months ORDER BY month DESC').all();
     const months = Array.isArray(res?.results) ? res.results : [];
@@ -56,7 +64,7 @@ export async function onRequestPost({ request, env, data }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
     const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
+    if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const body = await readJson(request);
     const month = String(body?.month || '').trim();

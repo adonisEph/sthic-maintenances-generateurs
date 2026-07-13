@@ -3,7 +3,14 @@ import { json, requireAuth } from '../../../_utils/http.js';
 
 function requireAdminOrViewer(data) {
   const role = String(data?.user?.role || '');
-  return role === 'admin' || role === 'viewer' || role === 'manager';
+  return (
+    role === 'admin' ||
+    role === 'viewer' ||
+    role === 'controller' ||
+    role === 'field_supervisor' ||
+    role === 'manager' ||
+    role === 'manager_bzv_pool'
+  );
 }
 
 export async function onRequestGet({ env, data, params }) {

@@ -43,7 +43,9 @@ const CalendarModal = (props) => {
     onDeleteHoliday,
   } = props;
 
-  const isManager = String(authUser?.role || '') === 'manager';
+  const role = String(authUser?.role || '').trim();
+  const isManager = role === 'manager' || role === 'manager_bzv_pool';
+  const isFieldSupervisor = role === 'field_supervisor';
   const authZone = String(authUser?.zone || '').trim();
   const zones = ['ALL', 'BZV/POOL', 'PNR/KOUILOU', 'UPCN'];
 
@@ -87,9 +89,9 @@ const CalendarModal = (props) => {
 
   const zoneForIntelligent = useMemo(() => {
     if (isSuperAdmin) return String(calendarZone || authZone || 'BZV/POOL');
-    if (isManager) return String(authZone || 'BZV/POOL');
+    if (isManager || isFieldSupervisor) return String(authZone || 'BZV/POOL');
     return String(calendarZone || authZone || 'BZV/POOL');
-  }, [isSuperAdmin, calendarZone, authZone, isManager]);
+  }, [isSuperAdmin, calendarZone, authZone, isManager, isFieldSupervisor]);
 
   const zoneTechnicians = useMemo(() => {
     const all = (Array.isArray(users) ? users : []).filter((u) => u && u.role === 'technician');

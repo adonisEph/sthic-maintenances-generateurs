@@ -3,7 +3,14 @@ import { json, requireAuth, ymdToday, isSuperAdmin, userZone } from '../../../_u
 
 function requireAdminOrViewer(data) {
   const role = String(data?.user?.role || '');
-  return role === 'admin' || role === 'viewer' || role === 'manager';
+  return (
+    role === 'admin' ||
+    role === 'viewer' ||
+    role === 'controller' ||
+    role === 'field_supervisor' ||
+    role === 'manager' ||
+    role === 'manager_bzv_pool'
+  );
 }
 
 function normState(s) {
@@ -32,7 +39,8 @@ export async function onRequestGet({ env, data, params }) {
 
     const today = ymdToday();
 
-    const scopeZone = isSuperAdmin(data) || role === 'viewer' ? null : String(userZone(data) || 'BZV/POOL');
+    const canAllZones = isSuperAdmin(data) || role === 'viewer' || role === 'controller' || role === 'manager_bzv_pool';
+    const scopeZone = canAllZones ? null : String(userZone(data) || 'BZV/POOL');
 
     const stmt = scopeZone
       ? env.DB.prepare(

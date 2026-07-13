@@ -26,7 +26,7 @@ export async function onRequestPost({ request, env, data }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
     const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
+    if (role !== 'admin') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const body = await readJson(request);
     const rows = Array.isArray(body?.rows) ? body.rows : [];

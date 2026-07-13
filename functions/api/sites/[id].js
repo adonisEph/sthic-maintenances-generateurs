@@ -33,7 +33,7 @@ export async function onRequestPatch({ request, env, data, params }) {
     await ensureAdminUser(env);
 
     const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
+    if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const id = String(params?.id || '');
     if (!id) return json({ error: 'ID manquant.' }, { status: 400 });
@@ -41,7 +41,7 @@ export async function onRequestPatch({ request, env, data, params }) {
     const existing = await env.DB.prepare('SELECT * FROM sites WHERE id = ?').bind(id).first();
     if (!existing) return json({ error: 'Site introuvable.' }, { status: 404 });
 
-    if (!isSuperAdmin(data)) {
+    if (!isSuperAdmin(data) && role !== 'manager_bzv_pool') {
       const z = userZone(data);
       if (String(existing.zone || 'BZV/POOL') !== z) {
         return json({ error: 'Accès interdit.' }, { status: 403 });

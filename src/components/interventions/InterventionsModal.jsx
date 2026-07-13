@@ -81,9 +81,10 @@ const InterventionsModal = ({
   const [pmBusy, setPmBusy] = React.useState(false);
   const [pmError, setPmError] = React.useState('');
 
-  const isManager = String(authUser?.role || '') === 'manager';
+  const role = String(authUser?.role || '').trim();
   const authZone = String(authUser?.zone || '').trim();
-  const managerZoneLock = (isManager && authZone) ? authZone : '';
+  const isZonalLocked = role === 'manager' || role === 'field_supervisor';
+  const managerZoneLock = (isZonalLocked && authZone) ? authZone : '';
 
   const zones = ['ALL', 'BZV/POOL', 'PNR/KOUILOU', 'UPCN'];
   const interventionsAll = Array.isArray(interventions) ? interventions : [];

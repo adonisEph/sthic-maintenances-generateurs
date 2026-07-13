@@ -90,8 +90,11 @@ const UsersModal = ({
                     onChange={(e) => onChangeUserForm({ ...userForm, role: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                   >
-                    <option value="viewer">viewer (lecture)</option>
+                    <option value="viewer">viewer (lecture) [legacy]</option>
+                    <option value="controller">Contrôleur (lecture all zones)</option>
+                    <option value="field_supervisor">Field Supervisor (lecture zone)</option>
                     <option value="manager">manager (zone)</option>
+                    <option value="manager_bzv_pool">Manager BZV/POOL (management all zones)</option>
                     <option value="warehouse">warehouse (magasinier)</option>
                     <option value="technician">technician</option>
                     <option value="admin">admin</option>

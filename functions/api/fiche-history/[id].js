@@ -41,8 +41,8 @@ async function loadCollaboratorRecipientIds(env, siteZone) {
   const z = String(siteZone || 'BZV/POOL');
 
   if (z === 'BZV/POOL') {
-    // Collaborateur strict: superadmin BZV/POOL (admin + zone BZV/POOL)
-    const adminsRes = await env.DB.prepare("SELECT id FROM users WHERE role = 'admin' AND zone = ?")
+    // Collaborateur strict: superadmin BZV/POOL (admin + zone BZV/POOL) + manager_bzv_pool
+    const adminsRes = await env.DB.prepare("SELECT id FROM users WHERE (role = 'admin' OR role = 'manager_bzv_pool') AND zone = ?")
       .bind('BZV/POOL')
       .all();
     return (Array.isArray(adminsRes?.results) ? adminsRes.results : [])
@@ -64,7 +64,7 @@ async function reserveTicketLabel(env, role, zone) {
   const r = String(role || '').trim();
 
   // PNR/KOUILOU manager uses daily date-based sequence
-  if (z === 'PNR/KOUILOU' && r === 'manager') {
+  if (z === 'PNR/KOUILOU' && (r === 'manager' || r === 'manager_bzv_pool')) {
     const nowIso = isoNow();
     const ymd = String(nowIso).slice(0, 10);
     const key = `ticket_number_pnr_day_${ymd}`;
@@ -124,7 +124,7 @@ export async function onRequestPatch({ request, env, data, params }) {
 
     const role = String(data?.user?.role || '').trim();
     const canWarehouse = role === 'warehouse';
-    const canManage = role === 'admin' || role === 'manager';
+    const canManage = role === 'admin' || role === 'manager' || role === 'manager_bzv_pool';
     if (!canWarehouse && !canManage) return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const existing = await env.DB.prepare('SELECT * FROM fiche_history WHERE id = ?').bind(id).first();
@@ -140,6 +140,11 @@ export async function onRequestPatch({ request, env, data, params }) {
     }
 
     if (role === 'admin' && !isSuperAdmin(data)) {
+      const z = String(userZone(data) || 'BZV/POOL');
+      if (zone !== z) return json({ error: 'Accès interdit.' }, { status: 403 });
+    }
+
+    if (role === 'manager') {
       const z = String(userZone(data) || 'BZV/POOL');
       if (zone !== z) return json({ error: 'Accès interdit.' }, { status: 403 });
     }

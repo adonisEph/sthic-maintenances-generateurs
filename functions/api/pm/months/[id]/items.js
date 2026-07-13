@@ -4,7 +4,14 @@ import { touchLastUpdatedAt } from '../../../_utils/meta.js';
 
 function requireAdminOrViewer(data) {
   const role = String(data?.user?.role || '');
-  return role === 'admin' || role === 'viewer' || role === 'manager';
+  return (
+    role === 'admin' ||
+    role === 'viewer' ||
+    role === 'controller' ||
+    role === 'field_supervisor' ||
+    role === 'manager' ||
+    role === 'manager_bzv_pool'
+  );
 }
 
 function mapItemRow(r) {
@@ -57,8 +64,8 @@ export async function onRequestGet({ request, env, data, params }) {
     const where = ['month_id = ?'];
     const bind = [monthId];
 
-    // Scope zone: super-admin + viewer voit tout, sinon zone du user
-    if (!isSuperAdmin(data) && role !== 'viewer') {
+    // Scope zone: super-admin + controller + viewer + manager_bzv_pool voit tout, sinon zone du user
+    if (!isSuperAdmin(data) && role !== 'viewer' && role !== 'controller' && role !== 'manager_bzv_pool') {
       where.push("TRIM(COALESCE(region, zone, '')) = TRIM(?)");
       bind.push(String(userZone(data) || 'BZV/POOL'));
     }
@@ -146,7 +153,7 @@ export async function onRequestPatch({ request, env, data, params }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
     const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
+    if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const monthId = String(params?.id || '').trim();
     if (!monthId) return json({ error: 'Mois requis.' }, { status: 400 });

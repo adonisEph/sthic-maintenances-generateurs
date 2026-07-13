@@ -295,27 +295,31 @@ const GeneratorMaintenanceApp = () => {
 
   const currentRole = authUser?.role || 'viewer';
   const isAdmin = currentRole === 'admin';
-  const isViewer = currentRole === 'viewer';
   const isTechnician = currentRole === 'technician';
   const isManager = currentRole === 'manager';
+  const isManagerBzvPool = currentRole === 'manager_bzv_pool';
+  const isController = currentRole === 'controller' || currentRole === 'viewer';
+  const isFieldSupervisor = currentRole === 'field_supervisor';
+  const isViewer = isController || isFieldSupervisor;
   const isWarehouse = currentRole === 'warehouse';
+  const isAnyManager = isManager || isManagerBzvPool;
   const authZone = String(authUser?.zone || '').trim();
   const isSuperAdmin = isAdmin && authZone === 'BZV/POOL';
-  const canManagerVidangeActions = isSuperAdmin || (isManager && (String(authZone).trim().toUpperCase() === 'PNR/KOUILOU' || String(authZone).trim().toUpperCase() === 'UPCN'));
-  const showZoneFilter = Boolean(isViewer || isSuperAdmin);
-  const managerZoneLock = (isManager && authZone) ? authZone : '';
-  const canWriteSites = isAdmin || isManager;
-  const canWarehouseCheck = isWarehouse || isAdmin || isManager;
-  const canWarehouseRevoke = isWarehouse || isAdmin || isManager;
-  const canImportSites = isAdmin || isManager;
-  const canExportExcel = isAdmin || isManager || isViewer;
+  const canManagerVidangeActions = isSuperAdmin || isManagerBzvPool || (isManager && (String(authZone).trim().toUpperCase() === 'PNR/KOUILOU' || String(authZone).trim().toUpperCase() === 'UPCN'));
+  const showZoneFilter = Boolean(isController || isSuperAdmin || isManagerBzvPool);
+  const managerZoneLock = ((isManager || isFieldSupervisor) && authZone) ? authZone : '';
+  const canWriteSites = isAdmin || isAnyManager;
+  const canWarehouseCheck = isWarehouse || isAdmin || isAnyManager;
+  const canWarehouseRevoke = isWarehouse || isAdmin || isAnyManager;
+  const canImportSites = isAdmin || isAnyManager;
+  const canExportExcel = isAdmin || isAnyManager || isController || isFieldSupervisor;
   const canExportSites = canExportExcel && !isTechnician;
   const canReset = isAdmin;
-  const canGenerateFiche = isAdmin || isManager;
-  const canMarkCompleted = isAdmin || isManager || isTechnician;
+  const canGenerateFiche = isAdmin || isAnyManager;
+  const canMarkCompleted = isAdmin || isAnyManager || isTechnician;
   const canManageUsers = isAdmin;
-  const canUseInterventions = isAdmin || isManager || isTechnician || isViewer;
-  const canUsePm = isAdmin || isManager || isViewer;
+  const canUseInterventions = isAdmin || isAnyManager || isTechnician || isController || isFieldSupervisor;
+  const canUsePm = isAdmin || isAnyManager || isController || isFieldSupervisor;
 
   const openVidangeFormForSite = (site, chosenIntervention = null) => {
     setSelectedSite(site);
@@ -9094,7 +9098,7 @@ return (
             canUsePm={canUsePm}
             isViewer={isViewer}
             isAdmin={isAdmin}
-            isManager={isManager}
+            isManager={isAnyManager}
             setShowPm={setShowPm}
             setPmError={setPmError}
             setPmNotice={setPmNotice}

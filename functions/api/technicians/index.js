@@ -17,10 +17,13 @@ export async function onRequestGet({ env, data }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
     const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
+    if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool' && role !== 'controller' && role !== 'field_supervisor' && role !== 'viewer') {
+      return json({ error: 'Accès interdit.' }, { status: 403 });
+    }
 
     const z = userZone(data);
-    const stmt = isSuperAdmin(data)
+    const canAllZones = isSuperAdmin(data) || role === 'controller' || role === 'manager_bzv_pool' || role === 'viewer';
+    const stmt = canAllZones
       ? env.DB.prepare(
           "SELECT id, email, role, zone, technician_name FROM users WHERE role = 'technician' ORDER BY technician_name ASC, email ASC"
         )
