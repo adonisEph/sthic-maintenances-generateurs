@@ -28,7 +28,7 @@ export async function onRequestPost({ env, data, params }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
     const role = String(data?.user?.role || '').trim();
-    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
+    if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const id = String(params?.id || '').trim();
     if (!id) return json({ error: 'ID manquant.' }, { status: 400 });

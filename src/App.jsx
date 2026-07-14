@@ -44,7 +44,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.4.2';
+const APP_VERSION = '6.4.3';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -741,7 +741,7 @@ const GeneratorMaintenanceApp = () => {
     (async () => {
       try {
         const role = String(authUser?.role || '').trim();
-        const canRead = role === 'admin' || role === 'manager' || role === 'viewer';
+        const canRead = role === 'admin' || role === 'manager' || role === 'manager_bzv_pool' || role === 'controller' || role === 'field_supervisor' || role === 'viewer';
         if (!canRead) {
           setPmSitesItems([]);
           pmSitesItemsKeyRef.current = '';
@@ -774,7 +774,7 @@ const GeneratorMaintenanceApp = () => {
 
   const handleSendCalendarMonthPlanning = async () => {
     try {
-      if (!isAdmin && !isManager) return;
+      if (!isAdmin && !isAnyManager) return;
       const techId = String(calendarSendTechUserId || '').trim();
       if (!techId) {
         alert('Veuillez sélectionner un technicien.');
@@ -868,7 +868,7 @@ const GeneratorMaintenanceApp = () => {
 
   const handleAddCalendarHoliday = async ({ dateYmd, label }) => {
     try {
-      if (!isAdmin && !isManager) return;
+      if (!isAdmin && !isAnyManager) return;
       const d = String(dateYmd || '').slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
         alert('Date invalide.');
@@ -887,7 +887,7 @@ const GeneratorMaintenanceApp = () => {
 
   const handleDeleteCalendarHoliday = async ({ id, dateYmd }) => {
     try {
-      if (!isAdmin && !isManager) return;
+      if (!isAdmin && !isAnyManager) return;
       const payload = {};
       if (id) payload.id = String(id);
       if (dateYmd) payload.dateYmd = String(dateYmd).slice(0, 10);
@@ -905,7 +905,7 @@ const GeneratorMaintenanceApp = () => {
 
   const handleSendPmMonthPlanning = async () => {
     try {
-      if (!isAdmin && !isManager) return;
+      if (!isAdmin && !isAnyManager) return;
 
       const techId = String(pmSendTechUserId || '').trim();
       if (!techId) {
@@ -1026,7 +1026,8 @@ const GeneratorMaintenanceApp = () => {
   useEffect(() => {
     (async () => {
       try {
-        if (!(authUser?.role === 'admin' || authUser?.role === 'manager')) return;
+        const role = String(authUser?.role || '').trim();
+        if (!(role === 'admin' || role === 'manager' || role === 'manager_bzv_pool')) return;
 
         const month = String(pmMonth || '').trim() || new Date().toISOString().slice(0, 7);
         if (!/^\d{4}-\d{2}$/.test(month)) return;
@@ -1418,16 +1419,20 @@ const GeneratorMaintenanceApp = () => {
     setUsersBusy(true);
     setUsersError('');
     try {
-      if (authUser?.role === 'admin') {
+      const role = String(authUser?.role || '').trim();
+
+      if (role === 'admin') {
         const data = await apiFetchJson('/api/users', { method: 'GET' });
         setUsers(Array.isArray(data?.users) ? data.users : []);
         return data;
       }
 
-      if (authUser?.role === 'manager') {
-        const data = await apiFetchJson('/api/users', { method: 'GET' });
-        setUsers(Array.isArray(data?.users) ? data.users : []);
-        return data;
+      if (role === 'manager' || role === 'manager_bzv_pool' || role === 'controller' || role === 'field_supervisor' || role === 'viewer') {
+        const data = await apiFetchJson('/api/technicians', { method: 'GET' });
+        const techs = Array.isArray(data?.technicians) ? data.technicians : [];
+        const mapped = techs.map((t) => ({ ...t, role: 'technician' }));
+        setUsers(mapped);
+        return { users: mapped };
       }
 
 
@@ -1455,8 +1460,22 @@ const GeneratorMaintenanceApp = () => {
           }
           await loadData();
           await loadFicheHistory();
-          if (data?.user?.role === 'admin' || data?.user?.role === 'manager') {
+          if (data?.user?.role === 'admin' || data?.user?.role === 'manager' || data?.user?.role === 'manager_bzv_pool') {
             await loadTicketNumber();
+          }
+          if (
+            data?.user?.role === 'admin' ||
+            data?.user?.role === 'manager' ||
+            data?.user?.role === 'manager_bzv_pool' ||
+            data?.user?.role === 'controller' ||
+            data?.user?.role === 'field_supervisor' ||
+            data?.user?.role === 'viewer'
+          ) {
+            try {
+              await refreshUsers();
+            } catch {
+              // ignore
+            }
           }
           if (data?.user?.role === 'technician') {
             setInterventionsStatus('all');
@@ -5905,7 +5924,7 @@ const GeneratorMaintenanceApp = () => {
   }, [urgentSitesAll, isTechnician, isManager, authZone, showZoneFilter, dashboardZone, filterTechnician, filterSite, isViewer, managerZoneLock]);
 
   const urgentRetiredMonthsQuery = useMemo(() => {
-    if (!(isAdmin || isManager || isViewer || isTechnician)) return '';
+    if (!(isAdmin || isAnyManager || isViewer || isTechnician)) return '';
     const list = Array.isArray(urgentSites) ? urgentSites : [];
 
     const lateSites = list.filter((s) => {
@@ -5936,7 +5955,7 @@ const GeneratorMaintenanceApp = () => {
     qs.set('siteCodes', siteCodes.join(','));
     qs.set('maxMonths', '18');
     return qs.toString();
-  }, [urgentSites, isAdmin, isManager, isViewer, isTechnician]);
+  }, [urgentSites, isAdmin, isAnyManager, isViewer, isTechnician]);
 
   useEffect(() => {
     if (!urgentRetiredMonthsQuery) {
@@ -7290,12 +7309,10 @@ return (
               onClick={async () => {
                 setSidebarOpen(false);
                 setShowCalendar(true);
-                if (authUser?.role === 'admin' || authUser?.role === 'manager') {
-                  try {
-                    await refreshUsers();
-                  } catch {
-                    // ignore
-                  }
+                try {
+                  await refreshUsers();
+                } catch {
+                  // ignore
                 }
               }}
               className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
@@ -7348,6 +7365,11 @@ return (
             <button
               onClick={async () => {
                 setSidebarOpen(false);
+                try {
+                  await refreshUsers();
+                } catch {
+                  // ignore
+                }
                 setInterventionsStatus('all');
                 setInterventionsTechnicianUserId('all');
                 setTechnicianInterventionsTab('tomorrow');
@@ -7375,6 +7397,11 @@ return (
             <button
               onClick={async () => {
                 setSidebarOpen(false);
+                try {
+                  await refreshUsers();
+                } catch {
+                  // ignore
+                }
                 setShowAddForm(false);
                 setShowUpdateForm(false);
                 setShowEditForm(false);

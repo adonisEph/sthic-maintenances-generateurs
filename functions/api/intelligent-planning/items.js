@@ -33,8 +33,8 @@ export async function onRequestGet({ request, env, data }) {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
-    const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'manager' && role !== 'viewer') {
+    const role = String(data?.user?.role || '').trim();
+    if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool' && role !== 'viewer') {
       return json({ error: 'Accès interdit.' }, { status: 403 });
     }
 

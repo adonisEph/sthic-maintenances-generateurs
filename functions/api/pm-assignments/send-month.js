@@ -7,8 +7,8 @@ export async function onRequestPost({ request, env, data }) {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
-    const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
+    const role = String(data?.user?.role || '').trim();
+    if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const body = await readJson(request);
     const assignments = Array.isArray(body?.assignments) ? body.assignments : [];
@@ -18,7 +18,8 @@ export async function onRequestPost({ request, env, data }) {
 
     const now = isoNow();
 
-    const scopeZone = isSuperAdmin(data) ? null : userZone(data);
+    const canAllZones = isSuperAdmin(data) || role === 'manager_bzv_pool';
+    const scopeZone = canAllZones ? null : userZone(data);
 
     let created = 0;
     let updated = 0;

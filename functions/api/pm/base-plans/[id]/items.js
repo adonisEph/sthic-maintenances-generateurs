@@ -3,8 +3,8 @@ import { json, requireAuth, readJson, isoNow, newId, isSuperAdmin, userZone } fr
 import { touchLastUpdatedAt } from '../../../_utils/meta.js';
 
 function requireAdminOrViewer(data) {
-  const role = String(data?.user?.role || '');
-  return role === 'admin' || role === 'viewer' || role === 'manager';
+  const role = String(data?.user?.role || '').trim();
+  return role === 'admin' || role === 'viewer' || role === 'manager' || role === 'manager_bzv_pool';
 }
 
 function mapItemRow(r) {
@@ -40,8 +40,9 @@ export async function onRequestGet({ env, data, params }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
     if (!requireAdminOrViewer(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
 
-    const role = String(data?.user?.role || '');
-    const scopeZone = isSuperAdmin(data) || role === 'viewer' ? null : String(userZone(data) || 'BZV/POOL');
+    const role = String(data?.user?.role || '').trim();
+    const canAllZones = isSuperAdmin(data) || role === 'viewer' || role === 'manager_bzv_pool';
+    const scopeZone = canAllZones ? null : String(userZone(data) || 'BZV/POOL');
 
     const planId = String(params?.id || '').trim();
     if (!planId) return json({ error: 'Plan requis.' }, { status: 400 });
@@ -68,8 +69,8 @@ export async function onRequestPost({ request, env, data, params }) {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
-    const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
+    const role = String(data?.user?.role || '').trim();
+    if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const planId = String(params?.id || '').trim();
     if (!planId) return json({ error: 'Plan requis.' }, { status: 400 });

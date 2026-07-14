@@ -16,7 +16,7 @@ export async function onRequestGet({ env, data }) {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
-    const role = String(data?.user?.role || '');
+    const role = String(data?.user?.role || '').trim();
     if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool' && role !== 'controller' && role !== 'field_supervisor' && role !== 'viewer') {
       return json({ error: 'Accès interdit.' }, { status: 403 });
     }

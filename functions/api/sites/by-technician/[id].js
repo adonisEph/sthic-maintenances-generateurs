@@ -37,8 +37,8 @@ export async function onRequestGet({ env, data, params }) {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
-    const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
+    const role = String(data?.user?.role || '').trim();
+    if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const userId = String(params?.id || '').trim();
     if (!userId) return json({ error: 'ID technicien requis.' }, { status: 400 });
@@ -55,7 +55,7 @@ export async function onRequestGet({ env, data, params }) {
 
     const z = userZone(data);
 
-    if (!isSuperAdmin(data)) {
+    if (!isSuperAdmin(data) && role !== 'manager_bzv_pool') {
       const techZone = normalizeZone(user?.zone || 'BZV/POOL');
       const requesterZone = normalizeZone(z || 'BZV/POOL');
       if (techZone !== requesterZone) return json({ error: 'Accès interdit.' }, { status: 403 });

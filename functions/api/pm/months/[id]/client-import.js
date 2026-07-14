@@ -12,8 +12,8 @@ export async function onRequestPost({ request, env, data, params }) {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
-    const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
+    const role = String(data?.user?.role || '').trim();
+    if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const monthId = String(params?.id || '').trim();
     if (!monthId) return json({ error: 'Mois requis.' }, { status: 400 });
@@ -25,8 +25,8 @@ export async function onRequestPost({ request, env, data, params }) {
     const items = Array.isArray(body?.items) ? body.items : [];
     const filename = normStr(body?.filename);
 
-    const superAdmin = isSuperAdmin(data);
-    const scopeZone = superAdmin ? null : String(userZone(data) || 'BZV/POOL');
+    const canAllZones = isSuperAdmin(data) || role === 'manager_bzv_pool';
+    const scopeZone = canAllZones ? null : String(userZone(data) || 'BZV/POOL');
 
     const now = isoNow();
 

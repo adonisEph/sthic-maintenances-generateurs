@@ -20,14 +20,14 @@ export async function onRequestPost({ request, env, data }) {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
-    const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
+    const role = String(data?.user?.role || '').trim();
+    if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const body = await readJson(request);
     const technicianId = normId(body?.technicianId);
     if (!technicianId) return json({ error: 'Technicien requis.' }, { status: 400 });
 
-    if (!isSuperAdmin(data)) {
+    if (!isSuperAdmin(data) && role !== 'manager_bzv_pool') {
       const z = String(userZone(data) || 'BZV/POOL');
       const tech = await env.DB.prepare('SELECT id, role, zone FROM users WHERE id = ?').bind(technicianId).first();
       if (!tech) return json({ error: 'Technicien introuvable.' }, { status: 404 });

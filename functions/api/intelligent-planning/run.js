@@ -521,8 +521,8 @@ export async function onRequestPost({ request, env, data }) {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
-    const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
+    const role = String(data?.user?.role || '').trim();
+    if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const today = ymdToday();
 
@@ -535,7 +535,8 @@ export async function onRequestPost({ request, env, data }) {
       return json({ error: 'Technicien invalide.' }, { status: 400 });
     }
 
-    const scopeZone = isSuperAdmin(data) ? null : userZone(data);
+    const canAllZones = isSuperAdmin(data) || role === 'manager_bzv_pool';
+    const scopeZone = canAllZones ? null : userZone(data);
     if (scopeZone && normalizeZone(tech.zone) !== normalizeZone(scopeZone)) {
       return json({ error: 'Accès interdit.' }, { status: 403 });
     }

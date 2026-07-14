@@ -2,8 +2,8 @@ import { ensureAdminUser } from '../_utils/db.js';
 import { json, requireAuth, isSuperAdmin, userZone } from '../_utils/http.js';
 
 function requireAdminOrViewer(data) {
-  const role = String(data?.user?.role || '');
-  return role === 'admin' || role === 'viewer' || role === 'manager' || role === 'technician';
+  const role = String(data?.user?.role || '').trim();
+  return role === 'admin' || role === 'viewer' || role === 'manager' || role === 'manager_bzv_pool' || role === 'technician';
 }
 
 function normalizeZone(z) {
@@ -40,7 +40,7 @@ export async function onRequestGet({ request, env, data }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
     if (!requireAdminOrViewer(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
 
-    const role = String(data?.user?.role || '');
+    const role = String(data?.user?.role || '').trim();
     const url = new URL(request.url);
 
     const siteCodesRaw = String(url.searchParams.get('siteCodes') || '').trim();
@@ -58,7 +58,7 @@ export async function onRequestGet({ request, env, data }) {
     }
 
     const scopeZones = (() => {
-      if (isSuperAdmin(data) || role === 'viewer') return null;
+      if (isSuperAdmin(data) || role === 'viewer' || role === 'manager_bzv_pool') return null;
       const z = String(userZone(data) || 'BZV/POOL');
       return [normalizeZone(z)];
     })();

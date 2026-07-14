@@ -13,8 +13,8 @@ export async function onRequestPost({ request, env, data }) {
     await ensureAdminUser(env);
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
-    const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
+    const role = String(data?.user?.role || '').trim();
+    if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const body = await readJson(request);
     const providedPlannedDate = String(body?.plannedDate || '').trim();
@@ -26,7 +26,7 @@ export async function onRequestPost({ request, env, data }) {
 
     const z = userZone(data);
 
-    const stmt = isSuperAdmin(data) || role === 'manager'
+    const stmt = isSuperAdmin(data) || role === 'manager' || role === 'manager_bzv_pool'
       ? env.DB.prepare(
           "UPDATE interventions SET status = 'sent', sent_at = COALESCE(sent_at, ?), updated_at = ? WHERE planned_date = ? AND status = 'planned'"
         ).bind(now, now, plannedDate)
