@@ -37,6 +37,44 @@ export async function onRequestPost({ request, env, data, params }) {
       }
     }
 
+    const relatedFicheByIntervention = await env.DB.prepare(
+      'SELECT id, ticket_number, status, warehouse_flow_status FROM fiche_history WHERE intervention_id = ?'
+    )
+      .bind(id)
+      .first();
+
+    const relatedFallbackFiche = !relatedFicheByIntervention?.id
+      ? await env.DB.prepare(
+          `SELECT id, ticket_number, status, warehouse_flow_status
+           FROM fiche_history
+           WHERE site_id = ?
+             AND planned_date IS ?
+             AND epv_type IS ?
+             AND (status IS NULL OR status != 'Annulée')
+           ORDER BY created_at DESC
+           LIMIT 1`
+        )
+          .bind(site.id, intervention.planned_date || null, intervention.epv_type || null)
+          .first()
+      : null;
+
+    const relatedFiche = relatedFicheByIntervention?.id ? relatedFicheByIntervention : relatedFallbackFiche;
+    const siteZoneUpper = String(site?.zone || site?.region || '').trim().toUpperCase();
+    if (siteZoneUpper === 'BZV/POOL') {
+      if (!relatedFiche?.id) {
+        return json({ error: 'Clôture bloquée : fiche obligatoire introuvable pour cette intervention.' }, { status: 409 });
+      }
+
+      const ficheStatus = String(relatedFiche?.status || '').trim();
+      const warehouseFlowStatus = String(relatedFiche?.warehouse_flow_status || '').trim();
+      const isWarehouseReady = warehouseFlowStatus === 'finalized';
+      const isLegacyReady = !warehouseFlowStatus && ficheStatus === 'En attente';
+
+      if (!isWarehouseReady && !isLegacyReady) {
+        return json({ error: 'Clôture bloquée : la fiche doit être finalisée par le magasinier.' }, { status: 409 });
+      }
+    }
+
     const body = await readJson(request);
     const now = isoNow();
 
@@ -107,28 +145,9 @@ export async function onRequestPost({ request, env, data, params }) {
     // 1) Priorité: fiche déjà liée à cette intervention
     // 2) Fallback: fiche créée en amont (manager/admin) mais pas liée (intervention_id absent/différent)
     //    => on la ré-attache à cette intervention pour garantir la cohérence ticket/fiche.
-    const existingFicheByIntervention = await env.DB.prepare(
-      'SELECT id, ticket_number FROM fiche_history WHERE intervention_id = ?'
-    )
-      .bind(id)
-      .first();
-
-    const fallbackFiche = !existingFicheByIntervention?.id
-      ? await env.DB.prepare(
-          `SELECT id, ticket_number
-           FROM fiche_history
-           WHERE site_id = ?
-             AND planned_date IS ?
-             AND epv_type IS ?
-             AND (status IS NULL OR status != 'Annulée')
-           ORDER BY created_at DESC
-           LIMIT 1`
-        )
-          .bind(site.id, intervention.planned_date || null, intervention.epv_type || null)
-          .first()
-      : null;
-
-    const existingFiche = existingFicheByIntervention?.id ? existingFicheByIntervention : fallbackFiche;
+    const existingFicheByIntervention = relatedFicheByIntervention;
+    const fallbackFiche = relatedFallbackFiche;
+    const existingFiche = relatedFiche;
 
     // si on a trouvé une fiche fallback: on l'attache à l'intervention courante
     if (fallbackFiche?.id) {

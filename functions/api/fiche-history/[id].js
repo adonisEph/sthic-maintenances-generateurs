@@ -1,5 +1,5 @@
 import { ensureAdminUser } from '../_utils/db.js';
-import { json, requireAuth, isSuperAdmin, userZone, readJson, isoNow } from '../_utils/http.js';
+import { json, requireAuth, isSuperAdmin, userZone, readJson, isoNow, newId } from '../_utils/http.js';
 import { nextTicketNumberForZone, touchLastUpdatedAt } from '../_utils/meta.js';
 
 function mapRow(row, siteZone) {
@@ -34,6 +34,11 @@ function mapRow(row, siteZone) {
     warehouseCoolant5lOk: row.warehouse_coolant_5l_ok === null ? null : Boolean(row.warehouse_coolant_5l_ok),
     warehouseCheckedBy: row.warehouse_checked_by || null,
     warehouseCheckedAt: row.warehouse_checked_at || null,
+    sentToWarehouseBy: row.sent_to_warehouse_by || null,
+    sentToWarehouseAt: row.sent_to_warehouse_at || null,
+    warehouseFlowStatus: row.warehouse_flow_status || null,
+    warehouseFinalizedBy: row.warehouse_finalized_by || null,
+    warehouseFinalizedAt: row.warehouse_finalized_at || null,
   };
 }
 
@@ -114,6 +119,74 @@ function boolToDb(v) {
   return null;
 }
 
+function normalizeName(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+async function resolveTechnicianUserId(env, zone, technicianName) {
+  const key = normalizeName(technicianName);
+  if (!key) return null;
+
+  const res = await env.DB.prepare(
+    "SELECT id, technician_name FROM users WHERE role = 'technician' AND (disabled_at IS NULL OR disabled_at = '') AND zone = ?"
+  )
+    .bind(String(zone || 'BZV/POOL'))
+    .all();
+
+  const rows = Array.isArray(res?.results) ? res.results : [];
+  const match = rows.find((r) => normalizeName(r?.technician_name) === key) || null;
+  return match?.id ? String(match.id) : null;
+}
+
+async function ensureSentInterventionForFiche(env, data, fiche, zone) {
+  const siteId = String(fiche?.site_id || '').trim();
+  const plannedDate = fiche?.planned_date ? String(fiche.planned_date).slice(0, 10) : '';
+  const epvType = String(fiche?.epv_type || '').trim();
+  const technicianName = String(fiche?.technician || '').trim();
+
+  if (!siteId || !plannedDate || !epvType || !technicianName) {
+    return fiche?.intervention_id ? String(fiche.intervention_id) : null;
+  }
+
+  const now = isoNow();
+  const technicianUserId = await resolveTechnicianUserId(env, zone, technicianName);
+
+  const byId = fiche?.intervention_id
+    ? await env.DB.prepare('SELECT * FROM interventions WHERE id = ?').bind(String(fiche.intervention_id)).first()
+    : null;
+
+  const existing = byId || await env.DB.prepare(
+    'SELECT * FROM interventions WHERE site_id = ? AND planned_date = ? AND epv_type = ? ORDER BY created_at DESC LIMIT 1'
+  )
+    .bind(siteId, plannedDate, epvType)
+    .first();
+
+  if (existing?.id) {
+    if (String(existing.status || '').trim() !== 'done') {
+      await env.DB.prepare(
+        "UPDATE interventions SET technician_user_id = COALESCE(?, technician_user_id), technician_name = ?, status = CASE WHEN status = 'planned' THEN 'sent' ELSE status END, sent_at = CASE WHEN status = 'planned' THEN COALESCE(sent_at, ?) ELSE sent_at END, updated_at = ? WHERE id = ?"
+      )
+        .bind(technicianUserId, technicianName, now, now, String(existing.id))
+        .run();
+    }
+    return String(existing.id);
+  }
+
+  const id = newId();
+  await env.DB.prepare(
+    'INSERT INTO interventions (id, site_id, zone, planned_date, epv_type, technician_user_id, technician_name, status, sent_at, created_by_user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  )
+    .bind(id, siteId, zone, plannedDate, epvType, technicianUserId, technicianName, 'sent', now, data?.user?.id || null, now, now)
+    .run();
+
+  return id;
+}
+
 export async function onRequestPatch({ request, env, data, params }) {
   try {
     await ensureAdminUser(env);
@@ -160,48 +233,67 @@ export async function onRequestPatch({ request, env, data, params }) {
       if (!canManage) return json({ error: 'Accès interdit.' }, { status: 403 });
 
       const st = String(existing?.status || '').trim();
-      if (st !== 'Envoyée au magasin') {
+      const flowStatus = String(existing?.warehouse_flow_status || '').trim();
+      if (!(st === 'Envoyée au magasin' || flowStatus === 'pending' || flowStatus === 'reopened')) {
         return json({ error: 'Statut incompatible.' }, { status: 409 });
       }
 
+      const linkedInterventionId = String(existing?.intervention_id || '').trim();
+      if (linkedInterventionId) {
+        const linked = await env.DB.prepare('SELECT id, status FROM interventions WHERE id = ?').bind(linkedInterventionId).first();
+        if (linked?.id && String(linked.status || '').trim() !== 'done') {
+          await env.DB.prepare(
+            "UPDATE interventions SET status = 'planned', sent_at = NULL, updated_at = ? WHERE id = ?"
+          )
+            .bind(now, linkedInterventionId)
+            .run();
+        }
+      }
+
       await env.DB.prepare(
-        'UPDATE fiche_history SET status = ?, updated_at = ? WHERE id = ?'
+        'UPDATE fiche_history SET status = ?, warehouse_flow_status = NULL, warehouse_finalized_by = NULL, warehouse_finalized_at = NULL, updated_at = ? WHERE id = ?'
       )
         .bind('Annulée', now, id)
         .run();
+
+      await touchLastUpdatedAt(env);
 
       const updated = await env.DB.prepare('SELECT * FROM fiche_history WHERE id = ?').bind(id).first();
       return json({ fiche: mapRow(updated, zone) }, { status: 200 });
     }
 
-    // 0) Manager/Admin: send to warehouse (reserve ticket before warehouse control)
     if (mode === 'send-to-warehouse') {
       if (!canManage) return json({ error: 'Accès interdit.' }, { status: 403 });
 
       const st = String(existing?.status || '').trim();
-      if (st && st !== 'Brouillon' && st !== 'Envoyée au magasin') {
+      const flowStatus = String(existing?.warehouse_flow_status || '').trim();
+      if (st && st !== 'Brouillon' && st !== 'Envoyée au magasin' && !(st === 'En attente' && (flowStatus === 'pending' || flowStatus === 'reopened'))) {
         return json({ error: 'Statut incompatible.' }, { status: 409 });
       }
 
       const alreadyTicket = String(existing?.ticket_number || '').trim();
       const ticketLabel = alreadyTicket || (await reserveTicketLabel(env, role, zone));
 
+      const ensuredInterventionId = await ensureSentInterventionForFiche(env, data, existing, zone);
+
       await env.DB.prepare(
-        "UPDATE fiche_history SET ticket_number = ?, status = ?, signature_typed_name = ?, signature_drawn_png = ?, signed_by_email = ?, signed_at = ?, updated_at = ? WHERE id = ?"
+        "UPDATE fiche_history SET ticket_number = ?, status = ?, signature_typed_name = ?, signature_drawn_png = ?, signed_by_email = ?, signed_at = ?, intervention_id = COALESCE(?, intervention_id), sent_to_warehouse_by = ?, sent_to_warehouse_at = ?, warehouse_flow_status = ?, warehouse_finalized_by = NULL, warehouse_finalized_at = NULL, updated_at = ? WHERE id = ?"
       )
-        .bind(ticketLabel, 'Envoyée au magasin', null, null, null, null, now, id)
+        .bind(ticketLabel, 'En attente', null, null, null, null, ensuredInterventionId, data?.user?.email ? String(data.user.email) : null, now, 'pending', now, id)
         .run();
+
+      await touchLastUpdatedAt(env);
 
       const updated = await env.DB.prepare('SELECT * FROM fiche_history WHERE id = ?').bind(id).first();
       return json({ fiche: mapRow(updated, zone) }, { status: 200 });
     }
 
-    // 1) Warehouse check (magasinier)
     if (mode === 'warehouse-check') {
       if (!canWarehouse && !canManage) return json({ error: 'Accès interdit.' }, { status: 403 });
 
       const st = String(existing?.status || '').trim();
-      if (canWarehouse && st !== 'Envoyée au magasin' && st !== 'Contrôle magasin') {
+      const flowStatus = String(existing?.warehouse_flow_status || '').trim();
+      if (canWarehouse && !(st === 'Envoyée au magasin' || st === 'Contrôle magasin' || (st === 'En attente' && (flowStatus === 'pending' || flowStatus === 'reopened')))) {
         return json({ error: 'Fiche non disponible pour le magasin.' }, { status: 409 });
       }
 
@@ -247,11 +339,12 @@ export async function onRequestPatch({ request, env, data, params }) {
         )
         .run();
 
+      await touchLastUpdatedAt(env);
+
       const updated = await env.DB.prepare('SELECT * FROM fiche_history WHERE id = ?').bind(id).first();
       return json({ fiche: mapRow(updated, zone) }, { status: 200 });
     }
 
-    // 1b) Warehouse submit/return to manager
     if (mode === 'warehouse-submit') {
       if (!canWarehouse) return json({ error: 'Accès interdit.' }, { status: 403 });
 
@@ -261,18 +354,81 @@ export async function onRequestPatch({ request, env, data, params }) {
       }
 
       await env.DB.prepare(
-        "UPDATE fiche_history SET status = ?, updated_at = ? WHERE id = ?"
+        "UPDATE fiche_history SET status = ?, warehouse_flow_status = ?, updated_at = ? WHERE id = ?"
       )
-        .bind('Contrôle magasin', now, id)
+        .bind('Contrôle magasin', 'pending', now, id)
         .run();
+
+      await touchLastUpdatedAt(env);
 
       const updated = await env.DB.prepare('SELECT * FROM fiche_history WHERE id = ?').bind(id).first();
       return json({ fiche: mapRow(updated, zone) }, { status: 200 });
     }
 
-    // 2) Finalize (manager/superadmin)
+    if (mode === 'warehouse-finalize') {
+      if (!canWarehouse) return json({ error: 'Accès interdit.' }, { status: 403 });
+
+      const st = String(existing?.status || '').trim();
+      const flowStatus = String(existing?.warehouse_flow_status || '').trim();
+      if (st === 'Annulée' || st === 'Effectuée' || !(flowStatus === 'pending' || flowStatus === 'reopened' || st === 'Envoyée au magasin' || st === 'Contrôle magasin')) {
+        return json({ error: 'Fiche non finalisable.' }, { status: 409 });
+      }
+
+      const ticketNumber = String(body?.ticketNumber || existing?.ticket_number || '').trim();
+      const signatureDrawnPng = String(body?.signatureDrawnPng || '').trim();
+
+      if (!ticketNumber) return json({ error: 'Ticket requis.' }, { status: 400 });
+      if (!hasResponsibleSignature(signatureDrawnPng)) return json({ error: 'Signature responsable obligatoire.' }, { status: 400 });
+
+      const dup = await env.DB.prepare('SELECT id FROM fiche_history WHERE ticket_number = ? AND id != ?').bind(ticketNumber, id).first();
+      if (dup?.id) return json({ error: 'Fiche déjà sortie pour ce ticket.' }, { status: 409 });
+
+      await env.DB.prepare(
+        'UPDATE fiche_history SET ticket_number = ?, status = ?, signature_typed_name = ?, signature_drawn_png = ?, signed_by_email = ?, signed_at = ?, warehouse_flow_status = ?, warehouse_finalized_by = ?, warehouse_finalized_at = ?, updated_at = ? WHERE id = ?'
+      )
+        .bind(
+          ticketNumber,
+          'En attente',
+          null,
+          null,
+          null,
+          null,
+          'finalized',
+          data?.user?.email ? String(data.user.email) : null,
+          now,
+          now,
+          id
+        )
+        .run();
+
+      await touchLastUpdatedAt(env);
+
+      const updated = await env.DB.prepare('SELECT * FROM fiche_history WHERE id = ?').bind(id).first();
+      return json({ fiche: mapRow(updated, zone) }, { status: 200 });
+    }
+
+    if (mode === 'warehouse-reopen') {
+      if (!canWarehouse) return json({ error: 'Accès interdit.' }, { status: 403 });
+
+      const st = String(existing?.status || '').trim();
+      const flowStatus = String(existing?.warehouse_flow_status || '').trim();
+      if (st === 'Effectuée') return json({ error: 'Fiche déjà clôturée avec intervention effectuée.' }, { status: 409 });
+      if (flowStatus !== 'finalized') return json({ error: 'Fiche non rouvable.' }, { status: 409 });
+
+      await env.DB.prepare(
+        'UPDATE fiche_history SET warehouse_flow_status = ?, updated_at = ? WHERE id = ?'
+      )
+        .bind('reopened', now, id)
+        .run();
+
+      await touchLastUpdatedAt(env);
+
+      const updated = await env.DB.prepare('SELECT * FROM fiche_history WHERE id = ?').bind(id).first();
+      return json({ fiche: mapRow(updated, zone) }, { status: 200 });
+    }
+
     if (mode === 'finalize') {
-      if (!canManage) return json({ error: 'Accès interdit.' }, { status: 403 });
+      if (!canManage || role === 'manager_bzv_pool') return json({ error: 'Accès interdit.' }, { status: 403 });
 
       const ticketNumber = String(body?.ticketNumber || '').trim();
       const signatureTypedName = String(body?.signatureTypedName || '').trim();
@@ -298,6 +454,8 @@ export async function onRequestPatch({ request, env, data, params }) {
           id
         )
         .run();
+
+      await touchLastUpdatedAt(env);
 
       const updated = await env.DB.prepare('SELECT * FROM fiche_history WHERE id = ?').bind(id).first();
       return json({ fiche: mapRow(updated, zone) }, { status: 200 });

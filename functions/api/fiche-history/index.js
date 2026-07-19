@@ -36,6 +36,11 @@ function mapRow(row) {
     warehouseCoolant5lOk: row.warehouse_coolant_5l_ok === null ? null : Boolean(row.warehouse_coolant_5l_ok),
     warehouseCheckedBy: row.warehouse_checked_by || null,
     warehouseCheckedAt: row.warehouse_checked_at || null,
+    sentToWarehouseBy: row.sent_to_warehouse_by || null,
+    sentToWarehouseAt: row.sent_to_warehouse_at || null,
+    warehouseFlowStatus: row.warehouse_flow_status || null,
+    warehouseFinalizedBy: row.warehouse_finalized_by || null,
+    warehouseFinalizedAt: row.warehouse_finalized_at || null,
   };
 }
 
@@ -68,7 +73,6 @@ export async function onRequestGet({ request, env, data }) {
     if (role === 'warehouse') {
       where += ' AND s.zone = ?';
       binds.push(String(userZone(data) || 'BZV/POOL'));
-      where += " AND fh.status IN ('Envoyée au magasin', 'Contrôle magasin')";
     }
 
     if (role === 'technician') {

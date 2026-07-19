@@ -49,6 +49,28 @@ const HistoryModal = ({
     return base.filter((s) => allowedSet.has(s));
   })();
 
+  const getWarehouseFlowState = (fiche) => {
+    const flow = String(fiche?.warehouseFlowStatus || '').trim();
+    if (flow) return flow;
+    const status = String(fiche?.status || '').trim();
+    if (status === 'Envoyée au magasin' || status === 'Contrôle magasin') return 'pending';
+    return '';
+  };
+
+  const getWarehouseSecondaryLabel = (fiche) => {
+    const flow = getWarehouseFlowState(fiche);
+    if (flow === 'finalized') return 'Fiche finalisée';
+    if (flow === 'pending' || flow === 'reopened' || fiche?.sentToWarehouseAt) return 'Magasinier: non traité';
+    return '';
+  };
+
+  const formatDateTime = (value) => {
+    if (!value) return '-';
+    const dt = new Date(value);
+    if (Number.isNaN(dt.getTime())) return String(value);
+    return dt.toLocaleString('fr-FR');
+  };
+
   return (
     <div className="fixed inset-0 bg-indigo-900/35 flex items-center justify-center z-50 p-0 sm:p-4">
       <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:h-auto sm:max-w-6xl sm:max-h-[92vh] sm:rounded-xl">
@@ -199,8 +221,11 @@ const HistoryModal = ({
                 const interventionStatusLower = interventionStatus.toLowerCase();
                 const hasIntervention = Boolean(String(fiche?.resolvedInterventionId || fiche?.interventionId || '').trim());
                 const interventionLabel = interventionStatus ? interventionStatus : hasIntervention ? 'planned' : 'Non déclenchée';
+                const warehouseSecondaryLabel = getWarehouseSecondaryLabel(fiche);
+                const hasWarehouseManagedFlow = Boolean(getWarehouseFlowState(fiche) || fiche?.sentToWarehouseAt || fiche?.warehouseFinalizedAt);
                 const canTriggerIntervention =
                   String(fiche?.status || '').trim() === 'En attente' &&
+                  !hasWarehouseManagedFlow &&
                   !(interventionStatusLower === 'sent' || interventionStatusLower === 'done') &&
                   !isViewer;
 
@@ -221,6 +246,14 @@ const HistoryModal = ({
                     </span>
                   </div>
 
+                  {warehouseSecondaryLabel && (
+                    <div className="mb-3">
+                      <span className={`inline-flex px-3 py-1 rounded-full text-xs font-bold ${warehouseSecondaryLabel === 'Fiche finalisée' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-amber-100 text-amber-800 border border-amber-200'}`}>
+                        {warehouseSecondaryLabel}
+                      </span>
+                    </div>
+                  )}
+
                   {(fiche.warehouseAirFilterOk !== null || fiche.warehouseCoolant5lOk !== null) && (
                     <div className="mb-3 text-xs text-gray-700">
                       <div className="font-semibold">Contrôle magasin</div>
@@ -230,6 +263,28 @@ const HistoryModal = ({
                       <div>
                         05L LdR: {fiche.warehouseCoolant5lOk === true ? 'OK' : fiche.warehouseCoolant5lOk === false ? 'NON' : '-'}
                       </div>
+                      {fiche.warehouseCheckedAt && (
+                        <div>
+                          Contrôlée le: {formatDateTime(fiche.warehouseCheckedAt)}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {(fiche.sentToWarehouseAt || fiche.warehouseFinalizedAt) && (
+                    <div className="mb-3 text-xs text-gray-700 bg-white/80 border border-gray-200 rounded-lg p-3 space-y-1">
+                      {fiche.sentToWarehouseAt && (
+                        <div>
+                          Envoyée au magasinier par <span className="font-semibold">{fiche.sentToWarehouseBy || '-'}</span> le{' '}
+                          <span className="font-semibold">{formatDateTime(fiche.sentToWarehouseAt)}</span>
+                        </div>
+                      )}
+                      {fiche.warehouseFinalizedAt && (
+                        <div>
+                          Finalisée par le magasinier <span className="font-semibold">{fiche.warehouseFinalizedBy || '-'}</span> le{' '}
+                          <span className="font-semibold">{formatDateTime(fiche.warehouseFinalizedAt)}</span>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -302,7 +357,7 @@ const HistoryModal = ({
                           }}
                           className="w-full bg-indigo-700 text-white py-2 rounded-lg hover:bg-indigo-800 font-semibold"
                         >
-                          Envoyer au magasin
+                          Envoyer au magasinier
                         </button>
                       </div>
                     )}

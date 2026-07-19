@@ -506,10 +506,25 @@ const GeneratorMaintenanceApp = () => {
     setFinalizeBusy(false);
   };
 
+  const getWarehouseFlowState = (fiche) => {
+    const flow = String(fiche?.warehouseFlowStatus || '').trim();
+    if (flow) return flow;
+    const status = String(fiche?.status || '').trim();
+    if (status === 'Envoyée au magasin' || status === 'Contrôle magasin') return 'pending';
+    return '';
+  };
+
+  const isWarehousePendingFiche = (fiche) => {
+    const flow = getWarehouseFlowState(fiche);
+    return flow === 'pending' || flow === 'reopened';
+  };
+
+  const isWarehouseFinalizedFiche = (fiche) => getWarehouseFlowState(fiche) === 'finalized';
+
   const warehouseProcessCount = useMemo(() => {
     const list = Array.isArray(ficheHistory) ? ficheHistory : [];
     return list
-      .filter((f) => f && f.status === 'Envoyée au magasin')
+      .filter((f) => f && isWarehousePendingFiche(f))
       .filter((f) => !managerZoneLock || String(f?.zone || '').trim() === managerZoneLock)
       .length;
   }, [ficheHistory, managerZoneLock]);
@@ -517,7 +532,7 @@ const GeneratorMaintenanceApp = () => {
   const warehouseReturnsCount = useMemo(() => {
     const list = Array.isArray(ficheHistory) ? ficheHistory : [];
     return list
-      .filter((f) => f && f.status === 'Contrôle magasin')
+      .filter((f) => f && isWarehouseFinalizedFiche(f))
       .filter((f) => !managerZoneLock || String(f?.zone || '').trim() === managerZoneLock)
       .length;
   }, [ficheHistory, managerZoneLock]);
@@ -525,7 +540,7 @@ const GeneratorMaintenanceApp = () => {
   const prevDoneInterventionsRef = useRef(new Set());
 
   const interventionsPollQuery = useMemo(() => {
-    if (!(isAdmin || isManager)) return '';
+    if (!(isAdmin || isAnyManager)) return '';
     if (!authUser?.id) return '';
     if (!showInterventions) return '';
 
@@ -549,7 +564,7 @@ const GeneratorMaintenanceApp = () => {
       qs.set('technicianUserId', String(interventionsTechnicianUserId));
     }
     return qs.toString();
-  }, [isAdmin, isManager, authUser?.id, showInterventions, interventionsMonth, interventionsStatus, interventionsTechnicianUserId]);
+  }, [isAdmin, isAnyManager, authUser?.id, showInterventions, interventionsMonth, interventionsStatus, interventionsTechnicianUserId]);
 
   useEffect(() => {
     if (!interventionsPollQuery) return;
@@ -4204,7 +4219,7 @@ const GeneratorMaintenanceApp = () => {
       setFicheOpenSource('warehouseProcess');
       setFicheFlowMode('');
       setHideProcessButtonsOverride(false);
-      setWarehouseReturnsOpenMode('readonly');
+      setWarehouseReturnsOpenMode(isWarehouseFinalizedFiche(fiche) ? 'readonly' : 'control');
       await handleOpenFicheFromHistory(fiche);
     };
 
@@ -4319,7 +4334,7 @@ const GeneratorMaintenanceApp = () => {
         try { afterPrint(); } catch {}
       }, 15000);
 
-      handlePrintFiche();
+      handlePrintFiche(isWarehouse ? 'warehouse-finalize' : 'finalize');
     } catch (e) {
       setHideProcessButtonsOverride(false);
       setFinalizeBusy(false);
@@ -4327,7 +4342,19 @@ const GeneratorMaintenanceApp = () => {
     }
   };
 
-  const handlePrintFiche = () => {
+  const handleWarehouseReopen = async ({ ficheId }) => {
+    if (!ficheId) return;
+
+    await apiFetchJson(`/api/fiche-history/${encodeURIComponent(String(ficheId))}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ mode: 'warehouse-reopen' })
+    });
+
+    await loadFicheHistory();
+    setWarehouseReturnsOpenMode('control');
+  };
+
+  const handlePrintFiche = (persistMode = 'finalize') => {
     (async () => {
       let usedTicketNumber = ticketNumber;
       let issuedTicket = null;
@@ -4367,7 +4394,7 @@ const GeneratorMaintenanceApp = () => {
 
       const ticketNumberFull = issuedTicket || buildTicketNumberForFiche(usedTicketNumber);
       try {
-        await persistFicheHistory(ticketNumberFull);
+        await persistFicheHistory(ticketNumberFull, persistMode);
       } catch (e) {
         const msg = String(e?.message || 'Erreur serveur.');
         if (msg.toLowerCase().includes('dja sortie') || msg.toLowerCase().includes('deja sortie')) {
@@ -4433,7 +4460,7 @@ const GeneratorMaintenanceApp = () => {
     })();
   };
 
-  const handleSaveFichePdf = async () => {
+  const handleSaveFichePdf = async (persistMode = 'finalize') => {
     const el = document.getElementById('fiche-print');
     if (!el) {
       alert("Zone d'impression introuvable.");
@@ -4481,7 +4508,7 @@ const GeneratorMaintenanceApp = () => {
 
       const ticketNumberFull = issuedTicket || buildTicketNumberForFiche(usedTicketNumber);
       try {
-        await persistFicheHistory(ticketNumberFull);
+        await persistFicheHistory(ticketNumberFull, persistMode);
       } catch (e) {
         const msg = String(e?.message || 'Erreur serveur.');
         if (msg.toLowerCase().includes('déjà sortie') || msg.toLowerCase().includes('deja sortie')) {
@@ -4652,6 +4679,7 @@ const GeneratorMaintenanceApp = () => {
     });
 
     await loadFicheHistory();
+    await loadInterventions();
   };
 
   const handleTriggerInterventionFromHistory = async (fiche) => {
@@ -4820,7 +4848,7 @@ const GeneratorMaintenanceApp = () => {
     }
   };
 
-  const persistFicheHistory = async (ticketNumberFull) => {
+  const persistFicheHistory = async (ticketNumberFull, mode = 'finalize') => {
     let interventionId = ficheContext?.interventionId ? String(ficheContext.interventionId) : null;
     // GARANTIE: si l'interventionId est absent, on la crée/récupère ici avant de persister la fiche.
     if (!interventionId) {
@@ -4843,7 +4871,7 @@ const GeneratorMaintenanceApp = () => {
       await apiFetchJson(`/api/fiche-history/${encodeURIComponent(ficheId)}`, {
         method: 'PATCH',
         body: JSON.stringify({
-          mode: 'finalize',
+          mode,
           ticketNumber: String(ticketNumberFull || '').trim(),
           signatureTypedName: String(signatureTypedName || '').trim(),
           signatureDrawnPng: String(signatureDrawnPng || '').trim()
@@ -7439,7 +7467,7 @@ return (
 
           )}
 
-          {(isAdmin || isManager) && (
+          {(isAdmin || isAnyManager) && (
             <button
               onClick={() => {
                 setSidebarOpen(false);
@@ -7473,7 +7501,7 @@ return (
             </button>
           )}
 
-          {(isAdmin || isManager) && (
+          {(isAdmin || isAnyManager) && (
             <button
               onClick={() => {
                 setSidebarOpen(false);
@@ -7712,8 +7740,8 @@ return (
 
                     const campaign = currentCampaignMonth;
                     const inCampaign = list.filter((f) => toCampaignMonth(f) === campaign);
-                    const processed = inCampaign.filter((f) => String(f.status || '') === 'Contrôle magasin');
-                    const pending = inCampaign.filter((f) => String(f.status || '') === 'Envoyée au magasin');
+                    const processed = inCampaign.filter((f) => isWarehouseFinalizedFiche(f));
+                    const pending = inCampaign.filter((f) => isWarehousePendingFiche(f));
 
                     const airOk = inCampaign.filter((f) => f.warehouseAirFilterOk === true);
                     const airNo = inCampaign.filter((f) => f.warehouseAirFilterOk === false);
@@ -7727,8 +7755,8 @@ return (
                         const key = sid || name || String(f?.id || '');
                         const prev = m.get(key) || { siteId: sid, siteName: name, total: 0, pending: 0, processed: 0, airOk: 0, airNo: 0, airUnknown: 0 };
                         prev.total += 1;
-                        if (String(f.status || '') === 'Envoyée au magasin') prev.pending += 1;
-                        if (String(f.status || '') === 'Contrôle magasin') prev.processed += 1;
+                        if (isWarehousePendingFiche(f)) prev.pending += 1;
+                        if (isWarehouseFinalizedFiche(f)) prev.processed += 1;
                         if (f.warehouseAirFilterOk === true) prev.airOk += 1;
                         else if (f.warehouseAirFilterOk === false) prev.airNo += 1;
                         else prev.airUnknown += 1;
@@ -7777,12 +7805,12 @@ return (
                           <div className="border border-gray-200 rounded-xl p-4 bg-white">
                             <div className="text-xs text-gray-600">À traiter (campagne)</div>
                             <div className="text-3xl font-extrabold text-gray-900 mt-1">{pending.length}</div>
-                            <div className="text-xs text-gray-500 mt-1">Envoyée au magasin</div>
+                            <div className="text-xs text-gray-500 mt-1">Contrôle magasin en attente</div>
                           </div>
                           <div className="border border-gray-200 rounded-xl p-4 bg-white">
                             <div className="text-xs text-gray-600">Traitées (campagne)</div>
                             <div className="text-3xl font-extrabold text-gray-900 mt-1">{processed.length}</div>
-                            <div className="text-xs text-gray-500 mt-1">Contrôle magasin</div>
+                            <div className="text-xs text-gray-500 mt-1">Fiches finalisées</div>
                           </div>
                           <div className="border border-gray-200 rounded-xl p-4 bg-white">
                             <div className="text-xs text-gray-600">Filtre GE OK (campagne)</div>
@@ -8322,8 +8350,8 @@ return (
                         className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full"
                       >
                         <option value="all">Tous</option>
-                        <option value="Envoyée au magasin">Envoyée au magasin</option>
-                        <option value="Contrôle magasin">Contrôle magasin</option>
+                        <option value="pending">Contrôle magasin en attente</option>
+                        <option value="finalized">Fiche finalisée</option>
                       </select>
                     </div>
 
@@ -8362,7 +8390,7 @@ return (
 
                 {(() => {
                   const listAll = (Array.isArray(ficheHistory) ? ficheHistory : []).filter(
-                    (f) => f && (f.status === 'Envoyée au magasin' || f.status === 'Contrôle magasin')
+                    (f) => f && (isWarehousePendingFiche(f) || isWarehouseFinalizedFiche(f))
                   );
 
                   const q = String(warehouseProcessQuery || '').trim().toLowerCase();
@@ -8372,7 +8400,8 @@ return (
 
                   const listFiltered = listAll.filter((f) => {
                     if (!f) return false;
-                    if (st !== 'all' && String(f.status || '') !== st) return false;
+                    if (st === 'pending' && !isWarehousePendingFiche(f)) return false;
+                    if (st === 'finalized' && !isWarehouseFinalizedFiche(f)) return false;
 
                     const dg = String(f.dateGenerated || '').slice(0, 10);
                     if (from && dg && dg < from) return false;
@@ -8423,10 +8452,10 @@ return (
                               </div>
                               <span
                                 className={`px-3 py-1 rounded-full text-sm font-semibold self-start ${
-                                  fiche.status === 'Envoyée au magasin' ? 'bg-indigo-700 text-white' : 'bg-amber-500 text-white'
+                                  isWarehouseFinalizedFiche(fiche) ? 'bg-emerald-700 text-white' : 'bg-amber-500 text-white'
                                 }`}
                               >
-                                {fiche.status}
+                                {isWarehouseFinalizedFiche(fiche) ? 'Fiche finalisée' : 'Contrôle magasin en attente'}
                               </span>
                             </div>
 
@@ -8454,6 +8483,12 @@ return (
                                   {fiche.warehouseCoolant5lOk === true ? '✅ OK' : fiche.warehouseCoolant5lOk === false ? '❌ NON' : '-'}
                                 </span>
                               </div>
+                              {fiche.warehouseFinalizedAt && (
+                                <div>
+                                  Finalisée le:{' '}
+                                  <span className="font-semibold">{new Date(fiche.warehouseFinalizedAt).toLocaleString('fr-FR')}</span>
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -8569,7 +8604,7 @@ return (
                           <div className="flex flex-col w-full min-w-0">
                             <span className="text-xs text-gray-600 mb-1">Statut</span>
                             <div className="border border-gray-200 bg-white rounded-lg px-3 py-2 text-sm font-semibold text-gray-800">
-                              Envoyée au magasin
+                              Contrôle magasin en attente
                             </div>
                           </div>
 
@@ -8606,7 +8641,7 @@ return (
 
                       {(() => {
                         const listAll = (Array.isArray(ficheHistory) ? ficheHistory : [])
-                          .filter((f) => f && f.status === 'Envoyée au magasin')
+                          .filter((f) => f && isWarehousePendingFiche(f))
                           .filter((f) => !managerZoneLock || String(f?.zone || '').trim() === managerZoneLock);
 
                         const q = String(warehouseRevokeQuery || '').trim().toLowerCase();
@@ -8656,7 +8691,7 @@ return (
                                       <div className="text-sm text-gray-600 truncate">{fiche.siteName}</div>
                                     </div>
                                     <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-indigo-700 text-white inline-flex items-center justify-center text-center leading-none self-start h-fit min-h-[28px]">
-                                      Envoyée au magasin
+                                      Contrôle magasin en attente
                                     </span>
                                   </div>
 
@@ -8753,7 +8788,7 @@ return (
                     <div className="flex flex-col w-full min-w-0">
                       <span className="text-xs text-gray-600 mb-1">Statut</span>
                       <div className="border border-gray-200 bg-white rounded-lg px-3 py-2 text-sm font-semibold text-gray-800">
-                        Contrôle magasin
+                        Fiche finalisée
                       </div>
                     </div>
 
@@ -8791,7 +8826,7 @@ return (
 
                 {(() => {
                   const listAll = (Array.isArray(ficheHistory) ? ficheHistory : [])
-                    .filter((f) => f && f.status === 'Contrôle magasin')
+                    .filter((f) => f && isWarehouseFinalizedFiche(f))
                     .filter((f) => !managerZoneLock || String(f?.zone || '').trim() === managerZoneLock);
 
                   const q = String(warehouseReturnsQuery || '').trim().toLowerCase();
@@ -8848,8 +8883,8 @@ return (
                                 <div className="font-bold text-lg text-gray-800 truncate">{fiche.ticketNumber || '-'}</div>
                                 <div className="text-sm text-gray-600 truncate">{fiche.siteName}</div>
                               </div>
-                              <span className="px-3 py-1 rounded-full text-sm font-semibold self-start bg-amber-500 text-white">
-                                Contrôle magasin
+                              <span className="px-3 py-1 rounded-full text-sm font-semibold self-start bg-emerald-700 text-white">
+                                Fiche finalisée
                               </span>
                             </div>
 
@@ -8877,25 +8912,23 @@ return (
                                   {fiche.warehouseCoolant5lOk === true ? '✅ OK' : fiche.warehouseCoolant5lOk === false ? '❌ NON' : '-'}
                                 </span>
                               </div>
+                              <div>
+                                Finalisée par:{' '}
+                                <span className="font-semibold">{fiche.warehouseFinalizedBy || '-'}</span>
+                              </div>
+                              <div>
+                                Date finalisation:{' '}
+                                <span className="font-semibold">{fiche.warehouseFinalizedAt ? new Date(fiche.warehouseFinalizedAt).toLocaleString('fr-FR') : '-'}</span>
+                              </div>
                             </div>
                           </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenFicheFromWarehouseReturnsReadonly(fiche)}
-                              className="w-full bg-slate-800 text-white py-2 rounded-lg hover:bg-slate-900 font-semibold"
-                            >
-                              Ouvrir (lecture seule)
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handleOpenFicheFromWarehouseReturnsControl(fiche)}
-                              className="w-full bg-amber-600 text-white py-2 rounded-lg hover:bg-amber-700 font-semibold"
-                            >
-                              Ouvrir (mode contrôle)
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenFicheFromWarehouseReturnsReadonly(fiche)}
+                            className="w-full bg-slate-800 text-white py-2 rounded-lg hover:bg-slate-900 font-semibold"
+                          >
+                            Ouvrir
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -9084,8 +9117,12 @@ return (
           ficheHistory={ficheHistory}
           ficheId={ficheContext?.ficheId ? String(ficheContext.ficheId) : null}
           canWarehouse={Boolean(isWarehouse && ficheContext?.ficheId)}
-          showWarehouseControls={Boolean(ficheOpenSource === 'warehouseReturns')}
-          showFinalizeButton={Boolean(ficheOpenSource === 'warehouseReturns' && !isWarehouse)}
+          showWarehouseControls={Boolean(ficheOpenSource === 'warehouseReturns' || ficheOpenSource === 'warehouseProcess')}
+          showFinalizeButton={Boolean(
+            (ficheOpenSource === 'warehouseReturns' && !isWarehouse) ||
+            (ficheOpenSource === 'warehouseProcess' && isWarehouse && activeFiche && String(activeFiche?.status || '').trim() !== 'Effectuée' && !isWarehouseFinalizedFiche(activeFiche))
+          )}
+          showWarehouseReopenButton={Boolean(ficheOpenSource === 'warehouseProcess' && isWarehouse && activeFiche && String(activeFiche?.status || '').trim() !== 'Effectuée' && isWarehouseFinalizedFiche(activeFiche))}
           finalizeBusy={finalizeBusy}
           hideWarehouseSection={Boolean(ficheFlowMode === 'preSend')}
           showSendToWarehouseInObjet={Boolean(ficheFlowMode === 'preSend')}
@@ -9093,6 +9130,7 @@ return (
           onSendToWarehouse={handleSendToWarehouse}
           disableSignatureAutofetch={Boolean(ficheFlowMode === 'preSend')}
           onFinalizeFiche={handleFinalizeWarehouseReturn}
+          onWarehouseReopen={handleWarehouseReopen}
           hideProcessButtons={Boolean(hideProcessButtonsOverride)}
           bannerImage={bannerImage}
           ticketNumber={ticketNumber}
@@ -9109,13 +9147,12 @@ return (
           handleSaveFichePdf={handleSaveFichePdf}
           warehouseAirFilterOk={activeFiche?.warehouseAirFilterOk ?? null}
           warehouseCoolant5lOk={activeFiche?.warehouseCoolant5lOk ?? null}
-          warehouseReadOnly={Boolean(ficheOpenSource === 'warehouseReturns' && warehouseReturnsOpenMode === 'readonly')}
+          warehouseReadOnly={Boolean(
+            (ficheOpenSource === 'warehouseReturns' && warehouseReturnsOpenMode === 'readonly') ||
+            (ficheOpenSource === 'warehouseProcess' && activeFiche && isWarehouseFinalizedFiche(activeFiche))
+          )}
           onSaveWarehouseCheck={handleSaveWarehouseCheck}
-          onSubmitWarehouseCheck={
-            ficheOpenSource === 'warehouseReturns' && warehouseReturnsOpenMode === 'control'
-              ? null
-              : handleSubmitWarehouseCheck
-          }
+          onSubmitWarehouseCheck={null}
           onClose={closeFicheModal}
           formatDate={formatDate}
         />

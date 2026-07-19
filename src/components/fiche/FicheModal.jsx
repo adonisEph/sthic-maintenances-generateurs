@@ -11,8 +11,10 @@ const FicheModal = ({
   hideWarehouseSection,
   hideProcessButtons,
   showFinalizeButton,
+  showWarehouseReopenButton,
   finalizeBusy,
   onFinalizeFiche,
+  onWarehouseReopen,
   showSendToWarehouseInObjet,
   canSendToWarehouse,
   onSendToWarehouse,
@@ -52,6 +54,12 @@ const FicheModal = ({
   const [localWarehouseCoolant5lOk, setLocalWarehouseCoolant5lOk] = useState(
     warehouseCoolant5lOk === null || warehouseCoolant5lOk === undefined ? null : Boolean(warehouseCoolant5lOk)
   );
+
+  const currentFiche = useMemo(() => {
+    const list = Array.isArray(ficheHistory) ? ficheHistory : [];
+    if (!ficheId) return null;
+    return list.find((f) => f && String(f.id || '') === String(ficheId)) || null;
+  }, [ficheHistory, ficheId]);
 
   const airFilterRule = useMemo(() => {
     const list = Array.isArray(ficheHistory) ? ficheHistory : [];
@@ -281,7 +289,6 @@ const FicheModal = ({
 
   useEffect(() => {
     if (!open) return;
-    if (isWarehouseView) return;
     if (Boolean(disableSignatureAutofetch)) return;
     if (String(signatureDrawnPng || '').trim().startsWith('data:image/png;base64,')) return;
 
@@ -353,11 +360,12 @@ const FicheModal = ({
   const canShowSendToWarehouse = Boolean(showSendToWarehouseInObjet && canSendToWarehouse && onSendToWarehouse && ficheId);
   const isWarehouseReadOnly = Boolean(warehouseReadOnly);
   const canShowFinalize = Boolean(showFinalizeButton && onFinalizeFiche && ficheId);
-  const warehouseControlsLabel = !isWarehouseView && Boolean(showWarehouseControls) ? 'Contrôle consommables' : 'Contrôle magasin (warehouse)';
+  const canShowReopen = Boolean(showWarehouseReopenButton && onWarehouseReopen && ficheId);
+  const warehouseControlsLabel = isWarehouseView ? 'Contrôle magasin' : Boolean(showWarehouseControls) ? 'Contrôle consommables' : 'Contrôle magasin';
 
-  const canShowBannerBlock = !isWarehouseView && !Boolean(disableSignatureAutofetch);
+  const canShowBannerBlock = !Boolean(disableSignatureAutofetch) && (!isWarehouseView || canShowFinalize || canShowReopen);
 
-  const shouldShowFinalizeArtifacts = true;
+  const shouldShowFinalizeArtifacts = !Boolean(disableSignatureAutofetch) && (!isWarehouseView || canShowFinalize || canShowReopen);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
@@ -509,6 +517,23 @@ const FicheModal = ({
                   : ''}
               </p>
 
+              {(currentFiche?.sentToWarehouseAt || currentFiche?.warehouseFinalizedAt) && (
+                <div className="mt-3 space-y-1 text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                  {currentFiche?.sentToWarehouseAt && (
+                    <div>
+                      Envoyée au magasinier par <span className="font-semibold">{currentFiche?.sentToWarehouseBy || '-'}</span> le{' '}
+                      <span className="font-semibold">{new Date(currentFiche.sentToWarehouseAt).toLocaleString('fr-FR')}</span>
+                    </div>
+                  )}
+                  {currentFiche?.warehouseFinalizedAt && (
+                    <div>
+                      Finalisée par le magasinier <span className="font-semibold">{currentFiche?.warehouseFinalizedBy || '-'}</span> le{' '}
+                      <span className="font-semibold">{new Date(currentFiche.warehouseFinalizedAt).toLocaleString('fr-FR')}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {canShowSendToWarehouse && (
                 <div className="mt-4 flex justify-center">
                   <div className="flex flex-col items-center">
@@ -534,12 +559,12 @@ const FicheModal = ({
                       {sendToWarehouseBusy
                         ? 'Envoi...'
                         : sendToWarehouseSuccess
-                          ? 'Envoyée au magasin ✓'
-                          : 'Envoyer au magasin'}
+                          ? 'Envoyée au magasinier ✓'
+                          : 'Envoyer au magasinier'}
                     </button>
 
                     {sendToWarehouseSuccess && (
-                      <div className="mt-2 text-sm font-semibold text-green-700">Fiche envoyée au magasin</div>
+                      <div className="mt-2 text-sm font-semibold text-green-700">Fiche envoyée au magasinier</div>
                     )}
                   </div>
                 </div>
@@ -566,6 +591,20 @@ const FicheModal = ({
                     className="bg-emerald-700 text-white px-6 py-3 rounded-lg hover:bg-emerald-800 font-bold disabled:bg-gray-400 print:hidden"
                   >
                     {finalizeBusy ? 'Finalisation...' : 'Finaliser la fiche'}
+                  </button>
+                </div>
+              )}
+
+              {canShowReopen && !shouldHideProcessButtons && (
+                <div className="mt-4 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await onWarehouseReopen({ ficheId });
+                    }}
+                    className="bg-amber-600 text-white px-6 py-3 rounded-lg hover:bg-amber-700 font-bold print:hidden"
+                  >
+                    Rouvrir la fiche
                   </button>
                 </div>
               )}
@@ -683,7 +722,7 @@ const FicheModal = ({
                   )}
                 </div>
 
-                {!isWarehouseReadOnly && (
+                {!isWarehouseReadOnly && onSubmitWarehouseCheck && (
                   <div className="mt-3">
                     <button
                       type="button"
@@ -762,13 +801,13 @@ const FicheModal = ({
             </div>
 
             <div className="grid grid-cols-2 gap-4 text-sm mt-auto pt-4">
-              {!isWarehouseView && !Boolean(disableSignatureAutofetch) && shouldShowFinalizeArtifacts && (
+              {shouldShowFinalizeArtifacts && (
                 <div className="border-2 border-gray-800 p-4" style={{ minHeight: '90px' }}>
                   <p className="font-bold mb-3 text-base">H</p>
                   <p className="text-3xl font-bold text-center mt-2">{siteForFiche.nh1DV} H</p>
                 </div>
               )}
-              {!isWarehouseView && !Boolean(disableSignatureAutofetch) && shouldShowFinalizeArtifacts && (
+              {shouldShowFinalizeArtifacts && (
                 <div className="border-2 border-gray-800 p-4" style={{ minHeight: '90px' }}>
                   <p className="font-bold mb-3 text-right text-base">SIGNATURE RESPONSABLE</p>
                   <div className="flex items-center justify-end" style={{ height: '65px' }}>
@@ -789,7 +828,7 @@ const FicheModal = ({
             </div>
 
           </div>
-          {!isWarehouseView && !shouldHideProcessButtons && (
+          {shouldShowFinalizeArtifacts && !shouldHideProcessButtons && (
             <div className="mt-6 border-t pt-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div />
