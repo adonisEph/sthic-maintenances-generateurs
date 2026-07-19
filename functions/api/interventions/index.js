@@ -28,7 +28,7 @@ export async function onRequestGet({ request, env, data }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
     const role = String(data?.user?.role || '').trim();
-    if (!['admin', 'technician', 'manager', 'manager_bzv_pool', 'controller', 'field_supervisor', 'viewer'].includes(role)) {
+    if (!['admin', 'technician', 'manager', 'manager_bzv_pool', 'warehouse', 'controller', 'field_supervisor', 'viewer'].includes(role)) {
       return json({ error: 'Accès interdit.' }, { status: 403 });
     }
 
@@ -52,6 +52,10 @@ export async function onRequestGet({ request, env, data }) {
       binds.push(z);
     }
     if (role === 'manager' || role === 'field_supervisor') {
+      where += ' AND i.zone = ?';
+      binds.push(z);
+    }
+    if (role === 'warehouse') {
       where += ' AND i.zone = ?';
       binds.push(z);
     }

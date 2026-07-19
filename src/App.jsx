@@ -44,7 +44,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.4.3';
+const APP_VERSION = '6.4.4';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -318,7 +318,7 @@ const GeneratorMaintenanceApp = () => {
   const canGenerateFiche = isAdmin || isAnyManager;
   const canMarkCompleted = isAdmin || isAnyManager || isTechnician;
   const canManageUsers = isAdmin;
-  const canUseInterventions = isAdmin || isAnyManager || isTechnician || isController || isFieldSupervisor;
+  const canUseInterventions = isAdmin || isAnyManager || isWarehouse || isTechnician || isController || isFieldSupervisor;
   const canUsePm = isAdmin || isAnyManager || isController || isFieldSupervisor;
 
   const openVidangeFormForSite = (site, chosenIntervention = null) => {
@@ -4160,7 +4160,48 @@ const GeneratorMaintenanceApp = () => {
       if (!fiche?.id) return;
 
       const siteId = String(fiche.siteId || '').trim();
-      const site = (Array.isArray(sites) ? sites : []).find((s) => String(s?.id || '').trim() === siteId) || null;
+      let resolvedSites = Array.isArray(sites) ? sites : [];
+      let site = resolvedSites.find((s) => String(s?.id || '').trim() === siteId) || null;
+
+      if (!site && siteId) {
+        try {
+          const data = await apiFetchJson('/api/sites', { method: 'GET' });
+          const rows = Array.isArray(data?.sites) ? data.sites : [];
+          const normYmd = (d) => {
+            const s = String(d || '').slice(0, 10);
+            return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+          };
+
+          resolvedSites = rows.map((siteRow) => {
+            const retiredRaw = siteRow?.retired;
+            const retired =
+              retiredRaw === true ||
+              retiredRaw === 1 ||
+              retiredRaw === '1' ||
+              String(retiredRaw || '').trim().toLowerCase() === 'true';
+            const nhEstimated = calculateEstimatedNH(siteRow.nh2A, siteRow.dateA, siteRow.regime);
+            const diffEstimated = calculateDiffNHs(siteRow.nh1DV, nhEstimated);
+            const epvDates = calculateEPVDates(siteRow.regime, siteRow.dateA, siteRow.nh1DV, nhEstimated, siteRow?.seuil);
+            const epv1 = normYmd(epvDates.epv1) || normYmd(siteRow.epv1);
+            const epv2 = normYmd(epvDates.epv2) || normYmd(siteRow.epv2);
+            const epv3 = normYmd(epvDates.epv3) || normYmd(siteRow.epv3);
+            return {
+              ...siteRow,
+              retired,
+              nhEstimated,
+              diffEstimated,
+              epv1,
+              epv2,
+              epv3,
+              daysUntilEPV1: getDaysUntil(epvDates.epv1)
+            };
+          });
+          setSites(resolvedSites);
+          site = resolvedSites.find((s) => String(s?.id || '').trim() === siteId) || null;
+        } catch {
+          // ignore fallback failure and preserve original error below
+        }
+      }
 
       if (!site) {
         alert('Site introuvable pour cette fiche.');
@@ -6874,8 +6915,7 @@ const GeneratorMaintenanceApp = () => {
     if (showWarehouseReturns) setShowWarehouseReturns(false);
     if (warehouseRevokeOpen) setWarehouseRevokeOpen(false);
     if (showCalendar) setShowCalendar(false);
-    if (showHistory) setShowHistory(false);
-  }, [isWarehouse, showWarehouseReturns, warehouseRevokeOpen, showCalendar, showHistory]);
+  }, [isWarehouse, showWarehouseReturns, warehouseRevokeOpen, showCalendar]);
 
   useEffect(() => {
     if (!authUser?.id || authUser?.role !== 'technician') return;
@@ -7310,7 +7350,7 @@ return (
           <div className="h-px bg-slate-700/60 my-1" />
 
 
-        {!isWarehouse && (
+        {(
           <SidebarSitesActions
             canWriteSites={canWriteSites}
             canImportSites={canImportSites} 
@@ -7393,10 +7433,12 @@ return (
             <button
               onClick={async () => {
                 setSidebarOpen(false);
-                try {
-                  await refreshUsers();
-                } catch {
-                  // ignore
+                if (isAdmin || isAnyManager) {
+                  try {
+                    await refreshUsers();
+                  } catch {
+                    // ignore
+                  }
                 }
                 setInterventionsStatus('all');
                 setInterventionsTechnicianUserId('all');
@@ -7408,10 +7450,12 @@ return (
                 } catch {
                   // ignore
                 }
-                try {
-                  await loadPmAssignments(interventionsMonth);
-                } catch {
-                  // ignore
+                if (!isWarehouse) {
+                  try {
+                    await loadPmAssignments(interventionsMonth);
+                  } catch {
+                    // ignore
+                  }
                 }
               }}
               className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
@@ -7453,7 +7497,7 @@ return (
             </button>
           )}
 
-          {!isWarehouse && (
+          {(
             <button
               onClick={() => {
                 setSidebarOpen(false);
@@ -8948,7 +8992,7 @@ return (
           onTriggerIntervention={handleTriggerInterventionFromHistory}
           onSendToWarehouse={handleSendToWarehouse}
           canSendToWarehouse={Boolean(isAdmin || isAnyManager)}
-          allowedStatuses={['En attente', 'Effectuée']}
+          allowedStatuses={isWarehouse ? ['Contrôle magasin', 'En attente', 'Effectuée'] : ['En attente', 'Effectuée']}
           historyQuery={historyQuery}
           setHistoryQuery={setHistoryQuery}
           historyDateFrom={historyDateFrom}
@@ -8968,7 +9012,7 @@ return (
           filteredFicheHistory={filteredFicheHistory}
           canMarkCompleted={canMarkCompleted}
           handleMarkAsCompleted={handleMarkAsCompleted}
-          isViewer={isViewer}
+          isViewer={Boolean(isViewer || isWarehouse)}
           isAdmin={isAdmin}
           formatDate={formatDate}
         />
@@ -9248,7 +9292,7 @@ return (
             open={showInterventions}
             isTechnician={isTechnician}
             isAdmin={isAdmin}
-            isViewer={isViewer}
+            isViewer={Boolean(isViewer || isWarehouse)}
             authUser={authUser}
             interventionsUiRev={interventionsUiRev}
             bumpInterventionsUiRev={bumpInterventionsUiRev}
@@ -9327,7 +9371,7 @@ return (
             bumpInterventionsUiRev={bumpInterventionsUiRev}
           />
 
-        {!isWarehouse && (
+        {(
           <div className="mt-4 mb-6">
             {urgentSites.length > 0 && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
@@ -9400,9 +9444,17 @@ return (
                 </div>
               </div>
             )}
+            {isWarehouse && (
+              <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 border border-gray-200">
+                <div className="font-bold text-gray-900">Référentiel sites</div>
+                <div className="text-sm text-gray-600 mt-1">
+                  Consultation en lecture seule des sites de votre zone pour contextualiser le traitement des fiches magasin.
+                </div>
+              </div>
+            )}
             {filteredSites.length === 0 ? (
               <div className="bg-white rounded-lg shadow-md p-6 text-center text-gray-500">
-                Aucun site trouvé. Ajoutez un site ou importez votre Excel.
+                {isWarehouse ? 'Aucun site disponible pour votre zone.' : 'Aucun site trouvé. Ajoutez un site ou importez votre Excel.'}
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
@@ -9416,6 +9468,7 @@ return (
                     authZone &&
                     String(site?.zone || '').trim().toUpperCase() === String(authZone).trim().toUpperCase()
                   );
+                  const canActOnSite = Boolean(isAuthorizedForSite || canWriteSites || canGenerateFiche);
 
                   const badgeColor = site.retired
                     ? 'bg-gray-500'
@@ -9559,6 +9612,7 @@ return (
                           </div>
                         </div>
 
+                        {canActOnSite && (
                         <div className="grid grid-cols-3 gap-2 mt-4">
                           {isAuthorizedForSite && (
                             <button
@@ -9598,6 +9652,7 @@ return (
                             </button>
                           )}
                         </div>
+                        )}
                       </div>
                     </div>
                   );

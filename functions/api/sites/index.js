@@ -145,6 +145,8 @@ export async function onRequestGet({ request, env, data }) {
       }
     } else if (role === 'manager') {
       stmt = env.DB.prepare('SELECT * FROM sites WHERE UPPER(TRIM(zone)) = ? ORDER BY id_site ASC').bind(z);
+    } else if (role === 'warehouse') {
+      stmt = env.DB.prepare('SELECT * FROM sites WHERE UPPER(TRIM(zone)) = ? ORDER BY id_site ASC').bind(z);
     } else if (role === 'field_supervisor') {
       stmt = env.DB.prepare('SELECT * FROM sites WHERE UPPER(TRIM(zone)) = ? ORDER BY id_site ASC').bind(z);
     } else if (role === 'controller' || role === 'manager_bzv_pool' || role === 'viewer') {
