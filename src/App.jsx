@@ -57,7 +57,7 @@ const SPLASH_MIN_MS = 3000;
 const DISABLE_PUSH_NOTIFICATIONS = true;
 const DISABLE_NOTIFICATIONS_FEATURE = true;
 const DISABLE_PRESENCE_FEATURE = true;
-const DISABLE_META_VERSION_POLLING = true;
+const DISABLE_META_VERSION_POLLING = false;
 
 const GeneratorMaintenanceApp = () => {
   const storage = useStorage();
