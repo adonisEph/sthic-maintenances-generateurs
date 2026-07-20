@@ -44,7 +44,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.4.4';
+const APP_VERSION = '6.4.5';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -4433,7 +4433,9 @@ const GeneratorMaintenanceApp = () => {
         }
       }
 
-      const ticketNumberFull = issuedTicket || buildTicketNumberForFiche(usedTicketNumber);
+      const ticketNumberFull = (persistMode === 'warehouse-finalize' && ticketLabel)
+        ? ticketLabel
+        : (issuedTicket || buildTicketNumberForFiche(usedTicketNumber));
       try {
         await persistFicheHistory(ticketNumberFull, persistMode);
       } catch (e) {
@@ -4547,7 +4549,9 @@ const GeneratorMaintenanceApp = () => {
 
       const fileBase = `Fiche_${String(siteForFiche?.nameSite || 'Site').replace(/[^a-z0-9_-]+/gi, '_')}_${new Date().toISOString().slice(0, 10)}`;
 
-      const ticketNumberFull = issuedTicket || buildTicketNumberForFiche(usedTicketNumber);
+      const ticketNumberFull = (persistMode === 'warehouse-finalize' && ticketLabel)
+        ? ticketLabel
+        : (issuedTicket || buildTicketNumberForFiche(usedTicketNumber));
       try {
         await persistFicheHistory(ticketNumberFull, persistMode);
       } catch (e) {
@@ -7511,7 +7515,7 @@ return (
 
           )}
 
-          {(isAdmin || isAnyManager) && (
+          {(isAdmin || isManager) && (
             <button
               onClick={() => {
                 setSidebarOpen(false);
@@ -7545,7 +7549,7 @@ return (
             </button>
           )}
 
-          {(isAdmin || isAnyManager) && (
+          {(isAdmin || isManager) && (
             <button
               onClick={() => {
                 setSidebarOpen(false);
