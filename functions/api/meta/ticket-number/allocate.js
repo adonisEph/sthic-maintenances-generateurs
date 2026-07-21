@@ -1,6 +1,6 @@
 import { ensureAdminUser } from '../../_utils/db.js';
 import { json, requireAuth, readJson, isoNow } from '../../_utils/http.js';
-import { formatTicket, touchLastUpdatedAt, ticketMetaKeyFromZone } from '../../_utils/meta.js';
+import { formatTicket, touchLastUpdatedAt, ticketMetaKeyFromZone, getMaxUsedTicketCounterForZone } from '../../_utils/meta.js';
 
 export async function onRequestPost({ request, env, data }) {
   try {
@@ -38,13 +38,17 @@ export async function onRequestPost({ request, env, data }) {
         .bind(key)
         .first();
 
-      const current = Number(row?.meta_value || 0);
-      if (!Number.isFinite(current) || Math.floor(current) !== current || current < 0) {
+      const currentRaw = Number(row?.meta_value || 0);
+      if (!Number.isFinite(currentRaw) || Math.floor(currentRaw) !== currentRaw || currentRaw < 0) {
         return json({ error: 'Valeur meta ticket_number invalide.' }, { status: 500 });
       }
 
-      start = current + 1;
-      end = current + count;
+      const current = Math.floor(currentRaw);
+      const maxUsed = await getMaxUsedTicketCounterForZone(env, zone);
+      const base = Math.max(current, maxUsed);
+
+      start = base + 1;
+      end = base + count;
 
       const upd = await env.DB.prepare(
         'UPDATE meta SET meta_value = ? WHERE meta_key = ? AND meta_value = ?'
