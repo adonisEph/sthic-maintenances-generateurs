@@ -59,21 +59,6 @@ export async function onRequestPost({ request, env, data, params }) {
       : null;
 
     const relatedFiche = relatedFicheByIntervention?.id ? relatedFicheByIntervention : relatedFallbackFiche;
-    const siteZoneUpper = String(site?.zone || site?.region || '').trim().toUpperCase();
-    if (siteZoneUpper === 'BZV/POOL') {
-      if (!relatedFiche?.id) {
-        return json({ error: 'Clôture bloquée : fiche obligatoire introuvable pour cette intervention.' }, { status: 409 });
-      }
-
-      const ficheStatus = String(relatedFiche?.status || '').trim();
-      const warehouseFlowStatus = String(relatedFiche?.warehouse_flow_status || '').trim();
-      const isWarehouseReady = warehouseFlowStatus === 'finalized';
-      const isLegacyReady = !warehouseFlowStatus && ficheStatus === 'En attente';
-
-      if (!isWarehouseReady && !isLegacyReady) {
-        return json({ error: 'Clôture bloquée : la fiche doit être finalisée par le magasinier.' }, { status: 409 });
-      }
-    }
 
     const body = await readJson(request);
     const now = isoNow();
