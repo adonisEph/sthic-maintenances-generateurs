@@ -1,6 +1,6 @@
 import { ensureAdminUser } from '../../_utils/db.js';
 import { json, requireAuth, readJson, isoNow, isSuperAdmin, userZone, ymdToday } from '../../_utils/http.js';
-import { nextTicketNumberForZone, formatTicket, touchLastUpdatedAt } from '../../_utils/meta.js';
+import { nextPnrDayTicketNumber, formatPnrDayTicket, nextTicketNumberForZone, formatTicket, touchLastUpdatedAt } from '../../_utils/meta.js';
 import { calculateEstimatedNH, calculateDiffNHs, calculateEPVDates } from '../../_utils/calc.js';
 
 export async function onRequestPost({ request, env, data, params }) {
@@ -149,26 +149,9 @@ export async function onRequestPost({ request, env, data, params }) {
     if (!ticketNumber) {
       const z = String(ticketZone || '').trim().toUpperCase();
       if (z === 'PNR/KOUILOU') {
-        // Même règle que /api/meta/ticket-number/next pour PNR/KOUILOU (format dd/mm/yyyy-n)
         const ymd = String(doneDate || '').slice(0, 10);
-        const key = `ticket_number_pnr_day_${ymd}`;
-
-        await env.DB.prepare('INSERT OR IGNORE INTO meta (meta_key, meta_value) VALUES (?, ?)')
-          .bind(key, '0')
-          .run();
-
-        const row = await env.DB.prepare('SELECT meta_value FROM meta WHERE meta_key = ?').bind(key).first();
-        const current = Number(row?.meta_value || 0);
-        const next = (Number.isFinite(current) ? current : 0) + 1;
-
-        await env.DB.prepare('INSERT OR REPLACE INTO meta (meta_key, meta_value) VALUES (?, ?)')
-          .bind(key, String(next))
-          .run();
-
-        await touchLastUpdatedAt(env);
-
-        const [yy, mm, dd] = ymd.split('-');
-        ticketNumber = `${dd}/${mm}/${yy}-${next}`;
+        const next = await nextPnrDayTicketNumber(env, ymd);
+        ticketNumber = formatPnrDayTicket(ymd, next);
       } else {
         const tn = await nextTicketNumberForZone(env, ticketZone);
         ticketNumber = formatTicket(tn, ticketZone);
