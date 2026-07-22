@@ -81,44 +81,6 @@ const CalendarModal = (props) => {
   const [wizardHolidayDate, setWizardHolidayDate] = useState('');
   const [wizardHolidayLabel, setWizardHolidayLabel] = useState('');
 
-  const targetMonthHolidays = useMemo(() => {
-    const prefix = String(targetMonthLabel || '').slice(0, 7);
-    if (!prefix) return [];
-    return (Array.isArray(calendarHolidays) ? calendarHolidays : [])
-      .filter((h) => String(h?.dateYmd || '').slice(0, 7) === prefix)
-      .sort((a, b) => String(a?.dateYmd || '').localeCompare(String(b?.dateYmd || '')));
-  }, [calendarHolidays, targetMonthLabel]);
-
-  const targetMonthWorkdayCount = useMemo(() => {
-    const label = String(targetMonthLabel || '').trim();
-    const m = label.match(/^(\d{4})-(\d{2})$/);
-    if (!m) return 0;
-    const y = Number(m[1]);
-    const mo = Number(m[2]);
-    const daysInMonth = new Date(y, mo, 0).getDate();
-    let count = 0;
-    for (let d = 1; d <= daysInMonth; d += 1) {
-      const dateStr = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const dow = new Date(`${dateStr}T00:00:00Z`).getUTCDay();
-      if (dow === 0 || dow === 6) continue;
-      if (calendarHolidaySet && calendarHolidaySet.has(dateStr)) continue;
-      count += 1;
-    }
-    return count;
-  }, [targetMonthLabel, calendarHolidaySet]);
-
-  const holidayLabelByDate = useMemo(() => {
-    const map = new Map();
-    for (const h of (Array.isArray(calendarHolidays) ? calendarHolidays : [])) {
-      const d = String(h?.dateYmd || '').slice(0, 10);
-      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
-        const label = String(h?.label || '').trim();
-        if (label) map.set(d, label);
-      }
-    }
-    return map;
-  }, [calendarHolidays]);
-
   const wizardAddHoliday = async () => {
     const d = String(wizardHolidayDate || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
@@ -187,6 +149,44 @@ const CalendarModal = (props) => {
       return '';
     }
   }, []);
+
+  const targetMonthHolidays = useMemo(() => {
+    const prefix = String(targetMonthLabel || '').slice(0, 7);
+    if (!prefix) return [];
+    return (Array.isArray(calendarHolidays) ? calendarHolidays : [])
+      .filter((h) => String(h?.dateYmd || '').slice(0, 7) === prefix)
+      .sort((a, b) => String(a?.dateYmd || '').localeCompare(String(b?.dateYmd || '')));
+  }, [calendarHolidays, targetMonthLabel]);
+
+  const targetMonthWorkdayCount = useMemo(() => {
+    const label = String(targetMonthLabel || '').trim();
+    const m = label.match(/^(\d{4})-(\d{2})$/);
+    if (!m) return 0;
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const daysInMonth = new Date(y, mo, 0).getDate();
+    let count = 0;
+    for (let d = 1; d <= daysInMonth; d += 1) {
+      const dateStr = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const dow = new Date(`${dateStr}T00:00:00Z`).getUTCDay();
+      if (dow === 0 || dow === 6) continue;
+      if (calendarHolidaySet && calendarHolidaySet.has(dateStr)) continue;
+      count += 1;
+    }
+    return count;
+  }, [targetMonthLabel, calendarHolidaySet]);
+
+  const holidayLabelByDate = useMemo(() => {
+    const map = new Map();
+    for (const h of (Array.isArray(calendarHolidays) ? calendarHolidays : [])) {
+      const d = String(h?.dateYmd || '').slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+        const label = String(h?.label || '').trim();
+        if (label) map.set(d, label);
+      }
+    }
+    return map;
+  }, [calendarHolidays]);
 
   const todayLabel = useMemo(() => {
     try {
