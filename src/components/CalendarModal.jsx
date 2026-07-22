@@ -61,6 +61,8 @@ const CalendarModal = (props) => {
   const [selectedPairs, setSelectedPairs] = useState(new Map());
   const [pairingFirstSiteId, setPairingFirstSiteId] = useState('');
   const [clusteringErrors, setClusteringErrors] = useState([]);
+  const [clusteringSearch, setClusteringSearch] = useState('');
+  const [clusteringSuccess, setClusteringSuccess] = useState('');
 
   const [planningBusy, setPlanningBusy] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -75,6 +77,73 @@ const CalendarModal = (props) => {
   const [intelligentError, setIntelligentError] = useState('');
   const [intelligentLastStats, setIntelligentLastStats] = useState(null);
   const [intelligentExportBusy, setIntelligentExportBusy] = useState(false);
+
+  const [wizardHolidayDate, setWizardHolidayDate] = useState('');
+  const [wizardHolidayLabel, setWizardHolidayLabel] = useState('');
+
+  const targetMonthHolidays = useMemo(() => {
+    const prefix = String(targetMonthLabel || '').slice(0, 7);
+    if (!prefix) return [];
+    return (Array.isArray(calendarHolidays) ? calendarHolidays : [])
+      .filter((h) => String(h?.dateYmd || '').slice(0, 7) === prefix)
+      .sort((a, b) => String(a?.dateYmd || '').localeCompare(String(b?.dateYmd || '')));
+  }, [calendarHolidays, targetMonthLabel]);
+
+  const targetMonthWorkdayCount = useMemo(() => {
+    const label = String(targetMonthLabel || '').trim();
+    const m = label.match(/^(\d{4})-(\d{2})$/);
+    if (!m) return 0;
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const daysInMonth = new Date(y, mo, 0).getDate();
+    let count = 0;
+    for (let d = 1; d <= daysInMonth; d += 1) {
+      const dateStr = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const dow = new Date(`${dateStr}T00:00:00Z`).getUTCDay();
+      if (dow === 0 || dow === 6) continue;
+      if (calendarHolidaySet && calendarHolidaySet.has(dateStr)) continue;
+      count += 1;
+    }
+    return count;
+  }, [targetMonthLabel, calendarHolidaySet]);
+
+  const holidayLabelByDate = useMemo(() => {
+    const map = new Map();
+    for (const h of (Array.isArray(calendarHolidays) ? calendarHolidays : [])) {
+      const d = String(h?.dateYmd || '').slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+        const label = String(h?.label || '').trim();
+        if (label) map.set(d, label);
+      }
+    }
+    return map;
+  }, [calendarHolidays]);
+
+  const wizardAddHoliday = async () => {
+    const d = String(wizardHolidayDate || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
+    try {
+      if (typeof onAddHoliday === 'function') {
+        await onAddHoliday({ dateYmd: d, label: wizardHolidayLabel });
+      }
+      setWizardHolidayDate('');
+      setWizardHolidayLabel('');
+    } catch {}
+  };
+
+  const wizardDeleteHoliday = async (h) => {
+    const d = String(h?.dateYmd || '').slice(0, 10);
+    const label = String(h?.label || '').trim();
+    const msg = label
+      ? `Supprimer le jour férié du ${d} (${label}) ?`
+      : `Supprimer le jour férié du ${d} ?`;
+    if (!window.confirm(msg)) return;
+    try {
+      if (typeof onDeleteHoliday === 'function') {
+        await onDeleteHoliday({ id: h?.id, dateYmd: d });
+      }
+    } catch {}
+  };
 
   const todayDay = useMemo(() => {
     try {
@@ -336,7 +405,8 @@ const CalendarModal = (props) => {
 
       if (!response.ok) throw new Error('Erreur sauvegarde clustering');
       
-      alert('✅ Clustering sauvegardé avec succès');
+      setClusteringSuccess('Clustering sauvegardé avec succès');
+      setTimeout(() => setClusteringSuccess(''), 4000);
       
     } catch (error) {
       setClusteringErrors([error.message || 'Erreur lors de la sauvegarde']);
@@ -601,6 +671,11 @@ const CalendarModal = (props) => {
                               <button
                                 type="button"
                                 onClick={async () => {
+                                  const hLabel = String(h?.label || '').trim();
+                                  const msg = hLabel
+                                    ? `Supprimer le jour férié du ${d} (${hLabel}) ?`
+                                    : `Supprimer le jour férié du ${d} ?`;
+                                  if (!window.confirm(msg)) return;
                                   try {
                                     if (typeof onDeleteHoliday === 'function') {
                                       await onDeleteHoliday({ id: h?.id, dateYmd: d });
@@ -624,7 +699,7 @@ const CalendarModal = (props) => {
               {showClustering && (isAdmin || isManager) && (
                 <div className="bg-white/5 border-t border-white/10 p-3">
                   <div className="space-y-3">
-                    <div className="text-xs font-semibold text-white/90">Technicien cible</div>
+                    <div className="text-xs font-semibold text-white/90">Technicien cible ({zoneTechnicians.length} dans votre zone)</div>
                     <select
                       value={clusteringTech}
                       onChange={(e) => setClusteringTech(e.target.value)}
@@ -632,15 +707,11 @@ const CalendarModal = (props) => {
                       disabled={clusteringBusy}
                     >
                       <option value="">-- Sélectionner un technicien --</option>
-                      {(Array.isArray(users) ? users : [])
-                        .filter((u) => u && u.role === 'technician')
-                        .slice()
-                        .sort((a, b) => String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || '')))
-                        .map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.technicianName || u.email}
-                          </option>
-                        ))}
+                      {zoneTechnicians.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.technicianName || u.email}
+                        </option>
+                      ))}
                     </select>
 
                     {clusteringTech && (
@@ -671,9 +742,30 @@ const CalendarModal = (props) => {
                           <MapPin size={12} />
                           Sites à regrouper ({clusteringData.length} sites)
                         </div>
+                        <input
+                          type="text"
+                          value={clusteringSearch}
+                          onChange={(e) => setClusteringSearch(e.target.value)}
+                          placeholder="Rechercher par code, nom ou région..."
+                          className="w-full border border-white/20 rounded-lg px-3 py-1.5 text-xs bg-white/10 text-white placeholder-white/40 focus:outline-none focus:border-sky-400/60"
+                        />
                         <div className="text-xs text-white/60 mb-2">Cliquez sur les sites pour les regrouper en paires</div>
+                        {clusteringSuccess && (
+                          <div className="text-xs text-emerald-300 bg-emerald-900/30 border border-emerald-700/50 rounded px-2 py-1.5 mb-2">
+                            {clusteringSuccess}
+                          </div>
+                        )}
                         <div className="max-h-48 overflow-y-auto space-y-1">
-                          {clusteringData.map((site) => {
+                          {clusteringData
+                            .filter((site) => {
+                              const q = String(clusteringSearch || '').trim().toLowerCase();
+                              if (!q) return true;
+                              const code = String(site.code || '').toLowerCase();
+                              const name = String(site.name || '').toLowerCase();
+                              const region = String(site.region || site.zone || '').toLowerCase();
+                              return code.includes(q) || name.includes(q) || region.includes(q);
+                            })
+                            .map((site) => {
                             const isPaired = selectedPairs.has(site.id);
                             const pairedWith = isPaired ? clusteringData.find(s => s.id === selectedPairs.get(site.id)) : null;
                             const isFirst = pairingFirstSiteId && String(pairingFirstSiteId) === String(site.id);
@@ -794,6 +886,63 @@ const CalendarModal = (props) => {
                     </button>
                   </div>
 
+                  {(isAdmin || isManager) && (
+                    <div className="mt-3 border border-indigo-200 bg-white rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-xs font-bold text-indigo-900">Jours fériés du mois cible ({targetMonthLabel})</div>
+                        <div className="text-xs font-semibold text-indigo-700 bg-indigo-100 rounded px-2 py-0.5">{targetMonthWorkdayCount} jour(s) ouvré(s)</div>
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-2 mb-2">
+                        <input
+                          type="date"
+                          value={wizardHolidayDate}
+                          onChange={(e) => setWizardHolidayDate(e.target.value)}
+                          className="border border-indigo-200 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 flex-1"
+                          disabled={planningBusy}
+                        />
+                        <input
+                          type="text"
+                          value={wizardHolidayLabel}
+                          onChange={(e) => setWizardHolidayLabel(e.target.value)}
+                          placeholder="Libellé (optionnel)"
+                          className="border border-indigo-200 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 flex-1"
+                          disabled={planningBusy}
+                        />
+                        <button
+                          type="button"
+                          onClick={wizardAddHoliday}
+                          disabled={planningBusy || !wizardHolidayDate}
+                          className="bg-emerald-600 text-white px-3 py-2 rounded-lg hover:bg-emerald-700 text-sm font-semibold disabled:opacity-60 whitespace-nowrap"
+                        >
+                          Ajouter
+                        </button>
+                      </div>
+                      <div className="max-h-32 overflow-y-auto space-y-1">
+                        {targetMonthHolidays.length === 0 && (
+                          <div className="text-xs text-gray-500">Aucun jour férié enregistré pour {targetMonthLabel}.</div>
+                        )}
+                        {targetMonthHolidays.map((h) => {
+                          const d = String(h?.dateYmd || '').slice(0, 10);
+                          const label = String(h?.label || '').trim();
+                          return (
+                            <div key={String(h?.id || d)} className="flex items-center gap-2 bg-indigo-50 rounded px-2 py-1 text-xs">
+                              <span className="font-semibold text-indigo-900">{d}</span>
+                              <span className="text-indigo-700/70 flex-1 truncate">{label}</span>
+                              <button
+                                type="button"
+                                onClick={() => wizardDeleteHoliday(h)}
+                                disabled={planningBusy}
+                                className="text-rose-600 hover:text-rose-700 font-bold disabled:opacity-60"
+                              >
+                                Suppr.
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                       <div className="text-xs font-semibold text-indigo-900 mb-1">Technicien</div>
@@ -899,12 +1048,17 @@ const CalendarModal = (props) => {
                       }
 
                       if (isHoliday) {
+                        const hLabel = holidayLabelByDate.get(dateStr) || '';
                         days.push(
                           <div
                             key={day}
+                            title={hLabel || 'Jour férié'}
                             className={`h-16 sm:h-20 md:h-24 border-2 rounded p-1 overflow-hidden text-left w-full bg-slate-200/70 border-gray-300`}
                           >
                             <div className="text-sm font-semibold text-gray-500">{day}</div>
+                            {hLabel && (
+                              <div className="text-[10px] text-gray-400 leading-tight truncate mt-0.5">{hLabel}</div>
+                            )}
                           </div>
                         );
                         continue;

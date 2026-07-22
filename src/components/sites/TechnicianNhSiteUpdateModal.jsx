@@ -11,7 +11,8 @@ const TechnicianNhSiteUpdateModal = ({
   apiFetchJson,
   loadData,
   loadInterventions,
-  bumpInterventionsUiRev
+  bumpInterventionsUiRev,
+  allowDecrease
 }) => {
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState('');
@@ -97,7 +98,7 @@ const TechnicianNhSiteUpdateModal = ({
 
       const data = await apiFetchJson(`/api/sites/${String(selectedSite.id)}/nh`, {
         method: 'POST',
-        body: JSON.stringify({ readingDate, nhValue, reset: false, assumeEffectiveNh: true })
+        body: JSON.stringify({ readingDate, nhValue, reset: false, assumeEffectiveNh: true, allowDecrease: Boolean(allowDecrease) })
       });
 
       await loadData?.();

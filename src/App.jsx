@@ -3487,6 +3487,45 @@ const GeneratorMaintenanceApp = () => {
     if (done) alert('✅ Export Excel généré.');
   };
 
+  const handlePmExportItemsExcel = async ({ items, fileBaseName, sheetName }) => {
+    if (!canUsePm) return;
+    const rows = (Array.isArray(items) ? items : []).map((it) => ({
+      'Zone': it.zone || '',
+      'Region': it.region || '',
+      'Site': it.siteCode || '',
+      'Site Name': it.siteName || '',
+      'Short description': it.shortDescription || '',
+      'Maintenance Type': it.maintenanceType || '',
+      'Number': it.number || '',
+      'Assigned to': it.assignedTo || '',
+      'Scheduled WO Date': it.scheduledWoDate || '',
+      'Date of closing': it.closedAt || '',
+      'State': it.state || '',
+      'Statut reprogrammation': (() => {
+        const v = String(it?.reprogrammationStatus || '').trim().toLowerCase();
+        if (v === 'approved' || v === 'ok' || v === 'oui' || v === 'validee' || v === 'validée') return 'APPROVED';
+        if (v === 'rejected' || v === 'ko' || v === 'non' || v === 'rejete' || v === 'rejeté') return 'REJECTED';
+        if (v === 'pending' || v === 'attente' || v === 'en attente') return 'PENDING';
+        if (it?.reprogrammationDate) return 'APPROVED';
+        if (it?.reprogrammationReason) return 'PENDING';
+        return '';
+      })(),
+      'Reprogrammation': it.reprogrammationDate || '',
+      'Raisons': it.reprogrammationReason || ''
+    }));
+
+    const done = await runExport({
+      label: `Export Excel (${sheetName || 'PM'})…`,
+      fn: async () => {
+        exportXlsx({
+          fileBaseName: fileBaseName || `PM_export_${new Date().toISOString().split('T')[0]}`,
+          sheets: [{ name: sheetName || 'PM', rows }]
+        });
+      }
+    });
+    if (done) alert('✅ Export Excel généré.');
+  };
+
   const handlePmNocImport = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -3761,7 +3800,8 @@ const GeneratorMaintenanceApp = () => {
           readingDate: formData.dateA,
           nhValue: nh2,
           reset: false,
-          assumeEffectiveNh: true
+          assumeEffectiveNh: true,
+          allowDecrease: isAdmin || isAnyManager
         })
       });
 
@@ -6149,7 +6189,7 @@ const GeneratorMaintenanceApp = () => {
     const normCode = (v) => String(v || '').trim().toUpperCase().replace(/\s+/g, '');
     const matchesType = (it) => {
       const t = String(it?.maintenanceType || '').trim().toUpperCase();
-      return t === 'FULLPMWO' || t === 'DG SERVICE' || t === 'DGSERVICE';
+      return t === 'FULLPMWO';
     };
 
     for (const it of items) {
@@ -9264,14 +9304,13 @@ return (
             setPmReprogExportDate={setPmReprogExportDate}
             handlePmExportReprogExcel={handlePmExportReprogExcel}
             handlePmExportRetiredSitesExcel={handlePmExportRetiredSitesExcel}
+            handlePmExportItemsExcel={handlePmExportItemsExcel}
             exportBusy={exportBusy}
             users={users}
             pmSendTechUserId={pmSendTechUserId}
             setPmSendTechUserId={setPmSendTechUserId}
             pmSendBusy={pmSendBusy}
             handleSendPmMonthPlanning={handleSendPmMonthPlanning}
-            setPmRejectedDateFilter={setPmRejectedDateFilter}
-            setPmRejectedModalOpen={setPmRejectedModalOpen}
             pmResetBusy={pmResetBusy}
             handlePmReset={handlePmReset}
             handlePmNocImport={handlePmNocImport}
@@ -9306,8 +9345,6 @@ return (
             setPmFilterReprog={setPmFilterReprog}
             pmDetails={pmDetails}
             setPmDetails={setPmDetails}
-            pmRejectedModalOpen={pmRejectedModalOpen}
-            pmRejectedDateFilter={pmRejectedDateFilter}
             pmReprogOpen={pmReprogOpen}
             setPmReprogOpen={setPmReprogOpen}
             pmReprogItem={pmReprogItem}
@@ -9412,6 +9449,7 @@ return (
             loadData={loadData}
             loadInterventions={loadInterventions}
             bumpInterventionsUiRev={bumpInterventionsUiRev}
+            allowDecrease={isAdmin || isAnyManager}
           />
 
         {(
@@ -9551,9 +9589,20 @@ return (
                             <div className="text-xs sm:text-[11px] text-gray-700 font-semibold bg-slate-50 border border-slate-200 px-2 py-1 rounded-lg leading-tight">
                               PM: {pmDate ? formatDate(pmDate) : '-'}
                             </div>
-                            <div className="text-xs sm:text-[10px] text-gray-600 bg-slate-50 border border-slate-200 px-2 py-1 rounded-lg leading-tight">
-                              Statut PM: {pmState || '-'}
-                            </div>
+                            {(() => {
+                              const st = String(pmState || '').trim().toLowerCase();
+                              const isClosed = st === 'closed complete' || st === 'closed' || st.includes('closed');
+                              const isAwaiting = st === 'awaiting closure' || st === 'awaiting' || st.includes('awaiting');
+                              const isWip = st.includes('wip') || st.includes('work in progress') || st.includes('in progress');
+                              const dotClass = isClosed ? 'bg-emerald-500' : isAwaiting ? 'bg-amber-500' : isWip ? 'bg-blue-500' : 'bg-gray-400';
+                              const labelClass = isClosed ? 'text-emerald-700' : isAwaiting ? 'text-amber-700' : isWip ? 'text-blue-700' : 'text-gray-600';
+                              return (
+                                <div className={`text-xs sm:text-[10px] ${labelClass} bg-slate-50 border border-slate-200 px-2 py-1 rounded-lg leading-tight flex items-center gap-1`}>
+                                  <span className={`inline-block w-2 h-2 rounded-full ${dotClass}`} />
+                                  {pmState || '-'}
+                                </div>
+                              );
+                            })()}
                           </div>
 
                           {!site.retired && daysUntil !== null && (

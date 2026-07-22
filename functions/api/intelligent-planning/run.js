@@ -224,14 +224,31 @@ function normStr(v) {
   return s;
 }
 
-function sitePriorityTuple(site) {
+function daysBetweenYmd(aYmd, bYmd) {
+  const a = String(aYmd || '').slice(0, 10);
+  const b = String(bYmd || '').slice(0, 10);
+  const ma = a.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const mb = b.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!ma || !mb) return 0;
+  const da = Date.UTC(Number(ma[1]), Number(ma[2]) - 1, Number(ma[3]));
+  const db = Date.UTC(Number(mb[1]), Number(mb[2]) - 1, Number(mb[3]));
+  return Math.round((db - da) / 86400000);
+}
+
+function sitePriorityTuple(site, todayYmd) {
   const regime = Number(site?.regime || 0);
   const nh2A = Number(site?.nh2A || 0);
   const nh1DV = Number(site?.nh1DV || 0);
-  const diffHours = nh2A - nh1DV;
   const retired = Boolean(site?.retired);
   const seuilRaw = Number(site?.seuil);
   const seuil = Number.isFinite(seuilRaw) && seuilRaw > 0 ? seuilRaw : DEFAULT_SEUIL;
+
+  // Project NH to today: nh2A + (regime × days elapsed since last reading).
+  // This reflects real urgency at planning time, not stale reading time.
+  const today = String(todayYmd || '').slice(0, 10) || ymdToday();
+  const elapsedDays = Math.max(0, daysBetweenYmd(String(site?.dateA || '').slice(0, 10), today));
+  const nhProjected = nh2A + regime * elapsedDays;
+  const diffHours = nhProjected - nh1DV;
 
   // Primary: active sites that have reached or exceeded the threshold are top priority.
   const urgentActive = !retired && diffHours >= seuil;
@@ -300,13 +317,11 @@ async function loadTechnician(env, techUserId) {
 }
 
 async function loadSitesForTechnician(env, technicianName, technicianEmail, zoneScope) {
-  const cutoff = `${String(ymdToday() || '').slice(0, 7)}-01`;
   const stmt = env.DB.prepare(
     `SELECT * FROM sites
      WHERE (TRIM(technician) = TRIM(?) COLLATE NOCASE OR (TRIM(?) != '' AND TRIM(technician) = TRIM(?) COLLATE NOCASE))
-       AND (retired = 0 OR (retired = 1 AND updated_at >= ?))
      ORDER BY id_site ASC`
-  ).bind(String(technicianName || ''), String(technicianEmail || ''), String(technicianEmail || ''), cutoff);
+  ).bind(String(technicianName || ''), String(technicianEmail || ''), String(technicianEmail || ''));
 
   const res = await stmt.all();
   const rows = Array.isArray(res?.results) ? res.results : [];
@@ -583,8 +598,8 @@ export async function onRequestPost({ request, env, data }) {
       if (pairedId && siteById.has(String(pairedId)) && !visited.has(String(pairedId))) {
         const s2 = siteById.get(String(pairedId));
 
-        const p1 = sitePriorityTuple(s);
-        const p2 = sitePriorityTuple(s2);
+        const p1 = sitePriorityTuple(s, today);
+        const p2 = sitePriorityTuple(s2, today);
         const urgentSiteId = comparePriorityTupleDesc(p1, p2) <= 0 ? sid : String(pairedId);
         const urgentSite = urgentSiteId === sid ? s : s2;
 
@@ -592,7 +607,7 @@ export async function onRequestPost({ request, env, data }) {
           sites: [sid, String(pairedId)],
           urgentRegime: Number(urgentSite?.regime || 0),
           urgentSiteId,
-          priority: sitePriorityTuple(urgentSite)
+          priority: sitePriorityTuple(urgentSite, today)
         });
         visited.add(sid);
         visited.add(String(pairedId));
@@ -601,15 +616,15 @@ export async function onRequestPost({ request, env, data }) {
           sites: [sid],
           urgentRegime: Number(s.regime || 0),
           urgentSiteId: sid,
-          priority: sitePriorityTuple(s)
+          priority: sitePriorityTuple(s, today)
         });
         visited.add(sid);
       }
     }
 
     visits.sort((a, b) => {
-      const pa = a?.priority || sitePriorityTuple(siteById.get(String(a?.urgentSiteId)));
-      const pb = b?.priority || sitePriorityTuple(siteById.get(String(b?.urgentSiteId)));
+      const pa = a?.priority || sitePriorityTuple(siteById.get(String(a?.urgentSiteId)), today);
+      const pb = b?.priority || sitePriorityTuple(siteById.get(String(b?.urgentSiteId)), today);
       const cmp = comparePriorityTupleDesc(pa, pb);
       return cmp || String(a.urgentSiteId).localeCompare(String(b.urgentSiteId));
     });
