@@ -44,7 +44,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.4.8';
+const APP_VERSION = '6.4.9';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -321,7 +321,29 @@ const GeneratorMaintenanceApp = () => {
   const canUseInterventions = isAdmin || isAnyManager || isWarehouse || isTechnician || isController || isFieldSupervisor;
   const canUsePm = isAdmin || isAnyManager || isController || isFieldSupervisor;
 
+  const isClosedInterventionStatus = (status) => {
+    const st = String(status || '').trim().toLowerCase();
+    return st === 'done' || st === 'non_fait';
+  };
+
+  const getBrazzavilleTodayYmd = () => {
+    try {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Africa/Brazzaville',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date());
+    } catch {
+      return new Date().toISOString().slice(0, 10);
+    }
+  };
+
   const openVidangeFormForSite = (site, chosenIntervention = null) => {
+    if (site?.retired) {
+      alert('Site retiré : vidange bloquée.');
+      return;
+    }
     setSelectedSite(site);
     setEditSiteFormMode('vidange');
     setVidangeChosenIntervention(chosenIntervention);
@@ -347,15 +369,15 @@ const GeneratorMaintenanceApp = () => {
   const loadPendingInterventionsForSite = async (siteId) => {
     const data = await apiFetchJson(`/api/interventions?siteId=${encodeURIComponent(String(siteId))}`, { method: 'GET' });
     const rows = Array.isArray(data?.interventions) ? data.interventions : [];
-    const todayYmd = new Date().toISOString().slice(0, 10);
+    const todayYmd = getBrazzavilleTodayYmd();
     const currentMonth = todayYmd.slice(0, 7);
     return rows
       .filter((it) => it && String(it.siteId) === String(siteId))
-      .filter((it) => String(it.status || '') !== 'done')
+      .filter((it) => !isClosedInterventionStatus(it?.status))
       .filter((it) => {
         const pd = String(it?.plannedDate || '').slice(0, 10);
         if (!pd) return true;
-        return pd.slice(0, 7) <= currentMonth;
+        return pd.slice(0, 7) === currentMonth;
       })
       .slice()
       .sort((a, b) => String(a?.plannedDate || '').localeCompare(String(b?.plannedDate || '')));
@@ -363,6 +385,10 @@ const GeneratorMaintenanceApp = () => {
 
   const handleStartManagerVidange = async (site) => {
     if (!site?.id) return;
+    if (site?.retired) {
+      alert('Site retiré : vidange bloquée.');
+      return;
+    }
 
     setVidangeInterventionChoiceOpen(false);
     setVidangeInterventionChoiceSite(null);
@@ -397,6 +423,10 @@ const GeneratorMaintenanceApp = () => {
       const site = selectedSite;
       if (!site?.id) {
         alert('Site introuvable.');
+        return;
+      }
+      if (site?.retired) {
+        alert('Site retiré : vidange bloquée.');
         return;
       }
 
@@ -1822,6 +1852,14 @@ const GeneratorMaintenanceApp = () => {
     try {
       const it = (Array.isArray(interventions) ? interventions : []).find((x) => String(x?.id) === String(interventionId)) || null;
       const site = (Array.isArray(sites) ? sites : []).find((s) => String(s?.id) === String(it?.siteId)) || null;
+      if (site?.retired) {
+        alert('Site retiré : vidange bloquée.');
+        return;
+      }
+      if (isClosedInterventionStatus(it?.status) && String(it?.status || '').trim().toLowerCase() === 'non_fait') {
+        alert(`Intervention déjà clôturée en Non-fait.${it?.closeReason ? `\n\nMotif: ${String(it.closeReason)}` : ''}`);
+        return;
+      }
       const msgLines = [
         `Confirmer "Marquer effectuée" ?`,
         '',
@@ -3943,7 +3981,7 @@ const GeneratorMaintenanceApp = () => {
             if (String(it.siteId || '') !== siteId) return false;
             if (String(it.plannedDate || '').slice(0, 10) !== plannedDate) return false;
             if (String(it.epvType || '').trim() !== t) return false;
-            if (String(it.status || '') === 'done') return false;
+            if (isClosedInterventionStatus(it?.status)) return false;
             return true;
           }) || null
         );
@@ -5704,8 +5742,8 @@ const GeneratorMaintenanceApp = () => {
       tomorrowD.setDate(tomorrowD.getDate() + 1);
       const tomorrow = tomorrowD.toISOString().slice(0, 10);
 
-      const todayItems = list.filter((i) => i.plannedDate === today && i.status !== 'done');
-      const tomorrowItems = list.filter((i) => i.plannedDate === tomorrow && i.status !== 'done');
+      const todayItems = list.filter((i) => i.plannedDate === today && !isClosedInterventionStatus(i?.status));
+      const tomorrowItems = list.filter((i) => i.plannedDate === tomorrow && !isClosedInterventionStatus(i?.status));
 
       const toRows = (items) => items.map((it) => {
         const site = siteById.get(String(it.siteId)) || null;
@@ -6815,7 +6853,7 @@ const GeneratorMaintenanceApp = () => {
       const s = new Set();
       vidangesInMonth.forEach((i) => {
         if (!i) return;
-        if (String(i?.status || '') === 'done') return;
+        if (isClosedInterventionStatus(i?.status)) return;
         const t = String(i?.epvType || '').trim().toUpperCase();
         if (t !== 'EPV2' && t !== 'EPV3') return;
         const sid = String(i?.siteId || '').trim();
@@ -6888,7 +6926,7 @@ const GeneratorMaintenanceApp = () => {
       });
 
     const pendingVidanges = vidangesInMonth
-      .filter((i) => String(i?.status || '') !== 'done')
+      .filter((i) => !isClosedInterventionStatus(i?.status))
       .filter((i) => {
         if (String(i?.epvType || '').trim().toUpperCase() !== 'EPV1') return true;
         return !hiddenVidangeIds.has(String(i?.id || ''));
@@ -7997,7 +8035,8 @@ return (
                               setSiteEditChoiceSite(null);
                               await handleStartManagerVidange(site);
                             }}
-                            className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 font-semibold"
+                            disabled={Boolean(siteEditChoiceSite?.retired)}
+                            className={`px-4 py-2 rounded-lg font-semibold ${siteEditChoiceSite?.retired ? 'bg-gray-300 text-gray-600 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}
                           >
                             Effectuer une vidange
                           </button>

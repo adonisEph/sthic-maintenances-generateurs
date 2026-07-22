@@ -71,7 +71,7 @@ export async function onRequestPost({ request, env, data }) {
       }
 
       const updateRes = await env.DB.prepare(
-        "UPDATE interventions SET technician_user_id = ?, technician_name = ?, status = CASE WHEN status = 'planned' THEN 'sent' ELSE status END, sent_at = COALESCE(sent_at, ?), updated_at = ? WHERE site_id = ? AND planned_date = ? AND epv_type = ? AND status != 'done'"
+        "UPDATE interventions SET technician_user_id = ?, technician_name = ?, status = CASE WHEN status = 'planned' THEN 'sent' ELSE status END, sent_at = COALESCE(sent_at, ?), updated_at = ? WHERE site_id = ? AND planned_date = ? AND epv_type = ? AND status IN ('planned', 'sent')"
       )
         .bind(technicianUserId, technicianName, now, now, siteId, plannedDate, epvType)
         .run();

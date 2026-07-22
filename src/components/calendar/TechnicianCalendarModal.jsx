@@ -221,9 +221,11 @@ const TechnicianCalendarModal = ({
                     const statusColor =
                       it?.status === 'done'
                         ? 'bg-green-100 text-green-800 border-green-200'
-                        : it?.status === 'sent'
-                          ? 'bg-blue-100 text-blue-800 border-blue-200'
-                          : 'bg-amber-100 text-amber-800 border-amber-200';
+                        : it?.status === 'non_fait'
+                          ? 'bg-gray-100 text-gray-700 border-gray-300'
+                          : it?.status === 'sent'
+                            ? 'bg-blue-100 text-blue-800 border-blue-200'
+                            : 'bg-amber-100 text-amber-800 border-amber-200';
                     const ticket = String(it?.pmNumber || '').trim();
                     const typeLabel = techCalendarPmTypeLabel(it);
                     const siteLabel =

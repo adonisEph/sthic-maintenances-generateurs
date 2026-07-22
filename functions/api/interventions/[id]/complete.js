@@ -26,9 +26,15 @@ export async function onRequestPost({ request, env, data, params }) {
     if (intervention.status === 'done') {
       return json({ ok: true }, { status: 200 });
     }
+    if (String(intervention.status || '') === 'non_fait') {
+      return json({ error: 'Intervention déjà clôturée en Non-fait.' }, { status: 409 });
+    }
 
     const site = await env.DB.prepare('SELECT * FROM sites WHERE id = ?').bind(intervention.site_id).first();
     if (!site) return json({ error: 'Site introuvable.' }, { status: 404 });
+    if (Boolean(site?.retired)) {
+      return json({ error: 'Site retiré : vidange bloquée.' }, { status: 409 });
+    }
 
     if (!isSuperAdmin(data) && !isManager && !isManagerBzvPool) {
       const z = userZone(data);

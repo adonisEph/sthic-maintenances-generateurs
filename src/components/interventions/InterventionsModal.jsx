@@ -83,6 +83,10 @@ const InterventionsModal = ({
 
   const role = String(authUser?.role || '').trim();
   const isManager = role === 'manager' || role === 'manager_bzv_pool';
+  const isClosedInterventionStatus = (status) => {
+    const st = String(status || '').trim().toLowerCase();
+    return st === 'done' || st === 'non_fait';
+  };
   const authZone = String(authUser?.zone || '').trim();
   const isZonalLocked = role === 'manager' || role === 'field_supervisor';
   const managerZoneLock = (isZonalLocked && authZone) ? authZone : '';
@@ -1091,7 +1095,7 @@ const InterventionsModal = ({
 
                         {(isTechnician && site && (focusPm || showPmNhOnly)) && (
                           <div className="mt-3 flex flex-wrap gap-2">
-                            {focusPm && String(linkedVidange?.status || '') !== 'done' && (
+                            {focusPm && !site?.retired && !isClosedInterventionStatus(linkedVidange?.status) && (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1118,7 +1122,7 @@ const InterventionsModal = ({
 
               const st = String(it?.status || '');
               const effectivePlannedDate = String(it?.plannedDate || '').slice(0, 10);
-              const isOverdue = st !== 'done' && String(effectivePlannedDate || '') < today;
+              const isOverdue = !isClosedInterventionStatus(st) && String(effectivePlannedDate || '') < today;
 
               const linkedPm = pmItems.find((p) => {
                 if (!p || p.maintenanceType !== 'fullpmwo') return false;
@@ -1129,10 +1133,13 @@ const InterventionsModal = ({
               const siteId = String(it?.siteId || '').trim();
               const focusVidange = Boolean(isOverdue) || pendingEpv23BySiteId.has(siteId);
 
+              if (site?.retired) return null;
               if (movedToPm && !focusVidange) return null;
               const statusColor =
                 st === 'done'
                   ? 'bg-green-100 text-green-800 border-green-200'
+                  : st === 'non_fait'
+                    ? 'bg-gray-100 text-gray-700 border-gray-300'
                   : st === 'sent'
                     ? 'bg-blue-100 text-blue-800 border-blue-200'
                     : 'bg-amber-100 text-amber-800 border-amber-200';
@@ -1140,6 +1147,8 @@ const InterventionsModal = ({
               const cardTone =
                 st === 'done'
                   ? 'border-green-200 bg-green-50'
+                  : st === 'non_fait'
+                    ? 'border-gray-200 bg-gray-50'
                   : st === 'sent'
                     ? 'border-blue-200 bg-blue-50'
                     : 'border-gray-200';
@@ -1165,6 +1174,11 @@ const InterventionsModal = ({
                     <div className="text-xs text-gray-600">
                       {it.epvType} • {formatDate(effectivePlannedDate)} • {it.technicianName}
                     </div>
+                    {st === 'non_fait' && it?.closeReason && (
+                      <div className="text-xs text-gray-600 mt-1 font-semibold">
+                        Motif : {String(it.closeReason)}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{st}</span>
@@ -1174,7 +1188,7 @@ const InterventionsModal = ({
                       </span>
                     )}
 
-                    {!(!focusVidange && movedToPm) && st !== 'done' && (isAdmin || isTechnician) && (
+                    {!(!focusVidange && movedToPm) && !isClosedInterventionStatus(st) && (isAdmin || isTechnician) && (
                       <button
                         onClick={() => {
                           if (isTechnician) {
@@ -1195,7 +1209,7 @@ const InterventionsModal = ({
                       </button>
                     )}
 
-                    {!(!focusVidange && movedToPm) && (isAdmin || isManager) && st !== 'done' && it?.intervention?.id && (
+                    {!(!focusVidange && movedToPm) && (isAdmin || isManager) && !isClosedInterventionStatus(st) && it?.intervention?.id && (
                       <button
                         type="button"
                         onClick={async () => {

@@ -15,6 +15,7 @@ function mapRow(row) {
     status: row.status,
     sentAt: row.sent_at || null,
     doneAt: row.done_at || null,
+    closeReason: row.close_reason || null,
     ticketNumber: row.ticket_number || null,
     ficheId: row.fiche_id || null,
     createdAt: row.created_at,
@@ -36,7 +37,7 @@ export async function onRequestPost({ env, data, params }) {
     const existing = await env.DB.prepare('SELECT * FROM interventions WHERE id = ?').bind(id).first();
     if (!existing) return json({ error: 'Intervention introuvable.' }, { status: 404 });
 
-    if (String(existing.status || '') === 'done') {
+    if (String(existing.status || '') === 'done' || String(existing.status || '') === 'non_fait') {
       return json({ error: 'Impossible de déclencher une intervention effectuée.' }, { status: 400 });
     }
 
@@ -50,7 +51,7 @@ export async function onRequestPost({ env, data, params }) {
     const now = isoNow();
 
     await env.DB.prepare(
-      "UPDATE interventions SET status = 'sent', sent_at = COALESCE(sent_at, ?), updated_at = ? WHERE id = ? AND status != 'done'"
+      "UPDATE interventions SET status = 'sent', sent_at = COALESCE(sent_at, ?), updated_at = ? WHERE id = ? AND status IN ('planned', 'sent')"
     )
       .bind(now, now, id)
       .run();

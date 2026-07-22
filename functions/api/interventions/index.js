@@ -15,6 +15,7 @@ function mapRow(row) {
     status: row.status,
     sentAt: row.sent_at || null,
     doneAt: row.done_at || null,
+    closeReason: row.close_reason || null,
     ticketNumber: row.ticket_number || null,
     ficheId: row.fiche_id || null,
     createdAt: row.created_at,
@@ -136,9 +137,10 @@ export async function onRequestPost({ request, env, data }) {
       return json({ error: 'Champs requis manquants.' }, { status: 400 });
     }
 
-    const site = await env.DB.prepare('SELECT id, zone FROM sites WHERE id = ?').bind(siteId).first();
+    const site = await env.DB.prepare('SELECT id, zone, retired FROM sites WHERE id = ?').bind(siteId).first();
     if (!site) return json({ error: 'Site introuvable.' }, { status: 404 });
     const zone = String(site.zone || 'BZV/POOL');
+    if (Boolean(site?.retired)) return json({ error: 'Site retiré : vidange bloquée.' }, { status: 409 });
     if (role === 'admin' && !isSuperAdmin(data)) {
       const z = userZone(data);
       if (zone !== z) return json({ error: 'Accès interdit.' }, { status: 403 });
@@ -246,7 +248,7 @@ export async function onRequestPost({ request, env, data }) {
 
           // Upgrade planned->sent and set sent_at if missing. Keep technician_user_id if already set.
           await env.DB.prepare(
-            "UPDATE interventions SET status = 'sent', sent_at = COALESCE(sent_at, ?), technician_user_id = COALESCE(technician_user_id, ?), updated_at = ? WHERE id = ? AND status != 'done'"
+            "UPDATE interventions SET status = 'sent', sent_at = COALESCE(sent_at, ?), technician_user_id = COALESCE(technician_user_id, ?), updated_at = ? WHERE id = ? AND status IN ('planned', 'sent')"
           )
             .bind(now, techIdToSet, now, String(existing.id))
             .run();
@@ -286,11 +288,11 @@ export async function onRequestDelete({ request, env, data }) {
       }
     }
 
-    if (String(row.status || '') === 'done') {
+    if (String(row.status || '') === 'done' || String(row.status || '') === 'non_fait') {
       return json({ error: 'Impossible de supprimer une intervention effectuée.' }, { status: 400 });
     }
 
-    const res = await env.DB.prepare("DELETE FROM interventions WHERE id = ? AND status != 'done'")
+    const res = await env.DB.prepare("DELETE FROM interventions WHERE id = ? AND status IN ('planned', 'sent')")
       .bind(id)
       .run();
 

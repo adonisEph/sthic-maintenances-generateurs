@@ -3,6 +3,22 @@ import { json, readJson, isoNow, isSuperAdmin, userZone } from '../_utils/http.j
 import { touchLastUpdatedAt } from '../_utils/meta.js';
 import { calculateDiffNHs, calculateEstimatedNH, calculateRegime } from '../_utils/calc.js';
 
+async function regularizeRetiredSiteInterventions(env, siteId, now) {
+  await env.DB.prepare(
+    `UPDATE interventions
+     SET status = 'non_fait',
+         close_reason = CASE
+           WHEN planned_date LIKE '____-__-__' THEN 'Site retiré ' || SUBSTR(planned_date, 6, 2) || '/' || SUBSTR(planned_date, 1, 4)
+           ELSE 'Site retiré'
+         END,
+         updated_at = ?
+     WHERE site_id = ?
+       AND status IN ('planned', 'sent')`
+  )
+    .bind(now, siteId)
+    .run();
+}
+
 function mapSiteRow(row) {
   if (!row) return null;
   return {
@@ -98,6 +114,9 @@ export async function onRequestPatch({ request, env, data, params }) {
       next.diffEstimated = diffEstimated;
     }
 
+    const wasRetired = Boolean(existing.retired);
+    const becomesRetired = Boolean(next.retired);
+
     await env.DB.prepare(
       'UPDATE sites SET name_site = ?, id_site = ?, technician = ?, generateur = ?, capacite = ?, kit_vidange = ?, nh1_dv = ?, date_dv = ?, nh2_a = ?, date_a = ?, regime = ?, nh_estimated = ?, diff_nhs = ?, diff_estimated = ?, seuil = ?, retired = ?, updated_at = ? WHERE id = ?'
     )
@@ -122,6 +141,10 @@ export async function onRequestPatch({ request, env, data, params }) {
         id
       )
       .run();
+
+    if (!wasRetired && becomesRetired) {
+      await regularizeRetiredSiteInterventions(env, id, now);
+    }
 
     await touchLastUpdatedAt(env);
 
