@@ -44,7 +44,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.6.0';
+const APP_VERSION = '6.6.1';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -188,6 +188,7 @@ const GeneratorMaintenanceApp = () => {
   const [accountSaving, setAccountSaving] = useState(false);
   const [userFormId, setUserFormId] = useState(null);
   const siteFormAnchorRef = useRef(null);
+  const [pendingFicheSite, setPendingFicheSite] = useState(null);
   const presenceLastPingAtRef = useRef(0);
   const [userForm, setUserForm] = useState({ email: '', role: 'viewer', zone: 'BZV/POOL', technicianName: '', password: '' });
   const [userFormError, setUserFormError] = useState('');
@@ -3716,6 +3717,20 @@ useEffect(() => {
       setSelectedSite(null);
       setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
       alert('✅ Site modifié.');
+
+      const pendingSite = pendingFicheSite;
+      if (pendingSite) {
+        setPendingFicheSite(null);
+        const updated = data?.site || (sites.find((s) => String(s.id) === String(pendingSite.id)));
+        const siteForFiche = updated || pendingSite;
+        setTimeout(() => {
+          if (isSuperAdmin) {
+            handleOpenSuperAdminFicheChoice(siteForFiche);
+          } else {
+            handleGenerateFiche(siteForFiche);
+          }
+        }, 100);
+      }
     } catch (e) {
       alert(e?.message || 'Erreur serveur.');
     }
@@ -3964,6 +3979,60 @@ useEffect(() => {
     } catch {
       setTicketLabel('');
     }
+  };
+
+  const checkFicheAccess = (site) => {
+    const updatedSite = getUpdatedSite(site);
+    const nh1DV = Number(updatedSite?.nh1DV);
+    const nh2A = Number(updatedSite?.nh2A);
+    const diffNHs = Number.isFinite(nh2A) && Number.isFinite(nh1DV) ? nh2A - nh1DV : null;
+    const diffEstimated = updatedSite?.diffEstimated;
+    const effectiveDiff = Number.isFinite(diffEstimated) ? diffEstimated : diffNHs;
+    const dateDV = String(updatedSite?.dateDV || '').slice(0, 10);
+
+    if (Number.isFinite(effectiveDiff) && effectiveDiff >= 190) {
+      return true;
+    }
+
+    if (dateDV && /^\d{4}-\d{2}-\d{2}$/.test(dateDV)) {
+      const dvDate = new Date(dateDV + 'T00:00:00');
+      const now = new Date();
+      const diffMs = now.getTime() - dvDate.getTime();
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      if (diffDays > 30) {
+        return true;
+      }
+    }
+
+    const isNewGenerator = window.confirm(
+      `Le compteur Diff NHs est de ${Number.isFinite(effectiveDiff) ? effectiveDiff : '?'}H (inférieur à 190H) et la dernière vidange ne remonte pas à plus d'un mois.\n\nEst-ce un nouveau générateur ?`
+    );
+    if (isNewGenerator) {
+      setPendingFicheSite(updatedSite);
+      setSelectedSite(updatedSite);
+      setEditSiteFormMode('full');
+      setFormData({
+        nameSite: updatedSite.nameSite,
+        idSite: updatedSite.idSite,
+        technician: updatedSite.technician,
+        generateur: updatedSite.generateur,
+        capacite: updatedSite.capacite,
+        kitVidange: updatedSite.kitVidange,
+        nh1DV: updatedSite.nh1DV,
+        dateDV: updatedSite.dateDV,
+        nh2A: updatedSite.nh2A,
+        dateA: updatedSite.dateA,
+        retired: updatedSite.retired
+      });
+      setShowEditForm(true);
+      setTimeout(() => {
+        siteFormAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 0);
+      return false;
+    }
+
+    alert('Infos : Nombre d\'heures loin d\'être atteint pour déclencher une fiche d\'intervention.');
+    return false;
   };
 
   const handleGenerateFiche = async (site, opts = {}) => {
@@ -5425,12 +5494,8 @@ useEffect(() => {
       ? plannedEvents
       : plannedEvents.filter((ev) => normTechName(ev?.technician) === normTechName(techFilter));
 
-    const completedFichesInMonth = ficheHistory
-      .filter((f) => f && f.status === 'Effectuée' && f.dateCompleted && isInMonth(f.dateCompleted, yyyymm))
-      .filter((f) => !zoneActive || String(f?.zone || '').trim() === zoneActive)
-      .filter((f) => techFilter === 'all' || normTechName(f.technician) === normTechName(techFilter));
-    const contractOk = completedFichesInMonth.filter((f) => f.isWithinContract === true);
-    const contractOver = completedFichesInMonth.filter((f) => f.isWithinContract === false);
+    const contractOk = doneByPlannedDate.filter((f) => f.isWithinContract === true);
+    const contractOver = doneByPlannedDate.filter((f) => f.isWithinContract === false);
 
     const completedKeys = new Set(doneByPlannedDate.map((f) => `${f.siteId}|${f.epvType || ''}|${f.plannedDate}`));
     const remainingEvents = plannedEventsFiltered.filter((ev) => !completedKeys.has(String(ev.key)));
@@ -7898,11 +7963,13 @@ return (
                         setShowEditForm(false);
                         setEditSiteFormMode('full');
                         setVidangeChosenIntervention(null);
+                        setPendingFicheSite(null);
                       }}
                       onCancel={() => {
                         setShowEditForm(false);
                         setEditSiteFormMode('full');
                         setVidangeChosenIntervention(null);
+                        setPendingFicheSite(null);
                       }}
                     />
                   )}
@@ -9385,7 +9452,7 @@ return (
                   const daysUntil = getDaysUntil(next?.plannedDate);
                   const urgencyClass = getUrgencyClass(daysUntil, site.retired);
 
-                  const isAuthorizedForSite = isSuperAdmin || (
+                  const isAuthorizedForSite = isSuperAdmin || isManagerBzvPool || (
                     isManager &&
                     authZone &&
                     String(site?.zone || '').trim().toUpperCase() === String(authZone).trim().toUpperCase()
@@ -9573,6 +9640,7 @@ return (
                           {canGenerateFiche && (
                             <button
                               onClick={() => {
+                                if (!checkFicheAccess(site)) return;
                                 if (isSuperAdmin) {
                                   handleOpenSuperAdminFicheChoice(site);
                                   return;
