@@ -64,8 +64,8 @@ export async function onRequestGet({ request, env, data, params }) {
     const where = ['month_id = ?'];
     const bind = [monthId];
 
-    // Scope zone: super-admin + controller + viewer + manager_bzv_pool voit tout, sinon zone du user
-    if (!isSuperAdmin(data) && role !== 'viewer' && role !== 'controller' && role !== 'manager_bzv_pool') {
+    // Scope zone: admin + viewer + controller + manager_bzv_pool voit tout, sinon zone du user
+    if (role !== 'admin' && role !== 'viewer' && role !== 'controller' && role !== 'manager_bzv_pool') {
       where.push("TRIM(COALESCE(region, zone, '')) = TRIM(?)");
       bind.push(String(userZone(data) || 'BZV/POOL'));
     }

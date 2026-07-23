@@ -1592,9 +1592,14 @@ const PmModal = (props) => {
                             onClick={() => {
                               if (typeof handlePmExportItemsExcel !== 'function') return;
                               const now = new Date();
+                              const dayOfWeek = now.getDay();
+                              const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
                               const weekStart = new Date(now);
-                              weekStart.setDate(now.getDate() - now.getDay());
+                              weekStart.setDate(now.getDate() + mondayOffset);
+                              const weekEnd = new Date(weekStart);
+                              weekEnd.setDate(weekStart.getDate() + 6);
                               const weekStartStr = weekStart.toISOString().slice(0, 10);
+                              const weekEndStr = weekEnd.toISOString().slice(0, 10);
                               const monthStr = String(todayStr || '').slice(0, 7);
 
                               const reprogItems = (Array.isArray(pmItems) ? pmItems : []).filter((it) => {
@@ -1611,7 +1616,7 @@ const PmModal = (props) => {
                                   return reprogDate === day;
                                 }
                                 if (exportReprogPeriod === 'week') {
-                                  return reprogDate >= weekStartStr && reprogDate <= todayStr;
+                                  return reprogDate >= weekStartStr && reprogDate <= weekEndStr;
                                 }
                                 return reprogDate.slice(0, 7) === monthStr;
                               });
@@ -1619,7 +1624,7 @@ const PmModal = (props) => {
                               const periodLabel = exportReprogPeriod === 'day'
                                 ? String(pmReprogExportDate || todayStr || '').slice(0, 10)
                                 : exportReprogPeriod === 'week'
-                                  ? `semaine_${weekStartStr}`
+                                  ? `semaine_${weekStartStr}_${weekEndStr}`
                                   : monthStr;
 
                               handlePmExportItemsExcel({
