@@ -3489,7 +3489,13 @@ const GeneratorMaintenanceApp = () => {
 
   const handlePmExportItemsExcel = async ({ items, fileBaseName, sheetName }) => {
     if (!canUsePm) return;
-    const rows = (Array.isArray(items) ? items : []).map((it) => ({
+    const arr = Array.isArray(items) ? items : [];
+    console.log('[PM Export] items count:', arr.length, 'first item:', arr[0]);
+    if (arr.length === 0) {
+      alert('Aucune donnée à exporter (items vide).');
+      return;
+    }
+    const rows = arr.map((it) => ({
       'Zone': it.zone || '',
       'Region': it.region || '',
       'Site': it.siteCode || '',
@@ -5476,6 +5482,7 @@ const GeneratorMaintenanceApp = () => {
       const nameRaw = String(sh?.name || `Feuille${idx + 1}`);
       const name = nameRaw.trim().slice(0, 31) || `Feuille${idx + 1}`;
       const rows = Array.isArray(sh?.rows) ? sh.rows : [];
+      console.log('[exportXlsx] sheet:', name, 'rows count:', rows.length, 'first row:', rows[0]);
       const ws = XLSX.utils.json_to_sheet(rows);
 
       const rowToMaxLines = new Map();
@@ -5521,7 +5528,7 @@ const GeneratorMaintenanceApp = () => {
     if (exportBusyRef.current) {
       setExportProgress((p) => Math.max(p, 80));
     }
-    XLSX.writeFile(wb, `${safeBase}.xlsx`, { cellStyles: true });
+    XLSX.writeFile(wb, `${safeBase}.xlsx`);
     if (exportBusyRef.current) {
       setExportProgress((p) => Math.max(p, 95));
     }
