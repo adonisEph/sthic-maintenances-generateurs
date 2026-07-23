@@ -44,7 +44,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.5.2';
+const APP_VERSION = '6.5.3';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -224,8 +224,6 @@ const GeneratorMaintenanceApp = () => {
   const [pmImports, setPmImports] = useState([]);
   const [pmDashboard, setPmDashboard] = useState(null);
   const [pmBusy, setPmBusy] = useState(false);
-  const [pmTodayActivities, setPmTodayActivities] = useState(null);
-  const [pmTodayActivitiesBusy, setPmTodayActivitiesBusy] = useState(false);
   const [pmError, setPmError] = useState('');
   const [pmNotice, setPmNotice] = useState('');
   const [pmNocProgress, setPmNocProgress] = useState(0);
@@ -2101,13 +2099,7 @@ const GeneratorMaintenanceApp = () => {
     setPmItems(Array.isArray(data?.items) ? data.items : []);
   };
 
-    useEffect(() => {
-      if (!showPm) return;
-      if (!pmMonthId) return;
-      loadPmTodayActivities(pmMonthId);
-    }, [showPm, pmMonthId]);
-
-    useEffect(() => {
+useEffect(() => {
     if (!showPm) return;
     if (!pmMonthId) return;
 
@@ -2188,22 +2180,6 @@ const GeneratorMaintenanceApp = () => {
   const loadPmDashboard = async (monthId) => {
     const data = await apiFetchJson(`/api/pm/months/${monthId}/dashboard`, { method: 'GET' });
     setPmDashboard(data || null);
-  };
-
-  const loadPmTodayActivities = async (monthIdParam, dateParam) => {
-    const mId = String(monthIdParam || pmMonthId || '').trim();
-    if (!mId) return;
-    try {
-      setPmTodayActivitiesBusy(true);
-      const d = String(dateParam || '').trim();
-      const qs = /^\d{4}-\d{2}-\d{2}$/.test(d) ? `?date=${encodeURIComponent(d)}` : '';
-      const data = await apiFetchJson(`/api/pm/months/${mId}/today-activities${qs}`, { method: 'GET' });
-      setPmTodayActivities(data || null);
-    } catch (e) {
-      setPmTodayActivities(null);
-    } finally {
-      setPmTodayActivitiesBusy(false);
-    }
   };
 
   const refreshPmRetiredSites = async (monthId, yyyymm) => {
@@ -9363,12 +9339,9 @@ return (
             pmReprogSaving={pmReprogSaving}
             handlePmOpenReprog={handlePmOpenReprog}
             handlePmSaveReprog={handlePmSaveReprog}
-            pmTodayActivities={pmTodayActivities}
-            pmTodayActivitiesBusy={pmTodayActivitiesBusy}
             ficheHistory={ficheHistory}
             sites={sites}
             loadFicheHistory={loadFicheHistory}
-            loadPmTodayActivities={(dateYmd) => loadPmTodayActivities(pmMonthId, dateYmd)}
             formatDate={formatDate}
             apiFetchJson={apiFetchJson}
             isSuperAdmin={Boolean(authUser?.role === 'admin' && authUser?.zone === 'BZV/POOL')}

@@ -1,6 +1,5 @@
 import React from 'react';
 import { TrendingUp, X, Upload, Download, Trash2, RotateCcw, Activity, Menu, ChevronLeft, ListChecks, BadgeCheck, Clock, UserCheck } from 'lucide-react';
-import TodayPlannedActivitiesModal from './TodayPlannedActivitiesModal';
 
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
 
@@ -44,9 +43,6 @@ const PmModal = (props) => {
     pmRetiredSites,
     pmItems,
     pmImports,
-    pmTodayActivities,
-    pmTodayActivitiesBusy,
-    loadPmTodayActivities,
     ficheHistory,
     sites,
     loadFicheHistory,
@@ -93,7 +89,6 @@ const PmModal = (props) => {
   const [pmPurgeDryRun, setPmPurgeDryRun] = React.useState(true);
   const [pmPurgeZones, setPmPurgeZones] = React.useState([]);
   const [pmPurgeResult, setPmPurgeResult] = React.useState(null);
-  const [pmTodayActivitiesOpen, setPmTodayActivitiesOpen] = React.useState(false);
   const [pmFilterPlannedDay, setPmFilterPlannedDay] = React.useState('');
   const [exportCenterOpen, setExportCenterOpen] = React.useState(false);
   const [exportDayState, setExportDayState] = React.useState('all');
@@ -598,66 +593,6 @@ const PmModal = (props) => {
               <div className="text-sm text-gray-700 mb-4">
                 Tickets du mois: <span className="font-semibold">{Array.isArray(pmItems) ? pmItems.length : 0}</span>
               </div>
-
-              <div className="mb-4 bg-white border border-slate-200 rounded-lg p-4">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div className="text-sm font-semibold text-slate-900">Activités planifiées du jour</div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPmTodayActivitiesOpen(true);
-                        if (typeof loadPmTodayActivities === 'function') loadPmTodayActivities();
-                      }}
-                      className="text-xs font-semibold px-2 py-1 rounded border border-indigo-200 bg-indigo-50 text-indigo-900 hover:bg-indigo-100 disabled:opacity-60"
-                      disabled={pmBusy}
-                      title="Ouvrir"
-                    >
-                      Ouvrir
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (typeof loadPmTodayActivities === 'function') loadPmTodayActivities();
-                      }}
-                      className="text-xs font-semibold px-2 py-1 rounded border border-slate-200 bg-slate-50 text-slate-900 hover:bg-slate-100 disabled:opacity-60"
-                      disabled={pmBusy || pmTodayActivitiesBusy || typeof loadPmTodayActivities !== 'function'}
-                      title={typeof loadPmTodayActivities === 'function' ? 'Rafraîchir' : 'Chargement non disponible'}
-                    >
-                      Rafraîchir
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-2 text-xs text-slate-600">
-                  {(() => {
-                    const today = String(pmTodayActivities?.today || '').slice(0, 10);
-                    const pmToday = Array.isArray(pmTodayActivities?.pmItems) ? pmTodayActivities.pmItems : [];
-                    const intToday = Array.isArray(pmTodayActivities?.interventions) ? pmTodayActivities.interventions : [];
-                    if (pmTodayActivitiesBusy) return 'Chargement…';
-                    if (!pmTodayActivities) return 'Aucune activité chargée.';
-                    return `Date: ${today || '-'} • PM: ${pmToday.length} • Vidanges: ${intToday.length}`;
-                  })()}
-                </div>
-              </div>
-
-              <TodayPlannedActivitiesModal
-                open={pmTodayActivitiesOpen}
-                onClose={() => setPmTodayActivitiesOpen(false)}
-                busy={pmTodayActivitiesBusy}
-                todayActivities={pmTodayActivities}
-                onRefresh={(dateYmd) => {
-                  if (typeof loadPmTodayActivities === 'function') loadPmTodayActivities(dateYmd);
-                }}
-                isSuperAdmin={pmIsSuperAdmin}
-                pmItemsMonth={pmItems}
-                ficheHistory={ficheHistory}
-                sites={sites}
-                onRefreshFicheHistory={() => {
-                  if (typeof loadFicheHistory === 'function') loadFicheHistory();
-                }}
-                formatDate={formatDate}
-              />
 
               {pmError && (
                 <div className="mb-4 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">
