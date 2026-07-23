@@ -44,7 +44,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.5.4';
+const APP_VERSION = '6.5.5';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -310,7 +310,7 @@ const GeneratorMaintenanceApp = () => {
   const canWarehouseCheck = isWarehouse || isAdmin || isAnyManager;
   const canWarehouseRevoke = isWarehouse || isAdmin || isAnyManager;
   const canImportSites = isAdmin;
-  const canExportExcel = isAdmin || isManagerBzvPool || isController || isFieldSupervisor;
+  const canExportExcel = isAdmin || isController || isFieldSupervisor;
   const canExportSites = canExportExcel && !isTechnician;
   const canReset = isAdmin;
   const canGenerateFiche = isAdmin || isAnyManager;
@@ -7576,7 +7576,7 @@ return (
 
           )}
 
-          {(isAdmin || isManagerBzvPool) && (
+          {isAdmin && (
             <button
               onClick={() => {
                 setSidebarOpen(false);
@@ -7610,7 +7610,7 @@ return (
             </button>
           )}
 
-          {(isAdmin || isManagerBzvPool) && (
+          {isAdmin && (
             <button
               onClick={() => {
                 setSidebarOpen(false);
@@ -7703,7 +7703,7 @@ return (
             </button>
           )}
 
-          {(isAdmin || isManagerBzvPool) && (
+          {isAdmin && (
             <button
               onClick={async () => {
                 setSidebarOpen(false);
