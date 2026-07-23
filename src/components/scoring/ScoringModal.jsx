@@ -12,10 +12,8 @@ const ScoringModal = ({
   showZoneFilter,
   scoringMonth,
   setScoringMonth,
-  loadInterventions,
   sites,
   ficheHistory,
-  interventions,
   scoringDetails,
   setScoringDetails,
   canExportExcel,
@@ -57,7 +55,7 @@ const ScoringModal = ({
 
         <div className="p-4 sm:p-6 overflow-y-auto flex-1">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-            <div className="text-sm text-slate-700">Synthèse mensuelle (basée sur l'historique des fiches + interventions planifiées)</div>
+            <div className="text-sm text-slate-700">Synthèse mensuelle (basée sur l'historique des fiches)</div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               <label className="text-xs text-gray-600">Mois</label>
               <input
@@ -67,7 +65,6 @@ const ScoringModal = ({
                   const next = String(e.target.value || '').trim();
                   setScoringMonth(next);
                   setScoringDetails({ open: false, title: '', kind: '', items: [] });
-                  await loadInterventions(next, 'all', 'all');
                 }}
                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
               />
@@ -112,24 +109,21 @@ const ScoringModal = ({
             const doneWithin = doneInMonth.filter((f) => f.isWithinContract === true);
             const doneOver = doneInMonth.filter((f) => f.isWithinContract === false);
 
-            const remainingInMonth = interventions
+            const remainingInMonth = ficheHistory
               .filter(
-                (i) =>
-                  i &&
-                  i.plannedDate &&
-                  isInMonth(i.plannedDate, scoringMonth) &&
-                  (i.status === 'planned' || i.status === 'sent')
+                (f) =>
+                  f &&
+                  f.status === 'En attente' &&
+                  f.plannedDate &&
+                  isInMonth(f.plannedDate, scoringMonth)
               )
-              .filter((i) => !zoneActive || String(i?.zone || '').trim() === zoneActive)
+              .filter((f) => !zoneActive || String(f?.zone || '').trim() === zoneActive)
               .slice()
               .sort((a, b) => {
-                const statusRank = (s) => (s === 'sent' ? 0 : s === 'planned' ? 1 : 2);
-                const sr = statusRank(a.status) - statusRank(b.status);
-                if (sr !== 0) return sr;
                 const d = String(a.plannedDate || '').localeCompare(String(b.plannedDate || ''));
                 if (d !== 0) return d;
-                const sa = siteById.get(String(a.siteId))?.nameSite || '';
-                const sb = siteById.get(String(b.siteId))?.nameSite || '';
+                const sa = siteById.get(String(a.siteId))?.nameSite || a.siteName || '';
+                const sb = siteById.get(String(b.siteId))?.nameSite || b.siteName || '';
                 return String(sa).localeCompare(String(sb));
               });
 
@@ -147,7 +141,7 @@ const ScoringModal = ({
                 value: remainingInMonth.length,
                 className: 'bg-amber-50 border-amber-200 hover:bg-amber-100',
                 onClick: () =>
-                  setScoringDetails({ open: true, title: 'Interventions restantes (planifiées/envoyées)', kind: 'remaining', items: remainingInMonth })
+                  setScoringDetails({ open: true, title: 'Vidanges restantes (fiches en attente)', kind: 'remaining', items: remainingInMonth })
               },
               {
                 key: 'within',
@@ -228,25 +222,19 @@ const ScoringModal = ({
                                     );
                                   })()}
                                   <div className="text-xs text-gray-600">
-                                    {it.epvType} • {formatDate(it.plannedDate)} • {it.technicianName}
+                                    {it.epvType} • {formatDate(it.plannedDate)} • {it.technician}
                                   </div>
                                 </div>
                                 <div className="text-right">
                                   <div
-                                    className={`text-xs px-2 py-1 rounded inline-block ${
-                                      it.status === 'sent'
-                                        ? 'bg-blue-100 text-blue-800'
-                                        : it.status === 'planned'
-                                          ? 'bg-amber-100 text-amber-800'
-                                          : 'bg-gray-100 text-gray-700'
-                                    }`}
+                                    className="text-xs px-2 py-1 rounded inline-block bg-amber-100 text-amber-800"
                                   >
-                                    {it.status === 'sent' ? 'Envoyée' : it.status === 'planned' ? 'Planifiée' : String(it.status || '-')}
+                                    En attente
                                   </div>
                                 </div>
                               </div>
                               <div className="text-xs text-gray-600 mt-1">
-                                Statut: <span className="font-semibold">{it.status}</span>
+                                Ticket: <span className="font-semibold">{it.ticketNumber || '-'}</span>
                               </div>
                             </div>
                           ))}

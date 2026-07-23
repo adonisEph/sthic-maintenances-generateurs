@@ -22,7 +22,6 @@ const CalendarModal = (props) => {
     usersBusy,
     usersError,
     refreshUsers,
-    handleSendCalendarMonthPlanning,
     canExportExcel,
     handleExportCalendarMonthExcel,
     exportBusy,
@@ -541,14 +540,6 @@ const CalendarModal = (props) => {
                         </button>
                       )}
 
-                      <button
-                        type="button"
-                        onClick={handleSendCalendarMonthPlanning}
-                        className="w-full bg-white/10 hover:bg-white/15 text-white border border-white/10 px-3 py-2 rounded-lg text-sm font-semibold disabled:opacity-60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950"
-                        disabled={!calendarSendTechUserId || usersBusy}
-                      >
-                        Envoyer planning du mois
-                      </button>
                     </div>
                   </div>
                 )}

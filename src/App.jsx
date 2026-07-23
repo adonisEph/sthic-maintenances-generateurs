@@ -44,7 +44,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.5.5';
+const APP_VERSION = '6.6.0';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -814,72 +814,6 @@ const GeneratorMaintenanceApp = () => {
       }
     })();
   }, [authUser?.id, authUser?.role, pmMonth, pmMonthId]);
-
-  const handleSendCalendarMonthPlanning = async () => {
-    try {
-      if (!isAdmin && !isAnyManager) return;
-      const techId = String(calendarSendTechUserId || '').trim();
-      if (!techId) {
-        alert('Veuillez sélectionner un technicien.');
-        return;
-      }
-
-      const tech = (Array.isArray(users) ? users : []).find((u) => u && String(u.id) === techId) || null;
-      const technicianName = String(tech?.technicianName || '').trim();
-      if (!technicianName) {
-        alert("Le technicien sélectionné n'a pas de nom de technicien configuré.");
-        return;
-      }
-
-      const month = yyyyMmFromDate(currentMonth);
-      const sitesInScope = (Array.isArray(sites) ? sites : [])
-        .map(getUpdatedSite)
-        .filter((s) => s && !s.retired && normTechName(s.technician) === normTechName(technicianName));
-
-      const interventionsToSend = [];
-      for (const s of sitesInScope) {
-        const add = (epvType, plannedDate) => {
-          if (!plannedDate || plannedDate === 'N/A') return;
-          if (String(plannedDate).slice(0, 7) !== month) return;
-          const shifted = ymdShiftForWorkdays(String(plannedDate).slice(0, 10));
-          const finalPlannedDate = shifted || String(plannedDate).slice(0, 10);
-          interventionsToSend.push({
-            siteId: s.id,
-            plannedDate: finalPlannedDate,
-            epvType,
-            technicianUserId: techId,
-            technicianName
-          });
-        };
-        add('EPV1', s.epv1);
-        add('EPV2', s.epv2);
-        add('EPV3', s.epv3);
-      }
-
-      if (interventionsToSend.length === 0) {
-        alert('Aucune vidange à envoyer pour ce technicien sur ce mois.');
-        return;
-      }
-
-      const ok = window.confirm(
-        `Confirmer l'envoi du planning mensuel ?\n\nMois: ${month}\nTechnicien: ${technicianName}\nVidanges: ${interventionsToSend.length}`
-      );
-      if (!ok) return;
-
-      const data = await apiFetchJson('/api/interventions/send-month', {
-        method: 'POST',
-        body: JSON.stringify({ interventions: interventionsToSend })
-      });
-
-      alert(
-        `✅ Planning envoyé.\n\nCréées: ${Number(data?.created || 0)}\nMises à jour: ${Number(data?.updated || 0)}\nEn statut envoyée: ${Number(data?.sent || 0)}`
-      );
-
-      await loadInterventions(month, 'all', 'all');
-    } catch (e) {
-      alert(e?.message || 'Erreur lors de l\'envoi du planning mensuel.');
-    }
-  };
 
   const loadCalendarHolidays = async (year) => {
     setCalendarHolidaysBusy(true);
@@ -1773,77 +1707,6 @@ const GeneratorMaintenanceApp = () => {
 
   const getInterventionKey = (siteId, plannedDate, epvType) => {
     return `${String(siteId || '')}|${String(plannedDate || '')}|${String(epvType || '')}`;
-  };
-
-  const handlePlanIntervention = async ({ siteId, plannedDate, epvType, technicianName, technicianUserId }) => {
-    try {
-      const site = (Array.isArray(sites) ? sites : []).find((s) => String(s?.id) === String(siteId)) || null;
-      const techUsers = Array.isArray(users) ? users.filter((u) => u && u.role === 'technician') : [];
-      const matched = technicianUserId
-        ? techUsers.find((u) => String(u.id) === String(technicianUserId))
-        : techUsers.find((u) => String(u.technicianName || '').trim() === String(technicianName || '').trim());
-
-      if (!matched?.id) {
-        setInterventionsError('Veuillez sélectionner un technicien avant de planifier.' );
-        return;
-      }
-
-      const finalTechnicianName = String(matched.technicianName || '').trim();
-      if (!finalTechnicianName) {
-        setInterventionsError("Le technicien sélectionné n'a pas de nom de technicien configuré.");
-        return;
-      }
-
-      const ok = window.confirm(
-        `Confirmer la planification ?\n\nSite: ${site?.nameSite || siteId}${site?.idSite ? ` (ID: ${site.idSite})` : ''}\nDate: ${String(plannedDate || '')}\nType: ${String(epvType || '')}\nTechnicien: ${finalTechnicianName}`
-      );
-      if (!ok) return;
-
-      await apiFetchJson('/api/interventions', {
-        method: 'POST',
-        body: JSON.stringify({
-          siteId,
-          plannedDate,
-          epvType,
-          technicianName: finalTechnicianName,
-          technicianUserId: matched.id
-        })
-      });
-      await loadInterventions();
-      alert('✅ Intervention planifiée.');
-    } catch (e) {
-      alert(e?.message || 'Erreur serveur.');
-    }
-  };
-
-  const handleSendJ1 = async () => {
-    try {
-      if (!isAdmin && !isManager) return;
-      const pad2 = (n) => String(n).padStart(2, '0');
-      const ymdLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-      const tomorrowD = new Date();
-      tomorrowD.setDate(tomorrowD.getDate() + 1);
-      const tomorrow = ymdLocal(tomorrowD);
-      const ok = window.confirm(`Confirmer l'action "Envoyer J-1" ?\n\nCela marquera comme "envoyées" toutes les interventions planifiées pour ${tomorrow}.`);
-      if (!ok) return;
-      const data = await apiFetchJson('/api/interventions/send-j1', {
-        method: 'POST',
-        body: JSON.stringify({ plannedDate: tomorrow })
-      });
-      const updated = Number(data?.updated || 0);
-      if (updated > 0) {
-        alert(`✅ Envoi J-1: ${updated} intervention(s) marquée(s) envoyée(s) pour ${data?.plannedDate || tomorrow}`);
-      } else {
-        alert(
-          `ℹ️ Envoi J-1: 0 intervention mise à jour pour ${data?.plannedDate || tomorrow}.\n\n` +
-          `Cette action ne concerne que les interventions dont la date planifiée est exactement "${tomorrow}" et dont le statut est "planned".\n` +
-          `Si tu avais déjà des interventions en "sent" ou "done", ou si la date ne correspond pas, il n'y aura aucun changement.`
-        );
-      }
-      await loadInterventions();
-    } catch (e) {
-      alert('❌ Erreur lors de l\'envoi J-1. Vérifiez la console.');
-    }
   };
 
   const handleCompleteIntervention = async (interventionId, payload = {}) => {
@@ -9142,7 +9005,6 @@ return (
             usersBusy={usersBusy}
             usersError={usersError}
             refreshUsers={refreshUsers}
-            handleSendCalendarMonthPlanning={handleSendCalendarMonthPlanning}
             canExportExcel={canExportExcel}
             handleExportCalendarMonthExcel={handleExportCalendarMonthExcel}
             exportBusy={exportBusy}
@@ -9386,7 +9248,6 @@ return (
             ymdShiftForWorkdays={ymdShiftForWorkdays}
             interventionsPrevMonthRetiredSiteIds={interventionsPrevMonthRetiredSiteIds}
             interventionsPrevMonthKey={interventionsPrevMonthKey}
-            handlePlanIntervention={handlePlanIntervention}
             technicianInterventionsTab={technicianInterventionsTab}
             setTechnicianInterventionsTab={setTechnicianInterventionsTab}
             showTechnicianInterventionsFilters={showTechnicianInterventionsFilters}

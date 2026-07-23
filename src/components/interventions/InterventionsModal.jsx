@@ -45,7 +45,6 @@ const InterventionsModal = ({
   ymdShiftForWorkdays,
   interventionsPrevMonthRetiredSiteIds,
   interventionsPrevMonthKey,
-  handlePlanIntervention,
   technicianInterventionsTab,
   setTechnicianInterventionsTab,
   showTechnicianInterventionsFilters,
@@ -222,6 +221,11 @@ const InterventionsModal = ({
           {isViewer && (
             <div className="bg-slate-50 border border-slate-200 text-slate-700 rounded-lg px-3 py-2 text-sm mb-4">
               Mode lecture seule : vous pouvez consulter les interventions, sans planifier ni valider.
+            </div>
+          )}
+          {!isTechnician && !isViewer && (isAdmin || isManager) && (
+            <div className="bg-sky-50 border border-sky-200 text-sky-800 rounded-lg px-3 py-2 text-sm mb-4">
+              Suivi des interventions : les vidanges sont déclenchées depuis la fiche du site (bouton « Fiches »). Ce module permet de consulter leur statut.
             </div>
           )}
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
@@ -534,143 +538,6 @@ const InterventionsModal = ({
               </div>
             )}
           </div>
-
-          {(isAdmin || isManager) && (
-            <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
-                <div>
-                  <div className="font-semibold text-gray-800">Planification (à partir des EPV du mois)</div>
-                  <div className="text-xs text-gray-600">Clique "Planifier" pour créer l'intervention en base.</div>
-                </div>
-              </div>
-
-              {(() => {
-                const techUsers = (Array.isArray(users) ? users : [])
-                  .filter((u) => u && u.role === 'technician')
-                  .filter((u) => (zoneTechFilter ? String(u?.zone || '').trim() === zoneTechFilter : true))
-                  .slice()
-                  .sort((a, b) =>
-                    String(a.technicianName || a.email || '').localeCompare(String(b.technicianName || b.email || ''))
-                  );
-
-                const findTechUserIdByName = (name) => {
-                  const needle = String(name || '').trim();
-                  if (!needle) return '';
-                  const found = techUsers.find((u) => String(u.technicianName || '').trim() === needle);
-                  return found?.id ? String(found.id) : '';
-                };
-
-                const plannedEvents = filteredSites
-                  .filter((s) => s && !s.retired)
-                  .flatMap((site) => {
-                    return [
-                      { type: 'EPV1', date: site.epv1 },
-                      { type: 'EPV2', date: site.epv2 },
-                      { type: 'EPV3', date: site.epv3 }
-                    ]
-                      .filter((ev) => ev.date && String(ev.date).slice(0, 7) === interventionsMonth)
-                      .map((ev) => ({
-                        plannedDate: ymdShiftForWorkdays(String(ev.date).slice(0, 10)) || String(ev.date).slice(0, 10),
-                        originalDate: String(ev.date).slice(0, 10),
-                        siteId: site.id,
-                        siteName: site.nameSite,
-                        technicianName: site.technician,
-                        wasRetiredPrevMonth: interventionsPrevMonthRetiredSiteIds.has(String(site.id)),
-                        epvType: ev.type
-                      }));
-                  })
-                  .sort((a, b) => String(a.plannedDate).localeCompare(String(b.plannedDate)));
-
-                plannedEvents.forEach((ev) => {
-                  ev.key = getInterventionKey(ev.siteId, ev.plannedDate, ev.epvType);
-                });
-
-                const already = new Set(interventionsScoped.map((i) => getInterventionKey(i.siteId, i.plannedDate, i.epvType)));
-
-                if (plannedEvents.length === 0) {
-                  return <div className="text-sm text-gray-600">Aucun EPV trouvé sur ce mois.</div>;
-                }
-
-                return (
-                  <div className="space-y-2">
-                    {plannedEvents.map((ev) => (
-                      <div
-                        key={ev.key}
-                        className="border border-gray-200 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
-                      >
-                        <div className="min-w-0">
-                          <div className="font-semibold text-gray-800 truncate">{ev.siteName}</div>
-                          <div className="text-xs text-gray-600">
-                            {ev.epvType} • {formatDate(ev.plannedDate)} • {ev.technicianName}
-                            {ev.originalDate && String(ev.originalDate) !== String(ev.plannedDate) && (
-                              <span className="ml-2 text-[11px] bg-slate-50 text-slate-700 border border-slate-200 px-2 py-0.5 rounded-full font-semibold">
-                                Déplacée (origine: {formatDate(ev.originalDate)})
-                              </span>
-                            )}
-                            {ev.wasRetiredPrevMonth && (
-                              <span className="ml-2 text-[11px] bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">
-                                Justif hors délais (retiré {interventionsPrevMonthKey || 'le mois passé'})
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {already.has(ev.key) ? (
-                            <span className="text-xs bg-sky-100 text-sky-800 border border-sky-200 px-2 py-1 rounded font-semibold">
-                              Déjà planifiée
-                            </span>
-                          ) : (
-                            <span className="text-xs bg-amber-100 text-amber-800 border border-amber-200 px-2 py-1 rounded font-semibold">
-                              Non planifiée
-                            </span>
-                          )}
-                          {already.has(ev.key) ? (
-                            <></>
-                          ) : (
-                            (() => {
-                              const selectedTechId =
-                                planningAssignments?.[ev.key] || findTechUserIdByName(ev.technicianName) || '';
-
-                              return (
-                                <>
-                                  <select
-                                    value={selectedTechId}
-                                    onChange={(e) => {
-                                      const v = String(e.target.value || '');
-                                      setPlanningAssignments((prev) => ({
-                                        ...(prev || {}),
-                                        [ev.key]: v
-                                      }));
-                                    }}
-                                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
-                                  >
-                                    <option value="">-- Technicien --</option>
-                                    {techUsers.map((u) => (
-                                      <option key={u.id} value={u.id}>
-                                        {u.technicianName || u.email}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <button
-                                    onClick={() => handlePlanIntervention({ ...ev, technicianUserId: selectedTechId })}
-                                    className="bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 font-semibold text-sm disabled:bg-gray-400 disabled:hover:bg-gray-400"
-                                    disabled={!selectedTechId}
-                                    title={!selectedTechId ? 'Sélectionner un technicien' : ''}
-                                  >
-                                    Planifier
-                                  </button>
-                                </>
-                              );
-                            })()
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
-            </div>
-          )}
 
           {(() => {
             const pad2 = (n) => String(n).padStart(2, '0');
@@ -1188,50 +1055,20 @@ const InterventionsModal = ({
                       </span>
                     )}
 
-                    {!(!focusVidange && movedToPm) && !isClosedInterventionStatus(st) && (isAdmin || isTechnician) && (
+                    {!(!focusVidange && movedToPm) && !isClosedInterventionStatus(st) && isTechnician && (
                       <button
                         onClick={() => {
-                          if (isTechnician) {
-                            setCompleteModalIntervention(it?.intervention || it);
-                            setCompleteModalSite(site);
-                            const offset = Number(site?.nhOffset || 0);
-                            const raw = Math.max(0, Number(site?.nh2A || 0) - offset);
-                            setCompleteForm({ nhNow: String(Math.trunc(raw)), doneDate: today });
-                            setCompleteFormError('');
-                            setCompleteModalOpen(true);
-                            return;
-                          }
-                          handleCompleteIntervention(it?.intervention?.id || it.id);
+                          setCompleteModalIntervention(it?.intervention || it);
+                          setCompleteModalSite(site);
+                          const offset = Number(site?.nhOffset || 0);
+                          const raw = Math.max(0, Number(site?.nh2A || 0) - offset);
+                          setCompleteForm({ nhNow: String(Math.trunc(raw)), doneDate: today });
+                          setCompleteFormError('');
+                          setCompleteModalOpen(true);
                         }}
                         className="bg-green-600 text-white px-2 py-1.5 rounded-lg hover:bg-green-700 font-semibold text-xs"
                       >
                         Marquer effectuée
-                      </button>
-                    )}
-
-                    {!(!focusVidange && movedToPm) && (isAdmin || isManager) && !isClosedInterventionStatus(st) && it?.intervention?.id && (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            const ok = window.confirm(
-                              `Révoquer cette vidange envoyée ?\n\nSite: ${site?.nameSite || it.siteId || ''}\nType: ${String(it?.epvType || '')}\nDate: ${formatDate(effectivePlannedDate)}`
-                            );
-                            if (!ok) return;
-                            await apiFetchJson('/api/interventions', {
-                              method: 'DELETE',
-                              body: JSON.stringify({ id: it.intervention.id })
-                            });
-                            await loadInterventions();
-                            alert('✅ Vidange révoquée.');
-                          } catch (e) {
-                            alert(e?.message || 'Erreur serveur.');
-                          }
-                        }}
-                        className="bg-red-600 text-white px-2 py-1.5 rounded-lg hover:bg-red-700 font-semibold text-xs"
-                        title="Supprimer intervention envoyée/plannifiée"
-                      >
-                        Révoquer
                       </button>
                     )}
                   </div>
