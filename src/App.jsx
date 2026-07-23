@@ -44,7 +44,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.5.3';
+const APP_VERSION = '6.5.4';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -306,11 +306,11 @@ const GeneratorMaintenanceApp = () => {
   const canManagerVidangeActions = isSuperAdmin || isManagerBzvPool || (isManager && (String(authZone).trim().toUpperCase() === 'PNR/KOUILOU' || String(authZone).trim().toUpperCase() === 'UPCN'));
   const showZoneFilter = Boolean(isController || isSuperAdmin || isManagerBzvPool);
   const managerZoneLock = ((isManager || isFieldSupervisor) && authZone) ? authZone : '';
-  const canWriteSites = isAdmin || isManager;
+  const canWriteSites = isAdmin;
   const canWarehouseCheck = isWarehouse || isAdmin || isAnyManager;
   const canWarehouseRevoke = isWarehouse || isAdmin || isAnyManager;
-  const canImportSites = isAdmin || isManager;
-  const canExportExcel = isAdmin || isAnyManager || isController || isFieldSupervisor;
+  const canImportSites = isAdmin;
+  const canExportExcel = isAdmin || isManagerBzvPool || isController || isFieldSupervisor;
   const canExportSites = canExportExcel && !isTechnician;
   const canReset = isAdmin;
   const canGenerateFiche = isAdmin || isAnyManager;
@@ -5572,7 +5572,7 @@ useEffect(() => {
     const completedKeys = new Set(doneByPlannedDate.map((f) => `${f.siteId}|${f.epvType || ''}|${f.plannedDate}`));
     const remainingEvents = plannedEventsFiltered.filter((ev) => !completedKeys.has(String(ev.key)));
 
-    return { plannedEvents: plannedEventsFiltered, remainingEvents, doneByPlannedDate: completedFichesInMonth, contractOk, contractOver };
+    return { plannedEvents: plannedEventsFiltered, remainingEvents, doneByPlannedDate, contractOk, contractOver };
   };
 
   const handleExportDashboardSummaryExcel = async () => {
@@ -7429,7 +7429,7 @@ return (
             sitesCount={sites.length}
             exportBusy={exportBusy}
             onExportExcel={handleExportExcel}
-            canImportConsoleRms={Boolean(isAdmin || isManager)}
+            canImportConsoleRms={Boolean(isAdmin)}
             consoleRmsImportBusy={consoleRmsImportBusy}
             consoleRmsImportStep={consoleRmsImportStep}
             consoleRmsImportProgress={consoleRmsImportProgress}
@@ -7576,7 +7576,7 @@ return (
 
           )}
 
-          {(isAdmin || isManager) && (
+          {(isAdmin || isManagerBzvPool) && (
             <button
               onClick={() => {
                 setSidebarOpen(false);
@@ -7610,7 +7610,7 @@ return (
             </button>
           )}
 
-          {(isAdmin || isManager) && (
+          {(isAdmin || isManagerBzvPool) && (
             <button
               onClick={() => {
                 setSidebarOpen(false);
@@ -7703,7 +7703,7 @@ return (
             </button>
           )}
 
-          {(isAdmin || isManager) && (
+          {(isAdmin || isManagerBzvPool) && (
             <button
               onClick={async () => {
                 setSidebarOpen(false);
