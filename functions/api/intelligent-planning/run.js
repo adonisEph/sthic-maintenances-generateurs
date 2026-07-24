@@ -632,6 +632,8 @@ export async function onRequestPost({ request, env, data }) {
     // Terrain cadence is expressed in number of sites per day (not number of "visits").
     // A paired visit consumes 2 slots.
     const capacitySitesPerDay = sites.length >= 21 ? 2 : 1;
+    // For technicians with 1-8 sites, space placements by 1 extra workday.
+    const spacingExtraDays = (sites.length >= 1 && sites.length <= 8) ? 1 : 0;
     const workdays = buildWorkdays(targetMonth, holidays);
     if (workdays.length === 0) {
       return json({ error: 'Aucun jour ouvré disponible (jours fériés/weekends).' }, { status: 400 });
@@ -691,6 +693,11 @@ export async function onRequestPost({ request, env, data }) {
           break;
         }
         workdayCursorIdx = Math.min(i + 1, workdays.length - 1);
+      }
+
+      // Spacing: for technicians with 1-8 sites, skip an extra workday after each placement.
+      if (spacingExtraDays > 0) {
+        workdayCursorIdx = Math.min(workdayCursorIdx + spacingExtraDays, workdays.length - 1);
       }
 
       // Compute EPV2/EPV3 from the placed EPV1.
@@ -797,6 +804,7 @@ export async function onRequestPost({ request, env, data }) {
           sites: sites.length,
           visits: visits.length,
           capacitySitesPerDay,
+          spacingExtraDays,
           workdays: workdays.length,
           snapshotInserted: snapshotRes.inserted,
           interventionsUpserted: interventionsRes.inserted
