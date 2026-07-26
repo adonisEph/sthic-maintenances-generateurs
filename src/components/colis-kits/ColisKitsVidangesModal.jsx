@@ -65,7 +65,7 @@ const ColisKitsVidangesModal = ({
     const techKey = normTech(techName);
 
     return (Array.isArray(sites) ? sites : [])
-      .filter((s) => s && !s.retired)
+      .filter((s) => s)
       .filter((s) => {
         const sTech = normTech(s.technician);
         return sTech && sTech === techKey;
@@ -114,9 +114,11 @@ const ColisKitsVidangesModal = ({
           nextEpvDays,
           hasExistingFiche,
           urgencyLevel,
+          isRetired: Boolean(s.retired),
         };
       })
       .sort((a, b) => {
+        if (a.isRetired !== b.isRetired) return a.isRetired ? 1 : -1;
         const urgencyOrder = { overdue: 0, critical: 1, soon: 2, normal: 3 };
         const ua = urgencyOrder[a.urgencyLevel] ?? 3;
         const ub = urgencyOrder[b.urgencyLevel] ?? 3;
@@ -259,7 +261,7 @@ const ColisKitsVidangesModal = ({
                     String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
                   const techKey = normTech(techName);
                   const siteCount = (Array.isArray(sites) ? sites : [])
-                    .filter((s) => s && !s.retired && normTech(s.technician) === techKey).length;
+                    .filter((s) => s && normTech(s.technician) === techKey).length;
 
                   return (
                     <button
@@ -385,6 +387,16 @@ const ColisKitsVidangesModal = ({
                             </span>
                             <span>Regime: <strong>{site.regime}h/j</strong></span>
                             <span>NH diff: <strong>{Math.round(site.diffNHs)}</strong> / {site.seuil}</span>
+                            {site.isRetired && (
+                              <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold text-[10px] border border-red-200">
+                                Retire pour le mois en cours
+                              </span>
+                            )}
+                            {!site.isRetired && (
+                              <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-semibold text-[10px] border border-green-200">
+                                Actif pour le mois en cours
+                              </span>
+                            )}
                             {site.hasExistingFiche && (
                               <span className="px-2 py-0.5 rounded-full bg-gray-200 text-gray-600 font-semibold text-[10px]">
                                 Fiche deja generee
