@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { AlertCircle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users, Menu, ChevronLeft, Trash2, RotateCcw, Bell, Share2 } from 'lucide-react';
+import { AlertCircle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users, Menu, ChevronLeft, Trash2, RotateCcw, Bell, Share2, Package } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -28,6 +28,9 @@ import UploadBannerModal from './components/fiche/UploadBannerModal';
 import FicheModal from './components/fiche/FicheModal';
 import SuperAdminFicheChoiceModal from './components/fiche/SuperAdminFicheChoiceModal';
 import DayDetailsModal from './components/calendar/DayDetailsModal';
+import ColisKitsVidangesModal from './components/colis-kits/ColisKitsVidangesModal';
+import StockConsumablesModal from './components/StockConsumablesModal';
+import WarehouseDashboard from './components/dashboard/WarehouseDashboard';
 import TechnicianCalendarModal from './components/calendar/TechnicianCalendarModal';
  
 
@@ -44,7 +47,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.6.3';
+const APP_VERSION = '6.7.0';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -278,6 +281,14 @@ const GeneratorMaintenanceApp = () => {
   const [batchFicheSites, setBatchFicheSites] = useState([]);
   const [batchFicheIndex, setBatchFicheIndex] = useState(0);
   const [pmSitesItems, setPmSitesItems] = useState([]);
+  const [showColisKits, setShowColisKits] = useState(false);
+  const [colisKitsGenerating, setColisKitsGenerating] = useState(false);
+  const [colisKitsResult, setColisKitsResult] = useState(null);
+  const [showStockConsumables, setShowStockConsumables] = useState(false);
+  const [stockMovements, setStockMovements] = useState([]);
+  const [stockSummary, setStockSummary] = useState({});
+  const [stockScopeZone, setStockScopeZone] = useState(null);
+  const [stockBusy, setStockBusy] = useState(false);
   const [formData, setFormData] = useState({
     nameSite: '',
     idSite: '',
@@ -1405,7 +1416,7 @@ const GeneratorMaintenanceApp = () => {
         return data;
       }
 
-      if (role === 'manager' || role === 'manager_bzv_pool' || role === 'controller' || role === 'field_supervisor' || role === 'viewer') {
+      if (role === 'manager' || role === 'manager_bzv_pool' || role === 'controller' || role === 'field_supervisor' || role === 'viewer' || role === 'warehouse') {
         const data = await apiFetchJson('/api/technicians', { method: 'GET' });
         const techs = Array.isArray(data?.technicians) ? data.technicians : [];
         const mapped = techs.map((t) => ({ ...t, role: 'technician' }));
@@ -1447,7 +1458,8 @@ const GeneratorMaintenanceApp = () => {
             data?.user?.role === 'manager_bzv_pool' ||
             data?.user?.role === 'controller' ||
             data?.user?.role === 'field_supervisor' ||
-            data?.user?.role === 'viewer'
+            data?.user?.role === 'viewer' ||
+            data?.user?.role === 'warehouse'
           ) {
             try {
               await refreshUsers();
@@ -4667,22 +4679,60 @@ useEffect(() => {
     return data?.fiche?.id ? String(data.fiche.id) : null;
   };
 
-  const handleSaveWarehouseCheck = async ({ ficheId, warehouseAirFilterOk, warehouseCoolant5lOk }) => {
+  const handleSaveWarehouseCheck = async ({ ficheId, warehouseAirFilterOk, warehouseCoolant5lOk, warehouseVentilationBeltOk }) => {
     if (!ficheId) return;
+
+    const prevFiche = Array.isArray(ficheHistory)
+      ? ficheHistory.find((f) => String(f?.id || '') === String(ficheId))
+      : null;
 
     await apiFetchJson(`/api/fiche-history/${encodeURIComponent(String(ficheId))}`, {
       method: 'PATCH',
       body: JSON.stringify({
         mode: 'warehouse-check',
         warehouseAirFilterOk,
-        warehouseCoolant5lOk
+        warehouseCoolant5lOk,
+        warehouseVentilationBeltOk
       })
     });
 
+    const siteId = String(prevFiche?.siteId || activeFiche?.siteId || '').trim();
+    const siteName = String(prevFiche?.siteName || activeFiche?.siteName || '').trim();
+    const site = sites.find((s) => String(s?.id || '') === siteId);
+    const siteZone = String(site?.zone || 'BZV/POOL').trim().toUpperCase();
+
+    const tryStockExit = async (itemType, prevVal, newVal) => {
+      if (newVal !== true || prevVal === true) return;
+      if (!siteId) return;
+      try {
+        await apiFetchJson('/api/stock', {
+          method: 'POST',
+          body: JSON.stringify({
+            itemType,
+            movementType: 'exit',
+            quantity: 1,
+            siteId,
+            siteName,
+            ficheId,
+            zone: siteZone
+          })
+        });
+      } catch { /* ignore stock errors — fiche check already saved */ }
+    };
+
+    await Promise.all([
+      tryStockExit('air_filter', prevFiche?.warehouseAirFilterOk, warehouseAirFilterOk),
+      tryStockExit('coolant_5l', prevFiche?.warehouseCoolant5lOk, warehouseCoolant5lOk),
+      tryStockExit('ventilation_belt', prevFiche?.warehouseVentilationBeltOk, warehouseVentilationBeltOk)
+    ]);
+
     await loadFicheHistory();
+    if (showStockConsumables) {
+      try { await loadStockMovements(); } catch { /* ignore */ }
+    }
   };
 
-  const handleSubmitWarehouseCheck = async ({ ficheId, warehouseAirFilterOk, warehouseCoolant5lOk }) => {
+  const handleSubmitWarehouseCheck = async ({ ficheId, warehouseAirFilterOk, warehouseCoolant5lOk, warehouseVentilationBeltOk }) => {
     if (!ficheId) return;
 
     // 1) Re-sauvegarder les cases (au cas où) pour être sûr que le retour contient les bons états
@@ -4691,7 +4741,8 @@ useEffect(() => {
       body: JSON.stringify({
         mode: 'warehouse-check',
         warehouseAirFilterOk,
-        warehouseCoolant5lOk
+        warehouseCoolant5lOk,
+        warehouseVentilationBeltOk
       })
     });
 
@@ -4931,6 +4982,56 @@ useEffect(() => {
         signatureDrawnPng: String(signatureDrawnPng || '').trim()
       })
     });
+  };
+
+  const handleColisKitsGenerate = async (items) => {
+    setColisKitsGenerating(true);
+    setColisKitsResult(null);
+    try {
+      const data = await apiFetchJson('/api/colis-kits-vidanges/generate', {
+        method: 'POST',
+        body: JSON.stringify({ items })
+      });
+      setColisKitsResult(data);
+      // Refresh fiche history to show newly created fiches
+      try { await loadFicheHistory(); } catch { /* ignore */ }
+    } catch (e) {
+      setColisKitsResult({ error: e?.message || 'Erreur lors de la génération.', fiches: [], errors: [{ error: e?.message || 'Erreur' }], total: 0 });
+    } finally {
+      setColisKitsGenerating(false);
+    }
+  };
+
+  const loadStockMovements = async () => {
+    setStockBusy(true);
+    try {
+      const data = await apiFetchJson('/api/stock', { method: 'GET' });
+      setStockMovements(Array.isArray(data?.movements) ? data.movements : []);
+      setStockSummary(data?.stock || {});
+      setStockScopeZone(data?.scopeZone || null);
+    } catch (e) {
+      setStockMovements([]);
+      setStockSummary({});
+    } finally {
+      setStockBusy(false);
+    }
+  };
+
+  const handleCreateStockMovement = async (payload) => {
+    const data = await apiFetchJson('/api/stock', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    await loadStockMovements();
+    return data;
+  };
+
+  const handleDeleteStockMovement = async (id) => {
+    await apiFetchJson('/api/stock', {
+      method: 'DELETE',
+      body: JSON.stringify({ id })
+    });
+    await loadStockMovements();
   };
 
   const goBatchFiche = async (delta) => {
@@ -7538,7 +7639,7 @@ return (
             </button>
           )}
 
-          {isAdmin && (
+          {(isAdmin || canManagerVidangeActions) && (
             <button
               onClick={() => {
                 setSidebarOpen(false);
@@ -7554,7 +7655,25 @@ return (
               className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
             >
               <Filter size={18} />
-              <span className="flex-1">Historique filtre à air GE</span>
+              <span className="flex-1">Historique consommables GE</span>
+            </button>
+          )}
+
+          {(isWarehouse || canManagerVidangeActions) && (
+            <button
+              onClick={() => {
+                setSidebarOpen(false);
+                (async () => {
+                  try { await refreshUsers(); } catch { /* ignore */ }
+                  try { await loadFicheHistory(); } catch { /* ignore */ }
+                })();
+                setShowColisKits(true);
+                setColisKitsResult(null);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
+            >
+              <Package size={18} />
+              <span className="flex-1">Colis Kits Vidanges</span>
             </button>
           )}
 
@@ -7585,6 +7704,26 @@ return (
             </button>
           )}
 
+          {(isWarehouse || canManagerVidangeActions) && (
+            <button
+              onClick={() => {
+                setSidebarOpen(false);
+                (async () => {
+                  try {
+                    await loadStockMovements();
+                  } catch {
+                    // ignore
+                  }
+                  setShowStockConsumables(true);
+                })();
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
+            >
+              <Package size={18} />
+              <span className="flex-1">Stocks consommables GE</span>
+            </button>
+          )}
+
           {isWarehouse && (
             <button
               onClick={() => {
@@ -7601,7 +7740,7 @@ return (
               className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
             >
               <Filter size={18} />
-              <span className="flex-1">Historique filtre à air GE</span>
+              <span className="flex-1">Historique consommables GE</span>
             </button>
           )}
 
@@ -7750,167 +7889,28 @@ return (
             <div className="max-w-7xl mx-auto">
               {isWarehouse ? (
                 <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 md:mb-6">
-                  {(() => {
-                    const list = Array.isArray(ficheHistory) ? ficheHistory.filter(Boolean) : [];
-
-                    const currentCampaignMonth = (() => {
-                      try {
-                        const parts = new Intl.DateTimeFormat('en-CA', {
-                          timeZone: 'Africa/Brazzaville',
-                          year: 'numeric',
-                          month: '2-digit'
-                        }).formatToParts(new Date());
-                        const y = parts.find((p) => p.type === 'year')?.value;
-                        const m = parts.find((p) => p.type === 'month')?.value;
-                        return y && m ? `${y}-${m}` : new Date().toISOString().slice(0, 7);
-                      } catch {
-                        return new Date().toISOString().slice(0, 7);
-                      }
-                    })();
-
-                    const toCampaignMonth = (f) => {
-                      const dg = f?.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
-                      const pd = f?.plannedDate ? String(f.plannedDate).slice(0, 10) : '';
-                      const d = dg || pd;
-                      return d ? String(d).slice(0, 7) : '';
-                    };
-
-                    const campaign = currentCampaignMonth;
-                    const inCampaign = list.filter((f) => toCampaignMonth(f) === campaign);
-                    const processed = inCampaign.filter((f) => isWarehouseFinalizedFiche(f));
-                    const pending = inCampaign.filter((f) => isWarehousePendingFiche(f));
-
-                    const airOk = inCampaign.filter((f) => f.warehouseAirFilterOk === true);
-                    const airNo = inCampaign.filter((f) => f.warehouseAirFilterOk === false);
-                    const airUnknown = inCampaign.filter((f) => f.warehouseAirFilterOk !== true && f.warehouseAirFilterOk !== false);
-
-                    const bySite = (() => {
-                      const m = new Map();
-                      for (const f of inCampaign) {
-                        const sid = String(f?.siteId || '').trim();
-                        const name = String(f?.siteName || '').trim();
-                        const key = sid || name || String(f?.id || '');
-                        const prev = m.get(key) || { siteId: sid, siteName: name, total: 0, pending: 0, processed: 0, airOk: 0, airNo: 0, airUnknown: 0 };
-                        prev.total += 1;
-                        if (isWarehousePendingFiche(f)) prev.pending += 1;
-                        if (isWarehouseFinalizedFiche(f)) prev.processed += 1;
-                        if (f.warehouseAirFilterOk === true) prev.airOk += 1;
-                        else if (f.warehouseAirFilterOk === false) prev.airNo += 1;
-                        else prev.airUnknown += 1;
-                        m.set(key, prev);
-                      }
-                      return Array.from(m.values()).sort((a, b) => {
-                        if (b.pending !== a.pending) return b.pending - a.pending;
-                        if (b.total !== a.total) return b.total - a.total;
-                        return String(a.siteName || a.siteId || '').localeCompare(String(b.siteName || b.siteId || ''));
-                      });
-                    })();
-
-                    return (
-                      <div className="flex flex-col gap-4">
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="text-lg font-bold text-gray-900">Dashboard Magasin</div>
-                            <div className="text-xs text-gray-600">Campagne: {campaign}</div>
-                          </div>
-                          <div className="flex flex-col sm:flex-row gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setShowWarehouseProcess(true)}
-                              className="bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-950 font-semibold"
-                            >
-                              Ouvrir Fiches process
-                            </button>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                try {
-                                  await loadFicheHistory();
-                                } catch {
-                                  // ignore
-                                }
-                                setShowAirFilterHistory(true);
-                              }}
-                              className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-semibold"
-                            >
-                              Historique filtre à air GE
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                          <div className="border border-gray-200 rounded-xl p-4 bg-white">
-                            <div className="text-xs text-gray-600">À traiter (campagne)</div>
-                            <div className="text-3xl font-extrabold text-gray-900 mt-1">{pending.length}</div>
-                            <div className="text-xs text-gray-500 mt-1">Contrôle magasin en attente</div>
-                          </div>
-                          <div className="border border-gray-200 rounded-xl p-4 bg-white">
-                            <div className="text-xs text-gray-600">Traitées (campagne)</div>
-                            <div className="text-3xl font-extrabold text-gray-900 mt-1">{processed.length}</div>
-                            <div className="text-xs text-gray-500 mt-1">Fiches finalisées</div>
-                          </div>
-                          <div className="border border-gray-200 rounded-xl p-4 bg-white">
-                            <div className="text-xs text-gray-600">Filtre GE OK (campagne)</div>
-                            <div className="text-3xl font-extrabold text-emerald-700 mt-1">{airOk.length}</div>
-                            <div className="text-xs text-gray-500 mt-1">Sorties validées</div>
-                          </div>
-                          <div className="border border-gray-200 rounded-xl p-4 bg-white">
-                            <div className="text-xs text-gray-600">Filtre GE à vérifier (campagne)</div>
-                            <div className="text-3xl font-extrabold text-amber-700 mt-1">{airUnknown.length}</div>
-                            <div className="text-xs text-gray-500 mt-1">Non renseigné</div>
-                          </div>
-                        </div>
-
-                        <div className="border border-gray-200 rounded-xl overflow-hidden">
-                          <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between gap-3">
-                            <div className="font-bold text-gray-900">Par site (campagne)</div>
-                            <div className="text-xs text-gray-600">Total: {inCampaign.length}</div>
-                          </div>
-                          <div className="overflow-x-auto">
-                            <table className="min-w-full text-sm">
-                              <thead className="bg-white">
-                                <tr className="text-left">
-                                  <th className="px-4 py-2 border-b">Site</th>
-                                  <th className="px-4 py-2 border-b">À traiter</th>
-                                  <th className="px-4 py-2 border-b">Traitées</th>
-                                  <th className="px-4 py-2 border-b">Filtre OK</th>
-                                  <th className="px-4 py-2 border-b">Filtre NON</th>
-                                </tr>
-                              </thead>
-                              <tbody className="bg-white">
-                                {bySite.length === 0 ? (
-                                  <tr>
-                                    <td className="px-4 py-6 text-gray-500" colSpan={5}>
-                                      Aucune fiche sur la campagne {campaign}
-                                    </td>
-                                  </tr>
-                                ) : (
-                                  bySite.slice(0, 20).map((r) => (
-                                    <tr key={`${r.siteId || ''}_${r.siteName || ''}`} className="hover:bg-gray-50">
-                                      <td className="px-4 py-2 border-b font-semibold text-gray-900">{r.siteName || r.siteId || '-'}</td>
-                                      <td className="px-4 py-2 border-b">{r.pending}</td>
-                                      <td className="px-4 py-2 border-b">{r.processed}</td>
-                                      <td className="px-4 py-2 border-b text-emerald-700 font-semibold">{r.airOk}</td>
-                                      <td className="px-4 py-2 border-b text-red-700 font-semibold">{r.airNo}</td>
-                                    </tr>
-                                  ))
-                                )}
-                              </tbody>
-                            </table>
-                          </div>
-                          {bySite.length > 20 && (
-                            <div className="px-4 py-3 text-xs text-gray-600 bg-white border-t">
-                              Affichage limité aux 20 premiers sites.
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="text-xs text-gray-500">
-                          Le dashboard utilise uniquement les données locales de ficheHistory (pas de polling). Rafraîchis manuellement si besoin.
-                        </div>
-                      </div>
-                    );
-                  })()}
+                  <WarehouseDashboard
+                    ficheHistory={ficheHistory}
+                    stockSummary={stockSummary}
+                    stockMovements={stockMovements}
+                    warehouseProcessCount={warehouseProcessCount}
+                    warehouseReturnsCount={warehouseReturnsCount}
+                    onOpenWarehouseProcess={() => setShowWarehouseProcess(true)}
+                    onOpenStockConsumables={() => {
+                      (async () => {
+                        try { await loadStockMovements(); } catch { /* ignore */ }
+                        setShowStockConsumables(true);
+                      })();
+                    }}
+                    onOpenHistory={async () => {
+                      try { await loadFicheHistory(); } catch { /* ignore */ }
+                      setShowAirFilterHistory(true);
+                    }}
+                    onRefresh={async () => {
+                      try { await loadFicheHistory(); } catch { /* ignore */ }
+                      try { await loadStockMovements(); } catch { /* ignore */ }
+                    }}
+                  />
                 </div>
               ) : (
                 <>
@@ -9023,6 +9023,22 @@ return (
           formatDate={formatDate}
         />
 
+        <StockConsumablesModal
+          open={showStockConsumables}
+          onClose={() => setShowStockConsumables(false)}
+          busy={stockBusy}
+          onRefresh={loadStockMovements}
+          movements={stockMovements}
+          stock={stockSummary}
+          sites={managerZoneLock ? sites.filter((s) => String(s?.zone || '').trim() === managerZoneLock) : sites}
+          scopeZone={stockScopeZone}
+          canManage={Boolean(isWarehouse || isAdmin || canManagerVidangeActions)}
+          canAllZones={Boolean(isWarehouse || isSuperAdmin || isManagerBzvPool)}
+          onCreateMovement={handleCreateStockMovement}
+          onDeleteMovement={handleDeleteStockMovement}
+          formatDate={formatDate}
+        />
+
         <DeleteSiteConfirmModal
           site={showDeleteConfirm ? siteToDelete : null}
           isAdmin={isAdmin}
@@ -9186,6 +9202,7 @@ return (
           handleSaveFichePdf={handleSaveFichePdf}
           warehouseAirFilterOk={activeFiche?.warehouseAirFilterOk ?? null}
           warehouseCoolant5lOk={activeFiche?.warehouseCoolant5lOk ?? null}
+          warehouseVentilationBeltOk={activeFiche?.warehouseVentilationBeltOk ?? null}
           warehouseReadOnly={Boolean(
             (ficheOpenSource === 'warehouseReturns' && warehouseReturnsOpenMode === 'readonly') ||
             (ficheOpenSource === 'warehouseProcess' && activeFiche && isWarehouseFinalizedFiche(activeFiche))
@@ -9194,6 +9211,17 @@ return (
           onSubmitWarehouseCheck={null}
           onClose={closeFicheModal}
           formatDate={formatDate}
+        />
+
+        <ColisKitsVidangesModal
+          open={showColisKits}
+          onClose={() => setShowColisKits(false)}
+          users={users}
+          sites={sites}
+          ficheHistory={ficheHistory}
+          onGenerate={handleColisKitsGenerate}
+          generating={colisKitsGenerating}
+          generateResult={colisKitsResult}
         />
 
           <PmModal

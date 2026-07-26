@@ -34,6 +34,7 @@ function mapRow(row) {
     signedAt: row.signed_at || null,
     warehouseAirFilterOk: row.warehouse_air_filter_ok === null ? null : Boolean(row.warehouse_air_filter_ok),
     warehouseCoolant5lOk: row.warehouse_coolant_5l_ok === null ? null : Boolean(row.warehouse_coolant_5l_ok),
+    warehouseVentilationBeltOk: row.warehouse_ventilation_belt_ok === null || row.warehouse_ventilation_belt_ok === undefined ? null : Boolean(row.warehouse_ventilation_belt_ok),
     warehouseCheckedBy: row.warehouse_checked_by || null,
     warehouseCheckedAt: row.warehouse_checked_at || null,
     sentToWarehouseBy: row.sent_to_warehouse_by || null,

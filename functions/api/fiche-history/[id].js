@@ -32,6 +32,7 @@ function mapRow(row, siteZone) {
     signedAt: row.signed_at || null,
     warehouseAirFilterOk: row.warehouse_air_filter_ok === null ? null : Boolean(row.warehouse_air_filter_ok),
     warehouseCoolant5lOk: row.warehouse_coolant_5l_ok === null ? null : Boolean(row.warehouse_coolant_5l_ok),
+    warehouseVentilationBeltOk: row.warehouse_ventilation_belt_ok === null || row.warehouse_ventilation_belt_ok === undefined ? null : Boolean(row.warehouse_ventilation_belt_ok),
     warehouseCheckedBy: row.warehouse_checked_by || null,
     warehouseCheckedAt: row.warehouse_checked_at || null,
     sentToWarehouseBy: row.sent_to_warehouse_by || null,
@@ -299,6 +300,7 @@ export async function onRequestPatch({ request, env, data, params }) {
 
       const air = boolToDb(body?.warehouseAirFilterOk);
       const coolant = boolToDb(body?.warehouseCoolant5lOk);
+      const belt = boolToDb(body?.warehouseVentilationBeltOk);
 
       if (air === 1) {
         const campaignMonth = String((existing?.planned_date || existing?.date_generated || '')).slice(0, 7);
@@ -324,14 +326,16 @@ export async function onRequestPatch({ request, env, data, params }) {
       const hadNoWarehouseCheck =
         existing?.warehouse_air_filter_ok === null &&
         existing?.warehouse_coolant_5l_ok === null &&
+        existing?.warehouse_ventilation_belt_ok === null &&
         existing?.warehouse_checked_at === null;
 
       await env.DB.prepare(
-        'UPDATE fiche_history SET warehouse_air_filter_ok = ?, warehouse_coolant_5l_ok = ?, warehouse_checked_by = ?, warehouse_checked_at = ?, updated_at = ? WHERE id = ?'
+        'UPDATE fiche_history SET warehouse_air_filter_ok = ?, warehouse_coolant_5l_ok = ?, warehouse_ventilation_belt_ok = ?, warehouse_checked_by = ?, warehouse_checked_at = ?, updated_at = ? WHERE id = ?'
       )
         .bind(
           air,
           coolant,
+          belt,
           data?.user?.email ? String(data.user.email) : null,
           now,
           now,

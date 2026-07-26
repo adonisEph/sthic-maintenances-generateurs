@@ -22,6 +22,7 @@ const FicheModal = ({
   disableSignatureAutofetch,
   warehouseAirFilterOk,
   warehouseCoolant5lOk,
+  warehouseVentilationBeltOk,
   onSaveWarehouseCheck,
   onSubmitWarehouseCheck,
   bannerImage,
@@ -54,6 +55,9 @@ const FicheModal = ({
   const [localWarehouseCoolant5lOk, setLocalWarehouseCoolant5lOk] = useState(
     warehouseCoolant5lOk === null || warehouseCoolant5lOk === undefined ? null : Boolean(warehouseCoolant5lOk)
   );
+  const [localWarehouseVentilationBeltOk, setLocalWarehouseVentilationBeltOk] = useState(
+    warehouseVentilationBeltOk === null || warehouseVentilationBeltOk === undefined ? null : Boolean(warehouseVentilationBeltOk)
+  );
 
   const currentFiche = useMemo(() => {
     const list = Array.isArray(ficheHistory) ? ficheHistory : [];
@@ -76,6 +80,14 @@ const FicheModal = ({
 
     const currentEpvType = fromHistory?.epvType ? String(fromHistory.epvType).trim().toUpperCase() : '';
 
+    const regime = Number(siteForFiche?.regime) || 0;
+    const seuil = Number(siteForFiche?.seuil) > 0 ? Number(siteForFiche.seuil) : 250;
+    const isHighRegime = regime > 16;
+    const daysPerEPV = regime > 0 ? seuil / regime : 31;
+    const cycleWindowDays = Math.round(daysPerEPV * 3);
+    const currentDateStr = String(currentPlannedDate || currentDateGenerated || '').slice(0, 10);
+    const currentMs = currentDateStr ? new Date(currentDateStr + 'T00:00:00Z').getTime() : 0;
+
     const recs = list
       .filter(Boolean)
       .filter((f) => String(f.siteId || '').trim() === siteId)
@@ -84,9 +96,17 @@ const FicheModal = ({
         if (st.includes('annul')) return false;
         const pd = f.plannedDate ? String(f.plannedDate).slice(0, 10) : '';
         const dg = f.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
-        const m = String(pd || dg || '').slice(0, 7);
-        if (!campaignMonth) return false;
-        return m === campaignMonth;
+        if (isHighRegime) {
+          const m = String(pd || dg || '').slice(0, 7);
+          if (!campaignMonth) return false;
+          return m === campaignMonth;
+        }
+        const ficheDate = String(pd || dg || '').slice(0, 10);
+        if (!ficheDate || !currentMs) return true;
+        const ficheMs = new Date(ficheDate + 'T00:00:00Z').getTime();
+        if (!Number.isFinite(ficheMs)) return true;
+        const diffDays = (currentMs - ficheMs) / (1000 * 60 * 60 * 24);
+        return diffDays >= 0 && diffDays <= cycleWindowDays;
       });
 
     const pickLatest = (type) => {
@@ -153,6 +173,14 @@ const FicheModal = ({
 
     const currentEpvType = fromHistory?.epvType ? String(fromHistory.epvType).trim().toUpperCase() : '';
 
+    const regime = Number(siteForFiche?.regime) || 0;
+    const seuil = Number(siteForFiche?.seuil) > 0 ? Number(siteForFiche.seuil) : 250;
+    const isHighRegime = regime > 16;
+    const daysPerEPV = regime > 0 ? seuil / regime : 31;
+    const cycleWindowDays = Math.round(daysPerEPV * 3);
+    const currentDateStr = String(currentPlannedDate || currentDateGenerated || '').slice(0, 10);
+    const currentMs = currentDateStr ? new Date(currentDateStr + 'T00:00:00Z').getTime() : 0;
+
     const recs = list
       .filter(Boolean)
       .filter((f) => String(f.siteId || '').trim() === siteId)
@@ -161,9 +189,17 @@ const FicheModal = ({
         if (st.includes('annul')) return false;
         const pd = f.plannedDate ? String(f.plannedDate).slice(0, 10) : '';
         const dg = f.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
-        const m = String(pd || dg || '').slice(0, 7);
-        if (!campaignMonth) return false;
-        return m === campaignMonth;
+        if (isHighRegime) {
+          const m = String(pd || dg || '').slice(0, 7);
+          if (!campaignMonth) return false;
+          return m === campaignMonth;
+        }
+        const ficheDate = String(pd || dg || '').slice(0, 10);
+        if (!ficheDate || !currentMs) return true;
+        const ficheMs = new Date(ficheDate + 'T00:00:00Z').getTime();
+        if (!Number.isFinite(ficheMs)) return true;
+        const diffDays = (currentMs - ficheMs) / (1000 * 60 * 60 * 24);
+        return diffDays >= 0 && diffDays <= cycleWindowDays;
       });
 
     const pickLatest = (type) => {
@@ -215,8 +251,102 @@ const FicheModal = ({
   const shouldIncludeCoolant = Boolean(coolantRule?.shouldInclude);
   const coolantAlreadyProvided = !shouldIncludeCoolant;
 
+  const ventilationBeltRule = useMemo(() => {
+    const list = Array.isArray(ficheHistory) ? ficheHistory : [];
+    const siteId = String(siteForFiche?.id || '').trim();
+    if (!siteId) return { shouldInclude: true, epv1Status: null, epv2Status: null, campaignMonth: '', currentEpvType: '', showEpv1NotCheckedBadge: false };
+
+    const fromHistory = ficheId
+      ? list.find((f) => f && String(f.id || '') === String(ficheId))
+      : null;
+
+    const currentPlannedDate = fromHistory?.plannedDate ? String(fromHistory.plannedDate).slice(0, 10) : '';
+    const currentDateGenerated = fromHistory?.dateGenerated ? String(fromHistory.dateGenerated).slice(0, 10) : '';
+    const campaignMonth = String(currentPlannedDate || currentDateGenerated || '').slice(0, 7);
+
+    const currentEpvType = fromHistory?.epvType ? String(fromHistory.epvType).trim().toUpperCase() : '';
+
+    const regime = Number(siteForFiche?.regime) || 0;
+    const seuil = Number(siteForFiche?.seuil) > 0 ? Number(siteForFiche.seuil) : 250;
+    const isHighRegime = regime > 16;
+    const daysPerEPV = regime > 0 ? seuil / regime : 31;
+    const cycleWindowDays = Math.round(daysPerEPV * 3);
+    const currentDateStr = String(currentPlannedDate || currentDateGenerated || '').slice(0, 10);
+    const currentMs = currentDateStr ? new Date(currentDateStr + 'T00:00:00Z').getTime() : 0;
+
+    const recs = list
+      .filter(Boolean)
+      .filter((f) => String(f.siteId || '').trim() === siteId)
+      .filter((f) => {
+        const st = String(f.status || '').trim().toLowerCase();
+        if (st.includes('annul')) return false;
+        const pd = f.plannedDate ? String(f.plannedDate).slice(0, 10) : '';
+        const dg = f.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
+        if (isHighRegime) {
+          const m = String(pd || dg || '').slice(0, 7);
+          if (!campaignMonth) return false;
+          return m === campaignMonth;
+        }
+        const ficheDate = String(pd || dg || '').slice(0, 10);
+        if (!ficheDate || !currentMs) return true;
+        const ficheMs = new Date(ficheDate + 'T00:00:00Z').getTime();
+        if (!Number.isFinite(ficheMs)) return true;
+        const diffDays = (currentMs - ficheMs) / (1000 * 60 * 60 * 24);
+        return diffDays >= 0 && diffDays <= cycleWindowDays;
+      });
+
+    const pickLatest = (type) => {
+      const t = String(type || '').trim().toUpperCase();
+      const items = recs.filter((f) => String(f.epvType || '').trim().toUpperCase() === t);
+      if (items.length === 0) return null;
+      const score = (f) => {
+        const a = f.warehouseCheckedAt ? String(f.warehouseCheckedAt) : '';
+        const b = f.dateGenerated ? String(f.dateGenerated) : '';
+        const s = a || b;
+        const dt = s ? new Date(s) : null;
+        const ts = dt && !Number.isNaN(dt.getTime()) ? dt.getTime() : 0;
+        return ts;
+      };
+      return items.slice().sort((a, b) => score(b) - score(a))[0] || null;
+    };
+
+    const epv1Rec = pickLatest('EPV1');
+    const epv2Rec = pickLatest('EPV2');
+
+    const epv1Status = epv1Rec ? (epv1Rec.warehouseVentilationBeltOk === true ? true : epv1Rec.warehouseVentilationBeltOk === false ? false : null) : null;
+    const epv2Status = epv2Rec ? (epv2Rec.warehouseVentilationBeltOk === true ? true : epv2Rec.warehouseVentilationBeltOk === false ? false : null) : null;
+
+    const anyProvidedTrue = recs.some((f) => f && f.warehouseVentilationBeltOk === true);
+
+    let shouldInclude = true;
+    let showEpv1NotCheckedBadge = false;
+
+    if (currentEpvType === 'EPV1') {
+      shouldInclude = !anyProvidedTrue || (epv1Rec && String(epv1Rec.id || '') === String(ficheId));
+    } else if (currentEpvType === 'EPV2') {
+      if (epv1Status === false) {
+        shouldInclude = true;
+      } else if (epv1Status === true) {
+        shouldInclude = false;
+      } else {
+        shouldInclude = true;
+        showEpv1NotCheckedBadge = true;
+      }
+    } else if (currentEpvType === 'EPV3') {
+      shouldInclude = epv1Status === false && epv2Status === false;
+    } else {
+      shouldInclude = !anyProvidedTrue;
+    }
+
+    return { shouldInclude, epv1Status, epv2Status, campaignMonth, currentEpvType, showEpv1NotCheckedBadge };
+  }, [ficheHistory, siteForFiche, ficheId]);
+
+  const shouldIncludeVentilationBelt = Boolean(ventilationBeltRule?.shouldInclude);
+  const ventilationBeltAlreadyProvided = !shouldIncludeVentilationBelt;
+
   const warehouseIncludeAirFilter = localWarehouseAirFilterOk === true;
   const warehouseIncludeCoolant = localWarehouseCoolant5lOk === true;
+  const warehouseIncludeVentilationBelt = localWarehouseVentilationBeltOk === true;
 
   const isWarehouseView = Boolean(canWarehouse);
   const canShowWarehouseControls = Boolean((canWarehouse || showWarehouseControls) && !hideWarehouseSection);
@@ -233,8 +363,13 @@ const FicheModal = ({
     : canShowWarehouseControls
       ? localWarehouseCoolant5lOk !== false
       : shouldIncludeCoolant;
+  const effectiveIncludeVentilationBelt = ventilationBeltAlreadyProvided
+    ? false
+    : canShowWarehouseControls
+      ? localWarehouseVentilationBeltOk !== false
+      : shouldIncludeVentilationBelt;
 
-  const shouldIncludeAirAndCoolant = effectiveIncludeAirFilter || effectiveIncludeCoolant;
+  const shouldIncludeAirAndCoolant = effectiveIncludeAirFilter || effectiveIncludeCoolant || effectiveIncludeVentilationBelt;
 
   const kitItems = useMemo(() => {
     const raw = String(siteForFiche?.kitVidange || '');
@@ -255,9 +390,10 @@ const FicheModal = ({
       const n = norm(it);
       if (!effectiveIncludeAirFilter && n.includes('filtre') && n.includes('air')) return false;
       if (!effectiveIncludeCoolant && n.includes('liquide') && n.includes('refroid')) return false;
+      if (!effectiveIncludeVentilationBelt && n.includes('courroie')) return false;
       return true;
     });
-  }, [siteForFiche, effectiveIncludeAirFilter, effectiveIncludeCoolant]);
+  }, [siteForFiche, effectiveIncludeAirFilter, effectiveIncludeCoolant, effectiveIncludeVentilationBelt]);
 
   const signatureOk = useMemo(() => {
     const v = String(signatureDrawnPng || '').trim();
@@ -610,7 +746,7 @@ const FicheModal = ({
               )}
             </div>
 
-            {canShowWarehouseControls && (!airFilterAlreadyProvided || !coolantAlreadyProvided) && (
+            {canShowWarehouseControls && (!airFilterAlreadyProvided || !coolantAlreadyProvided || !ventilationBeltAlreadyProvided) && (
               <div className="mb-4 border border-gray-300 rounded-lg p-3 text-sm">
                 <div className="font-bold text-gray-800 mb-2">{warehouseControlsLabel}</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -635,7 +771,8 @@ const FicheModal = ({
                               await (onSaveWarehouseCheck && onSaveWarehouseCheck({
                                 ficheId,
                                 warehouseAirFilterOk: true,
-                                warehouseCoolant5lOk: localWarehouseCoolant5lOk
+                                warehouseCoolant5lOk: localWarehouseCoolant5lOk,
+                                warehouseVentilationBeltOk: localWarehouseVentilationBeltOk
                               }));
                             } catch (e) {
                               setLocalWarehouseAirFilterOk(prev);
@@ -656,7 +793,8 @@ const FicheModal = ({
                               await (onSaveWarehouseCheck && onSaveWarehouseCheck({
                                 ficheId,
                                 warehouseAirFilterOk: false,
-                                warehouseCoolant5lOk: localWarehouseCoolant5lOk
+                                warehouseCoolant5lOk: localWarehouseCoolant5lOk,
+                                warehouseVentilationBeltOk: localWarehouseVentilationBeltOk
                               }));
                             } catch (e) {
                               setLocalWarehouseAirFilterOk(prev);
@@ -664,6 +802,58 @@ const FicheModal = ({
                             }
                           }}
                           className={`px-3 py-2 rounded-lg font-semibold border ${localWarehouseAirFilterOk === false ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-800 border-gray-300'}`}
+                        >
+                          ❌ Indispo
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {!ventilationBeltAlreadyProvided && (
+                    <div className="border border-gray-200 rounded-lg p-3">
+                      <div className="font-semibold text-gray-800 mb-2">Courroie de ventilation GE</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          disabled={isWarehouseReadOnly}
+                          onClick={async () => {
+                            const prev = localWarehouseVentilationBeltOk;
+                            try {
+                              setLocalWarehouseVentilationBeltOk(true);
+                              await (onSaveWarehouseCheck && onSaveWarehouseCheck({
+                                ficheId,
+                                warehouseAirFilterOk: localWarehouseAirFilterOk,
+                                warehouseCoolant5lOk: localWarehouseCoolant5lOk,
+                                warehouseVentilationBeltOk: true
+                              }));
+                            } catch (e) {
+                              setLocalWarehouseVentilationBeltOk(prev);
+                              alert(e?.message || 'Erreur serveur.');
+                            }
+                          }}
+                          className={`px-3 py-2 rounded-lg font-semibold border ${localWarehouseVentilationBeltOk === true ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-white text-gray-800 border-gray-300'}`}
+                        >
+                          ✅ Disponible
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isWarehouseReadOnly}
+                          onClick={async () => {
+                            const prev = localWarehouseVentilationBeltOk;
+                            try {
+                              setLocalWarehouseVentilationBeltOk(false);
+                              await (onSaveWarehouseCheck && onSaveWarehouseCheck({
+                                ficheId,
+                                warehouseAirFilterOk: localWarehouseAirFilterOk,
+                                warehouseCoolant5lOk: localWarehouseCoolant5lOk,
+                                warehouseVentilationBeltOk: false
+                              }));
+                            } catch (e) {
+                              setLocalWarehouseVentilationBeltOk(prev);
+                              alert(e?.message || 'Erreur serveur.');
+                            }
+                          }}
+                          className={`px-3 py-2 rounded-lg font-semibold border ${localWarehouseVentilationBeltOk === false ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-800 border-gray-300'}`}
                         >
                           ❌ Indispo
                         </button>
@@ -685,7 +875,8 @@ const FicheModal = ({
                               await (onSaveWarehouseCheck && onSaveWarehouseCheck({
                                 ficheId,
                                 warehouseAirFilterOk: localWarehouseAirFilterOk,
-                                warehouseCoolant5lOk: true
+                                warehouseCoolant5lOk: true,
+                                warehouseVentilationBeltOk: localWarehouseVentilationBeltOk
                               }));
                             } catch (e) {
                               setLocalWarehouseCoolant5lOk(prev);
@@ -706,7 +897,8 @@ const FicheModal = ({
                               await (onSaveWarehouseCheck && onSaveWarehouseCheck({
                                 ficheId,
                                 warehouseAirFilterOk: localWarehouseAirFilterOk,
-                                warehouseCoolant5lOk: false
+                                warehouseCoolant5lOk: false,
+                                warehouseVentilationBeltOk: localWarehouseVentilationBeltOk
                               }));
                             } catch (e) {
                               setLocalWarehouseCoolant5lOk(prev);
@@ -735,7 +927,8 @@ const FicheModal = ({
                             await onSubmitWarehouseCheck({
                               ficheId,
                               warehouseAirFilterOk: localWarehouseAirFilterOk,
-                              warehouseCoolant5lOk: localWarehouseCoolant5lOk
+                              warehouseCoolant5lOk: localWarehouseCoolant5lOk,
+                              warehouseVentilationBeltOk: localWarehouseVentilationBeltOk
                             });
                             setWarehouseSubmitSuccessOpen(true);
                           } catch (e) {

@@ -1,6 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { X, Filter, RotateCcw } from 'lucide-react';
 
+const CONSUMABLE_TYPES = [
+  { key: 'air_filter', label: 'Filtre à air GE', field: 'warehouseAirFilterOk' },
+  { key: 'coolant_5l', label: 'Liquide de refroidissement 5L', field: 'warehouseCoolant5lOk' },
+  { key: 'ventilation_belt', label: 'Courroie de ventilation GE', field: 'warehouseVentilationBeltOk' }
+];
+
 const AirFilterHistoryModal = ({
   open,
   onClose,
@@ -14,6 +20,8 @@ const AirFilterHistoryModal = ({
 
   const list = Array.isArray(ficheHistory) ? ficheHistory : [];
   const sitesArr = Array.isArray(sites) ? sites : [];
+
+  const [activeTab, setActiveTab] = useState('air_filter');
 
   const siteById = useMemo(() => {
     return new Map(sitesArr.filter(Boolean).map((s) => [String(s.id), s]));
@@ -120,6 +128,9 @@ const AirFilterHistoryModal = ({
     return result;
   }, [list]);
 
+  const activeConfig = CONSUMABLE_TYPES.find((c) => c.key === activeTab) || CONSUMABLE_TYPES[0];
+  const activeField = activeConfig.field;
+
   const [filterCampaign, setFilterCampaign] = useState('');
   const [filterSite, setFilterSite] = useState('');
   const [filterTech, setFilterTech] = useState('');
@@ -164,7 +175,7 @@ const AirFilterHistoryModal = ({
 
   const controlledRows = useMemo(() => {
     return filtered
-      .filter((f) => f.warehouseAirFilterOk === true || f.warehouseAirFilterOk === false)
+      .filter((f) => f[activeField] === true || f[activeField] === false)
       .map((f) => {
         const sid = String(f.siteId || '').trim();
         const site = siteById.get(sid) || null;
@@ -181,7 +192,7 @@ const AirFilterHistoryModal = ({
           epvType: String(f.epvType || '').trim().toUpperCase(),
           passageMetier: String(passageMetier || '').trim(),
           dateGenerated: generated,
-          status: f.warehouseAirFilterOk === true ? 'Sorti' : 'Non sorti',
+          status: f[activeField] === true ? 'Sorti' : 'Non sorti',
           ticketNumber: String(f.ticketNumber || '').trim(),
           checkedBy: String(f.warehouseCheckedBy || '').trim(),
           checkedAt
@@ -192,11 +203,11 @@ const AirFilterHistoryModal = ({
         const bb = String(b.checkedAt || b.dateGenerated || '');
         return bb.localeCompare(aa);
       });
-  }, [filtered, siteById, computePassageMetierByFicheId]);
+  }, [filtered, siteById, computePassageMetierByFicheId, activeField]);
 
   const notControlledRows = useMemo(() => {
     return filtered
-      .filter((f) => f.warehouseAirFilterOk === null)
+      .filter((f) => f[activeField] === null || f[activeField] === undefined)
       .map((f) => {
         const sid = String(f.siteId || '').trim();
         const site = siteById.get(sid) || null;
@@ -216,7 +227,7 @@ const AirFilterHistoryModal = ({
         };
       })
       .sort((a, b) => String(b.dateGenerated || '').localeCompare(String(a.dateGenerated || '')));
-  }, [filtered, siteById, computePassageMetierByFicheId]);
+  }, [filtered, siteById, computePassageMetierByFicheId, activeField]);
 
   const fmtDate = (d) => (typeof formatDate === 'function' ? formatDate(d) : String(d || ''));
 
@@ -228,7 +239,7 @@ const AirFilterHistoryModal = ({
             <Filter size={22} className="flex-shrink-0" />
             <div className="min-w-0">
               <div className="text-base sm:text-xl font-bold break-words whitespace-normal">
-                Historique filtre à air GE
+                Historique consommables GE
               </div>
               <div className="text-xs text-white/80">Contrôlés + Non contrôlés</div>
             </div>
@@ -257,6 +268,25 @@ const AirFilterHistoryModal = ({
 
         <div className="p-4 sm:p-6 overflow-y-auto flex-1">
           {busy && <div className="text-sm text-slate-600 mb-3">Chargement…</div>}
+
+          {/* Tabs */}
+          <div className="flex gap-2 mb-4 border-b border-gray-200">
+            {CONSUMABLE_TYPES.map((c) => (
+              <button
+                key={c.key}
+                type="button"
+                onClick={() => setActiveTab(c.key)}
+                className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${
+                  activeTab === c.key
+                    ? 'border-indigo-600 text-indigo-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">Campagne (mois)</label>
@@ -296,7 +326,7 @@ const AirFilterHistoryModal = ({
           </div>
 
           <div className="mb-8">
-            <div className="text-sm font-bold text-slate-800 mb-2">Contrôles (Sorti / Non sorti)</div>
+            <div className="text-sm font-bold text-slate-800 mb-2">Contrôles (Sorti / Non sorti) — {activeConfig.label}</div>
             {controlledRows.length === 0 ? (
               <div className="text-sm text-slate-600">Aucun contrôle trouvé.</div>
             ) : (
@@ -341,7 +371,7 @@ const AirFilterHistoryModal = ({
           </div>
 
           <div>
-            <div className="text-sm font-bold text-slate-800 mb-2">Fiches non contrôlées (filtre non renseigné)</div>
+            <div className="text-sm font-bold text-slate-800 mb-2">Fiches non contrôlées — {activeConfig.label}</div>
             {notControlledRows.length === 0 ? (
               <div className="text-sm text-slate-600">Aucune fiche non contrôlée trouvée.</div>
             ) : (
