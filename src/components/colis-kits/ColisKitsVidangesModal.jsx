@@ -84,21 +84,20 @@ const ColisKitsVidangesModal = ({
             return st !== 'annul' && st !== 'brouillon';
           });
 
+        const totalFichesCount = siteFiches.length;
         const completedCount = siteFiches.filter((f) => {
           const st = String(f.status || '').trim().toLowerCase();
           return st === 'effectu' || st === 'termin';
         }).length;
 
-        const epvNum = completedCount + 1;
+        const epvNum = totalFichesCount + 1;
         const epvKey = `epv${epvNum}`;
         const nextEpvType = `EPV${epvNum}`;
         const nextEpvDate = epvDates[epvKey] || 'N/A';
         const nextEpvDays = getDaysUntil(nextEpvDate);
 
-        const hasExistingFiche = siteFiches.some((f) => {
-          return String(f.epvType || '').trim().toUpperCase() === nextEpvType.toUpperCase() &&
-                 String(f.plannedDate || '').slice(0, 10) === String(nextEpvDate || '').slice(0, 10);
-        });
+        const existingFichesForSite = siteFiches;
+        const hasExistingFiche = existingFichesForSite.length > 0;
 
         const urgencyLevel = nextEpvDays === null ? 'normal' : nextEpvDays < 0 ? 'overdue' : nextEpvDays <= 7 ? 'critical' : nextEpvDays <= 30 ? 'soon' : 'normal';
 
@@ -113,6 +112,8 @@ const ColisKitsVidangesModal = ({
           nextEpvDate,
           nextEpvDays,
           hasExistingFiche,
+          existingFicheCount: existingFichesForSite.length,
+          completedCount,
           urgencyLevel,
           isRetired: Boolean(s.retired),
         };
@@ -155,7 +156,7 @@ const ColisKitsVidangesModal = ({
   };
 
   const toggleAllSites = () => {
-    const eligible = filteredSites.filter((s) => !s.hasExistingFiche);
+    const eligible = filteredSites;
     if (selectedSiteIds.size === eligible.length && eligible.every((s) => selectedSiteIds.has(s.id))) {
       setSelectedSiteIds(new Set());
     } else {
@@ -200,7 +201,7 @@ const ColisKitsVidangesModal = ({
 
   if (!open) return null;
 
-  const eligibleSites = filteredSites.filter((s) => !s.hasExistingFiche);
+  const eligibleSites = filteredSites;
   const selectedCount = selectedSiteIds.size;
 
   return (
@@ -350,21 +351,18 @@ const ColisKitsVidangesModal = ({
               <div className="space-y-2">
                 {filteredSites.map((site) => {
                   const isSelected = selectedSiteIds.has(site.id);
-                  const isDisabled = site.hasExistingFiche;
                   return (
                     <div
                       key={site.id}
                       className={`border-2 rounded-lg p-3 transition-colors ${
-                        isDisabled ? 'border-gray-200 bg-gray-50 opacity-60'
-                        : isSelected ? 'border-indigo-500 bg-indigo-50'
+                        isSelected ? 'border-indigo-500 bg-indigo-50'
                         : 'border-gray-200 hover:border-indigo-300'
                       }`}
                     >
-                      <label className="flex items-start gap-3 cursor-pointer" onClick={(e) => { if (!isDisabled) toggleSite(site.id); }}>
+                      <label className="flex items-start gap-3 cursor-pointer" onClick={(e) => { toggleSite(site.id); }}>
                         <input
                           type="checkbox"
                           checked={isSelected}
-                          disabled={isDisabled}
                           onChange={() => {}}
                           className="mt-1 w-5 h-5 rounded text-indigo-600 focus:ring-indigo-500"
                         />
@@ -398,8 +396,13 @@ const ColisKitsVidangesModal = ({
                               </span>
                             )}
                             {site.hasExistingFiche && (
-                              <span className="px-2 py-0.5 rounded-full bg-gray-200 text-gray-600 font-semibold text-[10px]">
-                                Fiche deja generee
+                              <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold text-[10px] border border-amber-200">
+                                {site.existingFicheCount} fiche{site.existingFicheCount > 1 ? 's' : ''} deja generee{site.existingFicheCount > 1 ? 's' : ''} ({site.completedCount} effectuee{site.completedCount > 1 ? 's' : ''})
+                              </span>
+                            )}
+                            {site.nextEpvDate === 'N/A' && (
+                              <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold text-[10px] border border-red-200">
+                                EPV{site.nextEpvType.replace('EPV', '')} non planifiable
                               </span>
                             )}
                           </div>

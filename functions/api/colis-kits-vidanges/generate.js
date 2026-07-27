@@ -144,18 +144,6 @@ export async function onRequestPost({ request, env, data }) {
           }
         }
 
-        // Check for existing fiche with ticket for this site+plannedDate+epvType
-        const existingFiche = await env.DB.prepare(
-          "SELECT id FROM fiche_history WHERE site_id = ? AND planned_date = ? AND epv_type = ? AND status != 'Annulée' AND status != 'Brouillon' LIMIT 1"
-        )
-          .bind(siteId, plannedDate, epvType)
-          .first();
-
-        if (existingFiche?.id) {
-          errors.push({ index: i, siteId, error: 'Fiche déjà générée pour ce passage.' });
-          continue;
-        }
-
         // 1) Ensure intervention sent
         const interventionId = await ensureSentIntervention(env, data, siteId, zone, plannedDate, epvType, technicianName);
 
