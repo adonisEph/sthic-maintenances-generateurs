@@ -287,6 +287,8 @@ const GeneratorMaintenanceApp = () => {
   const [showStockConsumables, setShowStockConsumables] = useState(false);
   const [stockMovements, setStockMovements] = useState([]);
   const [stockSummary, setStockSummary] = useState({});
+  const [stockByGen, setStockByGen] = useState({});
+  const [stockGeneratorTypes, setStockGeneratorTypes] = useState([]);
   const [stockScopeZone, setStockScopeZone] = useState(null);
   const [stockBusy, setStockBusy] = useState(false);
   const [formData, setFormData] = useState({
@@ -4700,22 +4702,41 @@ useEffect(() => {
     const siteName = String(prevFiche?.siteName || activeFiche?.siteName || '').trim();
     const site = sites.find((s) => String(s?.id || '') === siteId);
     const siteZone = String(site?.zone || 'BZV/POOL').trim().toUpperCase();
+    const siteGenerateur = String(site?.generateur || '').trim();
+
+    const resolveGeneratorType = (genText) => {
+      const g = String(genText || '').toUpperCase().trim();
+      if (!g) return null;
+      if (g.includes('GENERATOR-LOGIC') || g.includes('GENERATOR LOGIC')) return 'generator_logic_perkins';
+      if (g.includes('JUBAILI') || g.includes('BROSS')) return 'jubaili_bross_30';
+      if (g.includes('SDMO')) return 'sdmo_t22';
+      if (g.includes('PI 20') || g === 'PI') return 'pi_20';
+      if (g.includes('ELCOS') && g.includes('YANMAR')) return 'elcos_yanmar';
+      if (g.includes('ELCOS')) return 'elcos_perkins';
+      return null;
+    };
+
+    const siteGenType = resolveGeneratorType(siteGenerateur);
 
     const tryStockExit = async (itemType, prevVal, newVal) => {
       if (newVal !== true || prevVal === true) return;
       if (!siteId) return;
       try {
+        const payload = {
+          itemType,
+          movementType: 'exit',
+          quantity: 1,
+          siteId,
+          siteName,
+          ficheId,
+          zone: siteZone
+        };
+        if ((itemType === 'air_filter' || itemType === 'ventilation_belt') && siteGenType) {
+          payload.generatorType = siteGenType;
+        }
         await apiFetchJson('/api/stock', {
           method: 'POST',
-          body: JSON.stringify({
-            itemType,
-            movementType: 'exit',
-            quantity: 1,
-            siteId,
-            siteName,
-            ficheId,
-            zone: siteZone
-          })
+          body: JSON.stringify(payload)
         });
       } catch { /* ignore stock errors — fiche check already saved */ }
     };
@@ -5008,10 +5029,13 @@ useEffect(() => {
       const data = await apiFetchJson('/api/stock', { method: 'GET' });
       setStockMovements(Array.isArray(data?.movements) ? data.movements : []);
       setStockSummary(data?.stock || {});
+      setStockByGen(data?.stockByGen || {});
+      setStockGeneratorTypes(Array.isArray(data?.generatorTypes) ? data.generatorTypes : []);
       setStockScopeZone(data?.scopeZone || null);
     } catch (e) {
       setStockMovements([]);
       setStockSummary({});
+      setStockByGen({});
     } finally {
       setStockBusy(false);
     }
@@ -9030,6 +9054,8 @@ return (
           onRefresh={loadStockMovements}
           movements={stockMovements}
           stock={stockSummary}
+          stockByGen={stockByGen}
+          generatorTypes={stockGeneratorTypes}
           sites={managerZoneLock ? sites.filter((s) => String(s?.zone || '').trim() === managerZoneLock) : sites}
           scopeZone={stockScopeZone}
           canManage={Boolean(isWarehouse || isAdmin || canManagerVidangeActions)}
