@@ -1,11 +1,34 @@
 import React, { useMemo, useState } from 'react';
-import { X, Filter, RotateCcw } from 'lucide-react';
+import { X, Filter, RotateCcw, Fan, Wrench, Droplet } from 'lucide-react';
 
 const CONSUMABLE_TYPES = [
-  { key: 'air_filter', label: 'Filtre à air GE', field: 'warehouseAirFilterOk' },
-  { key: 'coolant_5l', label: 'Liquide de refroidissement 5L', field: 'warehouseCoolant5lOk' },
-  { key: 'ventilation_belt', label: 'Courroie de ventilation GE', field: 'warehouseVentilationBeltOk' }
+  { key: 'air_filter', label: 'Filtre à air GE', field: 'warehouseAirFilterOk', icon: Fan },
+  { key: 'coolant_5l', label: 'Liquide de refroidissement 5L', field: 'warehouseCoolant5lOk', icon: Droplet },
+  { key: 'ventilation_belt', label: 'Courroie de ventilation GE', field: 'warehouseVentilationBeltOk', icon: Wrench }
 ];
+
+const GEN_LABELS = {
+  generator_logic_perkins: 'Generator-Logic 20-30 KVA (Perkins)',
+  elcos_perkins: 'Elcos 20-30 KVA (Perkins)',
+  pi_20: 'PI 20 KVA',
+  sdmo_t22: 'SDMO T 22 KVA',
+  elcos_yanmar: 'Elcos 20-30 KVA (Yanmar)',
+  jubaili_bross_30: 'JUBAILI BROSS 30 KVA'
+};
+
+const ITEMS_WITH_GENERATOR = ['air_filter', 'ventilation_belt'];
+
+const resolveGeneratorType = (genText) => {
+  const g = String(genText || '').toUpperCase().trim();
+  if (!g) return null;
+  if (g.includes('GENERATOR-LOGIC') || g.includes('GENERATOR LOGIC')) return 'generator_logic_perkins';
+  if (g.includes('JUBAILI') || g.includes('BROSS')) return 'jubaili_bross_30';
+  if (g.includes('SDMO')) return 'sdmo_t22';
+  if (g.includes('PI 20') || g === 'PI') return 'pi_20';
+  if (g.includes('ELCOS') && g.includes('YANMAR')) return 'elcos_yanmar';
+  if (g.includes('ELCOS')) return 'elcos_perkins';
+  return null;
+};
 
 const AirFilterHistoryModal = ({
   open,
@@ -134,6 +157,7 @@ const AirFilterHistoryModal = ({
   const [filterCampaign, setFilterCampaign] = useState('');
   const [filterSite, setFilterSite] = useState('');
   const [filterTech, setFilterTech] = useState('');
+  const [filterGen, setFilterGen] = useState('');
 
   const normalize = (v) =>
     String(v || '')
@@ -170,8 +194,15 @@ const AirFilterHistoryModal = ({
       .filter((f) => {
         if (!techNeedle) return true;
         return normalize(f.technician).includes(techNeedle);
+      })
+      .filter((f) => {
+        if (!filterGen) return true;
+        const sid = String(f.siteId || '').trim();
+        const site = siteById.get(sid);
+        const genType = resolveGeneratorType(site?.generateur);
+        return genType === filterGen;
       });
-  }, [list, filterCampaign, filterSite, filterTech, siteById]);
+  }, [list, filterCampaign, filterSite, filterTech, filterGen, siteById]);
 
   const controlledRows = useMemo(() => {
     return filtered
@@ -183,11 +214,14 @@ const AirFilterHistoryModal = ({
         const generated = f?.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
         const checkedAt = f?.warehouseCheckedAt ? String(f.warehouseCheckedAt) : '';
         const passageMetier = computePassageMetierByFicheId.get(String(f.id || '')) || '';
+        const genType = resolveGeneratorType(site?.generateur);
         return {
           id: String(f.id || ''),
           campaignMonth,
           siteName: String(f.siteName || site?.nameSite || '').trim(),
           idSite: site?.idSite != null ? String(site.idSite).trim() : '',
+          generateur: String(site?.generateur || '').trim(),
+          genType,
           technician: String(f.technician || '').trim(),
           epvType: String(f.epvType || '').trim().toUpperCase(),
           passageMetier: String(passageMetier || '').trim(),
@@ -214,11 +248,14 @@ const AirFilterHistoryModal = ({
         const campaignMonth = toCampaignMonth(f);
         const generated = f?.dateGenerated ? String(f.dateGenerated).slice(0, 10) : '';
         const passageMetier = computePassageMetierByFicheId.get(String(f.id || '')) || '';
+        const genType = resolveGeneratorType(site?.generateur);
         return {
           id: String(f.id || ''),
           campaignMonth,
           siteName: String(f.siteName || site?.nameSite || '').trim(),
           idSite: site?.idSite != null ? String(site.idSite).trim() : '',
+          generateur: String(site?.generateur || '').trim(),
+          genType,
           technician: String(f.technician || '').trim(),
           epvType: String(f.epvType || '').trim().toUpperCase(),
           passageMetier: String(passageMetier || '').trim(),
@@ -232,16 +269,16 @@ const AirFilterHistoryModal = ({
   const fmtDate = (d) => (typeof formatDate === 'function' ? formatDate(d) : String(d || ''));
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[80] p-0 sm:p-4">
-      <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-[1100px] sm:max-h-[92vh]">
-        <div className="flex items-start justify-between gap-3 px-3 py-3 sm:p-4 border-b bg-slate-800 text-white">
-          <div className="min-w-0 flex items-center gap-2">
-            <Filter size={22} className="flex-shrink-0" />
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[80] p-0 sm:p-2">
+      <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:rounded-lg sm:max-w-[1400px] sm:max-h-[94vh]">
+        <div className="flex items-start justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4 border-b bg-slate-800 text-white">
+          <div className="min-w-0 flex items-center gap-3">
+            <Filter size={24} className="flex-shrink-0" />
             <div className="min-w-0">
-              <div className="text-base sm:text-xl font-bold break-words whitespace-normal">
+              <div className="text-lg sm:text-2xl font-bold break-words whitespace-normal">
                 Historique consommables GE
               </div>
-              <div className="text-xs text-white/80">Contrôlés + Non contrôlés</div>
+              <div className="text-xs sm:text-sm text-white/80">Contrôles magasin + fiches non contrôlées</div>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -257,7 +294,7 @@ const AirFilterHistoryModal = ({
                 title="Rafraîchir"
               >
                 <RotateCcw size={16} />
-                Rafraîchir
+                <span className="hidden sm:inline">Rafraîchir</span>
               </button>
             )}
             <button onClick={onClose} className="hover:bg-white/10 p-2 rounded" title="Fermer">
@@ -271,54 +308,51 @@ const AirFilterHistoryModal = ({
 
           {/* Tabs */}
           <div className="flex gap-2 mb-4 border-b border-gray-200">
-            {CONSUMABLE_TYPES.map((c) => (
-              <button
-                key={c.key}
-                type="button"
-                onClick={() => setActiveTab(c.key)}
-                className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${
-                  activeTab === c.key
-                    ? 'border-indigo-600 text-indigo-700'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {c.label}
-              </button>
-            ))}
+            {CONSUMABLE_TYPES.map((c) => {
+              const TabIcon = c.icon;
+              return (
+                <button
+                  key={c.key}
+                  type="button"
+                  onClick={() => setActiveTab(c.key)}
+                  className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors flex items-center gap-2 ${
+                    activeTab === c.key
+                      ? 'border-indigo-600 text-indigo-700'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {TabIcon && <TabIcon size={16} />}
+                  {c.label}
+                </button>
+              );
+            })}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">Campagne (mois)</label>
-              <select
-                value={filterCampaign}
-                onChange={(e) => setFilterCampaign(String(e.target.value || ''))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-              >
+              <select value={filterCampaign} onChange={(e) => setFilterCampaign(String(e.target.value || ''))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
                 <option value="">Toutes</option>
-                {campaignOptions.map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
+                {campaignOptions.map((m) => (<option key={m} value={m}>{m}</option>))}
               </select>
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">Site (nom / ID / code)</label>
-              <input
-                value={filterSite}
-                onChange={(e) => setFilterSite(String(e.target.value || ''))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                placeholder="Ex: MAYA / 1234 / site..."
-              />
+              <input value={filterSite} onChange={(e) => setFilterSite(String(e.target.value || ''))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Ex: MAYA / 1234 / site..." />
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">Technicien</label>
-              <input
-                value={filterTech}
-                onChange={(e) => setFilterTech(String(e.target.value || ''))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                placeholder="Nom technicien"
-              />
+              <input value={filterTech} onChange={(e) => setFilterTech(String(e.target.value || ''))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Nom technicien" />
             </div>
+            {ITEMS_WITH_GENERATOR.includes(activeTab) && (
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Générateur</label>
+                <select value={filterGen} onChange={(e) => setFilterGen(String(e.target.value || ''))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <option value="">Tous</option>
+                  {Object.entries(GEN_LABELS).map(([k, v]) => (<option key={k} value={k}>{v}</option>))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div className="text-xs text-slate-600 mb-5">
@@ -336,6 +370,7 @@ const AirFilterHistoryModal = ({
                     <tr>
                       <th className="text-left p-3 border-b">Campagne</th>
                       <th className="text-left p-3 border-b">Site</th>
+                      <th className="text-left p-3 border-b">Générateur</th>
                       <th className="text-left p-3 border-b">Passage</th>
                       <th className="text-left p-3 border-b">Statut</th>
                       <th className="text-left p-3 border-b">Technicien</th>
@@ -351,6 +386,9 @@ const AirFilterHistoryModal = ({
                         <td className="p-3 border-b">
                           <div className="font-semibold text-slate-900">{r.siteName || '-'}</div>
                           <div className="text-xs text-slate-600">ID Site: <span className="font-mono font-semibold">{r.idSite || '-'}</span></div>
+                        </td>
+                        <td className="p-3 border-b text-xs text-gray-700">
+                          {r.genType ? (GEN_LABELS[r.genType] || r.generateur) : <span className="text-gray-400">{r.generateur || '—'}</span>}
                         </td>
                         <td className="p-3 border-b font-mono">{r.passageMetier || '-'}</td>
                         <td className="p-3 border-b">
@@ -381,6 +419,7 @@ const AirFilterHistoryModal = ({
                     <tr>
                       <th className="text-left p-3 border-b">Campagne</th>
                       <th className="text-left p-3 border-b">Site</th>
+                      <th className="text-left p-3 border-b">Générateur</th>
                       <th className="text-left p-3 border-b">Passage</th>
                       <th className="text-left p-3 border-b">Technicien</th>
                       <th className="text-left p-3 border-b">Ticket</th>
@@ -394,6 +433,9 @@ const AirFilterHistoryModal = ({
                         <td className="p-3 border-b">
                           <div className="font-semibold text-slate-900">{r.siteName || '-'}</div>
                           <div className="text-xs text-slate-600">ID Site: <span className="font-mono font-semibold">{r.idSite || '-'}</span></div>
+                        </td>
+                        <td className="p-3 border-b text-xs text-gray-700">
+                          {r.genType ? (GEN_LABELS[r.genType] || r.generateur) : <span className="text-gray-400">{r.generateur || '—'}</span>}
                         </td>
                         <td className="p-3 border-b font-mono">{r.passageMetier || '-'}</td>
                         <td className="p-3 border-b">{r.technician || '-'}</td>
