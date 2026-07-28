@@ -141,7 +141,16 @@ async function resolveTechnicianUserId(env, zone, technicianName) {
 
   const rows = Array.isArray(res?.results) ? res.results : [];
   const match = rows.find((r) => normalizeName(r?.technician_name) === key) || null;
-  return match?.id ? String(match.id) : null;
+  if (match?.id) return String(match.id);
+
+  // Partial match fallback
+  const partial = rows.filter((r) => {
+    const a = normalizeName(r?.technician_name);
+    return a && (a.includes(key) || key.includes(a));
+  });
+  if (partial.length === 1 && partial[0]?.id) return String(partial[0].id);
+
+  return null;
 }
 
 async function ensureSentInterventionForFiche(env, data, fiche, zone) {
@@ -412,7 +421,7 @@ export async function onRequestPatch({ request, env, data, params }) {
     }
 
     if (mode === 'warehouse-reopen') {
-      if (!canWarehouse) return json({ error: 'Accès interdit.' }, { status: 403 });
+      if (!canWarehouse && !canManage) return json({ error: 'Accès interdit.' }, { status: 403 });
 
       const st = String(existing?.status || '').trim();
       const flowStatus = String(existing?.warehouse_flow_status || '').trim();
@@ -423,6 +432,37 @@ export async function onRequestPatch({ request, env, data, params }) {
         'UPDATE fiche_history SET warehouse_flow_status = ?, updated_at = ? WHERE id = ?'
       )
         .bind('reopened', now, id)
+        .run();
+
+      await touchLastUpdatedAt(env);
+
+      const updated = await env.DB.prepare('SELECT * FROM fiche_history WHERE id = ?').bind(id).first();
+      return json({ fiche: mapRow(updated, zone) }, { status: 200 });
+    }
+
+    if (mode === 'cancel') {
+      if (!canWarehouse && !canManage) return json({ error: 'Accès interdit.' }, { status: 403 });
+
+      const st = String(existing?.status || '').trim();
+      const flowStatus = String(existing?.warehouse_flow_status || '').trim();
+      if (st === 'Annulée') return json({ error: 'Fiche déjà annulée.' }, { status: 409 });
+      if (st === 'Effectuée') return json({ error: 'Fiche déjà clôturée avec intervention effectuée.' }, { status: 409 });
+      if (flowStatus !== 'finalized') return json({ error: 'Seules les fiches finalisées peuvent être annulées.' }, { status: 409 });
+
+      // Cancel linked intervention
+      const interventionId = String(existing?.intervention_id || '').trim();
+      if (interventionId) {
+        await env.DB.prepare(
+          "UPDATE interventions SET status = 'cancelled', updated_at = ? WHERE id = ?"
+        )
+          .bind(now, interventionId)
+          .run();
+      }
+
+      await env.DB.prepare(
+        'UPDATE fiche_history SET status = ?, warehouse_flow_status = ?, updated_at = ? WHERE id = ?'
+      )
+        .bind('Annulée', null, now, id)
         .run();
 
       await touchLastUpdatedAt(env);

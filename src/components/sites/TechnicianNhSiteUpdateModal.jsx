@@ -127,7 +127,7 @@ const TechnicianNhSiteUpdateModal = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full overflow-hidden">
+      <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] flex flex-col">
         <div className="flex justify-between items-center p-4 border-b bg-slate-800 text-white">
           <div className="font-bold">Mettre à jour NH d'un site</div>
           <div className="flex items-center gap-3">
@@ -137,7 +137,7 @@ const TechnicianNhSiteUpdateModal = ({
           </div>
         </div>
 
-        <div className="p-4 space-y-4">
+        <div className="p-4 space-y-4 overflow-y-auto flex-1">
           <div>
             <label className="text-xs text-gray-600 mb-1 block">Rechercher un site (ID site ou nom)</label>
             <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-2">

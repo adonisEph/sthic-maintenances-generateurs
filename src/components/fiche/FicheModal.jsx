@@ -38,6 +38,10 @@ const FicheModal = ({
   goBatchFiche,
   handlePrintFiche,
   handleSaveFichePdf,
+  onReprintFiche,
+  showReprintButton,
+  onCancelFiche,
+  showCancelButton,
   onClose,
   formatDate
 }) => {
@@ -58,6 +62,44 @@ const FicheModal = ({
   const [localWarehouseVentilationBeltOk, setLocalWarehouseVentilationBeltOk] = useState(
     warehouseVentilationBeltOk === null || warehouseVentilationBeltOk === undefined ? null : Boolean(warehouseVentilationBeltOk)
   );
+
+  // Dynamic print scaling: measure content, scale to fit A4
+  useEffect(() => {
+    if (!open) return;
+    const A4_H = 1083; // 297mm - 10mm margins at 96dpi
+    const MIN_SCALE = 0.5;
+    const MAX_SCALE = 1.3;
+
+    const onBefore = () => {
+      const el = document.getElementById('fiche-print');
+      if (!el) return;
+      el.style.transform = '';
+      el.style.width = '';
+      const h = el.scrollHeight;
+      if (h > 0 && h !== A4_H) {
+        let s = A4_H / h;
+        s = Math.max(MIN_SCALE, Math.min(MAX_SCALE, s));
+        if (s !== 1) {
+          el.style.transform = `scale(${s})`;
+          el.style.transformOrigin = 'top left';
+          el.style.width = `${100 / s}%`;
+        }
+      }
+    };
+    const onAfter = () => {
+      const el = document.getElementById('fiche-print');
+      if (!el) return;
+      el.style.transform = '';
+      el.style.transformOrigin = '';
+      el.style.width = '';
+    };
+    window.addEventListener('beforeprint', onBefore);
+    window.addEventListener('afterprint', onAfter);
+    return () => {
+      window.removeEventListener('beforeprint', onBefore);
+      window.removeEventListener('afterprint', onAfter);
+    };
+  }, [open]);
 
   const currentFiche = useMemo(() => {
     const list = Array.isArray(ficheHistory) ? ficheHistory : [];
@@ -371,14 +413,13 @@ const FicheModal = ({
 
   const shouldIncludeAirAndCoolant = effectiveIncludeAirFilter || effectiveIncludeCoolant || effectiveIncludeVentilationBelt;
 
-  const kitItems = useMemo(() => {
+  // Build kit items with warehouse status: true=Disponible, false=Indispo, null=not marked
+  const kitItemsWithStatus = useMemo(() => {
     const raw = String(siteForFiche?.kitVidange || '');
     const items = raw
       .split('/')
       .map((x) => String(x || '').trim())
       .filter(Boolean);
-
-    if (effectiveIncludeAirFilter && effectiveIncludeCoolant) return items;
 
     const norm = (v) =>
       String(v || '')
@@ -386,14 +427,34 @@ const FicheModal = ({
         .replace(/[\u0300-\u036f]/g, '')
         .toLowerCase();
 
-    return items.filter((it) => {
+    return items.map((it) => {
       const n = norm(it);
-      if (!effectiveIncludeAirFilter && n.includes('filtre') && n.includes('air')) return false;
-      if (!effectiveIncludeCoolant && n.includes('liquide') && n.includes('refroid')) return false;
-      if (!effectiveIncludeVentilationBelt && n.includes('courroie')) return false;
-      return true;
+      let status = null;
+
+      if (canShowWarehouseControls) {
+        if (n.includes('filtre') && n.includes('air')) {
+          status = airFilterAlreadyProvided ? null : localWarehouseAirFilterOk;
+        } else if (n.includes('liquide') && n.includes('refroid')) {
+          status = coolantAlreadyProvided ? null : localWarehouseCoolant5lOk;
+        } else if (n.includes('courroie')) {
+          status = ventilationBeltAlreadyProvided ? null : localWarehouseVentilationBeltOk;
+        } else {
+          status = true;
+        }
+      } else {
+        status = true;
+      }
+
+      return { name: it, status };
     });
-  }, [siteForFiche, effectiveIncludeAirFilter, effectiveIncludeCoolant, effectiveIncludeVentilationBelt]);
+  }, [siteForFiche, canShowWarehouseControls, localWarehouseAirFilterOk, localWarehouseCoolant5lOk, localWarehouseVentilationBeltOk, airFilterAlreadyProvided, coolantAlreadyProvided, ventilationBeltAlreadyProvided]);
+
+  // Items visible in OBJET and Désignations: only marked ones (true or false)
+  const kitItems = useMemo(() => {
+    return kitItemsWithStatus
+      .filter((it) => it.status !== null)
+      .map((it) => it.name);
+  }, [kitItemsWithStatus]);
 
   const signatureOk = useMemo(() => {
     const v = String(signatureDrawnPng || '').trim();
@@ -497,20 +558,43 @@ const FicheModal = ({
   const isWarehouseReadOnly = Boolean(warehouseReadOnly);
   const canShowFinalize = Boolean(showFinalizeButton && onFinalizeFiche && ficheId);
   const canShowReopen = Boolean(showWarehouseReopenButton && onWarehouseReopen && ficheId);
+  const canShowReprint = Boolean(showReprintButton && onReprintFiche && ficheId);
+  const canShowCancel = Boolean(showCancelButton && onCancelFiche && ficheId);
   const warehouseControlsLabel = isWarehouseView ? 'Contrôle magasin' : Boolean(showWarehouseControls) ? 'Contrôle consommables' : 'Contrôle magasin';
 
-  const canShowBannerBlock = !Boolean(disableSignatureAutofetch) && (!isWarehouseView || canShowFinalize || canShowReopen);
+  const canShowBannerBlock = !Boolean(disableSignatureAutofetch) && (!isWarehouseView || canShowFinalize || canShowReopen || canShowReprint || canShowCancel);
 
-  const shouldShowFinalizeArtifacts = !Boolean(disableSignatureAutofetch) && (!isWarehouseView || canShowFinalize || canShowReopen);
+  const shouldShowFinalizeArtifacts = !Boolean(disableSignatureAutofetch) && (!isWarehouseView || canShowFinalize || canShowReopen || canShowReprint || canShowCancel);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full my-8">
         <style>{`
           @media print {
+            @page { size: A4; margin: 5mm; }
+            html, body { height: auto !important; overflow: hidden !important; }
             body * { visibility: hidden; }
             #fiche-print, #fiche-print * { visibility: visible; }
-            #fiche-print { position: absolute; left: 0; top: 0; width: 210mm; }
+            #fiche-print {
+              position: absolute !important;
+              left: 0 !important;
+              top: 0 !important;
+              width: 200mm !important;
+              max-width: none !important;
+              min-height: auto !important;
+              height: auto !important;
+              overflow: hidden !important;
+              padding: 2mm !important;
+              margin: 0 !important;
+            }
+            #fiche-print img { max-height: 14mm !important; object-fit: contain !important; }
+            #fiche-print hr { margin: 1mm 0 !important; border-width: 1px !important; }
+            #fiche-print table { font-size: 8pt !important; }
+            #fiche-print th, #fiche-print td { padding: 1.5mm !important; border-width: 1px !important; }
+            #fiche-print button { display: none !important; }
+            #fiche-print .warehouse-unmarked { display: none !important; }
+            #fiche-print .print\\:hidden { display: none !important; }
+            .print-hidden { display: none !important; }
           }
         `}</style>
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gray-100">
@@ -541,6 +625,22 @@ const FicheModal = ({
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold w-full sm:w-auto disabled:bg-gray-400 print:hidden"
               >
                 Imprimer
+              </button>
+            )}
+            {canShowReprint && (
+              <button
+                onClick={onReprintFiche}
+                className="bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 font-semibold w-full sm:w-auto print:hidden"
+              >
+                Réimprimer
+              </button>
+            )}
+            {canShowCancel && (
+              <button
+                onClick={() => onCancelFiche({ ficheId })}
+                className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 font-semibold w-full sm:w-auto print:hidden"
+              >
+                Annuler la fiche
               </button>
             )}
             {!isWarehouseView && !shouldHideProcessButtons && (
@@ -648,8 +748,11 @@ const FicheModal = ({
               <p className="text-gray-600 text-xs mb-2">OBJET</p>
               <p className="font-bold text-sm">
                 VIDANGE DU GE {siteForFiche.generateur} {siteForFiche.capacite}
-                {shouldIncludeAirAndCoolant
-                  ? `${effectiveIncludeAirFilter ? ' + Filtre à air GE' : ''}${effectiveIncludeCoolant ? ' + 05 Litres liquide de refroidissement' : ''}`
+                {kitItemsWithStatus.filter((it) => it.status !== null).length > 0
+                  ? ' + ' + kitItemsWithStatus
+                      .filter((it) => it.status !== null)
+                      .map((it) => it.status === false ? `❌ ${it.name.trim()}` : it.name.trim())
+                      .join(' + ')
                   : ''}
               </p>
 
@@ -711,16 +814,6 @@ const FicheModal = ({
                   <button
                     type="button"
                     onClick={async () => {
-                      if (canShowWarehouseControls && !isWarehouseReadOnly) {
-                        if (!airFilterAlreadyProvided && (localWarehouseAirFilterOk === null || localWarehouseAirFilterOk === undefined)) {
-                          alert('Veuillez sélectionner la disponibilité du Filtre à air GE.');
-                          return;
-                        }
-                        if (!coolantAlreadyProvided && (localWarehouseCoolant5lOk === null || localWarehouseCoolant5lOk === undefined)) {
-                          alert('Veuillez sélectionner la disponibilité du liquide de refroidissement.');
-                          return;
-                        }
-                      }
                       await onFinalizeFiche({ ficheId });
                     }}
                     disabled={Boolean(finalizeBusy)}
@@ -751,7 +844,7 @@ const FicheModal = ({
                 <div className="font-bold text-gray-800 mb-2">{warehouseControlsLabel}</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {!airFilterAlreadyProvided && (
-                    <div className="border border-gray-200 rounded-lg p-3">
+                    <div className={`border border-gray-200 rounded-lg p-3 ${(localWarehouseAirFilterOk === null || localWarehouseAirFilterOk === undefined) ? 'warehouse-unmarked' : ''}`}>
                       <div className="font-semibold text-gray-800 mb-2 flex items-center gap-2 flex-wrap">
                         Filtre à air GE
                         {airFilterRule?.showEpv1NotCheckedBadge ? (
@@ -810,7 +903,7 @@ const FicheModal = ({
                   )}
 
                   {!ventilationBeltAlreadyProvided && (
-                    <div className="border border-gray-200 rounded-lg p-3">
+                    <div className={`border border-gray-200 rounded-lg p-3 ${(localWarehouseVentilationBeltOk === null || localWarehouseVentilationBeltOk === undefined) ? 'warehouse-unmarked' : ''}`}>
                       <div className="font-semibold text-gray-800 mb-2">Courroie de ventilation GE</div>
                       <div className="grid grid-cols-2 gap-2">
                         <button
@@ -862,7 +955,7 @@ const FicheModal = ({
                   )}
 
                   {!coolantAlreadyProvided && (
-                    <div className="border border-gray-200 rounded-lg p-3">
+                    <div className={`border border-gray-200 rounded-lg p-3 ${(localWarehouseCoolant5lOk === null || localWarehouseCoolant5lOk === undefined) ? 'warehouse-unmarked' : ''}`}>
                       <div className="font-semibold text-gray-800 mb-2">05 Litres liquide de refroidissement</div>
                       <div className="grid grid-cols-2 gap-2">
                         <button
@@ -981,9 +1074,9 @@ const FicheModal = ({
                     </td>
                     <td className="border-2 border-gray-800 p-6" style={{ verticalAlign: 'top' }}>
                       <div className="flex flex-col items-center justify-center h-full text-center space-y-3">
-                        {kitItems.map((item, idx) => (
-                          <div key={idx} className="text-sm">
-                            {item.trim()}
+                        {kitItemsWithStatus.filter((it) => it.status !== null).map((item, idx) => (
+                          <div key={idx} className="text-sm" style={item.status === false ? { textDecoration: 'line-through', color: '#dc2626' } : undefined}>
+                            {item.status === false ? `❌ ${item.name.trim()}` : item.name.trim()}
                           </div>
                         ))}
                       </div>

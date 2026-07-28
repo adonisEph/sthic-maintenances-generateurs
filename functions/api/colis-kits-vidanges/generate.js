@@ -23,7 +23,16 @@ async function resolveTechnicianUserId(env, zone, technicianName) {
 
   const rows = Array.isArray(res?.results) ? res.results : [];
   const match = rows.find((r) => normalizeName(r?.technician_name) === key) || null;
-  return match?.id ? String(match.id) : null;
+  if (match?.id) return String(match.id);
+
+  // Partial match fallback
+  const partial = rows.filter((r) => {
+    const a = normalizeName(r?.technician_name);
+    return a && (a.includes(key) || key.includes(a));
+  });
+  if (partial.length === 1 && partial[0]?.id) return String(partial[0].id);
+
+  return null;
 }
 
 async function ensureSentIntervention(env, data, siteId, zone, plannedDate, epvType, technicianName) {
@@ -128,11 +137,6 @@ export async function onRequestPost({ request, env, data }) {
           errors.push({ index: i, siteId, error: 'Site introuvable.' });
           continue;
         }
-        if (Boolean(site?.retired)) {
-          errors.push({ index: i, siteId, error: 'Site retiré.' });
-          continue;
-        }
-
         const zone = String(site.zone || 'BZV/POOL');
 
         // Zone authorization: managers restricted to their zone

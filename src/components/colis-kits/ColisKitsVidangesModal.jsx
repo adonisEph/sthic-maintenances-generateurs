@@ -515,7 +515,12 @@ const ColisKitsVidangesModal = ({
                   </div>
                 )}
 
-                <div className="flex items-center justify-end gap-3">
+                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+                    <strong>Prochaine étape :</strong> Les fiches générées sont disponibles dans <strong>Historique</strong>.
+                    Ouvrez une fiche depuis l'Historique pour vérifier les contrôles consommables et la <strong>finaliser</strong> (bouton « Finaliser la fiche »).
+                  </div>
+
+                <div className="flex items-center justify-end gap-3 mt-4">
                   <button
                     onClick={() => { setStep(1); setSelectedTechUserId(null); setSelectedSiteIds(new Set()); }}
                     className="px-4 py-2 rounded-lg font-semibold text-gray-700 hover:bg-gray-100 transition-colors"

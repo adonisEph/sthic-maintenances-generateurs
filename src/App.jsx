@@ -47,7 +47,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.7.1';
+const APP_VERSION = '6.7.2';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -4238,6 +4238,13 @@ useEffect(() => {
 
       setShowWarehouseReturns(false);
 
+      // Enable warehouse controls for managers and SuperAdmin opening from history
+      if (canManagerVidangeActions) {
+        setFicheOpenSource('warehouseReturns');
+        setWarehouseReturnsOpenMode('control');
+        setFicheFlowMode('warehouseReturns');
+      }
+
       setShowFicheModal(true);
     } catch (e) {
       alert(e?.message || "Erreur lors de l'ouverture de la fiche.");
@@ -4399,6 +4406,32 @@ useEffect(() => {
 
     await loadFicheHistory();
     setWarehouseReturnsOpenMode('control');
+  };
+
+  const handleCancelFiche = async ({ ficheId }) => {
+    if (!ficheId) return;
+    const ok = window.confirm(
+      'Confirmer l\'annulation de cette fiche ?\n\nLa fiche passera en statut "Annulée" et l\'intervention liée sera annulée.'
+    );
+    if (!ok) return;
+
+    try {
+      await apiFetchJson(`/api/fiche-history/${encodeURIComponent(String(ficheId))}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ mode: 'cancel' })
+      });
+      await loadFicheHistory();
+      await loadInterventions();
+      bumpInterventionsUiRev();
+      closeFicheModal();
+      alert('Fiche annulée.');
+    } catch (e) {
+      alert(e?.message || 'Erreur lors de l\'annulation.');
+    }
+  };
+
+  const handleReprintFiche = () => {
+    window.print();
   };
 
   const handlePrintFiche = (persistMode = 'finalize') => {
@@ -9203,7 +9236,10 @@ return (
             (ficheOpenSource === 'warehouseReturns' && !isWarehouse) ||
             (ficheOpenSource === 'warehouseProcess' && isWarehouse && activeFiche && String(activeFiche?.status || '').trim() !== 'Effectuée' && !isWarehouseFinalizedFiche(activeFiche))
           )}
-          showWarehouseReopenButton={Boolean(ficheOpenSource === 'warehouseProcess' && isWarehouse && activeFiche && String(activeFiche?.status || '').trim() !== 'Effectuée' && isWarehouseFinalizedFiche(activeFiche))}
+          showWarehouseReopenButton={Boolean(
+            (ficheOpenSource === 'warehouseProcess' && isWarehouse && activeFiche && String(activeFiche?.status || '').trim() !== 'Effectuée' && isWarehouseFinalizedFiche(activeFiche)) ||
+            (ficheOpenSource === 'warehouseReturns' && !isWarehouse && canManagerVidangeActions && activeFiche && String(activeFiche?.status || '').trim() !== 'Effectuée' && isWarehouseFinalizedFiche(activeFiche))
+          )}
           finalizeBusy={finalizeBusy}
           hideWarehouseSection={Boolean(ficheFlowMode === 'preSend')}
           showSendToWarehouseInObjet={Boolean(ficheFlowMode === 'preSend')}
@@ -9226,6 +9262,18 @@ return (
           goBatchFiche={goBatchFiche}
           handlePrintFiche={handlePrintFiche}
           handleSaveFichePdf={handleSaveFichePdf}
+          onReprintFiche={handleReprintFiche}
+          showReprintButton={Boolean(
+            activeFiche && isWarehouseFinalizedFiche(activeFiche) &&
+            String(activeFiche?.status || '').trim() !== 'Effectuée' &&
+            (isWarehouse || canManagerVidangeActions)
+          )}
+          onCancelFiche={handleCancelFiche}
+          showCancelButton={Boolean(
+            activeFiche && isWarehouseFinalizedFiche(activeFiche) &&
+            String(activeFiche?.status || '').trim() !== 'Effectuée' &&
+            (isWarehouse || canManagerVidangeActions)
+          )}
           warehouseAirFilterOk={activeFiche?.warehouseAirFilterOk ?? null}
           warehouseCoolant5lOk={activeFiche?.warehouseCoolant5lOk ?? null}
           warehouseVentilationBeltOk={activeFiche?.warehouseVentilationBeltOk ?? null}
