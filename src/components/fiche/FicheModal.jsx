@@ -63,27 +63,53 @@ const FicheModal = ({
     warehouseVentilationBeltOk === null || warehouseVentilationBeltOk === undefined ? null : Boolean(warehouseVentilationBeltOk)
   );
 
-  // Dynamic print scaling: measure content, scale down to fit A4 height (never scale up)
+  // Dynamic print scaling: measure content, scale to fit A4 height (downscale or upscale)
   useEffect(() => {
     if (!open) return;
     const A4_H = 1083; // ~287mm printable height at 96dpi
-    const MIN_SCALE = 0.5;
-    const MAX_SCALE = 1.0; // do not enlarge on print
+    const MIN_SCALE = 0.65; // lisible minimal
+    const MAX_SCALE = 1.6; // agrandissement raisonnable pour remplir la page
 
     const onBefore = () => {
       const el = document.getElementById('fiche-print');
       if (!el) return;
-      el.style.transform = '';
-      const h = el.scrollHeight;
-      if (h > 0 && h !== A4_H) {
-        let s = A4_H / h;
-        s = Math.max(MIN_SCALE, Math.min(MAX_SCALE, s));
-        if (s !== 1) {
-          el.style.transform = `scale(${s})`;
-          el.style.transformOrigin = 'top center';
-          el.style.width = `${200 / s}mm`;
+      let level = 0; // 0..3 tightness
+
+      const applyTight = () => {
+        el.classList.remove('print-tight-1', 'print-tight-2', 'print-tight-3');
+        if (level >= 1) el.classList.add('print-tight-1');
+        if (level >= 2) el.classList.add('print-tight-2');
+        if (level >= 3) el.classList.add('print-tight-3');
+      };
+
+      const fit = () => {
+        // reset transform to measure accurately
+        el.style.transform = '';
+        el.style.width = '';
+        const h = el.scrollHeight;
+        if (h <= 0) return;
+        const raw = A4_H / h;
+        if (raw < MIN_SCALE && level < 3) {
+          level += 1; // tighten spacings progressively before going below min scale
+          applyTight();
+          setTimeout(fit, 30);
+          return;
         }
-      }
+        const s = Math.max(MIN_SCALE, Math.min(MAX_SCALE, raw));
+        el.style.transform = `scale(${s})`;
+        el.style.transformOrigin = 'top center';
+        el.style.width = `${200 / s}mm`; // keep visual width ~200mm
+      };
+
+      applyTight();
+      // run a few passes to stabilize after late layout/image loads
+      let passes = 0;
+      const run = () => {
+        fit();
+        passes += 1;
+        if (passes < 4) setTimeout(run, 60);
+      };
+      run();
     };
     const onAfter = () => {
       const el = document.getElementById('fiche-print');
@@ -91,6 +117,7 @@ const FicheModal = ({
       el.style.transform = '';
       el.style.transformOrigin = '';
       el.style.width = '';
+      el.classList.remove('print-tight-1', 'print-tight-2', 'print-tight-3');
     };
     window.addEventListener('beforeprint', onBefore);
     window.addEventListener('afterprint', onAfter);
@@ -623,6 +650,22 @@ const FicheModal = ({
             #fiche-print .print\\:hidden { display: none !important; }
             #fiche-print .print\\:block { display: block !important; }
             .print-hidden { display: none !important; }
+
+            /* Progressive tightening to fit without going below min scale */
+            #fiche-print.print-tight-1 { padding: 1.5mm !important; }
+            #fiche-print.print-tight-1 table { font-size: 7.8pt !important; }
+            #fiche-print.print-tight-1 th, #fiche-print.print-tight-1 td { padding: 1.2mm !important; }
+            #fiche-print.print-tight-1 h1, #fiche-print.print-tight-1 h2, #fiche-print.print-tight-1 h3, #fiche-print.print-tight-1 p, #fiche-print.print-tight-1 div { line-height: 1.25 !important; }
+
+            #fiche-print.print-tight-2 { padding: 1mm !important; }
+            #fiche-print.print-tight-2 table { font-size: 7.6pt !important; }
+            #fiche-print.print-tight-2 th, #fiche-print.print-tight-2 td { padding: 1mm !important; }
+            #fiche-print.print-tight-2 h1, #fiche-print.print-tight-2 h2, #fiche-print.print-tight-2 h3, #fiche-print.print-tight-2 p, #fiche-print.print-tight-2 div { line-height: 1.2 !important; }
+
+            #fiche-print.print-tight-3 { padding: 0.6mm !important; }
+            #fiche-print.print-tight-3 table { font-size: 7.4pt !important; }
+            #fiche-print.print-tight-3 th, #fiche-print.print-tight-3 td { padding: 0.8mm !important; }
+            #fiche-print.print-tight-3 h1, #fiche-print.print-tight-3 h2, #fiche-print.print-tight-3 h3, #fiche-print.print-tight-3 p, #fiche-print.print-tight-3 div { line-height: 1.15 !important; }
           }
         `}</style>
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gray-100">
