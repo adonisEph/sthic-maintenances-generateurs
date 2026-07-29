@@ -63,65 +63,48 @@ const FicheModal = ({
     warehouseVentilationBeltOk === null || warehouseVentilationBeltOk === undefined ? null : Boolean(warehouseVentilationBeltOk)
   );
 
-  // Dynamic print scaling: measure content, scale to fit A4 height (downscale or upscale)
+  // Dynamic print scaling: computed continuously while the fiche is on screen
+  // (never tied to the 'beforeprint' event, which is unreliable in Chrome for
+  // synchronously applying style changes before the print snapshot is taken).
+  // The computed factor is stored as a CSS variable on #fiche-print at all
+  // times; it is only ever *visually applied* via a static @media print rule
+  // (see the <style> block below), so there is zero dependency on print-event
+  // timing — just plain, reliable, declarative CSS.
+  const [printScale, setPrintScale] = useState(1);
+
   useEffect(() => {
     if (!open) return;
-    const A4_H = 1083; // ~287mm printable height at 96dpi
-    const MIN_SCALE = 0.6; // taille minimale lisible (jamais réduit davantage)
-    const MAX_SCALE = 1.7; // agrandissement maximal raisonnable
+    const el = document.getElementById('fiche-print');
+    if (!el) return;
 
-    // Uses CSS zoom (not transform) because zoom actually reflows the box,
-    // so the browser's print pagination is computed on the correct (scaled)
-    // height. CSS transform only repaints visually and does NOT change the
-    // box's contribution to page-break calculations, which caused pages to
-    // multiply (e.g. 35 pages) instead of fitting on a single A4 page.
-    const applyFit = (el, factor) => {
-      el.style.zoom = String(factor);
-      // Compensate width so the visually rendered width stays ~200mm
-      // (usable A4 width with 5mm margins), avoiding side gaps.
-      el.style.width = `${200 / factor}mm`;
-    };
+    const A4_H = 1110; // ~293mm printable height at 96dpi (with 3mm @page margin)
+    const MIN_SCALE = 0.6; // taille minimale lisible (jamais réduite davantage)
+    const MAX_SCALE = 1.8; // agrandissement maximal raisonnable
 
-    const resetFit = (el) => {
-      el.style.zoom = '';
-      el.style.width = '';
-    };
-
-    const onBefore = () => {
-      const el = document.getElementById('fiche-print');
-      if (!el) return;
-
-      resetFit(el);
-      // Force reflow to measure the natural (unscaled) content height
+    const recompute = () => {
+      // Measure the element's natural height. Since the zoom is only ever
+      // applied under @media print (never on screen), this always reflects
+      // the true unscaled content height — no reset needed, no compounding.
       const naturalH = el.scrollHeight;
       if (naturalH <= 0) return;
-
-      let factor = A4_H / naturalH;
-      factor = Math.max(MIN_SCALE, Math.min(MAX_SCALE, factor));
-      applyFit(el, factor);
-
-      // Correction pass: zoom changes layout synchronously in Chromium,
-      // so re-measure immediately and fine-tune if still off due to rounding.
-      const scaledH = el.scrollHeight;
-      if (scaledH > 0 && Math.abs(scaledH - A4_H) > 6) {
-        const corrected = Math.max(MIN_SCALE, Math.min(MAX_SCALE, factor * (A4_H / scaledH)));
-        if (Math.abs(corrected - factor) > 0.01) {
-          applyFit(el, corrected);
-        }
-      }
+      const factor = Math.max(MIN_SCALE, Math.min(MAX_SCALE, A4_H / naturalH));
+      setPrintScale((prev) => (Math.abs(prev - factor) > 0.005 ? factor : prev));
     };
-    const onAfter = () => {
-      const el = document.getElementById('fiche-print');
-      if (!el) return;
-      resetFit(el);
-    };
-    window.addEventListener('beforeprint', onBefore);
-    window.addEventListener('afterprint', onAfter);
+
+    recompute();
+    // Late content (images, fonts) can change height after first paint.
+    const t1 = setTimeout(recompute, 150);
+    const t2 = setTimeout(recompute, 500);
+
+    const ro = new ResizeObserver(() => recompute());
+    ro.observe(el);
+
     return () => {
-      window.removeEventListener('beforeprint', onBefore);
-      window.removeEventListener('afterprint', onAfter);
+      clearTimeout(t1);
+      clearTimeout(t2);
+      ro.disconnect();
     };
-  }, [open]);
+  }, [open, bannerImage, signatureDrawnPng, ficheId]);
 
   const currentFiche = useMemo(() => {
     const list = Array.isArray(ficheHistory) ? ficheHistory : [];
@@ -635,6 +618,8 @@ const FicheModal = ({
               overflow: hidden !important;
               padding: 1mm !important;
               margin: 0 auto !important;
+              zoom: var(--pf, 1);
+              width: calc(200mm / var(--pf, 1)) !important;
             }
             #fiche-print img { object-fit: contain !important; }
             #fiche-print .signature-img { height: 32px !important; width: auto !important; }
@@ -748,7 +733,7 @@ const FicheModal = ({
           <div
             id="fiche-print"
             className="bg-white mx-auto flex flex-col"
-            style={{ maxWidth: '210mm', width: '100%', boxSizing: 'border-box' }}
+            style={{ maxWidth: '210mm', width: '100%', boxSizing: 'border-box', '--pf': printScale }}
           >
             {canShowBannerBlock && bannerImage && (
               <div className="mb-3 print:mb-1 border-2 border-gray-300 rounded overflow-hidden bg-gray-200">
