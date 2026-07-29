@@ -700,7 +700,7 @@ const FicheModal = ({
           <div
             id="fiche-print"
             className="bg-white mx-auto flex flex-col"
-            style={{ maxWidth: '210mm', width: '100%', minHeight: '277mm', boxSizing: 'border-box' }}
+            style={{ maxWidth: '210mm', width: '100%', boxSizing: 'border-box' }}
           >
             {canShowBannerBlock && bannerImage && (
               <div className="mb-3 border-2 border-gray-300 rounded overflow-hidden bg-gray-200">

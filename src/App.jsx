@@ -47,7 +47,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.7.3';
+const APP_VERSION = '6.7.4';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -332,6 +332,14 @@ const GeneratorMaintenanceApp = () => {
   const canManageUsers = isAdmin;
   const canUseInterventions = isAdmin || isAnyManager || isWarehouse || isTechnician || isController || isFieldSupervisor;
   const canUsePm = isAdmin || isAnyManager || isController || isFieldSupervisor;
+
+  const zonalWarehousePresent = useMemo(() => {
+    const zone = String(authZone || '').trim();
+    const arr = Array.isArray(users) ? users : [];
+    return arr.some(
+      (u) => u && String(u.role || '') === 'warehouse' && String(u.zone || '').trim() === zone && !(u.disabledAt || u.disabled_at)
+    );
+  }, [users, authZone]);
 
   const isClosedInterventionStatus = (status) => {
     const st = String(status || '').trim().toLowerCase();
@@ -1420,13 +1428,13 @@ const GeneratorMaintenanceApp = () => {
     try {
       const role = String(authUser?.role || '').trim();
 
-      if (role === 'admin') {
+      if (role === 'admin' || role === 'manager') {
         const data = await apiFetchJson('/api/users', { method: 'GET' });
         setUsers(Array.isArray(data?.users) ? data.users : []);
         return data;
       }
 
-      if (role === 'manager' || role === 'manager_bzv_pool' || role === 'controller' || role === 'field_supervisor' || role === 'viewer' || role === 'warehouse') {
+      if (role === 'manager_bzv_pool' || role === 'controller' || role === 'field_supervisor' || role === 'viewer' || role === 'warehouse') {
         const data = await apiFetchJson('/api/technicians', { method: 'GET' });
         const techs = Array.isArray(data?.technicians) ? data.technicians : [];
         const mapped = techs.map((t) => ({ ...t, role: 'technician' }));
@@ -4067,7 +4075,7 @@ useEffect(() => {
     const authZone = String(authUser?.zone || '').trim().toUpperCase();
     const forceWarehouseReturns = Boolean(opts?.forceWarehouseReturns);
     const isCase2NoWarehouse = Boolean(
-      forceWarehouseReturns || (isManager && (authZone === 'PNR/KOUILOU' || authZone === 'UPCN'))
+      forceWarehouseReturns || (isManager && (authZone === 'PNR/KOUILOU' || authZone === 'UPCN') && !zonalWarehousePresent)
     );
 
     setFicheOpenSource(isCase2NoWarehouse ? 'warehouseReturns' : 'history');
@@ -4246,8 +4254,13 @@ useEffect(() => {
 
       setShowWarehouseReturns(false);
 
-      // Enable warehouse controls for managers and SuperAdmin opening from history
-      if (canManagerVidangeActions) {
+      // Enable warehouse controls for eligible roles from history, with auto-disable for PNR/UPCN managers if a zonal warehouse exists
+      const zoneUp = String(authZone || '').trim().toUpperCase();
+      if (isSuperAdmin || isManagerBzvPool) {
+        setFicheOpenSource('warehouseReturns');
+        setWarehouseReturnsOpenMode('control');
+        setFicheFlowMode('warehouseReturns');
+      } else if (isManager && (zoneUp === 'PNR/KOUILOU' || zoneUp === 'UPCN') && !zonalWarehousePresent) {
         setFicheOpenSource('warehouseReturns');
         setWarehouseReturnsOpenMode('control');
         setFicheFlowMode('warehouseReturns');
@@ -4328,7 +4341,7 @@ useEffect(() => {
     setShowDayDetailsModal(false);
     const authZone = String(authUser?.zone || '').trim().toUpperCase();
     const isCase2NoWarehouse = Boolean(
-      isManager && (authZone === 'PNR/KOUILOU' || authZone === 'UPCN')
+      isManager && (authZone === 'PNR/KOUILOU' || authZone === 'UPCN') && !zonalWarehousePresent
     );
 
     setFicheOpenSource(isCase2NoWarehouse ? 'warehouseReturns' : 'history');
