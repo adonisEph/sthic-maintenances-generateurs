@@ -625,7 +625,7 @@ const FicheModal = ({
       <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full my-8">
         <style>{`
           @media print {
-            @page { size: A4; margin: 5mm; }
+            @page { size: A4; margin: 3mm; }
             html, body { height: auto !important; overflow: hidden !important; }
             body * { visibility: hidden; }
             #fiche-print, #fiche-print * { visibility: visible; }
@@ -633,10 +633,11 @@ const FicheModal = ({
               min-height: auto !important;
               height: auto !important;
               overflow: hidden !important;
-              padding: 2mm !important;
+              padding: 1mm !important;
               margin: 0 auto !important;
             }
             #fiche-print img { object-fit: contain !important; }
+            #fiche-print .signature-img { height: 32px !important; width: auto !important; }
             #fiche-print button { display: none !important; }
             #fiche-print .warehouse-unmarked { display: none !important; }
             #fiche-print .print\\:hidden { display: none !important; }
@@ -750,7 +751,7 @@ const FicheModal = ({
             style={{ maxWidth: '210mm', width: '100%', boxSizing: 'border-box' }}
           >
             {canShowBannerBlock && bannerImage && (
-              <div className="mb-3 border-2 border-gray-300 rounded overflow-hidden bg-gray-200">
+              <div className="mb-3 print:mb-1 border-2 border-gray-300 rounded overflow-hidden bg-gray-200">
                 <img
                   src={bannerImage}
                   alt="Bannière Helios Towers - STHIC"
@@ -766,7 +767,7 @@ const FicheModal = ({
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-4 mb-6 text-sm">
+            <div className="grid grid-cols-2 gap-4 print:gap-1 mb-6 print:mb-2 text-sm">
               <div>
                 <p className="text-gray-600 text-xs mb-1">CLIENT</p>
                 <p className="font-bold text-base">HTC</p>
@@ -789,10 +790,10 @@ const FicheModal = ({
               </div>
             </div>
 
-            <hr className="my-3 border-gray-800" style={{ borderWidth: '2px' }} />
+            <hr className="my-3 print:my-1 border-gray-800" style={{ borderWidth: '2px' }} />
 
-            <div className="mb-6">
-              <p className="text-gray-600 text-xs mb-2">OBJET</p>
+            <div className="mb-6 print:mb-2">
+              <p className="text-gray-600 text-xs mb-2 print:mb-1">OBJET</p>
               <p className="font-bold text-sm">
                 VIDANGE DU GE {siteForFiche.generateur} {siteForFiche.capacite}
                 {kitItemsWithStatus.filter((it) => it.status !== null).length > 0
@@ -804,7 +805,7 @@ const FicheModal = ({
               </p>
 
               {(currentFiche?.sentToWarehouseAt || currentFiche?.warehouseFinalizedAt) && (
-                <div className="mt-3 space-y-1 text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                <div className="mt-3 print:mt-1 space-y-1 text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-lg p-3 print:p-1">
                   {currentFiche?.sentToWarehouseAt && (
                     <div>
                       Envoyée au magasinier par <span className="font-semibold">{currentFiche?.sentToWarehouseBy || '-'}</span> le{' '}
@@ -887,12 +888,12 @@ const FicheModal = ({
             </div>
 
             {canShowWarehouseControls && (
-              <div className="mb-4 border border-gray-300 rounded-lg p-3 text-sm">
-                <div className="font-bold text-gray-800 mb-2">{warehouseControlsLabel}</div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="mb-4 print:mb-1 border border-gray-300 rounded-lg p-3 print:p-1 text-sm">
+                <div className="font-bold text-gray-800 mb-2 print:mb-1">{warehouseControlsLabel}</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 print:gap-1">
                   {
-                    <div className={`border border-gray-200 rounded-lg p-3 ${(localWarehouseAirFilterOk === null || localWarehouseAirFilterOk === undefined) ? 'warehouse-unmarked' : ''}`}>
-                      <div className="font-semibold text-gray-800 mb-2 flex items-center gap-2 flex-wrap">
+                    <div className={`border border-gray-200 rounded-lg p-3 print:p-1 ${(localWarehouseAirFilterOk === null || localWarehouseAirFilterOk === undefined) ? 'warehouse-unmarked' : ''}`}>
+                      <div className="font-semibold text-gray-800 mb-2 print:mb-1 flex items-center gap-2 flex-wrap">
                         Filtre à air GE
                         {airFilterRule?.showEpv1NotCheckedBadge ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
@@ -953,8 +954,8 @@ const FicheModal = ({
                   }
 
                   {
-                    <div className={`border border-gray-200 rounded-lg p-3 ${(localWarehouseVentilationBeltOk === null || localWarehouseVentilationBeltOk === undefined) ? 'warehouse-unmarked' : ''}`}>
-                      <div className="font-semibold text-gray-800 mb-2">Courroie de ventilation GE</div>
+                    <div className={`border border-gray-200 rounded-lg p-3 print:p-1 ${(localWarehouseVentilationBeltOk === null || localWarehouseVentilationBeltOk === undefined) ? 'warehouse-unmarked' : ''}`}>
+                      <div className="font-semibold text-gray-800 mb-2 print:mb-1">Courroie de ventilation GE</div>
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
@@ -1008,8 +1009,8 @@ const FicheModal = ({
                   }
 
                   {
-                    <div className={`border border-gray-200 rounded-lg p-3 ${(localWarehouseCoolant5lOk === null || localWarehouseCoolant5lOk === undefined) ? 'warehouse-unmarked' : ''}`}>
-                      <div className="font-semibold text-gray-800 mb-2">05 Litres liquide de refroidissement</div>
+                    <div className={`border border-gray-200 rounded-lg p-3 print:p-1 ${(localWarehouseCoolant5lOk === null || localWarehouseCoolant5lOk === undefined) ? 'warehouse-unmarked' : ''}`}>
+                      <div className="font-semibold text-gray-800 mb-2 print:mb-1">05 Litres liquide de refroidissement</div>
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
@@ -1097,39 +1098,39 @@ const FicheModal = ({
               </div>
             )}
 
-            <hr className="my-3 border-gray-800" style={{ borderWidth: '2px' }} />
+            <hr className="my-3 print:my-1 border-gray-800" style={{ borderWidth: '2px' }} />
 
             <div className="flex flex-col">
               <table className="w-full border-2 border-gray-800 text-sm">
                 <thead>
                   <tr>
                     <th
-                      className="border-2 border-gray-800 p-3 bg-gray-100 text-center"
+                      className="border-2 border-gray-800 p-3 print:p-1 bg-gray-100 text-center"
                       style={{ width: '15%' }}
                     >
                       Qtés
                     </th>
                     <th
-                      className="border-2 border-gray-800 p-3 bg-gray-100 text-center"
+                      className="border-2 border-gray-800 p-3 print:p-1 bg-gray-100 text-center"
                       style={{ width: '20%' }}
                     >
                       PMW000xxxxxx
                     </th>
-                    <th className="border-2 border-gray-800 p-3 bg-gray-100" style={{ width: '65%' }}>
+                    <th className="border-2 border-gray-800 p-3 print:p-1 bg-gray-100" style={{ width: '65%' }}>
                       Désignations
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td className="border-2 border-gray-800 p-4" style={{ verticalAlign: 'top' }}>
+                    <td className="border-2 border-gray-800 p-4 print:p-1" style={{ verticalAlign: 'top' }}>
                       &nbsp;
                     </td>
-                    <td className="border-2 border-gray-800 p-4" style={{ verticalAlign: 'top' }}>
+                    <td className="border-2 border-gray-800 p-4 print:p-1" style={{ verticalAlign: 'top' }}>
                       &nbsp;
                     </td>
-                    <td className="border-2 border-gray-800 p-6" style={{ verticalAlign: 'top' }}>
-                      <div className="flex flex-col items-center justify-center h-full text-center space-y-3">
+                    <td className="border-2 border-gray-800 p-6 print:p-1" style={{ verticalAlign: 'top' }}>
+                      <div className="flex flex-col items-center justify-center h-full text-center space-y-3 print:space-y-1">
                         {kitItemsWithStatus.filter((it) => it.status !== null).map((item, idx) => (
                           <div key={idx} className="text-sm" style={item.status === false ? { textDecoration: 'line-through', color: '#dc2626' } : undefined}>
                             {item.status === false ? `❌ ${item.name.trim()}` : item.name.trim()}
@@ -1142,28 +1143,29 @@ const FicheModal = ({
               </table>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 text-sm mt-auto pt-4">
+            <div className="grid grid-cols-2 gap-4 print:gap-1 text-sm mt-auto pt-4 print:pt-1">
               {shouldShowFinalizeArtifacts && (
-                <div className="border-2 border-gray-800 p-4" style={{ minHeight: '90px' }}>
-                  <p className="font-bold mb-3 text-base">H</p>
-                  <p className="text-3xl font-bold text-center mt-2">{siteForFiche.nh1DV} H</p>
+                <div className="border-2 border-gray-800 p-4 print:p-1 min-h-[90px] print:min-h-[40px]">
+                  <p className="font-bold mb-3 print:mb-1 text-base">H</p>
+                  <p className="text-3xl font-bold text-center mt-2 print:mt-1">{siteForFiche.nh1DV} H</p>
                 </div>
               )}
               {shouldShowFinalizeArtifacts && (
-                <div className="border-2 border-gray-800 p-4" style={{ minHeight: '90px' }}>
-                  <p className="font-bold mb-3 text-right text-base">SIGNATURE RESPONSABLE</p>
-                  <div className="flex items-center justify-end" style={{ height: '65px' }}>
+                <div className="border-2 border-gray-800 p-4 print:p-1 min-h-[90px] print:min-h-[40px]">
+                  <p className="font-bold mb-3 print:mb-1 text-right text-base">SIGNATURE RESPONSABLE</p>
+                  <div className="flex items-center justify-end h-[65px] print:h-[35px]">
                     {signatureOk ? (
                       <img
                         alt="Signature"
                         src={signatureDrawnPng}
+                        className="signature-img"
                         style={{ height: '80px', width: '260px', maxWidth: '100%', objectFit: 'contain' }}
                       />
                     ) : (
                       <div className="text-xs text-gray-600">Signature non disponible</div>
                     )}
                   </div>
-                  <p className="text-xs text-right mt-3">DATE</p>
+                  <p className="text-xs text-right mt-3 print:mt-1">DATE</p>
                   <p className="text-right font-bold">{formatDate(new Date().toISOString())}</p>
                 </div>
               )}
