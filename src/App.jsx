@@ -47,7 +47,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.7.2';
+const APP_VERSION = '6.7.3';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -562,6 +562,14 @@ const GeneratorMaintenanceApp = () => {
   };
 
   const isWarehouseFinalizedFiche = (fiche) => getWarehouseFlowState(fiche) === 'finalized';
+
+  const isFinalizedFiche = (fiche) => {
+    if (isWarehouseFinalizedFiche(fiche)) return true;
+    const st = String(fiche?.status || '').trim();
+    const tkt = String(fiche?.ticketNumber || '').trim();
+    if (st === 'En attente' && tkt.length > 0) return true;
+    return false;
+  };
 
   const warehouseProcessCount = useMemo(() => {
     const list = Array.isArray(ficheHistory) ? ficheHistory : [];
@@ -9264,13 +9272,13 @@ return (
           handleSaveFichePdf={handleSaveFichePdf}
           onReprintFiche={handleReprintFiche}
           showReprintButton={Boolean(
-            activeFiche && isWarehouseFinalizedFiche(activeFiche) &&
+            activeFiche && isFinalizedFiche(activeFiche) &&
             String(activeFiche?.status || '').trim() !== 'Effectuée' &&
             (isWarehouse || canManagerVidangeActions)
           )}
           onCancelFiche={handleCancelFiche}
           showCancelButton={Boolean(
-            activeFiche && isWarehouseFinalizedFiche(activeFiche) &&
+            activeFiche && isFinalizedFiche(activeFiche) &&
             String(activeFiche?.status || '').trim() !== 'Effectuée' &&
             (isWarehouse || canManagerVidangeActions)
           )}

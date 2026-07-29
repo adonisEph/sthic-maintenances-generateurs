@@ -166,7 +166,15 @@ export async function onRequestPost({ request, env, data }) {
             .all();
           const rows = Array.isArray(res?.results) ? res.results : [];
           const match = rows.find((r) => norm(r?.technician_name) === key) || null;
-          if (match?.id) technicianUserId = String(match.id);
+          if (match?.id) {
+            technicianUserId = String(match.id);
+          } else {
+            const partial = rows.filter((r) => {
+              const a = norm(r?.technician_name);
+              return a && (a.includes(key) || key.includes(a));
+            });
+            if (partial.length === 1 && partial[0]?.id) technicianUserId = String(partial[0].id);
+          }
         }
       } catch {
         // ignore: technicianUserId will remain null
@@ -239,7 +247,15 @@ export async function onRequestPost({ request, env, data }) {
                   .all();
                 const rows = Array.isArray(res?.results) ? res.results : [];
                 const match = rows.find((r) => norm(r?.technician_name) === key) || null;
-                if (match?.id) techIdToSet = String(match.id);
+                if (match?.id) {
+                  techIdToSet = String(match.id);
+                } else {
+                  const partial = rows.filter((r) => {
+                    const a = norm(r?.technician_name);
+                    return a && (a.includes(key) || key.includes(a));
+                  });
+                  if (partial.length === 1 && partial[0]?.id) techIdToSet = String(partial[0].id);
+                }
               }
             } catch {
               techIdToSet = null;

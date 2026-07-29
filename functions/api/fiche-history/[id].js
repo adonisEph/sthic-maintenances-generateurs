@@ -447,7 +447,12 @@ export async function onRequestPatch({ request, env, data, params }) {
       const flowStatus = String(existing?.warehouse_flow_status || '').trim();
       if (st === 'Annulée') return json({ error: 'Fiche déjà annulée.' }, { status: 409 });
       if (st === 'Effectuée') return json({ error: 'Fiche déjà clôturée avec intervention effectuée.' }, { status: 409 });
-      if (flowStatus !== 'finalized') return json({ error: 'Seules les fiches finalisées peuvent être annulées.' }, { status: 409 });
+      
+      const isWarehouseFinalized = flowStatus === 'finalized';
+      const isManagerFinalized = st === 'En attente' && String(existing?.ticket_number || '').trim().length > 0;
+      if (!isWarehouseFinalized && !isManagerFinalized) {
+        return json({ error: 'Seules les fiches finalisées peuvent être annulées.' }, { status: 409 });
+      }
 
       // Cancel linked intervention
       const interventionId = String(existing?.intervention_id || '').trim();
@@ -460,7 +465,7 @@ export async function onRequestPatch({ request, env, data, params }) {
       }
 
       await env.DB.prepare(
-        'UPDATE fiche_history SET status = ?, warehouse_flow_status = ?, updated_at = ? WHERE id = ?'
+        'UPDATE fiche_history SET status = ?, ticket_number = NULL, warehouse_flow_status = ?, updated_at = ? WHERE id = ?'
       )
         .bind('Annulée', null, now, id)
         .run();
