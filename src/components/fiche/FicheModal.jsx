@@ -604,14 +604,41 @@ const FicheModal = ({
   const shouldShowFinalizeArtifacts = !Boolean(disableSignatureAutofetch) && (!isWarehouseView || canShowFinalize || canShowReopen || canShowReprint || canShowCancel);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full my-8">
+    <div className="fiche-modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="fiche-modal-box bg-white rounded-lg shadow-xl max-w-4xl w-full my-8">
         <style>{`
           @media print {
             @page { size: A4; margin: 3mm; }
             html, body { height: auto !important; overflow: hidden !important; }
-            body * { visibility: hidden; }
-            #fiche-print, #fiche-print * { visibility: visible; }
+
+            /* Truly remove every other part of the app from the print flow.
+               visibility:hidden (previous approach) keeps the element's layout
+               height, so all the background app content (sidebar, tables,
+               other modals) still occupied vertical space on the printed page
+               even though invisible, generating a variable number of extra
+               blank pages depending on how much data was mounted. display:none
+               fully removes it from the flow. */
+            body *:not(:has(#fiche-print)):not(#fiche-print):not(#fiche-print *) {
+              display: none !important;
+            }
+
+            /* Neutralize the modal's fixed/flex ancestor wrappers, which
+               otherwise keep position:fixed / flex-centering / backdrop
+               styling that can interfere with print pagination. */
+            .fiche-modal-overlay {
+              position: static !important;
+              background: none !important;
+              display: block !important;
+              padding: 0 !important;
+              overflow: visible !important;
+            }
+            .fiche-modal-box {
+              max-width: none !important;
+              width: auto !important;
+              margin: 0 !important;
+              box-shadow: none !important;
+            }
+
             #fiche-print {
               min-height: auto !important;
               height: auto !important;
