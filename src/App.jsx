@@ -7451,38 +7451,6 @@ return (
           </div>
         </div>
       )}
-      <style>{`
-        @media print {
-          @page { size: A4; margin: 0; }
-          html, body {
-            width: 210mm;
-            height: 297mm;
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-          }
-          body * { visibility: hidden !important; }
-          #fiche-print, #fiche-print * { visibility: visible !important; }
-          #fiche-print {
-            position: absolute;
-            left: 0;
-            right: 0;
-            top: 0;
-            margin: 0 auto;
-            width: 210mm;
-            height: 297mm;
-            padding: 8mm;
-            box-sizing: border-box;
-            box-shadow: none !important;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            page-break-inside: avoid;
-            break-inside: avoid;
-          }
-          .no-print { display: none !important; }
-        }
-      `}</style>
       <div className="flex min-h-[100svh] md:min-h-screen">
         {sidebarOpen && (
           <div
