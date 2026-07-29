@@ -63,26 +63,25 @@ const FicheModal = ({
     warehouseVentilationBeltOk === null || warehouseVentilationBeltOk === undefined ? null : Boolean(warehouseVentilationBeltOk)
   );
 
-  // Dynamic print scaling: measure content, scale to fit A4
+  // Dynamic print scaling: measure content, scale down to fit A4 height (never scale up)
   useEffect(() => {
     if (!open) return;
-    const A4_H = 1083; // 297mm - 10mm margins at 96dpi
+    const A4_H = 1083; // ~287mm printable height at 96dpi
     const MIN_SCALE = 0.5;
-    const MAX_SCALE = 1.3;
+    const MAX_SCALE = 1.0; // do not enlarge on print
 
     const onBefore = () => {
       const el = document.getElementById('fiche-print');
       if (!el) return;
       el.style.transform = '';
-      el.style.width = '';
       const h = el.scrollHeight;
       if (h > 0 && h !== A4_H) {
         let s = A4_H / h;
         s = Math.max(MIN_SCALE, Math.min(MAX_SCALE, s));
         if (s !== 1) {
           el.style.transform = `scale(${s})`;
-          el.style.transformOrigin = 'top left';
-          el.style.width = `${100 / s}%`;
+          el.style.transformOrigin = 'top center';
+          el.style.width = `${200 / s}mm`;
         }
       }
     };
@@ -413,6 +412,38 @@ const FicheModal = ({
 
   const shouldIncludeAirAndCoolant = effectiveIncludeAirFilter || effectiveIncludeCoolant || effectiveIncludeVentilationBelt;
 
+  const hasAirFilterInKit = useMemo(() => {
+    const raw = String(siteForFiche?.kitVidange || '');
+    const items = raw.split('/').map((x) => String(x || '').trim()).filter(Boolean);
+    const norm = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    return items.some((it) => {
+      const n = norm(it);
+      return n.includes('filtre') && n.includes('air');
+    });
+  }, [siteForFiche]);
+
+  const hasCoolantInKit = useMemo(() => {
+    const raw = String(siteForFiche?.kitVidange || '');
+    const items = raw.split('/').map((x) => String(x || '').trim()).filter(Boolean);
+    const norm = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    return items.some((it) => {
+      const n = norm(it);
+      return n.includes('liquide') && n.includes('refroid');
+    });
+  }, [siteForFiche]);
+
+  const hasVentilationBeltInKit = useMemo(() => {
+    const raw = String(siteForFiche?.kitVidange || '');
+    const items = raw.split('/').map((x) => String(x || '').trim()).filter(Boolean);
+    const norm = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    return items.some((it) => {
+      const n = norm(it);
+      return n.includes('courroie');
+    });
+  }, [siteForFiche]);
+
+  const hasWarehouseConsumablesInKit = hasAirFilterInKit || hasCoolantInKit || hasVentilationBeltInKit;
+
   // Build kit items with warehouse status: true=Disponible, false=Indispo, null=not marked
   const kitItemsWithStatus = useMemo(() => {
     const raw = String(siteForFiche?.kitVidange || '');
@@ -433,11 +464,11 @@ const FicheModal = ({
 
       if (canShowWarehouseControls) {
         if (n.includes('filtre') && n.includes('air')) {
-          status = airFilterAlreadyProvided ? null : localWarehouseAirFilterOk;
+          status = localWarehouseAirFilterOk;
         } else if (n.includes('liquide') && n.includes('refroid')) {
-          status = coolantAlreadyProvided ? null : localWarehouseCoolant5lOk;
+          status = localWarehouseCoolant5lOk;
         } else if (n.includes('courroie')) {
-          status = ventilationBeltAlreadyProvided ? null : localWarehouseVentilationBeltOk;
+          status = localWarehouseVentilationBeltOk;
         } else {
           status = true;
         }
@@ -576,16 +607,12 @@ const FicheModal = ({
             body * { visibility: hidden; }
             #fiche-print, #fiche-print * { visibility: visible; }
             #fiche-print {
-              position: absolute !important;
-              left: 0 !important;
-              top: 0 !important;
-              width: 200mm !important;
-              max-width: none !important;
+              width: 200mm;
               min-height: auto !important;
               height: auto !important;
               overflow: hidden !important;
               padding: 2mm !important;
-              margin: 0 !important;
+              margin: 0 auto !important;
             }
             #fiche-print img { max-height: 14mm !important; object-fit: contain !important; }
             #fiche-print hr { margin: 1mm 0 !important; border-width: 1px !important; }
@@ -594,6 +621,7 @@ const FicheModal = ({
             #fiche-print button { display: none !important; }
             #fiche-print .warehouse-unmarked { display: none !important; }
             #fiche-print .print\\:hidden { display: none !important; }
+            #fiche-print .print\\:block { display: block !important; }
             .print-hidden { display: none !important; }
           }
         `}</style>
@@ -839,11 +867,11 @@ const FicheModal = ({
               )}
             </div>
 
-            {canShowWarehouseControls && (!airFilterAlreadyProvided || !coolantAlreadyProvided || !ventilationBeltAlreadyProvided) && (
+            {canShowWarehouseControls && (
               <div className="mb-4 border border-gray-300 rounded-lg p-3 text-sm">
                 <div className="font-bold text-gray-800 mb-2">{warehouseControlsLabel}</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {!airFilterAlreadyProvided && (
+                  {
                     <div className={`border border-gray-200 rounded-lg p-3 ${(localWarehouseAirFilterOk === null || localWarehouseAirFilterOk === undefined) ? 'warehouse-unmarked' : ''}`}>
                       <div className="font-semibold text-gray-800 mb-2 flex items-center gap-2 flex-wrap">
                         Filtre à air GE
@@ -899,10 +927,13 @@ const FicheModal = ({
                           ❌ Indispo
                         </button>
                       </div>
+                      <div className="mt-2 text-sm font-semibold hidden print:block">
+                        {localWarehouseAirFilterOk === true ? '✅ Disponible' : localWarehouseAirFilterOk === false ? '❌ Indispo' : ''}
+                      </div>
                     </div>
-                  )}
+                  }
 
-                  {!ventilationBeltAlreadyProvided && (
+                  {
                     <div className={`border border-gray-200 rounded-lg p-3 ${(localWarehouseVentilationBeltOk === null || localWarehouseVentilationBeltOk === undefined) ? 'warehouse-unmarked' : ''}`}>
                       <div className="font-semibold text-gray-800 mb-2">Courroie de ventilation GE</div>
                       <div className="grid grid-cols-2 gap-2">
@@ -951,10 +982,13 @@ const FicheModal = ({
                           ❌ Indispo
                         </button>
                       </div>
+                      <div className="mt-2 text-sm font-semibold hidden print:block">
+                        {localWarehouseVentilationBeltOk === true ? '✅ Disponible' : localWarehouseVentilationBeltOk === false ? '❌ Indispo' : ''}
+                      </div>
                     </div>
-                  )}
+                  }
 
-                  {!coolantAlreadyProvided && (
+                  {
                     <div className={`border border-gray-200 rounded-lg p-3 ${(localWarehouseCoolant5lOk === null || localWarehouseCoolant5lOk === undefined) ? 'warehouse-unmarked' : ''}`}>
                       <div className="font-semibold text-gray-800 mb-2">05 Litres liquide de refroidissement</div>
                       <div className="grid grid-cols-2 gap-2">
@@ -1003,8 +1037,11 @@ const FicheModal = ({
                           ❌ Indispo
                         </button>
                       </div>
+                      <div className="mt-2 text-sm font-semibold hidden print:block">
+                        {localWarehouseCoolant5lOk === true ? '✅ Disponible' : localWarehouseCoolant5lOk === false ? '❌ Indispo' : ''}
+                      </div>
                     </div>
-                  )}
+                  }
                 </div>
 
                 {!isWarehouseReadOnly && onSubmitWarehouseCheck && (
