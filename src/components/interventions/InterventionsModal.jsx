@@ -80,6 +80,14 @@ const InterventionsModal = ({
   const [pmBusy, setPmBusy] = React.useState(false);
   const [pmError, setPmError] = React.useState('');
 
+  const normTechName = (v) =>
+    String(v || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+
   const role = String(authUser?.role || '').trim();
   const isManager = role === 'manager' || role === 'manager_bzv_pool';
   const isClosedInterventionStatus = (status) => {
@@ -354,8 +362,8 @@ const InterventionsModal = ({
                     };
 
                     srcSites.forEach((site) => {
-                      const techName = String(authUser?.technicianName || '').trim();
-                      if (techName && String(site?.technician || '').trim() !== techName) return;
+                      const techKey = normTechName(authUser?.technicianName);
+                      if (techKey && normTechName(site?.technician) !== techKey) return;
 
                       const epv1 = norm(site?.epv1);
                       const epv2 = norm(site?.epv2);
@@ -634,8 +642,8 @@ const InterventionsModal = ({
 
               srcSites.forEach((site) => {
                 if (isTechnician) {
-                  const techName = String(authUser?.technicianName || '').trim();
-                  if (techName && String(site?.technician || '').trim() !== techName) return;
+                  const techKey = normTechName(authUser?.technicianName);
+                  if (techKey && normTechName(site?.technician) !== techKey) return;
                 }
 
                 const epv1 = norm(site?.epv1) || '';
