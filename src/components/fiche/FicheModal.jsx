@@ -778,7 +778,7 @@ const FicheModal = ({
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-4 mb-6 text-sm">
+            <div className="grid grid-cols-2 gap-3 mb-4 text-sm">
               <div>
                 <p className="text-gray-600 text-xs mb-1">CLIENT</p>
                 <p className="font-bold text-base">HTC</p>
@@ -803,7 +803,7 @@ const FicheModal = ({
 
             <hr className="my-3 border-gray-800" style={{ borderWidth: '2px' }} />
 
-            <div className="mb-6">
+            <div className="mb-4">
               <p className="text-gray-600 text-xs mb-2">OBJET</p>
               <p className="font-bold text-sm">
                 VIDANGE DU GE {siteForFiche.generateur} {siteForFiche.capacite}
@@ -1134,14 +1134,14 @@ const FicheModal = ({
                 </thead>
                 <tbody>
                   <tr>
-                    <td className="border-2 border-gray-800 p-4" style={{ verticalAlign: 'top' }}>
+                    <td className="border-2 border-gray-800 p-2" style={{ verticalAlign: 'top' }}>
                       &nbsp;
                     </td>
-                    <td className="border-2 border-gray-800 p-4" style={{ verticalAlign: 'top' }}>
+                    <td className="border-2 border-gray-800 p-2" style={{ verticalAlign: 'top' }}>
                       &nbsp;
                     </td>
-                    <td className="border-2 border-gray-800 p-6" style={{ verticalAlign: 'top' }}>
-                      <div className="flex flex-col items-center justify-center h-full text-center space-y-3">
+                    <td className="border-2 border-gray-800 p-3" style={{ verticalAlign: 'top' }}>
+                      <div className="flex flex-col items-center justify-center h-full text-center space-y-2">
                         {kitItemsWithStatus.filter((it) => it.status !== null).map((item, idx) => (
                           <div key={idx} className="text-sm" style={item.status === false ? { textDecoration: 'line-through', color: '#dc2626' } : undefined}>
                             {item.status === false ? `❌ ${item.name.trim()}` : item.name.trim()}
@@ -1154,16 +1154,16 @@ const FicheModal = ({
               </table>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 text-sm mt-auto pt-4">
+            <div className="grid grid-cols-2 gap-3 text-sm mt-auto pt-3">
               {shouldShowFinalizeArtifacts && (
-                <div className="border-2 border-gray-800 p-4" style={{ minHeight: '90px' }}>
-                  <p className="font-bold mb-3 text-base">H</p>
+                <div className="border-2 border-gray-800 p-3" style={{ minHeight: '70px' }}>
+                  <p className="font-bold mb-2 text-base">H</p>
                   <p className="text-3xl font-bold text-center mt-2">{siteForFiche.nh1DV} H</p>
                 </div>
               )}
               {shouldShowFinalizeArtifacts && (
-                <div className="border-2 border-gray-800 p-4" style={{ minHeight: '90px' }}>
-                  <p className="font-bold mb-3 text-right text-base">SIGNATURE RESPONSABLE</p>
+                <div className="border-2 border-gray-800 p-3" style={{ minHeight: '70px' }}>
+                  <p className="font-bold mb-2 text-right text-base">SIGNATURE RESPONSABLE</p>
                   <div className="flex items-center justify-end" style={{ height: '65px' }}>
                     {signatureOk ? (
                       <img
