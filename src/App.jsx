@@ -9454,10 +9454,10 @@ return (
         {(
           <div className="mt-4 mb-6">
             {urgentSites.length > 0 && (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
-                <div className="flex items-center gap-2 font-bold text-red-900 mb-3">
-                  <AlertCircle size={18} />
-                  <span>ALERTES URGENTES - Vidanges à effectuer ({urgentSites.length})</span>
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 sm:p-4 mb-4">
+                <div className="flex items-center gap-2 font-bold text-red-900 mb-3 text-sm sm:text-base">
+                  <AlertCircle size={18} className="flex-shrink-0" />
+                  <span className="break-words">ALERTES URGENTES - Vidanges à effectuer ({urgentSites.length})</span>
                 </div>
 
                 <div className="space-y-2">
@@ -9467,24 +9467,32 @@ return (
                     return (
                       <div
                         key={site.id}
-                        className="bg-white rounded-lg border border-red-100 px-4 py-3 flex items-start justify-between gap-4"
+                        className="bg-white rounded-lg border border-red-100 px-3 py-3 sm:px-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4"
                         style={{ borderLeftWidth: '4px' }}
                       >
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <div className="font-bold text-gray-900 truncate">{site.nameSite}</div>
+                            <div className="font-bold text-gray-900 break-words">{site.nameSite}</div>
                             <span className="text-xs bg-gray-100 px-2 py-0.5 rounded font-mono border border-gray-200">{site.idSite}</span>
                           </div>
-                          <div className="text-xs text-gray-600 mt-1">
-                            Technicien: {site.technician} | Régime: {Number(site.regime || 0)}H/J | NH Estimé: {Number.isFinite(Number(site.nhEstimated)) ? `${site.nhEstimated}H` : '-'} | Diff: {Number.isFinite(Number(site.diffEstimated)) ? `${site.diffEstimated}H` : '-'}
+                          <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs text-gray-600 mt-1.5">
+                            <span>Technicien: {site.technician}</span>
+                            <span className="text-gray-300 hidden sm:inline">|</span>
+                            <span>Régime: {Number(site.regime || 0)}H/J</span>
+                            <span className="text-gray-300 hidden sm:inline">|</span>
+                            <span>NH Estimé: {Number.isFinite(Number(site.nhEstimated)) ? `${site.nhEstimated}H` : '-'}</span>
+                            <span className="text-gray-300 hidden sm:inline">|</span>
+                            <span>Diff: {Number.isFinite(Number(site.diffEstimated)) ? `${site.diffEstimated}H` : '-'}</span>
                           </div>
                         </div>
 
-                        <div className="flex flex-col items-end flex-shrink-0">
-                          <div className={days !== null && days < 0 ? 'text-red-700 font-bold' : 'text-gray-700 font-bold'}>{label}</div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            {site?.nextPendingEpvType ? `${String(site.nextPendingEpvType).trim()} • ` : ''}
-                            {formatDate(site?.nextPendingEpvDate || '')}
+                        <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start flex-shrink-0 gap-2 sm:gap-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-red-50">
+                          <div className="flex items-center gap-2 sm:flex-col sm:items-end sm:gap-0">
+                            <div className={`text-sm sm:text-base ${days !== null && days < 0 ? 'text-red-700 font-bold' : 'text-gray-700 font-bold'}`}>{label}</div>
+                            <div className="text-xs text-gray-500 sm:mt-1">
+                              {site?.nextPendingEpvType ? `${String(site.nextPendingEpvType).trim()} • ` : ''}
+                              {formatDate(site?.nextPendingEpvDate || '')}
+                            </div>
                           </div>
 
                           {(() => {
@@ -9504,7 +9512,7 @@ return (
                             if (months.length === 0) return null;
 
                             return (
-                              <div className="flex flex-wrap gap-1 justify-end pt-1">
+                              <div className="flex flex-wrap gap-1 justify-end sm:pt-1 max-w-[55%] sm:max-w-none">
                                 <span className="text-[10px] font-semibold text-slate-600 mr-1">Retiré:</span>
                                 {months.slice(0, 6).map((m) => (
                                   <span
