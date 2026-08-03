@@ -77,9 +77,9 @@ const FicheModal = ({
     const el = document.getElementById('fiche-print');
     if (!el) return;
 
-    const A4_H = 1123; // ~297mm A4 full height at 96dpi (with 3mm @page margin, content fills page)
+    const A4_H = 1100; // ~297mm A4 printable height at 96dpi (with 3mm @page margin each side)
     const MIN_SCALE = 0.6; // taille minimale lisible (jamais réduite davantage)
-    const MAX_SCALE = 1.8; // agrandissement maximal raisonnable
+    const MAX_SCALE = 1; // jamais agrandir : le zoom élargit aussi la boîte, ce qui la ferait déborder de la page
 
     const recompute = () => {
       // Measure the element's natural height. Since the zoom is only ever
@@ -646,7 +646,6 @@ const FicheModal = ({
               padding: 1mm !important;
               margin: 0 auto !important;
               zoom: var(--pf, 1);
-              width: calc(200mm / var(--pf, 1)) !important;
             }
             #fiche-print img { object-fit: contain !important; }
             #fiche-print button { display: none !important; }
@@ -759,7 +758,7 @@ const FicheModal = ({
           <div
             id="fiche-print"
             className="bg-white mx-auto flex flex-col"
-            style={{ maxWidth: '210mm', width: '100%', boxSizing: 'border-box', '--pf': printScale }}
+            style={{ maxWidth: '204mm', width: '100%', boxSizing: 'border-box', '--pf': printScale }}
           >
             {canShowBannerBlock && bannerImage && (
               <div className="mb-3 border-2 border-gray-300 rounded overflow-hidden bg-gray-200">
