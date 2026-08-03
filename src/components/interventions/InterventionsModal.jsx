@@ -321,6 +321,20 @@ const InterventionsModal = ({
                       .filter(Boolean)
                       .map((i) => [getInterventionKey(i.siteId, String(i?.plannedDate || '').slice(0, 10), i.epvType), i])
                   );
+                  // Fallback: si la date EPV recalculée a dérivé depuis la génération de la fiche
+                  // (compteurs du site modifiés entre-temps), on retombe sur la dernière intervention
+                  // non close pour ce site+type d'EPV, peu importe sa date exacte.
+                  const interventionsBySiteEpv = new Map();
+                  (Array.isArray(interventionsScoped) ? interventionsScoped : [])
+                    .filter(Boolean)
+                    .filter((i) => !isClosedInterventionStatus(i?.status))
+                    .forEach((i) => {
+                      const k = `${String(i?.siteId || '')}|${String(i?.epvType || '')}`;
+                      const prev = interventionsBySiteEpv.get(k);
+                      if (!prev || String(i?.updatedAt || i?.createdAt || '') > String(prev?.updatedAt || prev?.createdAt || '')) {
+                        interventionsBySiteEpv.set(k, i);
+                      }
+                    });
 
                   const norm = (d) => {
                     const s = String(d || '').slice(0, 10);
@@ -351,6 +365,7 @@ const InterventionsModal = ({
                       const intervention =
                         interventionsByKey.get(getInterventionKey(site.id, plannedDate, epvType)) ||
                         interventionsByKey.get(getInterventionKey(site.id, src, epvType)) ||
+                        interventionsBySiteEpv.get(`${String(site.id)}|${String(epvType)}`) ||
                         null;
 
                       out.push({
@@ -563,6 +578,21 @@ const InterventionsModal = ({
                 .filter(Boolean)
                 .map((i) => [getInterventionKey(i.siteId, String(i?.plannedDate || '').slice(0, 10), i.epvType), i])
             );
+            // Fallback: si la date EPV recalculée a dérivé depuis la génération de la fiche
+            // (compteurs du site modifiés entre-temps), on retombe sur la dernière intervention
+            // non close pour ce site+type d'EPV, peu importe sa date exacte.
+            const interventionsBySiteEpv = new Map();
+            (Array.isArray(interventionsScoped) ? interventionsScoped : [])
+              .filter(Boolean)
+              .filter((i) => !isClosedInterventionStatus(i?.status))
+              .forEach((i) => {
+                const k = `${String(i?.siteId || '')}|${String(i?.epvType || '')}`;
+                const prev = interventionsBySiteEpv.get(k);
+                if (!prev || String(i?.updatedAt || i?.createdAt || '') > String(prev?.updatedAt || prev?.createdAt || '')) {
+                  interventionsBySiteEpv.set(k, i);
+                }
+              }
+            );
 
             const statusRank = (st) => {
               const s = String(st || '');
@@ -625,6 +655,7 @@ const InterventionsModal = ({
                 const intervention =
                   interventionsByKey.get(getInterventionKey(site.id, plannedDate, epvType)) ||
                   interventionsByKey.get(getInterventionKey(site.id, src, epvType)) ||
+                  interventionsBySiteEpv.get(`${String(site.id)}|${String(epvType)}`) ||
                   null;
 
                 out.push({
