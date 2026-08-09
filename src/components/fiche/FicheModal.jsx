@@ -637,13 +637,24 @@ const FicheModal = ({
               width: auto !important;
               margin: 0 !important;
               box-shadow: none !important;
+              overflow: visible !important;
+            }
+
+            .fiche-spacer { display: none !important; }
+
+            .fiche-scroll-container {
+              padding: 0 !important;
+              overflow: visible !important;
+              max-height: none !important;
             }
 
             #fiche-print {
-              min-height: auto !important;
+              min-height: calc((297mm - 6mm) / var(--pf, 1)) !important;
+              max-width: calc(204mm / var(--pf, 1)) !important;
+              width: calc(204mm / var(--pf, 1)) !important;
               height: auto !important;
               overflow: hidden !important;
-              padding: 1mm !important;
+              padding: 2mm !important;
               margin: 0 auto !important;
               zoom: var(--pf, 1);
             }
@@ -719,11 +730,11 @@ const FicheModal = ({
           </div>
         </div>
 
-        <div className="relative border-b bg-white h-0">
+        <div className="fiche-spacer relative border-b bg-white h-0">
           <div className="h-20" />
         </div>
 
-        <div className="bg-white p-8 overflow-auto" style={{ maxHeight: '80vh' }}>
+        <div className="fiche-scroll-container bg-white p-8 overflow-auto" style={{ maxHeight: '80vh' }}>
           {warehouseSubmitSuccessOpen && (
             <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4">
               <div className="bg-white w-full max-w-lg rounded-xl shadow-2xl border border-gray-200 overflow-hidden">

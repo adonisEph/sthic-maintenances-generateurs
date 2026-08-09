@@ -1,5 +1,5 @@
 import React from 'react';
-import { TrendingUp, X, Upload, Download, Trash2, RotateCcw, Activity, Menu, ChevronLeft, ListChecks, BadgeCheck, Clock, UserCheck } from 'lucide-react';
+import { TrendingUp, X, Upload, Download, Trash2, RotateCcw, Activity, Menu, ChevronLeft, ListChecks, BadgeCheck, Clock, UserCheck, Filter } from 'lucide-react';
 
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
 
@@ -90,6 +90,7 @@ const PmModal = (props) => {
   const [pmPurgeZones, setPmPurgeZones] = React.useState([]);
   const [pmPurgeResult, setPmPurgeResult] = React.useState(null);
   const [pmFilterPlannedDay, setPmFilterPlannedDay] = React.useState('');
+  const [pmFiltersOpen, setPmFiltersOpen] = React.useState(true);
   const [exportCenterOpen, setExportCenterOpen] = React.useState(false);
   const [exportDayState, setExportDayState] = React.useState('all');
   const [exportReprogPeriod, setExportReprogPeriod] = React.useState('month');
@@ -870,7 +871,16 @@ const PmModal = (props) => {
               }
               if (plannedDay) {
                 const sched = normalizeYmd(it?.scheduledWoDate);
-                if (sched !== plannedDay) return false;
+                if (sched === plannedDay) return true;
+                const closedDay = normalizeYmd(it?.closedAt);
+                const isAnticipatedFullPmwo =
+                  String(it?.maintenanceType || '').trim().toUpperCase() === 'FULLPMWO' &&
+                  closedDay &&
+                  sched &&
+                  closedDay < sched &&
+                  (bucketForState(it?.state) === 'closed' || bucketForState(it?.state) === 'awaiting');
+                if (isAnticipatedFullPmwo && closedDay === plannedDay) return true;
+                return false;
               } else {
                 if (dateFrom) {
                   const sched = normalizeYmd(it?.scheduledWoDate);
@@ -1130,7 +1140,22 @@ const PmModal = (props) => {
                   </div>
                 )}
 
-                <div className="mb-5 bg-slate-50 border border-slate-200 rounded-lg p-4">
+                <div className="mb-5 bg-white border border-slate-200 rounded-lg overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setPmFiltersOpen((v) => !v)}
+                    className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-slate-50 border-b border-slate-200 hover:bg-slate-100 transition-colors"
+                    disabled={pmBusy}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Filter size={18} className="text-slate-700" />
+                      <span className="text-sm font-bold text-slate-900">Filtres</span>
+                    </div>
+                    <span className="text-xs text-slate-700">{pmFiltersOpen ? '▲ Masquer' : '▼ Afficher'}</span>
+                  </button>
+
+                  {pmFiltersOpen && (
+                  <div className="p-4 bg-slate-50">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
                     <div>
                       <label htmlFor="pm_filter_state" className="block text-xs font-semibold text-gray-700 mb-1">État</label>
@@ -1246,7 +1271,7 @@ const PmModal = (props) => {
                     </div>
 
                     <div>
-                      <label htmlFor="pm_filter_planned_day" className="block text-xs font-semibold text-gray-700 mb-1 whitespace-nowrap">Date planifiée du jour</label>
+                      <label htmlFor="pm_filter_planned_day" className="block text-xs font-semibold text-gray-700 mb-1 whitespace-nowrap">Planifiée/Anticipée</label>
                       <input
                         id="pm_filter_planned_day"
                         name="pmFilterPlannedDay"
@@ -1297,6 +1322,8 @@ const PmModal = (props) => {
                       Réinitialiser filtres
                     </button>
                   </div>
+                  </div>
+                  )}
                 </div>
 
                 {/* Centre d'exports Excel */}
@@ -1706,6 +1733,9 @@ const PmModal = (props) => {
                             const siteName = String(it?.siteName || localSite?.nameSite || '').trim();
                             const siteLabel = [siteName, siteCode].filter(Boolean).join('\n');
                             const st = stateLabel(it?.state);
+                            const isAnticipated = String(it?.maintenanceType || '').trim().toUpperCase() === 'FULLPMWO' &&
+                              sched && closed && closed < sched &&
+                              (bucket === 'closed' || bucket === 'awaiting');
                             return (
                               <tr key={it?.id || it?.number} className={`border-b border-slate-200 hover:bg-slate-100/60 ${idx % 2 === 1 ? 'bg-white' : 'bg-slate-50'}`}>
                                 <td className="px-3 py-2 font-semibold text-slate-900 whitespace-nowrap">{it?.number || '-'}</td>
@@ -1713,6 +1743,11 @@ const PmModal = (props) => {
                                   <span className={`inline-flex items-center border px-2 py-0.5 rounded-full text-xs font-semibold ${badge.cls}`}>
                                     {st}
                                   </span>
+                                  {isAnticipated && (
+                                    <span className="ml-1 inline-flex items-center border px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border-emerald-200">
+                                      Anticipée
+                                    </span>
+                                  )}
                                 </td>
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{sched || '-'}</td>
                                 <td className="px-3 py-2 text-slate-900 max-w-[260px] whitespace-pre-line leading-tight break-words" title={siteLabel || ''}>{siteLabel || '-'}</td>
