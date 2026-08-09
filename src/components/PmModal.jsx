@@ -882,14 +882,24 @@ const PmModal = (props) => {
                 if (isAnticipatedFullPmwo && closedDay === plannedDay) return true;
                 return false;
               } else {
-                if (dateFrom) {
-                  const sched = normalizeYmd(it?.scheduledWoDate);
-                  if (sched && sched < dateFrom) return false;
-                }
-                if (dateTo) {
-                  const sched = normalizeYmd(it?.scheduledWoDate);
-                  if (sched && sched > dateTo) return false;
-                }
+                const sched = normalizeYmd(it?.scheduledWoDate);
+                const closedDay = normalizeYmd(it?.closedAt);
+                const isAnticipatedFullPmwo =
+                  String(it?.maintenanceType || '').trim().toUpperCase() === 'FULLPMWO' &&
+                  closedDay &&
+                  sched &&
+                  closedDay < sched &&
+                  (bucketForState(it?.state) === 'closed' || bucketForState(it?.state) === 'awaiting');
+
+                const schedInRange =
+                  (!dateFrom || (sched && sched >= dateFrom)) &&
+                  (!dateTo || (sched && sched <= dateTo));
+                const closedInRange =
+                  isAnticipatedFullPmwo &&
+                  (!dateFrom || (closedDay && closedDay >= dateFrom)) &&
+                  (!dateTo || (closedDay && closedDay <= dateTo));
+
+                if (!schedInRange && !closedInRange) return false;
               }
               if (reprogFilter && reprogFilter !== 'all') {
                 const st = effectiveReprogStatus(it);
