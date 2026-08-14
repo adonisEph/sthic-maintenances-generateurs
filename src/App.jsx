@@ -61,6 +61,9 @@ const DISABLE_PUSH_NOTIFICATIONS = true;
 const DISABLE_NOTIFICATIONS_FEATURE = true;
 const DISABLE_PRESENCE_FEATURE = true;
 const DISABLE_META_VERSION_POLLING = false;
+const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+const INACTIVITY_WARNING_MS = 5 * 60 * 1000;
+const INACTIVITY_STORAGE_KEY = 'gma_last_activity';
 
 const GeneratorMaintenanceApp = () => {
   const storage = useStorage();
@@ -193,11 +196,15 @@ const GeneratorMaintenanceApp = () => {
   const siteFormAnchorRef = useRef(null);
   const [pendingFicheSite, setPendingFicheSite] = useState(null);
   const presenceLastPingAtRef = useRef(0);
+  const lastActivityRef = useRef(Date.now());
+  const autoLogoutRef = useRef(null);
   const [userForm, setUserForm] = useState({ email: '', role: 'viewer', zone: 'BZV/POOL', technicianName: '', password: '' });
   const [userFormError, setUserFormError] = useState('');
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [inactivityWarningOpen, setInactivityWarningOpen] = useState(false);
+  const [inactivitySecondsLeft, setInactivitySecondsLeft] = useState(0);
   const [calendarZone, setCalendarZone] = useState('ALL');
   const [interventionsZone, setInterventionsZone] = useState('ALL');
   const [historyZone, setHistoryZone] = useState('ALL');
@@ -748,6 +755,35 @@ const GeneratorMaintenanceApp = () => {
     })();
   };
 
+  const handleAutoLogout = () => {
+    setShowUsersModal(false);
+    setShowAccountModal(false);
+    setShowPresenceModal(false);
+    setShowCalendar(false);
+    setShowHistory(false);
+    setShowFicheModal(false);
+    setShowInterventions(false);
+    setShowPm(false);
+    setInactivityWarningOpen(false);
+
+    setAuthUser(null);
+    setSites([]);
+    setFicheHistory([]);
+    setInterventions([]);
+    setPmAssignments([]);
+    // loginEmail et loginPassword intentionnellement conservés pour la reconnexion rapide
+    setLoginError('');
+    try { localStorage.removeItem(INACTIVITY_STORAGE_KEY); } catch {}
+
+    (async () => {
+      try {
+        await apiFetchJson('/api/auth/logout', { method: 'POST' });
+      } catch {
+        // ignore
+      }
+    })();
+  };
+
   const handleLogout = () => {
     setShowUsersModal(false);
     setShowAccountModal(false);
@@ -776,6 +812,72 @@ const GeneratorMaintenanceApp = () => {
       }
     })();
   };
+
+  // Maintenir autoLogoutRef à jour pour éviter les closures périmées
+  useEffect(() => {
+    autoLogoutRef.current = handleAutoLogout;
+  });
+
+  // Surveillance inactivité : déconnexion automatique après INACTIVITY_TIMEOUT_MS
+  useEffect(() => {
+    if (!authUser) {
+      setInactivityWarningOpen(false);
+      return;
+    }
+
+    const EVENTS = ['mousemove', 'keydown', 'click', 'touchstart', 'scroll', 'pointerdown'];
+
+    const resetActivity = () => {
+      const now = Date.now();
+      lastActivityRef.current = now;
+      try { localStorage.setItem(INACTIVITY_STORAGE_KEY, String(now)); } catch {}
+      setInactivityWarningOpen(false);
+    };
+
+    EVENTS.forEach((ev) => document.addEventListener(ev, resetActivity, { passive: true }));
+
+    const interval = setInterval(() => {
+      const idle = Date.now() - lastActivityRef.current;
+      if (idle >= INACTIVITY_TIMEOUT_MS) {
+        autoLogoutRef.current?.();
+      } else if (idle >= INACTIVITY_TIMEOUT_MS - INACTIVITY_WARNING_MS) {
+        const secsLeft = Math.max(0, Math.ceil((INACTIVITY_TIMEOUT_MS - idle) / 1000));
+        setInactivitySecondsLeft(secsLeft);
+        setInactivityWarningOpen(true);
+      } else {
+        setInactivityWarningOpen(false);
+      }
+    }, 1000);
+
+    // Reprise en premier plan (PWA mobile/desktop)
+    const handleVisibility = () => {
+      if (document.hidden) return;
+      const stored = Number(localStorage.getItem(INACTIVITY_STORAGE_KEY) || 0) || 0;
+      const lastTs = Math.max(lastActivityRef.current, stored);
+      if (Date.now() - lastTs >= INACTIVITY_TIMEOUT_MS) {
+        autoLogoutRef.current?.();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      EVENTS.forEach((ev) => document.removeEventListener(ev, resetActivity));
+      document.removeEventListener('visibilitychange', handleVisibility);
+      clearInterval(interval);
+    };
+  }, [authUser?.id]);
+
+  // Compte à rebours dans la modale d'avertissement
+  useEffect(() => {
+    if (!inactivityWarningOpen) return;
+    const t = setInterval(() => {
+      const idle = Date.now() - lastActivityRef.current;
+      const secsLeft = Math.max(0, Math.ceil((INACTIVITY_TIMEOUT_MS - idle) / 1000));
+      setInactivitySecondsLeft(secsLeft);
+      if (secsLeft <= 0) autoLogoutRef.current?.();
+    }, 1000);
+    return () => clearInterval(t);
+  }, [inactivityWarningOpen]);
 
   const safeSetAppBadge = async (count) => {
     try {
@@ -7436,6 +7538,49 @@ return (
     <div className="min-h-[100svh] bg-gray-50 md:min-h-screen">
       {renderPwaUpdateBadge()}
       {renderPwaUpdateBanner()}
+
+      {/* Modale d'avertissement d'inactivité */}
+      {inactivityWarningOpen && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden">
+            <div className="bg-amber-500 text-white px-5 py-4 flex items-center gap-3">
+              <Bell size={22} className="flex-shrink-0" />
+              <span className="font-bold text-base">Déconnexion automatique</span>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-gray-700 text-sm leading-relaxed">
+                Vous êtes inactif depuis un moment. Vous serez automatiquement déconnecté dans{' '}
+                <span className="font-bold text-amber-700 text-base">
+                  {inactivitySecondsLeft >= 60
+                    ? `${Math.ceil(inactivitySecondsLeft / 60)} min ${inactivitySecondsLeft % 60 > 0 ? `${inactivitySecondsLeft % 60} sec` : ''}`
+                    : `${inactivitySecondsLeft} sec`}
+                </span>.
+              </p>
+              <p className="text-xs text-gray-500">
+                Votre email et mot de passe resteront pré-remplis sur la page de connexion.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    lastActivityRef.current = Date.now();
+                    try { localStorage.setItem(INACTIVITY_STORAGE_KEY, String(Date.now())); } catch {}
+                    setInactivityWarningOpen(false);
+                  }}
+                  className="flex-1 bg-indigo-600 text-white py-2.5 rounded-lg hover:bg-indigo-700 font-semibold text-sm"
+                >
+                  Rester connecté
+                </button>
+                <button
+                  onClick={() => handleAutoLogout()}
+                  className="flex-1 bg-gray-200 text-gray-800 py-2.5 rounded-lg hover:bg-gray-300 font-semibold text-sm"
+                >
+                  Se déconnecter
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {exportBusy && (
         <div className="fixed inset-0 z-[60] bg-black/30 flex items-center justify-center p-4">
