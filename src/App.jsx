@@ -48,7 +48,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.8.5';
+const APP_VERSION = '6.8.6';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -5751,7 +5751,7 @@ useEffect(() => {
     }
   };
 
-  const computeDashboardData = useMemo(() => (yyyymm) => {
+  const computeDashboardData = (yyyymm) => {
     const techFilter = String(filterTechnician || 'all');
     const zoneActive = managerZoneLock || (showZoneFilter && dashboardZone && dashboardZone !== 'ALL' ? String(dashboardZone) : '');
     const dashboardSites = sites
@@ -5810,7 +5810,7 @@ useEffect(() => {
     const remainingEvents = plannedEventsFiltered.filter((ev) => !completedKeys.has(String(ev.key)));
 
     return { plannedEvents: plannedEventsFiltered, remainingEvents, doneByPlannedDate, contractOk, contractOver };
-  }, [sites, ficheHistory, filterTechnician, managerZoneLock, showZoneFilter, dashboardZone, getUpdatedSite]);
+  };
 
   const handleExportDashboardSummaryExcel = async () => {
     const ok = window.confirm(`Exporter le résumé Dashboard (${dashboardMonth}) en Excel ?`);
