@@ -1,7 +1,7 @@
 import { ensureAdminUser } from '../_utils/db.js';
 import { json, readJson, isoNow, newId, requireAuth, isSuperAdmin, userZone, ymdToday } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
-import { calculateDiffNHs, calculateEstimatedNH } from '../_utils/calc.js';
+import { calculateDiffNHs, calculateEstimatedNH, calculateRegime } from '../_utils/calc.js';
 
 const normIdSite = (v) =>
   String(v || '')
@@ -215,16 +215,19 @@ export async function onRequestPost({ request, env, data }) {
         }
       }
 
-      // Only update nh2_a, date_a, nh_offset and derived values — NEVER nh1_dv, date_dv, regime
-      const regime = Number(site.regime) || 0;
+      // Recalculate regime from nh1DV, effectiveNh, dateDV, readingDate — NEVER modify nh1_dv or date_dv
+      let regime = calculateRegime(prevNh1DV, effectiveNh, prevDateDV, readingDate);
+      if (regime === 0 && Number(site.regime) > 0) {
+        regime = Number(site.regime);
+      }
       const nhEstimated = calculateEstimatedNH(effectiveNh, readingDate, regime);
       const diffNHs = calculateDiffNHs(prevNh1DV, effectiveNh);
       const diffEstimated = calculateDiffNHs(prevNh1DV, nhEstimated);
 
       await env.DB.prepare(
-        'UPDATE sites SET nh2_a = ?, date_a = ?, nh_offset = ?, nh_estimated = ?, diff_nhs = ?, diff_estimated = ?, updated_at = ? WHERE id = ?'
+        'UPDATE sites SET nh2_a = ?, date_a = ?, nh_offset = ?, regime = ?, nh_estimated = ?, diff_nhs = ?, diff_estimated = ?, updated_at = ? WHERE id = ?'
       )
-        .bind(effectiveNh, readingDate, nextOffset, nhEstimated, diffNHs, diffEstimated, now, String(site.id))
+        .bind(effectiveNh, readingDate, nextOffset, regime, nhEstimated, diffNHs, diffEstimated, now, String(site.id))
         .run();
 
       const rid = newId();

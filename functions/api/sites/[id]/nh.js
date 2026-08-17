@@ -1,7 +1,7 @@
 import { ensureAdminUser } from '../../_utils/db.js';
 import { json, requireAuth, readJson, isoNow, newId, ymdToday, isSuperAdmin, userZone } from '../../_utils/http.js';
 import { touchLastUpdatedAt } from '../../_utils/meta.js';
-import { calculateDiffNHs, calculateEstimatedNH } from '../../_utils/calc.js';
+import { calculateDiffNHs, calculateEstimatedNH, calculateRegime } from '../../_utils/calc.js';
 
 function mapSiteRow(row) {
   if (!row) return null;
@@ -104,8 +104,10 @@ export async function onRequestPost({ request, env, data, params }) {
       return json({ error: "Le compteur (NH) ne peut pas être inférieur au NH1 DV du site." }, { status: 400 });
     }
 
-    // Only update nh2_a, date_a, nh_offset and derived values — NEVER nh1_dv, date_dv, regime
-    const regime = Number(site.regime) || 0;
+    let regime = calculateRegime(site.nh1_dv, effectiveNh, site.date_dv, readingDate);
+    if (regime === 0 && Number(site.regime) > 0) {
+      regime = Number(site.regime);
+    }
     const nhEstimated = calculateEstimatedNH(effectiveNh, readingDate, regime);
     const diffNHs = calculateDiffNHs(site.nh1_dv, effectiveNh);
     const diffEstimated = calculateDiffNHs(site.nh1_dv, nhEstimated);
@@ -113,9 +115,9 @@ export async function onRequestPost({ request, env, data, params }) {
     const now = isoNow();
 
     await env.DB.prepare(
-      'UPDATE sites SET nh2_a = ?, date_a = ?, nh_offset = ?, nh_estimated = ?, diff_nhs = ?, diff_estimated = ?, updated_at = ? WHERE id = ?'
+      'UPDATE sites SET nh2_a = ?, date_a = ?, nh_offset = ?, regime = ?, nh_estimated = ?, diff_nhs = ?, diff_estimated = ?, updated_at = ? WHERE id = ?'
     )
-      .bind(effectiveNh, readingDate, nextOffset, nhEstimated, diffNHs, diffEstimated, now, siteId)
+      .bind(effectiveNh, readingDate, nextOffset, regime, nhEstimated, diffNHs, diffEstimated, now, siteId)
       .run();
 
     const rid = newId();
