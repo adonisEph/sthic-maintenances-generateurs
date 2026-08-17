@@ -179,10 +179,13 @@ const SitesTechnicianFilter = ({
           {Array.isArray(filterUrgency) && filterUrgency.length > 0 && (
             <button
               onClick={onResetUrgency}
-              className="text-[11px] text-gray-400 hover:text-gray-600 font-medium transition-colors px-1"
-              title="Réinitialiser le filtre"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-bold bg-gray-200 text-gray-700 hover:bg-gray-300 transition-all duration-150 border border-gray-300 shadow-sm"
+              title="Réinitialiser les filtres de statut"
             >
-              ✕
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+              Réinitialiser
             </button>
           )}
         </div>

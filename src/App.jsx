@@ -48,7 +48,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.8.3';
+const APP_VERSION = '6.8.4';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -6422,7 +6422,7 @@ useEffect(() => {
     })
     .filter((site) => {
       if (!filterUrgency || filterUrgency.length === 0) return true;
-      if (site.retired) return true;
+      if (site.retired) return false;
       const next = getNextPendingEpvForSiteRecalculated(site);
       const daysUntil = getDaysUntil(next?.plannedDate);
       const cat = getUrgencyCategory(daysUntil, site.retired);
@@ -8498,7 +8498,7 @@ return (
                 </>
               )}
 
-          {!isWarehouse &&
+          {!isWarehouse && (!filterUrgency || filterUrgency.length === 0) &&
             (() => {
               const { plannedEvents, remainingEvents, doneByPlannedDate, contractOk, contractOver } = computeDashboardData(dashboardMonth);
 
@@ -9724,7 +9724,7 @@ return (
 
         {(
           <div className="mt-4 mb-6">
-            {urgentSites.length > 0 && (
+            {(!filterUrgency || filterUrgency.length === 0) && urgentSites.length > 0 && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-3 sm:p-4 mb-4">
                 <div className="flex items-center gap-2 font-bold text-red-900 mb-3 text-sm sm:text-base">
                   <AlertCircle size={18} className="flex-shrink-0" />
@@ -10044,7 +10044,7 @@ return (
         )}
 
         {/* Statistiques */}
-        {!isWarehouse && ( 
+        {!isWarehouse && (!filterUrgency || filterUrgency.length === 0) && (
             <SitesStats
               canSetNextTicket={isAdmin || isManager}
               onSetNextTicket={handleSetNextTicketNumber}
