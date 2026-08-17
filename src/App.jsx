@@ -14,6 +14,7 @@ import SitesStats from './components/sites/SitesStats';
 import SitesTechnicianFilter from './components/sites/SitesTechnicianFilter';
 import SidebarSitesActions from './components/sites/SidebarSitesActions';
 import TechnicianNhSiteUpdateModal from './components/sites/TechnicianNhSiteUpdateModal';
+import QuarantineTreatmentModal from './components/sites/QuarantineTreatmentModal';
 import DashboardHeader from './components/dashboard/DashboardHeader';
 import DashboardKpiGrid from './components/dashboard/DashboardKpiGrid';
 import DashboardDetailsModal from './components/dashboard/DashboardDetailsModal';
@@ -47,7 +48,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.8.0';
+const APP_VERSION = '6.8.1';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -142,6 +143,7 @@ const GeneratorMaintenanceApp = () => {
   const [filterSite, setFilterSite] = useState('all');
   const [filterUrgency, setFilterUrgency] = useState([]);
   const [vidangeInfoSite, setVidangeInfoSite] = useState(null);
+  const [quarantinedSites, setQuarantinedSites] = useState(null);
   const [ticketNumber, setTicketNumber] = useState(1201);
   const [ticketLabel, setTicketLabel] = useState('');
   const [importBusy, setImportBusy] = useState(false);
@@ -5623,6 +5625,10 @@ useEffect(() => {
           details +
           quarantineDetails
         );
+
+        if (quarantined > 0 && quarantinedSamples.length > 0) {
+          setQuarantinedSites(quarantinedSamples);
+        }
       } catch (err) {
         alert(err?.message || 'Erreur lors de l’import CONSOLE RMS.');
       } finally {
@@ -7680,6 +7686,17 @@ return (
             </div>
           </div>
         </div>
+      )}
+
+      {/* Popup traitement manuel des sites en quarantaine */}
+      {quarantinedSites && (
+        <QuarantineTreatmentModal
+          sites={quarantinedSites}
+          allSites={sites}
+          apiFetchJson={apiFetchJson}
+          onRefresh={async () => { await loadData(); }}
+          onClose={() => setQuarantinedSites(null)}
+        />
       )}
 
       {exportBusy && (
