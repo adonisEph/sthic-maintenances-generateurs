@@ -74,8 +74,10 @@ export async function onRequestPatch({ request, env, data, params }) {
       generateur: body.generateur != null ? String(body.generateur) : existing.generateur,
       capacite: body.capacite != null ? String(body.capacite) : existing.capacite,
       kitVidange: body.kitVidange != null ? String(body.kitVidange) : existing.kit_vidange,
-      nh1DV: body.nh1DV != null ? Number(body.nh1DV) : existing.nh1_dv,
-      dateDV: body.dateDV != null ? String(body.dateDV) : existing.date_dv,
+      // HARD RULE: nh1_dv and date_dv can ONLY be modified by the vidange completion flow (complete.js)
+      // Never allow PATCH to modify these fields — always preserve existing values
+      nh1DV: existing.nh1_dv,
+      dateDV: existing.date_dv,
       nh2A: body.nh2A != null ? Number(body.nh2A) : existing.nh2_a,
       dateA: body.dateA != null ? String(body.dateA) : existing.date_a,
       regime: body.regime != null ? Number(body.regime) : existing.regime,

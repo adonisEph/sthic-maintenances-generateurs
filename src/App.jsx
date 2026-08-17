@@ -48,7 +48,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.8.4';
+const APP_VERSION = '6.8.5';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -3832,8 +3832,6 @@ useEffect(() => {
           generateur: formData.generateur,
           capacite: formData.capacite,
           kitVidange: formData.kitVidange,
-          nh1DV: nh1,
-          dateDV: formData.dateDV,
           nh2A: nh2,
           dateA: formData.dateA,
           regime,
@@ -5753,7 +5751,7 @@ useEffect(() => {
     }
   };
 
-  const computeDashboardData = (yyyymm) => {
+  const computeDashboardData = useMemo(() => (yyyymm) => {
     const techFilter = String(filterTechnician || 'all');
     const zoneActive = managerZoneLock || (showZoneFilter && dashboardZone && dashboardZone !== 'ALL' ? String(dashboardZone) : '');
     const dashboardSites = sites
@@ -5812,7 +5810,7 @@ useEffect(() => {
     const remainingEvents = plannedEventsFiltered.filter((ev) => !completedKeys.has(String(ev.key)));
 
     return { plannedEvents: plannedEventsFiltered, remainingEvents, doneByPlannedDate, contractOk, contractOver };
-  };
+  }, [sites, ficheHistory, filterTechnician, managerZoneLock, showZoneFilter, dashboardZone, getUpdatedSite]);
 
   const handleExportDashboardSummaryExcel = async () => {
     const ok = window.confirm(`Exporter le résumé Dashboard (${dashboardMonth}) en Excel ?`);
@@ -6404,9 +6402,12 @@ useEffect(() => {
     const dv = String(dateDV || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dv)) return false;
     const now = new Date();
-    const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
-    const dvDate = new Date(Number(dv.slice(0, 4)), Number(dv.slice(5, 7)) - 1, Number(dv.slice(8, 10)));
-    return dvDate < threeMonthsAgo;
+    const dvYear = Number(dv.slice(0, 4));
+    const dvMonth = Number(dv.slice(5, 7));
+    const nowYear = now.getFullYear();
+    const nowMonth = now.getMonth() + 1;
+    const monthDiff = (nowYear - dvYear) * 12 + (nowMonth - dvMonth);
+    return monthDiff >= 3;
   };
 
   const filteredSites = sites

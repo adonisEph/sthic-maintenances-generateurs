@@ -1,4 +1,4 @@
-const CACHE = 'gmga-pwa-v55';
+const CACHE = 'gmga-pwa-v56';
 const CORE_ASSETS = ['/index.html', '/manifest.webmanifest', '/icon-192.svg', '/icon-512.svg'];
 
 self.addEventListener('install', (event) => {

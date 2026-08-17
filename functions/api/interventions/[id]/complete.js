@@ -1,7 +1,7 @@
 import { ensureAdminUser } from '../../_utils/db.js';
 import { json, requireAuth, readJson, isoNow, isSuperAdmin, userZone, ymdToday } from '../../_utils/http.js';
 import { nextPnrDayTicketNumber, formatPnrDayTicket, nextTicketNumberForZone, formatTicket, touchLastUpdatedAt } from '../../_utils/meta.js';
-import { calculateEstimatedNH, calculateDiffNHs, calculateEPVDates } from '../../_utils/calc.js';
+import { calculateEstimatedNH, calculateDiffNHs, calculateEPVDates, calculateRegime } from '../../_utils/calc.js';
 
 export async function onRequestPost({ request, env, data, params }) {
   try {
@@ -101,7 +101,10 @@ export async function onRequestPost({ request, env, data, params }) {
     const nextDateA = doneDate;
 
     // Recalcul métier (régime + estimations + diffs)
-    const nextRegime = Number.isFinite(Number(site.regime)) ? Number(site.regime) : 0;
+    let nextRegime = calculateRegime(nextNh1DV, nextNh2A, nextDateDV, nextDateA);
+    if (nextRegime === 0 && Number(site.regime) > 0) {
+      nextRegime = Number(site.regime);
+    }
     const nextNhEstimated = calculateEstimatedNH(nextNh2A, nextDateA, nextRegime);
     const nextDiffNHs = calculateDiffNHs(nextNh1DV, nextNh2A); // = 0
     const nextDiffEstimated = calculateDiffNHs(nextNh1DV, nextNhEstimated);
