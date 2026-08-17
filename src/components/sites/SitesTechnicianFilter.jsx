@@ -8,9 +8,18 @@ const SitesTechnicianFilter = ({
   technicians,
   filterSite,
   onChangeSite,
-  sites
+  sites,
+  filterUrgency,
+  onToggleUrgency,
+  onResetUrgency
 }) => {
   if (isTechnician) return null;
+
+  const urgencyOpts = [
+    { key: 'red', label: 'Urgents', dot: 'bg-red-500', activeBg: 'bg-red-500', ring: 'ring-red-200' },
+    { key: 'orange', label: 'Bientôt', dot: 'bg-orange-500', activeBg: 'bg-orange-500', ring: 'ring-orange-200' },
+    { key: 'green', label: 'Non urgents', dot: 'bg-green-500', activeBg: 'bg-green-500', ring: 'ring-green-200' }
+  ];
 
   const siteOptions = Array.isArray(sites) ? sites : [];
   const showSiteFilter = typeof onChangeSite === 'function' && filterSite !== undefined;
@@ -74,11 +83,11 @@ const SitesTechnicianFilter = ({
 
   return (
     <div className="flex items-center gap-2 mb-4 flex-wrap">
-      <Filter size={18} className="text-gray-600" />
+      <Filter size={18} className="text-gray-600 flex-shrink-0" />
       <select
         value={filterTechnician}
         onChange={(e) => onChange(e.target.value)}
-        className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1 sm:flex-initial"
+        className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1 sm:flex-initial bg-white hover:border-gray-400 transition-colors"
       >
         <option value="all">Tous les techniciens</option>
         {technicians.filter((t) => t !== 'all').map((tech) => (
@@ -119,7 +128,7 @@ const SitesTechnicianFilter = ({
                 }
               }}
               placeholder="Tous les sites"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-full bg-white hover:border-gray-400 transition-colors"
             />
 
             {siteDropdownOpen && siteSuggestions.length > 0 && (
@@ -143,6 +152,40 @@ const SitesTechnicianFilter = ({
             )}
           </div>
         </>
+      )}
+
+      {onToggleUrgency && (
+        <div className="flex items-center gap-1.5 ml-1">
+          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide hidden sm:inline">Statut</span>
+          <div className="flex items-center gap-1 bg-gray-50 rounded-lg p-0.5 border border-gray-200">
+            {urgencyOpts.map((opt) => {
+              const active = Array.isArray(filterUrgency) && filterUrgency.includes(opt.key);
+              return (
+                <button
+                  key={opt.key}
+                  onClick={() => onToggleUrgency(opt.key)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all duration-150 ${
+                    active
+                      ? `${opt.activeBg} text-white shadow-sm`
+                      : 'text-gray-600 hover:bg-white hover:shadow-sm'
+                  }`}
+                >
+                  <span className={`inline-block w-2 h-2 rounded-full ${active ? 'bg-white' : opt.dot}`} />
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+          {Array.isArray(filterUrgency) && filterUrgency.length > 0 && (
+            <button
+              onClick={onResetUrgency}
+              className="text-[11px] text-gray-400 hover:text-gray-600 font-medium transition-colors px-1"
+              title="Réinitialiser le filtre"
+            >
+              ✕
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

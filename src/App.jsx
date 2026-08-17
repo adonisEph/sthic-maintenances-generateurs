@@ -48,7 +48,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.8.2';
+const APP_VERSION = '6.8.3';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -8232,48 +8232,17 @@ return (
                         filterSite={filterSite}
                         onChangeSite={setFilterSite}
                         sites={filteredSites}
+                        filterUrgency={filterUrgency}
+                        onToggleUrgency={(key) => {
+                          setFilterUrgency((prev) =>
+                            prev.includes(key)
+                              ? prev.filter((k) => k !== key)
+                              : [...prev, key]
+                          );
+                        }}
+                        onResetUrgency={() => setFilterUrgency([])}
                       />
                     </div>
-                    {!isTechnician && (
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-semibold text-gray-600">Statut:</span>
-                        {[
-                          { key: 'red', label: 'Urgents', color: 'bg-red-500' },
-                          { key: 'orange', label: 'Bientôt', color: 'bg-orange-500' },
-                          { key: 'green', label: 'Non urgents', color: 'bg-green-500' }
-                        ].map((opt) => {
-                          const active = filterUrgency.includes(opt.key);
-                          return (
-                            <button
-                              key={opt.key}
-                              onClick={() => {
-                                setFilterUrgency((prev) =>
-                                  prev.includes(opt.key)
-                                    ? prev.filter((k) => k !== opt.key)
-                                    : [...prev, opt.key]
-                                );
-                              }}
-                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                                active
-                                  ? `${opt.color} text-white border-transparent`
-                                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                              }`}
-                            >
-                              <span className={`inline-block w-2.5 h-2.5 rounded-full ${active ? 'bg-white' : opt.color}`} />
-                              {opt.label}
-                            </button>
-                          );
-                        })}
-                        {filterUrgency.length > 0 && (
-                          <button
-                            onClick={() => setFilterUrgency([])}
-                            className="text-xs text-gray-500 hover:text-gray-700 underline"
-                          >
-                            Réinitialiser
-                          </button>
-                        )}
-                      </div>
-                    )}
                   </div>
 
                   <div ref={siteFormAnchorRef} />
