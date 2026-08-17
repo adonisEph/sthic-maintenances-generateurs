@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { AlertCircle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users, Menu, ChevronLeft, Trash2, RotateCcw, Bell, Share2, Package } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users, Menu, ChevronLeft, Trash2, RotateCcw, Bell, Share2, Package } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -47,7 +47,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.7.5';
+const APP_VERSION = '6.8.0';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -140,6 +140,8 @@ const GeneratorMaintenanceApp = () => {
   const [selectedSite, setSelectedSite] = useState(null);
   const [filterTechnician, setFilterTechnician] = useState('all');
   const [filterSite, setFilterSite] = useState('all');
+  const [filterUrgency, setFilterUrgency] = useState([]);
+  const [vidangeInfoSite, setVidangeInfoSite] = useState(null);
   const [ticketNumber, setTicketNumber] = useState(1201);
   const [ticketLabel, setTicketLabel] = useState('');
   const [importBusy, setImportBusy] = useState(false);
@@ -5464,7 +5466,7 @@ useEffect(() => {
     const file = e.target.files[0];
     if (!file) return;
 
-    if (!isAdmin && !isManager) {
+    if (!isAdmin && !isAnyManager) {
       alert('Accès interdit.');
       e.target.value = '';
       return;
@@ -5472,8 +5474,9 @@ useEffect(() => {
 
     const ok = window.confirm(
       `Confirmer l'import CONSOLE RMS ?\n\n` +
-      `Ce fichier va mettre à jour NH2 A et Date A des sites existants via la colonne "ID Site".\n` +
-      `Les lignes avec ID Site inconnu seront ignorées.\n\n` +
+      `Ce fichier va mettre à jour UNIQUEMENT le champ NH2 A (et Date A) des sites existants.\n` +
+      `NH1 DV et Date DV ne seront JAMAIS modifiés.\n` +
+      `Les sites avec NH2 A < NH1 DV ou NH2 A anormalement élevé seront mis en quarantaine pour traitement manuel.\n\n` +
       `Fichier: ${file?.name || ''}`
     );
     if (!ok) {
@@ -5571,6 +5574,7 @@ useEffect(() => {
         const updated = Number(res?.updated || 0);
         const ignored = Number(res?.ignored || 0);
         const skipped = Number(res?.skipped || 0);
+        const quarantined = Number(res?.quarantined || 0);
         const ignoredRetired = Number(res?.ignoredRetired || 0);
         const ignoredMissingId = Number(res?.ignoredMissingId || 0);
         const ignoredUnknownId = Number(res?.ignoredUnknownId || 0);
@@ -5578,6 +5582,9 @@ useEffect(() => {
         const ignoredDateBeforeDv = Number(res?.ignoredDateBeforeDv || 0);
         const ignoredDecrease = Number(res?.ignoredDecrease || 0);
         const ignoredNhBelowDv = Number(res?.ignoredNhBelowDv || 0);
+        const quarantinedNhBelowDv = Number(res?.quarantinedNhBelowDv || 0);
+        const quarantinedNhAbnormallyHigh = Number(res?.quarantinedNhAbnormallyHigh || 0);
+        const quarantinedSamples = Array.isArray(res?.quarantinedSamples) ? res.quarantinedSamples : [];
 
         const details =
           ignored > 0
@@ -5592,12 +5599,29 @@ useEffect(() => {
               (ignoredNhBelowDv > 0 ? `- NH < NH1 DV: ${ignoredNhBelowDv}\n` : '')
             : '';
 
+        const quarantineDetails =
+          quarantined > 0
+            ?
+              `\n\n⚠️ Sites en quarantaine (à traiter manuellement):\n` +
+              (quarantinedNhBelowDv > 0 ? `- NH2 A < NH1 DV: ${quarantinedNhBelowDv}\n` : '') +
+              (quarantinedNhAbnormallyHigh > 0 ? `- NH2 A anormalement > NH1 DV: ${quarantinedNhAbnormallyHigh}\n` : '') +
+              (quarantinedSamples.length > 0
+                ? `\nExemples:\n` +
+                  quarantinedSamples.slice(0, 10).map((s) =>
+                    `  • ${s.idSite || '?'} — ${s.reason === 'nh2a_below_nh1dv' ? 'NH2 A < NH1 DV' : 'NH2 A >> NH1 DV'} (NH2 A: ${s.nh2A ?? '?'}, NH1 DV: ${s.prevNh1DV ?? '?'})`
+                  ).join('\n')
+                : ''
+              )
+            : '';
+
         alert(
           `✅ Import CONSOLE RMS terminé.\n\n` +
           `Sites mis à jour: ${updated}\n` +
           `Lignes ignorées (ID inconnu / invalide / site retiré): ${ignored}\n` +
-          `Lignes sans valeur (NH2 A & Date A vides): ${skipped}` +
-          details
+          `Lignes sans valeur (NH2 A & Date A vides): ${skipped}\n` +
+          `Sites en quarantaine: ${quarantined}` +
+          details +
+          quarantineDetails
         );
       } catch (err) {
         alert(err?.message || 'Erreur lors de l’import CONSOLE RMS.');
@@ -6362,6 +6386,23 @@ useEffect(() => {
       .map(s => String(s?.technician || '').trim())
       .filter(Boolean)
   )];
+  const getUrgencyCategory = (daysUntil, retired) => {
+    if (retired) return null;
+    if (daysUntil === null || daysUntil === undefined) return null;
+    if (daysUntil < 0 || daysUntil <= 3) return 'red';
+    if (daysUntil <= 7) return 'orange';
+    return 'green';
+  };
+
+  const isVidangeOver3Months = (dateDV) => {
+    const dv = String(dateDV || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dv)) return false;
+    const now = new Date();
+    const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+    const dvDate = new Date(Number(dv.slice(0, 4)), Number(dv.slice(5, 7)) - 1, Number(dv.slice(8, 10)));
+    return dvDate < threeMonthsAgo;
+  };
+
   const filteredSites = sites
     .map(getUpdatedSite)
     .filter((site) => filterTechnician === 'all' || normTechName(site.technician) === normTechName(filterTechnician))
@@ -6372,6 +6413,15 @@ useEffect(() => {
       const z = String(dashboardZone || 'ALL');
       if (!z || z === 'ALL') return true;
       return String(site?.zone || '').trim() === z;
+    })
+    .filter((site) => {
+      if (!filterUrgency || filterUrgency.length === 0) return true;
+      if (site.retired) return true;
+      const next = getNextPendingEpvForSiteRecalculated(site);
+      const daysUntil = getDaysUntil(next?.plannedDate);
+      const cat = getUrgencyCategory(daysUntil, site.retired);
+      if (!cat) return true;
+      return filterUrgency.includes(cat);
     });
 
   const pmInfoBySiteCode = useMemo(() => {
@@ -7582,6 +7632,56 @@ return (
         </div>
       )}
 
+      {/* Popup infos dernière vidange (badge +3 mois) */}
+      {vidangeInfoSite && (
+        <div
+          className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4"
+          onClick={() => setVidangeInfoSite(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl max-w-sm w-full overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-purple-600 text-white px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <AlertTriangle size={22} className="flex-shrink-0" />
+                <span className="font-bold text-base">Dernière vidange</span>
+              </div>
+              <button onClick={() => setVidangeInfoSite(null)} className="hover:bg-purple-700 p-1 rounded">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="text-sm font-bold text-gray-900">{vidangeInfoSite?.nameSite || '-'}</div>
+              <div className="text-xs text-gray-500 font-mono">{vidangeInfoSite?.idSite || '-'}</div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+                  <span className="text-sm text-gray-700 font-semibold">Date DV</span>
+                  <span className="text-sm text-gray-900 font-bold">
+                    {vidangeInfoSite?.dateDV ? formatDate(vidangeInfoSite.dateDV) : 'Non renseignée'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+                  <span className="text-sm text-gray-700 font-semibold">NH1 DV</span>
+                  <span className="text-sm text-gray-900 font-bold">
+                    {Number.isFinite(Number(vidangeInfoSite?.nh1DV)) ? `${vidangeInfoSite.nh1DV} H` : '-'}
+                  </span>
+                </div>
+              </div>
+              <div className="text-xs text-purple-700 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
+                Ce site n'a pas été vidangé depuis plus de 3 mois.
+              </div>
+              <button
+                onClick={() => setVidangeInfoSite(null)}
+                className="w-full bg-gray-200 text-gray-800 py-2.5 rounded-lg hover:bg-gray-300 font-semibold text-sm"
+              >
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {exportBusy && (
         <div className="fixed inset-0 z-[60] bg-black/30 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-5">
@@ -7649,7 +7749,7 @@ return (
             sitesCount={sites.length}
             exportBusy={exportBusy}
             onExportExcel={handleExportExcel}
-            canImportConsoleRms={Boolean(isAdmin)}
+            canImportConsoleRms={Boolean(isAdmin || isAnyManager)}
             consoleRmsImportBusy={consoleRmsImportBusy}
             consoleRmsImportStep={consoleRmsImportStep}
             consoleRmsImportProgress={consoleRmsImportProgress}
@@ -8117,6 +8217,46 @@ return (
                         sites={filteredSites}
                       />
                     </div>
+                    {!isTechnician && (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-semibold text-gray-600">Statut:</span>
+                        {[
+                          { key: 'red', label: 'Urgents', color: 'bg-red-500' },
+                          { key: 'orange', label: 'Bientôt', color: 'bg-orange-500' },
+                          { key: 'green', label: 'Non urgents', color: 'bg-green-500' }
+                        ].map((opt) => {
+                          const active = filterUrgency.includes(opt.key);
+                          return (
+                            <button
+                              key={opt.key}
+                              onClick={() => {
+                                setFilterUrgency((prev) =>
+                                  prev.includes(opt.key)
+                                    ? prev.filter((k) => k !== opt.key)
+                                    : [...prev, opt.key]
+                                );
+                              }}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                                active
+                                  ? `${opt.color} text-white border-transparent`
+                                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                              }`}
+                            >
+                              <span className={`inline-block w-2.5 h-2.5 rounded-full ${active ? 'bg-white' : opt.color}`} />
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                        {filterUrgency.length > 0 && (
+                          <button
+                            onClick={() => setFilterUrgency([])}
+                            className="text-xs text-gray-500 hover:text-gray-700 underline"
+                          >
+                            Réinitialiser
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div ref={siteFormAnchorRef} />
@@ -9728,6 +9868,16 @@ return (
                             <div className="text-[10px] text-gray-500 mt-1">
                               {site.technician} | {site.generateur} | {site.capacite}
                             </div>
+                            {isVidangeOver3Months(site?.dateDV) && (
+                              <button
+                                onClick={() => setVidangeInfoSite(site)}
+                                className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-300 hover:bg-purple-200 transition-colors cursor-pointer"
+                                title="Cliquez pour voir les détails de la dernière vidange"
+                              >
+                                <AlertTriangle size={10} />
+                                Vidange il y'a +3 mois
+                              </button>
+                            )}
                           </div>
 
                         <div className="flex flex-col items-start sm:items-end gap-2 w-full sm:w-auto">

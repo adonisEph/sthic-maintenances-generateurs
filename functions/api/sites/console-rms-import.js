@@ -1,7 +1,7 @@
 import { ensureAdminUser } from '../_utils/db.js';
 import { json, readJson, isoNow, newId, requireAuth, isSuperAdmin, userZone, ymdToday } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
-import { calculateDiffNHs, calculateEstimatedNH, calculateRegime } from '../_utils/calc.js';
+import { calculateDiffNHs, calculateEstimatedNH } from '../_utils/calc.js';
 
 const normIdSite = (v) =>
   String(v || '')
@@ -26,7 +26,7 @@ export async function onRequestPost({ request, env, data }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
     const role = String(data?.user?.role || '');
-    if (role !== 'admin') return json({ error: 'Accès interdit.' }, { status: 403 });
+    if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const body = await readJson(request);
     const rows = Array.isArray(body?.rows) ? body.rows : [];
@@ -50,6 +50,7 @@ export async function onRequestPost({ request, env, data }) {
     let updated = 0;
     let ignored = 0;
     let skipped = 0;
+    let quarantined = 0;
 
     let ignoredBadDate = 0;
     let ignoredDateBeforeDv = 0;
@@ -58,8 +59,11 @@ export async function onRequestPost({ request, env, data }) {
     let ignoredUnknownId = 0;
     let ignoredNhBelowDv = 0;
     let ignoredRetired = 0;
+    let quarantinedNhBelowDv = 0;
+    let quarantinedNhAbnormallyHigh = 0;
 
     const ignoredSamples = [];
+    const quarantinedSamples = [];
     const pushIgnoredSample = (reason, r, idx, extra = {}) => {
       if (ignoredSamples.length >= 80) return;
       ignoredSamples.push({
@@ -71,6 +75,20 @@ export async function onRequestPost({ request, env, data }) {
         ...extra
       });
     };
+    const pushQuarantinedSample = (reason, r, idx, extra = {}) => {
+      if (quarantinedSamples.length >= 80) return;
+      quarantinedSamples.push({
+        reason,
+        row: Number(idx) + 1,
+        idSite: String(r?.idSite || ''),
+        nh2A: r?.nh2A == null ? null : Number(r.nh2A),
+        dateA: r?.dateA == null ? '' : String(r.dateA),
+        ...extra
+      });
+    };
+
+    // Threshold for detecting abnormally high NH2 A vs NH1 DV
+    const ABNORMAL_HIGH_FACTOR = 3; // NH2 A > NH1 DV * 3 is considered abnormally high
 
     const now = isoNow();
     const todayYmd = ymdToday();
@@ -180,27 +198,33 @@ export async function onRequestPost({ request, env, data }) {
         effectiveNh = effectiveMode ? rawNh : (nextOffset + rawNh);
         readingRawNh = effectiveMode ? (effectiveNh - nextOffset) : rawNh;
 
+        // Quarantine: NH2 A < NH1 DV (incoherent)
         if (Number.isFinite(Number(prevNh1DV)) && effectiveNh < Number(prevNh1DV)) {
-          // Invalid reading: ignore line
-          ignored += 1;
-          ignoredNhBelowDv += 1;
-          pushIgnoredSample('nh_below_dv', r, i, { normalizedIdSite: idSite, prevNh1DV });
+          quarantined += 1;
+          quarantinedNhBelowDv += 1;
+          pushQuarantinedSample('nh2a_below_nh1dv', r, i, { normalizedIdSite: idSite, prevNh1DV, effectiveNh });
+          continue;
+        }
+
+        // Quarantine: NH2 A abnormally high vs NH1 DV (incoherent)
+        if (Number.isFinite(Number(prevNh1DV)) && Number(prevNh1DV) > 0 && effectiveNh > Number(prevNh1DV) * ABNORMAL_HIGH_FACTOR) {
+          quarantined += 1;
+          quarantinedNhAbnormallyHigh += 1;
+          pushQuarantinedSample('nh2a_abnormally_high', r, i, { normalizedIdSite: idSite, prevNh1DV, effectiveNh, factor: ABNORMAL_HIGH_FACTOR });
           continue;
         }
       }
 
-      let regime = calculateRegime(prevNh1DV, effectiveNh, prevDateDV, readingDate);
-      if (regime === 0 && Number(site.regime) > 0) {
-        regime = Number(site.regime);
-      }
+      // Only update nh2_a, date_a, nh_offset and derived values — NEVER nh1_dv, date_dv, regime
+      const regime = Number(site.regime) || 0;
       const nhEstimated = calculateEstimatedNH(effectiveNh, readingDate, regime);
       const diffNHs = calculateDiffNHs(prevNh1DV, effectiveNh);
       const diffEstimated = calculateDiffNHs(prevNh1DV, nhEstimated);
 
       await env.DB.prepare(
-        'UPDATE sites SET nh2_a = ?, date_a = ?, nh_offset = ?, regime = ?, nh_estimated = ?, diff_nhs = ?, diff_estimated = ?, updated_at = ? WHERE id = ?'
+        'UPDATE sites SET nh2_a = ?, date_a = ?, nh_offset = ?, nh_estimated = ?, diff_nhs = ?, diff_estimated = ?, updated_at = ? WHERE id = ?'
       )
-        .bind(effectiveNh, readingDate, nextOffset, regime, nhEstimated, diffNHs, diffEstimated, now, String(site.id))
+        .bind(effectiveNh, readingDate, nextOffset, nhEstimated, diffNHs, diffEstimated, now, String(site.id))
         .run();
 
       const rid = newId();
@@ -239,6 +263,7 @@ export async function onRequestPost({ request, env, data }) {
         updated,
         ignored,
         skipped,
+        quarantined,
         ignoredMissingId,
         ignoredUnknownId,
         ignoredBadDate,
@@ -246,7 +271,10 @@ export async function onRequestPost({ request, env, data }) {
         ignoredDecrease,
         ignoredNhBelowDv,
         ignoredRetired,
-        ignoredSamples
+        quarantinedNhBelowDv,
+        quarantinedNhAbnormallyHigh,
+        ignoredSamples,
+        quarantinedSamples
       },
       { status: 200 }
     );

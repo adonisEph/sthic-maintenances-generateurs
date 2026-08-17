@@ -66,6 +66,12 @@ export async function onRequestPost({ env, data }) {
     let updated = 0;
     let skippedNoDateA = 0;
     let skippedNoRegime = 0;
+    let quarantined = 0;
+    let quarantinedNhBelowDv = 0;
+    let quarantinedNhAbnormallyHigh = 0;
+
+    const ABNORMAL_HIGH_FACTOR = 3;
+    const quarantinedSamples = [];
 
     const updateStmt = env.DB.prepare(
       'UPDATE sites SET nh2_a = ?, date_a = ?, nh_estimated = ?, diff_nhs = ?, diff_estimated = ?, updated_at = ? WHERE id = ?'
@@ -106,6 +112,26 @@ export async function onRequestPost({ env, data }) {
       const nextNh2A = prevNh2A + (r * daysSince);
       const nextDiff = nextNh2A - nh1Dv;
 
+      // Quarantine: NH2 A < NH1 DV
+      if (Number.isFinite(nh1Dv) && nextNh2A < nh1Dv) {
+        quarantined += 1;
+        quarantinedNhBelowDv += 1;
+        if (quarantinedSamples.length < 80) {
+          quarantinedSamples.push({ siteId: row?.id, reason: 'nh2a_below_nh1dv', nh1Dv, nextNh2A });
+        }
+        continue;
+      }
+
+      // Quarantine: NH2 A abnormally high vs NH1 DV
+      if (Number.isFinite(nh1Dv) && nh1Dv > 0 && nextNh2A > nh1Dv * ABNORMAL_HIGH_FACTOR) {
+        quarantined += 1;
+        quarantinedNhAbnormallyHigh += 1;
+        if (quarantinedSamples.length < 80) {
+          quarantinedSamples.push({ siteId: row?.id, reason: 'nh2a_abnormally_high', nh1Dv, nextNh2A, factor: ABNORMAL_HIGH_FACTOR });
+        }
+        continue;
+      }
+
       await updateStmt.bind(nextNh2A, todayYmd, nextNh2A, nextDiff, nextDiff, now, row.id).run();
       updated += 1;
     }
@@ -121,7 +147,11 @@ export async function onRequestPost({ env, data }) {
         updated,
         skipped: updated === 0,
         skippedNoDateA,
-        skippedNoRegime
+        skippedNoRegime,
+        quarantined,
+        quarantinedNhBelowDv,
+        quarantinedNhAbnormallyHigh,
+        quarantinedSamples
       },
       { status: 200 }
     );
