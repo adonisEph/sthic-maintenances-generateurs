@@ -1,5 +1,5 @@
 import React from 'react';
-import { Download, X } from 'lucide-react';
+import { Download, X, AlertTriangle } from 'lucide-react';
 
 const DashboardDetailsModal = ({
   open,
@@ -11,7 +11,10 @@ const DashboardDetailsModal = ({
   exportBusy,
   onClose,
   onExportExcel,
-  formatDate
+  formatDate,
+  isVidangeOver3Months,
+  siteMap,
+  onVidangeBadgeClick
 }) => {
   if (!open) return null;
 
@@ -38,7 +41,10 @@ const DashboardDetailsModal = ({
             <div className="text-gray-600">Aucun élément pour ce mois.</div>
           ) : isContractKind ? (
             <div className="space-y-3">
-              {list.map((f) => (
+              {list.map((f) => {
+                const site = siteMap?.get?.(String(f.siteId || '')) || null;
+                const showBadge = isVidangeOver3Months && site?.dateDV && isVidangeOver3Months(site.dateDV);
+                return (
                 <div key={f.id} className="border border-gray-200 rounded-lg p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -46,6 +52,16 @@ const DashboardDetailsModal = ({
                       <div className="text-xs text-gray-600">Ticket: {f.ticketNumber} | Technicien: {f.technician}</div>
                       {f.dateCompleted && (
                         <div className="text-xs text-gray-600">Réalisée: {formatDate(f.dateCompleted)}</div>
+                      )}
+                      {showBadge && (
+                        <button
+                          onClick={() => onVidangeBadgeClick?.(site)}
+                          className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-300 hover:bg-purple-200 transition-colors cursor-pointer"
+                          title="Cliquez pour voir les détails de la dernière vidange"
+                        >
+                          <AlertTriangle size={10} />
+                          Vidange il y'a +3 mois
+                        </button>
                       )}
                     </div>
                     <div className="text-right">
@@ -55,16 +71,30 @@ const DashboardDetailsModal = ({
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="space-y-3">
-              {list.map((ev) => (
+              {list.map((ev) => {
+                const site = siteMap?.get?.(String(ev.siteId || '')) || null;
+                const showBadge = isVidangeOver3Months && site?.dateDV && isVidangeOver3Months(site.dateDV);
+                return (
                 <div key={ev.key} className="border border-gray-200 rounded-lg p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="font-semibold text-gray-800">{ev.siteName}</div>
                       <div className="text-xs text-gray-600">{ev.technician}</div>
+                      {showBadge && (
+                        <button
+                          onClick={() => onVidangeBadgeClick?.(site)}
+                          className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-300 hover:bg-purple-200 transition-colors cursor-pointer"
+                          title="Cliquez pour voir les détails de la dernière vidange"
+                        >
+                          <AlertTriangle size={10} />
+                          Vidange il y'a +3 mois
+                        </button>
+                      )}
                     </div>
                     <div className="text-right">
                       <div className="text-xs bg-gray-100 px-2 py-1 rounded inline-block">{ev.epvType}</div>
@@ -72,7 +102,8 @@ const DashboardDetailsModal = ({
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

@@ -48,7 +48,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.8.6';
+const APP_VERSION = '6.8.7';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -142,6 +142,7 @@ const GeneratorMaintenanceApp = () => {
   const [filterTechnician, setFilterTechnician] = useState('all');
   const [filterSite, setFilterSite] = useState('all');
   const [filterUrgency, setFilterUrgency] = useState([]);
+  const [filterPmDate, setFilterPmDate] = useState('');
   const [vidangeInfoSite, setVidangeInfoSite] = useState(null);
   const [quarantinedSites, setQuarantinedSites] = useState(null);
   const [ticketNumber, setTicketNumber] = useState(1201);
@@ -3832,6 +3833,7 @@ useEffect(() => {
           generateur: formData.generateur,
           capacite: formData.capacite,
           kitVidange: formData.kitVidange,
+          ...(canManagerVidangeActions ? { nh1DV: nh1, dateDV: formData.dateDV } : {}),
           nh2A: nh2,
           dateA: formData.dateA,
           regime,
@@ -5617,7 +5619,7 @@ useEffect(() => {
         alert(
           `✅ Import CONSOLE RMS terminé.\n\n` +
           `Sites mis à jour: ${updated}\n` +
-          `Lignes ignorées (ID inconnu / invalide / site retiré): ${ignored}\n` +
+          `Lignes ignorées (ID inconnu / invalide): ${ignored}\n` +
           `Lignes sans valeur (NH2 A & Date A vides): ${skipped}\n` +
           `Sites en quarantaine: ${quarantined}` +
           details +
@@ -6295,7 +6297,7 @@ useEffect(() => {
   }, [urgentSitesAll, isTechnician, isManager, authZone, showZoneFilter, dashboardZone, filterTechnician, filterSite, isViewer, managerZoneLock]);
 
   const urgentRetiredMonthsQuery = useMemo(() => {
-    if (!(isAdmin || isAnyManager || isViewer || isTechnician)) return '';
+    if (!(isAdmin || isAnyManager || isViewer || isTechnician || isWarehouse)) return '';
     const list = Array.isArray(urgentSites) ? urgentSites : [];
 
     const lateSites = list.filter((s) => {
@@ -6326,7 +6328,7 @@ useEffect(() => {
     qs.set('siteCodes', siteCodes.join(','));
     qs.set('maxMonths', '18');
     return qs.toString();
-  }, [urgentSites, isAdmin, isAnyManager, isViewer, isTechnician]);
+  }, [urgentSites, isAdmin, isAnyManager, isViewer, isTechnician, isWarehouse]);
 
   useEffect(() => {
     if (!urgentRetiredMonthsQuery) {
@@ -6410,26 +6412,13 @@ useEffect(() => {
     return monthDiff >= 3;
   };
 
-  const filteredSites = sites
-    .map(getUpdatedSite)
-    .filter((site) => filterTechnician === 'all' || normTechName(site.technician) === normTechName(filterTechnician))
-    .filter((site) => filterSite === 'all' || String(site?.id || '') === String(filterSite))
-    .filter((site) => {
-      if (managerZoneLock) return String(site?.zone || '').trim() === managerZoneLock;
-      if (!showZoneFilter) return true;
-      const z = String(dashboardZone || 'ALL');
-      if (!z || z === 'ALL') return true;
-      return String(site?.zone || '').trim() === z;
-    })
-    .filter((site) => {
-      if (!filterUrgency || filterUrgency.length === 0) return true;
-      if (site.retired) return false;
-      const next = getNextPendingEpvForSiteRecalculated(site);
-      const daysUntil = getDaysUntil(next?.plannedDate);
-      const cat = getUrgencyCategory(daysUntil, site.retired);
-      if (!cat) return true;
-      return filterUrgency.includes(cat);
-    });
+  const sitesMapById = useMemo(() => {
+    const m = new Map();
+    for (const s of sites) {
+      if (s?.id) m.set(String(s.id), s);
+    }
+    return m;
+  }, [sites]);
 
   const pmInfoBySiteCode = useMemo(() => {
     const items = Array.isArray(pmSitesItems) ? pmSitesItems : [];
@@ -6461,6 +6450,34 @@ useEffect(() => {
 
     return map;
   }, [pmSitesItems]);
+
+  const filteredSites = sites
+    .map(getUpdatedSite)
+    .filter((site) => filterTechnician === 'all' || normTechName(site.technician) === normTechName(filterTechnician))
+    .filter((site) => filterSite === 'all' || String(site?.id || '') === String(filterSite))
+    .filter((site) => {
+      if (managerZoneLock) return String(site?.zone || '').trim() === managerZoneLock;
+      if (!showZoneFilter) return true;
+      const z = String(dashboardZone || 'ALL');
+      if (!z || z === 'ALL') return true;
+      return String(site?.zone || '').trim() === z;
+    })
+    .filter((site) => {
+      if (!filterUrgency || filterUrgency.length === 0) return true;
+      if (site.retired) return false;
+      const next = getNextPendingEpvForSiteRecalculated(site);
+      const daysUntil = getDaysUntil(next?.plannedDate);
+      const cat = getUrgencyCategory(daysUntil, site.retired);
+      if (!cat) return true;
+      return filterUrgency.includes(cat);
+    })
+    .filter((site) => {
+      if (!filterPmDate) return true;
+      const code = String(site?.idSite || '').trim().toUpperCase().replace(/\s+/g, '');
+      const pmInfo = code ? pmInfoBySiteCode.get(code) : null;
+      const pmDate = pmInfo?.scheduled ? String(pmInfo.scheduled).slice(0, 10) : '';
+      return pmDate === filterPmDate;
+    });
 
   const sortedSites = useMemo(() => {
     const list = Array.isArray(filteredSites) ? [...filteredSites] : [];
@@ -8478,6 +8495,8 @@ return (
                     <DashboardHeader
                       dashboardMonth={dashboardMonth}
                       onDashboardMonthChange={setDashboardMonth}
+                      filterPmDate={filterPmDate}
+                      onFilterPmDateChange={setFilterPmDate}
                       onRefresh={async () => {
                         try {
                           await loadData();
@@ -8499,7 +8518,7 @@ return (
                 </>
               )}
 
-          {!isWarehouse && (!filterUrgency || filterUrgency.length === 0) &&
+          {!isWarehouse && (!filterUrgency || filterUrgency.length === 0) && !filterPmDate &&
             (() => {
               const { plannedEvents, remainingEvents, doneByPlannedDate, contractOk, contractOver } = computeDashboardData(dashboardMonth);
 
@@ -8530,6 +8549,9 @@ return (
             onClose={() => setDashboardDetails({ open: false, title: '', kind: '', items: [] })}
             onExportExcel={handleExportDashboardDetailsExcel}
             formatDate={formatDate}
+            isVidangeOver3Months={isVidangeOver3Months}
+            siteMap={sitesMapById}
+            onVidangeBadgeClick={(site) => setVidangeInfoSite(site)}
           />
         )}
 
@@ -9725,7 +9747,7 @@ return (
 
         {(
           <div className="mt-4 mb-6">
-            {(!filterUrgency || filterUrgency.length === 0) && urgentSites.length > 0 && (
+            {(!filterUrgency || filterUrgency.length === 0) && !filterPmDate && urgentSites.length > 0 && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-3 sm:p-4 mb-4">
                 <div className="flex items-center gap-2 font-bold text-red-900 mb-3 text-sm sm:text-base">
                   <AlertCircle size={18} className="flex-shrink-0" />
@@ -9756,6 +9778,16 @@ return (
                             <span className="text-gray-300 hidden sm:inline">|</span>
                             <span>Diff: {Number.isFinite(Number(site.diffEstimated)) ? `${site.diffEstimated}H` : '-'}</span>
                           </div>
+                          {isVidangeOver3Months(site?.dateDV) && (
+                            <button
+                              onClick={() => setVidangeInfoSite(site)}
+                              className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-300 hover:bg-purple-200 transition-colors cursor-pointer"
+                              title="Cliquez pour voir les détails de la dernière vidange"
+                            >
+                              <AlertTriangle size={10} />
+                              Vidange il y'a +3 mois
+                            </button>
+                          )}
                         </div>
 
                         <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start flex-shrink-0 gap-2 sm:gap-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-red-50">

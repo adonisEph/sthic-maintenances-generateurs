@@ -84,7 +84,6 @@ export async function onRequestPost({ env, data }) {
         retiredRaw === 1 ||
         retiredRaw === '1' ||
         String(retiredRaw || '').trim().toLowerCase() === 'true';
-      if (isRetired) continue;
 
       const prevDateA = normalizeDateA(row?.date_a);
       if (!prevDateA) {
@@ -112,8 +111,8 @@ export async function onRequestPost({ env, data }) {
       const nextNh2A = prevNh2A + (r * daysSince);
       const nextDiff = nextNh2A - nh1Dv;
 
-      // Quarantine: NH2 A < NH1 DV
-      if (Number.isFinite(nh1Dv) && nextNh2A < nh1Dv) {
+      // Quarantine: NH2 A < NH1 DV — skip for retired sites
+      if (!isRetired && Number.isFinite(nh1Dv) && nextNh2A < nh1Dv) {
         quarantined += 1;
         quarantinedNhBelowDv += 1;
         if (quarantinedSamples.length < 80) {
@@ -122,8 +121,8 @@ export async function onRequestPost({ env, data }) {
         continue;
       }
 
-      // Quarantine: NH2 A abnormally high vs NH1 DV
-      if (Number.isFinite(nh1Dv) && nh1Dv > 0 && nextNh2A > nh1Dv * ABNORMAL_HIGH_FACTOR) {
+      // Quarantine: NH2 A abnormally high vs NH1 DV — skip for retired sites
+      if (!isRetired && Number.isFinite(nh1Dv) && nh1Dv > 0 && nextNh2A > nh1Dv * ABNORMAL_HIGH_FACTOR) {
         quarantined += 1;
         quarantinedNhAbnormallyHigh += 1;
         if (quarantinedSamples.length < 80) {

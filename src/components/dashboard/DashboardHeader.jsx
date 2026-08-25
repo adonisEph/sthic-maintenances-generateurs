@@ -4,6 +4,8 @@ import { Download } from 'lucide-react';
 const DashboardHeader = ({
   dashboardMonth,
   onDashboardMonthChange,
+  filterPmDate,
+  onFilterPmDateChange,
   dashboardZone,
   onDashboardZoneChange,
   showZoneFilter,
@@ -21,6 +23,22 @@ const DashboardHeader = ({
         <p className="text-xs text-gray-600">Résumé mensuel (seuil contractuel: 250H)</p>
       </div>
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+        <label className="text-xs text-gray-600">Date PM</label>
+        <input
+          type="date"
+          value={filterPmDate}
+          onChange={(e) => onFilterPmDateChange(e.target.value)}
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+        />
+        {filterPmDate && (
+          <button
+            type="button"
+            onClick={() => onFilterPmDateChange('')}
+            className="text-xs text-red-600 hover:text-red-800 font-semibold underline"
+          >
+            Réinitialiser
+          </button>
+        )}
         <label className="text-xs text-gray-600">Mois</label>
         <input
           type="month"

@@ -116,12 +116,6 @@ export async function onRequestPost({ request, env, data }) {
         retiredRaw === 1 ||
         retiredRaw === '1' ||
         String(retiredRaw || '').trim().toLowerCase() === 'true';
-      if (isRetired) {
-        ignored += 1;
-        ignoredRetired += 1;
-        pushIgnoredSample('site_retired', r, i, { normalizedIdSite: idSite });
-        continue;
-      }
 
       const nextNh2A = r?.nh2A == null || r?.nh2A === '' ? null : Number(r.nh2A);
       const nextDateA = r?.dateA == null || String(r.dateA).trim() === '' ? '' : parseYmd(r.dateA);
@@ -198,16 +192,16 @@ export async function onRequestPost({ request, env, data }) {
         effectiveNh = effectiveMode ? rawNh : (nextOffset + rawNh);
         readingRawNh = effectiveMode ? (effectiveNh - nextOffset) : rawNh;
 
-        // Quarantine: NH2 A < NH1 DV (incoherent)
-        if (Number.isFinite(Number(prevNh1DV)) && effectiveNh < Number(prevNh1DV)) {
+        // Quarantine: NH2 A < NH1 DV (incoherent) — skip for retired sites
+        if (!isRetired && Number.isFinite(Number(prevNh1DV)) && effectiveNh < Number(prevNh1DV)) {
           quarantined += 1;
           quarantinedNhBelowDv += 1;
           pushQuarantinedSample('nh2a_below_nh1dv', r, i, { normalizedIdSite: idSite, prevNh1DV, effectiveNh });
           continue;
         }
 
-        // Quarantine: NH2 A abnormally high vs NH1 DV (incoherent)
-        if (Number.isFinite(Number(prevNh1DV)) && Number(prevNh1DV) > 0 && effectiveNh > Number(prevNh1DV) * ABNORMAL_HIGH_FACTOR) {
+        // Quarantine: NH2 A abnormally high vs NH1 DV (incoherent) — skip for retired sites
+        if (!isRetired && Number.isFinite(Number(prevNh1DV)) && Number(prevNh1DV) > 0 && effectiveNh > Number(prevNh1DV) * ABNORMAL_HIGH_FACTOR) {
           quarantined += 1;
           quarantinedNhAbnormallyHigh += 1;
           pushQuarantinedSample('nh2a_abnormally_high', r, i, { normalizedIdSite: idSite, prevNh1DV, effectiveNh, factor: ABNORMAL_HIGH_FACTOR });
