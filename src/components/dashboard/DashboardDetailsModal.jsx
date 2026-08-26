@@ -43,7 +43,8 @@ const DashboardDetailsModal = ({
             <div className="space-y-3">
               {list.map((f) => {
                 const site = siteMap?.get?.(String(f.siteId || '')) || null;
-                const showBadge = isVidangeOver3Months && site?.dateDV && isVidangeOver3Months(site.dateDV);
+                const dateDV = site?.dateDV || f?.dateDV || '';
+                const showBadge = isVidangeOver3Months && dateDV && isVidangeOver3Months(dateDV);
                 return (
                 <div key={f.id} className="border border-gray-200 rounded-lg p-3">
                   <div className="flex items-start justify-between gap-3">
@@ -55,7 +56,7 @@ const DashboardDetailsModal = ({
                       )}
                       {showBadge && (
                         <button
-                          onClick={() => onVidangeBadgeClick?.(site)}
+                          onClick={() => onVidangeBadgeClick?.(site || { ...f, dateDV })}
                           className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-300 hover:bg-purple-200 transition-colors cursor-pointer"
                           title="Cliquez pour voir les détails de la dernière vidange"
                         >
@@ -78,7 +79,8 @@ const DashboardDetailsModal = ({
             <div className="space-y-3">
               {list.map((ev) => {
                 const site = siteMap?.get?.(String(ev.siteId || '')) || null;
-                const showBadge = isVidangeOver3Months && site?.dateDV && isVidangeOver3Months(site.dateDV);
+                const dateDV = site?.dateDV || ev?.dateDV || '';
+                const showBadge = isVidangeOver3Months && dateDV && isVidangeOver3Months(dateDV);
                 return (
                 <div key={ev.key} className="border border-gray-200 rounded-lg p-3">
                   <div className="flex items-start justify-between gap-3">
@@ -87,7 +89,7 @@ const DashboardDetailsModal = ({
                       <div className="text-xs text-gray-600">{ev.technician}</div>
                       {showBadge && (
                         <button
-                          onClick={() => onVidangeBadgeClick?.(site)}
+                          onClick={() => onVidangeBadgeClick?.(site || { ...ev, dateDV })}
                           className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-300 hover:bg-purple-200 transition-colors cursor-pointer"
                           title="Cliquez pour voir les détails de la dernière vidange"
                         >

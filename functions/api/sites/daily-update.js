@@ -73,6 +73,8 @@ export async function onRequestPost({ env, data }) {
     const ABNORMAL_HIGH_FACTOR = 3;
     const quarantinedSamples = [];
 
+    // INVARIANT: nh1_dv and date_dv are NEVER modified by this daily auto-update.
+    // Only the vidange flow (complete.js) or manual PATCH by authorized roles can change them.
     const updateStmt = env.DB.prepare(
       'UPDATE sites SET nh2_a = ?, date_a = ?, nh_estimated = ?, diff_nhs = ?, diff_estimated = ?, updated_at = ? WHERE id = ?'
     );

@@ -48,7 +48,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.8.7';
+const APP_VERSION = '6.8.8';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -728,6 +728,8 @@ const GeneratorMaintenanceApp = () => {
         if (data?.user?.email) {
           setAuthUser(data.user);
           setLoginError('');
+          lastActivityRef.current = Date.now();
+          try { localStorage.setItem(INACTIVITY_STORAGE_KEY, String(Date.now())); } catch {}
 
           try {
             await loadData();
@@ -776,6 +778,7 @@ const GeneratorMaintenanceApp = () => {
     setFicheHistory([]);
     setInterventions([]);
     setPmAssignments([]);
+    lastActivityRef.current = 0;
     // loginEmail et loginPassword intentionnellement conservés pour la reconnexion rapide
     setLoginError('');
     try { localStorage.removeItem(INACTIVITY_STORAGE_KEY); } catch {}
@@ -804,6 +807,7 @@ const GeneratorMaintenanceApp = () => {
     setFicheHistory([]);
     setInterventions([]);
     setPmAssignments([]);
+    lastActivityRef.current = 0;
 
     setLoginEmail('');
     setLoginPassword('');
@@ -829,6 +833,11 @@ const GeneratorMaintenanceApp = () => {
       setInactivityWarningOpen(false);
       return;
     }
+
+    // Reset activity timestamp on new session to prevent immediate auto-logout
+    const now = Date.now();
+    lastActivityRef.current = now;
+    try { localStorage.setItem(INACTIVITY_STORAGE_KEY, String(now)); } catch {}
 
     const EVENTS = ['mousemove', 'keydown', 'click', 'touchstart', 'scroll', 'pointerdown'];
 
@@ -1567,6 +1576,8 @@ const GeneratorMaintenanceApp = () => {
         const data = await apiFetchJson('/api/auth/me', { method: 'GET' });
         if (data?.user?.email) {
           setAuthUser(data.user);
+          lastActivityRef.current = Date.now();
+          try { localStorage.setItem(INACTIVITY_STORAGE_KEY, String(Date.now())); } catch {}
           try {
             await runDailyNhUpdate();
           } catch (e) {
@@ -5775,7 +5786,9 @@ useEffect(() => {
             siteName: site.nameSite,
             technician: site.technician,
             epvType: ev.type,
-            plannedDate: ev.date
+            plannedDate: ev.date,
+            dateDV: site.dateDV,
+            nh1DV: site.nh1DV
           }));
       });
 
@@ -5791,7 +5804,9 @@ useEffect(() => {
         siteName: f.siteName,
         technician: f.technician,
         epvType: f.epvType,
-        plannedDate: f.plannedDate
+        plannedDate: f.plannedDate,
+        dateDV: f.dateDV,
+        nh1DV: f.nh1DV
       }))
       .filter((ev) => ev && ev.siteId && ev.plannedDate);
 
