@@ -48,7 +48,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.8.8';
+const APP_VERSION = '6.8.9';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -2259,11 +2259,12 @@ useEffect(() => {
     const globalSites = new Map();
     for (const it of globalItemsRaw) {
       const siteCode = normalizeSiteCode(it?.siteCode);
-      const zone = normalizeZone(it?.zone || it?.region || '');
-      if (!siteCode || !zone) continue;
-      if (!scopeZonesNorm.includes(zone)) continue;
+      if (!siteCode) continue;
 
       const localSite = sitesByCode.get(siteCode) || null;
+      const zone = normalizeZone(localSite?.zone || it?.zone || it?.region || '');
+      if (!zone) continue;
+      if (!scopeZonesNorm.includes(zone)) continue;
 
       const key = `${zone}|${siteCode}`;
       if (!globalSites.has(key)) {
@@ -2281,8 +2282,11 @@ useEffect(() => {
     const clientSites = new Set();
     for (const it of clientItemsRaw) {
       const siteCode = normalizeSiteCode(it?.siteCode);
-      const zone = normalizeZone(it?.zone || it?.region || '');
-      if (!siteCode || !zone) continue;
+      if (!siteCode) continue;
+
+      const localSite = sitesByCode.get(siteCode) || null;
+      const zone = normalizeZone(localSite?.zone || it?.zone || it?.region || '');
+      if (!zone) continue;
       if (!scopeZonesNorm.includes(zone)) continue;
 
       if (!isFullPmwo(it?.maintenanceType, it?.shortDescription)) continue;
