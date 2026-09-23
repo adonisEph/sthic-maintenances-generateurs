@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { X, Search } from 'lucide-react';
+import { X, Search, AlertTriangle } from 'lucide-react';
+import { toastAlert as alert, startOperation } from '../../utils/feedback';
 
 const norm = (v) => String(v || '').trim().toLowerCase();
 
@@ -12,13 +13,14 @@ const TechnicianNhSiteUpdateModal = ({
   loadData,
   loadInterventions,
   bumpInterventionsUiRev,
-  allowDecrease
+  onOpenQuarantine
 }) => {
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState('');
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ nhValue: '', readingDate: '' });
   const [error, setError] = useState('');
+  const [quarantineInfo, setQuarantineInfo] = useState(null);
 
   const selectedSite = useMemo(() => {
     const id = String(selectedId || '').trim();
@@ -49,6 +51,7 @@ const TechnicianNhSiteUpdateModal = ({
     setEditing(false);
     setForm({ nhValue: '', readingDate: '' });
     setError('');
+    setQuarantineInfo(null);
     onClose?.();
   };
 
@@ -58,6 +61,7 @@ const TechnicianNhSiteUpdateModal = ({
     setEditing(false);
     setForm({ nhValue: '', readingDate: String(today || '') });
     setError('');
+    setQuarantineInfo(null);
   };
 
   const onStartEdit = () => {
@@ -67,6 +71,7 @@ const TechnicianNhSiteUpdateModal = ({
     }
     setEditing(true);
     setError('');
+    setQuarantineInfo(null);
     setForm((prev) => ({
       nhValue: String(prev?.nhValue || ''),
       readingDate: String(prev?.readingDate || today || '')
@@ -96,25 +101,35 @@ const TechnicianNhSiteUpdateModal = ({
       );
       if (!ok) return;
 
-      const data = await apiFetchJson(`/api/sites/${String(selectedSite.id)}/nh`, {
-        method: 'POST',
-        body: JSON.stringify({ readingDate, nhValue, reset: false, assumeEffectiveNh: true, allowDecrease: Boolean(allowDecrease) })
-      });
-
-      await loadData?.();
-      await loadInterventions?.();
-      if (typeof bumpInterventionsUiRev === 'function') bumpInterventionsUiRev();
-
-      if (data?.isReset) {
-        alert('⚠️ Reset détecté (compteur revenu à 0 ou inférieur). Historique enregistré et calculs recalculés.');
-      } else {
-        alert('✅ NH mis à jour.');
+      const op = startOperation(`Mise à jour NH — ${selectedSite?.nameSite || ''}…`, `NH2 A: ${nhValue} — ${readingDate}`);
+      let data;
+      try {
+        data = await apiFetchJson(`/api/sites/${String(selectedSite.id)}/nh`, {
+          method: 'POST',
+          body: JSON.stringify({ readingDate, nhValue })
+        });
+        op.update({ detail: 'Rechargement des données…' });
+        await loadData?.();
+        await loadInterventions?.();
+        if (typeof bumpInterventionsUiRev === 'function') bumpInterventionsUiRev();
+        op.dismiss();
+      } catch (err) {
+        op.dismiss();
+        throw err;
       }
 
+      alert('✅ NH mis à jour.');
+
       setEditing(false);
+      setQuarantineInfo(null);
       setForm({ nhValue: '', readingDate });
     } catch (e) {
-      setError(e?.message || 'Erreur serveur.');
+      if (e?.data?.quarantined) {
+        setQuarantineInfo({ reason: e.data.reason, quarantineId: e.data.quarantineId, message: e.message });
+        setError('');
+      } else {
+        setError(e?.message || 'Erreur serveur.');
+      }
     }
   };
 
@@ -270,6 +285,27 @@ const TechnicianNhSiteUpdateModal = ({
               {error && (
                 <div className="mt-3 bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">
                   {error}
+                </div>
+              )}
+
+              {quarantineInfo && (
+                <div className="mt-3 bg-amber-50 border border-amber-300 text-amber-800 rounded-lg px-3 py-2 text-sm">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-semibold">Valeur mise en quarantaine</div>
+                      <div className="text-xs mt-0.5">{quarantineInfo.message}</div>
+                      {onOpenQuarantine && (
+                        <button
+                          type="button"
+                          onClick={onOpenQuarantine}
+                          className="mt-2 bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-amber-700"
+                        >
+                          Ouvrir le centre de quarantaine
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

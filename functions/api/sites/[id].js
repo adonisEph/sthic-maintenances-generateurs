@@ -1,7 +1,8 @@
 import { ensureAdminUser } from '../_utils/db.js';
-import { json, readJson, isoNow, isSuperAdmin, userZone } from '../_utils/http.js';
+import { json, readJson, isoNow, isSuperAdmin, userZone, requireAdmin, newId } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
 import { calculateDiffNHs, calculateEstimatedNH, calculateRegime } from '../_utils/calc.js';
+import { NH_SOURCE } from '../_utils/nhCoherence.js';
 
 async function regularizeRetiredSiteInterventions(env, siteId, now) {
   await env.DB.prepare(
@@ -147,6 +148,43 @@ export async function onRequestPatch({ request, env, data, params }) {
 
     if (!wasRetired && becomesRetired) {
       await regularizeRetiredSiteInterventions(env, id, now);
+    }
+
+    // Audit : toute modification manuelle des compteurs est tracée.
+    const nhChanged =
+      Number(existing.nh2_a) !== Number(next.nh2A) ||
+      String(existing.date_a || '') !== String(next.dateA || '') ||
+      Number(existing.nh1_dv) !== Number(next.nh1DV) ||
+      String(existing.date_dv || '') !== String(next.dateDV || '');
+    if (nhChanged) {
+      try {
+        await env.DB.prepare(
+          `INSERT INTO nh_readings
+           (id, site_id, reading_date, nh_value, prev_nh2_a, prev_date_a, prev_nh1_dv, prev_date_dv,
+            prev_nh_offset, new_nh_offset, is_reset, source, created_by_user_id, created_by_email, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`
+        )
+          .bind(
+            newId(),
+            String(id),
+            String(next.dateA || ''),
+            Math.trunc(Number(next.nh2A) || 0),
+            existing.nh2_a == null ? null : Number(existing.nh2_a),
+            existing.date_a == null ? null : String(existing.date_a).slice(0, 10),
+            existing.nh1_dv == null ? null : Number(existing.nh1_dv),
+            existing.date_dv == null ? null : String(existing.date_dv).slice(0, 10),
+            existing.nh_offset == null ? 0 : Number(existing.nh_offset),
+            Number(existing.nh2_a) > Number(next.nh2A) ? 1 : 0,
+            NH_SOURCE.EDIT,
+            data?.user?.id ? String(data.user.id) : null,
+            data?.user?.email ? String(data.user.email) : null,
+            now,
+            now
+          )
+          .run();
+      } catch {
+        // audit non bloquant
+      }
     }
 
     await touchLastUpdatedAt(env);

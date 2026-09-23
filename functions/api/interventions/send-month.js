@@ -31,10 +31,10 @@ export async function onRequestPost({ request, env, data }) {
       const siteId = String(it?.siteId || '');
       const plannedDate = String(it?.plannedDate || '');
       const epvType = String(it?.epvType || '');
-      const technicianUserId = it?.technicianUserId != null ? String(it.technicianUserId) : null;
+      let technicianUserId = it?.technicianUserId != null ? String(it.technicianUserId) : null;
       const technicianName = String(it?.technicianName || '').trim();
 
-      if (!siteId || !plannedDate || !epvType || !technicianName || !technicianUserId) {
+      if (!siteId || !plannedDate || !epvType || !technicianName) {
         continue;
       }
 
@@ -58,6 +58,64 @@ export async function onRequestPost({ request, env, data }) {
 
       if (scopeZone && zone !== scopeZone) {
         continue;
+      }
+
+      // technicianUserId absent → résolution par nom (zone du site puis global),
+      // comme POST /api/interventions — sinon la ligne serait silencieusement perdue.
+      if (!technicianUserId) {
+        try {
+          const norm = (v) =>
+            String(v || '')
+              .normalize('NFD')
+              .replace(/\p{M}/gu, '')
+              .trim()
+              .toLowerCase()
+              .replace(/\s+/g, ' ');
+          const key = norm(technicianName);
+          if (key) {
+            const res = await env.DB.prepare(
+              "SELECT id, technician_name, zone FROM users WHERE role = 'technician' AND (disabled_at IS NULL OR disabled_at = '')"
+            ).all();
+            const rows = Array.isArray(res?.results) ? res.results : [];
+            const inZone = rows.filter((r) => String(r?.zone || '') === zone);
+            const pickFrom = (list) => {
+              const exact = list.find((r) => norm(r?.technician_name) === key) || null;
+              if (exact?.id) return exact;
+              const partial = list.filter((r) => {
+                const a = norm(r?.technician_name);
+                return a && (a.includes(key) || key.includes(a));
+              });
+              return partial.length === 1 ? partial[0] : null;
+            };
+            const match = pickFrom(inZone) || pickFrom(rows);
+            if (match?.id) technicianUserId = String(match.id);
+          }
+        } catch {
+          // ignore : la ligne partira avec technician_user_id NULL (visibilité par nom)
+        }
+      }
+
+      // Ré-ancrage : si une intervention encore ouverte existe pour ce site+type
+      // à une AUTRE date (EPV recalculée après nouvelle saisie NH), on la déplace
+      // sur la nouvelle date au lieu de créer un doublon de campagne.
+      try {
+        const re = await env.DB.prepare(
+          `UPDATE interventions
+           SET planned_date = ?, technician_user_id = ?, technician_name = ?,
+               status = CASE WHEN status = 'planned' THEN 'sent' ELSE status END,
+               sent_at = COALESCE(sent_at, ?), updated_at = ?
+           WHERE id = (
+             SELECT id FROM interventions
+             WHERE site_id = ? AND epv_type = ? AND planned_date != ?
+               AND status IN ('planned', 'sent')
+             ORDER BY planned_date DESC LIMIT 1
+           )`
+        )
+          .bind(plannedDate, technicianUserId, technicianName, now, now, siteId, epvType, plannedDate)
+          .run();
+        if ((re?.meta?.changes || 0) > 0) updated += 1;
+      } catch {
+        // collision unique : une ligne existe déjà à la date cible — le flux nominal reprend.
       }
 
       const insertRes = await env.DB.prepare(

@@ -1,5 +1,6 @@
 import { ensureAdminUser } from '../_utils/db.js';
 import { json, requireAuth, isSuperAdmin, userZone, readJson, isoNow, newId } from '../_utils/http.js';
+import { technicianMatches, effectiveTechnicianName, normalizeTechName } from '../_utils/nhCoherence.js';
 
 function mapRow(row) {
   if (!row) return null;
@@ -10,6 +11,7 @@ function mapRow(row) {
     siteId: row.site_id,
     siteName: row.site_name,
     technician: row.technician,
+    technicianUserId: row.technician_user_id || null,
     dateGenerated: row.date_generated,
     status: row.status,
     plannedDate: row.planned_date,
@@ -56,6 +58,7 @@ export async function onRequestGet({ request, env, data }) {
 
     let where = '1=1';
     const binds = [];
+    let techUserIdCol = false;
 
     if (from) {
       where += ' AND fh.date_generated >= ?';
@@ -76,9 +79,23 @@ export async function onRequestGet({ request, env, data }) {
       binds.push(String(userZone(data) || 'BZV/POOL'));
     }
 
+    // Technicien : id OU nom — le matching normalisé (accents/casse/contient) est
+    // appliqué en JS après requête (impossible à normaliser en SQL).
+    // Compat pré-migration 0031 : si la colonne technician_user_id est absente,
+    // on retombe sur le scan des noms (le filtre JS fait foi).
     if (role === 'technician') {
-      where += ' AND fh.technician = ?';
-      binds.push(String(data.user.technicianName || ''));
+      try {
+        await env.DB.prepare('SELECT technician_user_id FROM fiche_history LIMIT 0').all();
+        techUserIdCol = true;
+      } catch {
+        techUserIdCol = false;
+      }
+      if (techUserIdCol) {
+        where += ' AND (fh.technician_user_id = ? OR fh.technician IS NOT NULL)';
+        binds.push(String(data.user.id || ''));
+      } else {
+        where += ' AND fh.technician IS NOT NULL';
+      }
     }
 
     if (role === 'manager' || role === 'field_supervisor') {
@@ -108,10 +125,24 @@ export async function onRequestGet({ request, env, data }) {
          )
        WHERE ${where}
        ORDER BY fh.date_generated DESC
-       LIMIT 500`
+       ${role === 'technician' ? '' : 'LIMIT 500'}`
     );
     const res = await stmt.bind(...binds).all();
-    const rows = Array.isArray(res?.results) ? res.results : [];
+    let rows = Array.isArray(res?.results) ? res.results : [];
+
+    // Technicien : resserrage JS (id exact OU nom normalisé égalité/contient),
+    // puis borne à 500 APRÈS filtrage pour ne jamais perdre ses propres fiches.
+    if (role === 'technician') {
+      const myName = await effectiveTechnicianName(env, data);
+      const uid = String(data.user.id || '');
+      rows = rows
+        .filter(
+          (r) =>
+            (techUserIdCol && String(r?.technician_user_id || '') === uid) ||
+            technicianMatches(r?.technician, myName)
+        )
+        .slice(0, 500);
+    }
 
     return json(
       { fiches: rows.map(mapRow) },
@@ -220,32 +251,92 @@ export async function onRequestPost({ request, env, data }) {
     const id = newId();
     const now = isoNow();
 
-    await env.DB.prepare(
-      `INSERT INTO fiche_history
-      (id, ticket_number, site_id, site_name, technician, date_generated, status, planned_date, epv_type, created_by,
-       signature_typed_name, signature_drawn_png, signed_by_email, signed_at, intervention_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-      .bind(
-        id,
-        ticketNumber || null,
-        siteId,
-        siteName,
-        technician,
-        now,
-        isDraft ? 'Brouillon' : 'En attente',
-        plannedDate,
-        epvType,
-        data?.user?.email ? String(data.user.email) : null,
-        null,
-        null,
-        null,
-        null,
-        interventionId,
-        now,
-        now
+    // Résolution technician_name → user_id (stamp robuste pour l'Historique tech).
+    let technicianUserId = null;
+    try {
+      const key = normalizeTechName(technician);
+      if (key) {
+        const res = await env.DB.prepare(
+          "SELECT id, technician_name, zone FROM users WHERE role = 'technician' AND (disabled_at IS NULL OR disabled_at = '')"
+        ).all();
+        const rows = Array.isArray(res?.results) ? res.results : [];
+        const siteZone = String(zone || 'BZV/POOL');
+        const inZone = rows.filter((r) => String(r?.zone || '') === siteZone);
+        const pick = (list) =>
+          list.find((r) => normalizeTechName(r?.technician_name) === key) ||
+          (list.filter((r) => {
+            const a = normalizeTechName(r?.technician_name);
+            return a && (a.includes(key) || key.includes(a));
+          }).length === 1
+            ? list.filter((r) => {
+                const a = normalizeTechName(r?.technician_name);
+                return a && (a.includes(key) || key.includes(a));
+              })[0]
+            : null);
+        const match = pick(inZone) || pick(rows);
+        if (match?.id) technicianUserId = String(match.id);
+      }
+    } catch {
+      // résolution non bloquante
+    }
+
+    try {
+      await env.DB.prepare(
+        `INSERT INTO fiche_history
+        (id, ticket_number, site_id, site_name, technician, technician_user_id, date_generated, status, planned_date, epv_type, created_by,
+         signature_typed_name, signature_drawn_png, signed_by_email, signed_at, intervention_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run();
+        .bind(
+          id,
+          ticketNumber || null,
+          siteId,
+          siteName,
+          technician,
+          technicianUserId,
+          now,
+          isDraft ? 'Brouillon' : 'En attente',
+          plannedDate,
+          epvType,
+          data?.user?.email ? String(data.user.email) : null,
+          null,
+          null,
+          null,
+          null,
+          interventionId,
+          now,
+          now
+        )
+        .run();
+    } catch {
+      // Compat pré-migration 0031 : colonne technician_user_id absente.
+      await env.DB.prepare(
+        `INSERT INTO fiche_history
+        (id, ticket_number, site_id, site_name, technician, date_generated, status, planned_date, epv_type, created_by,
+         signature_typed_name, signature_drawn_png, signed_by_email, signed_at, intervention_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+        .bind(
+          id,
+          ticketNumber || null,
+          siteId,
+          siteName,
+          technician,
+          now,
+          isDraft ? 'Brouillon' : 'En attente',
+          plannedDate,
+          epvType,
+          data?.user?.email ? String(data.user.email) : null,
+          null,
+          null,
+          null,
+          null,
+          interventionId,
+          now,
+          now
+        )
+        .run();
+    }
 
     const created = await env.DB.prepare('SELECT * FROM fiche_history WHERE id = ?').bind(id).first();
     return json({ fiche: mapRow(created) }, { status: 201 });

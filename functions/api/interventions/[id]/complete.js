@@ -1,7 +1,8 @@
 import { ensureAdminUser } from '../../_utils/db.js';
-import { json, requireAuth, readJson, isoNow, isSuperAdmin, userZone, ymdToday } from '../../_utils/http.js';
+import { json, requireAuth, readJson, isoNow, newId, isSuperAdmin, userZone, ymdToday } from '../../_utils/http.js';
 import { nextPnrDayTicketNumber, formatPnrDayTicket, nextTicketNumberForZone, formatTicket, touchLastUpdatedAt } from '../../_utils/meta.js';
 import { calculateEstimatedNH, calculateDiffNHs, calculateEPVDates, calculateRegime } from '../../_utils/calc.js';
+import { NH_SOURCE, supersedePendingQuarantine, technicianMatches, effectiveTechnicianName } from '../../_utils/nhCoherence.js';
 
 export async function onRequestPost({ request, env, data, params }) {
   try {
@@ -9,16 +10,82 @@ export async function onRequestPost({ request, env, data, params }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
     const id = String(params?.id || '');
-    if (!id) return json({ error: 'ID manquant.' }, { status: 400 });
-
-    const intervention = await env.DB.prepare('SELECT * FROM interventions WHERE id = ?').bind(id).first();
-    if (!intervention) return json({ error: 'Intervention introuvable.' }, { status: 404 });
+    const body = await readJson(request);
 
     const role = String(data?.user?.role || '').trim();
     const isAdmin = role === 'admin';
     const isManager = role === 'manager';
     const isManagerBzvPool = role === 'manager_bzv_pool';
-    const isAssignedTech = intervention.technician_user_id && intervention.technician_user_id === data.user.id;
+    const isTechnician = role === 'technician';
+    const myTechName = isTechnician ? await effectiveTechnicianName(env, data) : '';
+
+    // Résolution de l'intervention :
+    //  1) par id direct (cas nominal)
+    //  2) par siteId+epvType du body — événement EPV synthétisé côté client
+    //     (pas de record persisté) → on rattache au record ouvert le plus récent
+    //  3) find-or-create : aucun record ouvert → on en crée un pour que la vidange
+    //     reste auditable (sinon l'EPV affichée serait impossible à clôturer : 404)
+    let intervention = id ? await env.DB.prepare('SELECT * FROM interventions WHERE id = ?').bind(id).first() : null;
+
+    const bodySiteId = String(body?.siteId || '').trim();
+    const bodyEpvType = String(body?.epvType || '').trim().toUpperCase();
+    const bodyPlannedDate = /^\d{4}-\d{2}-\d{2}$/.test(String(body?.plannedDate || '').slice(0, 10))
+      ? String(body.plannedDate).slice(0, 10)
+      : '';
+
+    if (!intervention && bodySiteId && bodyEpvType) {
+      intervention = await env.DB.prepare(
+        "SELECT * FROM interventions WHERE site_id = ? AND epv_type = ? AND status IN ('planned', 'sent') ORDER BY planned_date DESC LIMIT 1"
+      )
+        .bind(bodySiteId, bodyEpvType)
+        .first();
+    }
+
+    if (!intervention && bodySiteId && bodyEpvType) {
+      const siteRow = await env.DB.prepare('SELECT * FROM sites WHERE id = ?').bind(bodySiteId).first();
+      if (!siteRow) return json({ error: 'Site introuvable.' }, { status: 404 });
+
+      if (isTechnician && !technicianMatches(siteRow.technician, myTechName)) {
+        return json({ error: 'Accès interdit.' }, { status: 403 });
+      }
+
+      const now0 = isoNow();
+      const newIntId = newId();
+      const techName = isTechnician
+        ? myTechName
+        : String(body?.technicianName || siteRow.technician || '').trim();
+      await env.DB.prepare(
+        'INSERT OR IGNORE INTO interventions (id, site_id, zone, planned_date, epv_type, technician_user_id, technician_name, status, created_by_user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      )
+        .bind(
+          newIntId,
+          bodySiteId,
+          String(siteRow.zone || 'BZV/POOL'),
+          bodyPlannedDate || String(body?.doneDate || '').slice(0, 10) || ymdToday(),
+          bodyEpvType,
+          isTechnician ? String(data.user.id) : null,
+          techName,
+          'planned',
+          data.user.id,
+          now0,
+          now0
+        )
+        .run();
+      // Re-sélection : la ligne créée, ou une ligne existante (collision unique) sur le triplet.
+      intervention =
+        (await env.DB.prepare('SELECT * FROM interventions WHERE id = ?').bind(newIntId).first()) ||
+        (await env.DB.prepare(
+          'SELECT * FROM interventions WHERE site_id = ? AND epv_type = ? ORDER BY planned_date DESC LIMIT 1'
+        )
+          .bind(bodySiteId, bodyEpvType)
+          .first());
+    }
+
+    if (!intervention) return json({ error: 'Intervention introuvable.' }, { status: 404 });
+
+    const isAssignedTech =
+      Boolean(intervention.technician_user_id && String(intervention.technician_user_id) === String(data.user.id)) ||
+      (isTechnician && technicianMatches(intervention.technician_name, myTechName));
     if (!isAdmin && !isManager && !isManagerBzvPool && !isAssignedTech) {
       return json({ error: 'Accès interdit.' }, { status: 403 });
     }
@@ -36,7 +103,9 @@ export async function onRequestPost({ request, env, data, params }) {
       return json({ error: 'Site retiré : vidange bloquée.' }, { status: 409 });
     }
 
-    if (!isSuperAdmin(data) && !isManager && !isManagerBzvPool) {
+    // Technicien assigné (user_id ou nom) : autorisé même si la zone stockée du site
+    // est erronée — cohérent avec GET /api/sites qui ne zone-filtre pas les techniciens.
+    if (!isTechnician && !isSuperAdmin(data) && !isManager && !isManagerBzvPool) {
       const z = userZone(data);
       if (String(site.zone || 'BZV/POOL') !== z) {
         return json({ error: 'Accès interdit.' }, { status: 403 });
@@ -66,28 +135,39 @@ export async function onRequestPost({ request, env, data, params }) {
 
     const relatedFiche = relatedFicheByIntervention?.id ? relatedFicheByIntervention : relatedFallbackFiche;
 
-    const body = await readJson(request);
     const now = isoNow();
 
     const userDoneDate = String(body?.doneDate || '').trim();
     const userNhNowRaw = body?.nhNow;
 
     const doneDate = /^\d{4}-\d{2}-\d{2}$/.test(userDoneDate) ? userDoneDate : ymdToday();
-    const offset = site.nh_offset == null ? 0 : Number(site.nh_offset);
-    let nhNow = Number.isFinite(Number(userNhNowRaw)) ? Number(userNhNowRaw) : Number(site.nh_estimated || site.nh2_a || 0);
-    if (offset > 0 && nhNow < offset) {
-      nhNow = offset + nhNow;
+    // nhNow = valeur réelle du compteur au moment de la vidange.
+    // Fallback non-technicien : dernier relevé RÉEL (nh2_a) — jamais nh_estimated
+    // (une projection promue en baseline corromprait nh1_dv).
+    let nhNow = Number.isFinite(Number(userNhNowRaw)) ? Number(userNhNowRaw) : Number(site.nh2_a || 0);
+    if (!Number.isFinite(nhNow) || nhNow < 0) {
+      return json({ error: 'Compteur (NH) invalide.' }, { status: 400 });
     }
 
-    if (role === 'technician') {
+    if (isTechnician) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(userDoneDate)) {
         return json({ error: 'Date de vidange invalide.' }, { status: 400 });
       }
       if (!Number.isFinite(Number(userNhNowRaw))) {
         return json({ error: 'Compteur (NH) invalide.' }, { status: 400 });
       }
-      if (Number(site.nh1_dv) > nhNow) {
-        return json({ error: "Le compteur (NH) ne peut pas être inférieur au NH1 DV du site." }, { status: 400 });
+      // Compteur < NH1 DV : deepsea/générateur probablement changé → rebase explicite.
+      // Pas de blocage sec : la vidange est le canal autorisé à réécrire nh1_dv,
+      // mais le technicien doit confirmer le reset (allowRebase) — audit is_reset=1.
+      if (Number(site.nh1_dv) > nhNow && body?.allowRebase !== true) {
+        return json(
+          {
+            error: 'Le compteur (NH) est inférieur au NH1 DV du site — compteur/deepsea ou générateur probablement changé.',
+            code: 'nh_below_dv',
+            nh1Dv: Number(site.nh1_dv)
+          },
+          { status: 409 }
+        );
       }
     }
 
@@ -112,7 +192,7 @@ export async function onRequestPost({ request, env, data, params }) {
     const epvDates = calculateEPVDates(nextRegime, nextNh1DV, nextNhEstimated, contractSeuil);
 
     await env.DB.prepare(
-      'UPDATE sites SET nh1_dv = ?, date_dv = ?, nh2_a = ?, date_a = ?, regime = ?, nh_estimated = ?, diff_nhs = ?, diff_estimated = ?, updated_at = ? WHERE id = ?'
+      'UPDATE sites SET nh1_dv = ?, date_dv = ?, nh2_a = ?, date_a = ?, nh_offset = 0, regime = ?, nh_estimated = ?, diff_nhs = ?, diff_estimated = ?, updated_at = ? WHERE id = ?'
     )
       .bind(
         nextNh1DV,
@@ -127,6 +207,39 @@ export async function onRequestPost({ request, env, data, params }) {
         site.id
       )
       .run();
+
+    // Audit vidange : la vidange est le seul canal autorisé à réécrire nh1_dv.
+    const prevNh1DV = site.nh1_dv == null ? null : Number(site.nh1_dv);
+    const rid = `${id}-vidange-${Date.now()}`;
+    try {
+      await env.DB.prepare(
+        `INSERT INTO nh_readings
+         (id, site_id, reading_date, nh_value, prev_nh2_a, prev_date_a, prev_nh1_dv, prev_date_dv,
+          prev_nh_offset, new_nh_offset, is_reset, source, created_by_user_id, created_by_email, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`
+      )
+        .bind(
+          rid,
+          String(site.id),
+          doneDate,
+          Math.trunc(nhNow),
+          site.nh2_a == null ? null : Number(site.nh2_a),
+          site.date_a == null ? null : String(site.date_a).slice(0, 10),
+          prevNh1DV,
+          site.date_dv == null ? null : String(site.date_dv).slice(0, 10),
+          site.nh_offset == null ? 0 : Number(site.nh_offset),
+          Number.isFinite(prevNh1DV) && nhNow < prevNh1DV ? 1 : 0,
+          NH_SOURCE.VIDANGE,
+          data?.user?.id ? String(data.user.id) : null,
+          data?.user?.email ? String(data.user.email) : null,
+          now,
+          now
+        )
+        .run();
+    } catch {
+      // audit non bloquant
+    }
+    await supersedePendingQuarantine(env, site.id, now, 'vidange_completed');
 
     await env.DB.prepare(
       'UPDATE interventions SET status = ?, done_at = ?, updated_at = ? WHERE id = ?'
@@ -167,6 +280,9 @@ export async function onRequestPost({ request, env, data, params }) {
       }
     }
 
+    // Stamp technician_user_id sur la fiche (matching robuste côté Historique).
+    const ficheTechUserId = intervention.technician_user_id || (isTechnician ? String(data.user.id) : null);
+
     if (existingFiche?.id) {
       await env.DB.prepare(
         'UPDATE fiche_history SET status = ?, date_completed = ?, interval_hours = ?, contract_seuil = ?, is_within_contract = ?, nh1_dv = ?, date_dv = ?, nh_now = ?, updated_at = ? WHERE id = ?'
@@ -184,6 +300,18 @@ export async function onRequestPost({ request, env, data, params }) {
           String(existingFiche.id)
         )
         .run();
+
+      if (ficheTechUserId) {
+        try {
+          await env.DB.prepare(
+            'UPDATE fiche_history SET technician_user_id = COALESCE(technician_user_id, ?) WHERE id = ?'
+          )
+            .bind(ficheTechUserId, String(existingFiche.id))
+            .run();
+        } catch {
+          // colonne absente (migration 0031 non appliquée) — non bloquant
+        }
+      }
 
       // si la fiche existante n'avait pas de ticket (cas rare), on le fixe ici
       if (!String(existingFiche?.ticket_number || '').trim() && ticketNumber) {
@@ -205,7 +333,7 @@ export async function onRequestPost({ request, env, data, params }) {
 
     try {
       await env.DB.prepare(
-        'INSERT INTO fiche_history (id, ticket_number, site_id, site_name, technician, date_generated, status, planned_date, epv_type, created_by, date_completed, interval_hours, contract_seuil, is_within_contract, intervention_id, nh1_dv, date_dv, nh_now, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO fiche_history (id, ticket_number, site_id, site_name, technician, technician_user_id, date_generated, status, planned_date, epv_type, created_by, date_completed, interval_hours, contract_seuil, is_within_contract, intervention_id, nh1_dv, date_dv, nh_now, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       )
         .bind(
           ficheId,
@@ -213,6 +341,7 @@ export async function onRequestPost({ request, env, data, params }) {
           site.id,
           site.name_site,
           intervention.technician_name,
+          ficheTechUserId,
           now,
           status,
           intervention.planned_date,

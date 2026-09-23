@@ -1,7 +1,12 @@
 import { ensureAdminUser } from '../_utils/db.js';
-import { json, readJson, isoNow, newId, requireAuth, isSuperAdmin, userZone, ymdToday } from '../_utils/http.js';
+import { json, readJson, requireAuth, isSuperAdmin, userZone, ymdToday } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
-import { calculateDiffNHs, calculateEstimatedNH, calculateRegime } from '../_utils/calc.js';
+import {
+  NH_SOURCE,
+  evaluateNhCandidate,
+  applyNhReading,
+  recordQuarantine
+} from '../_utils/nhCoherence.js';
 
 const normIdSite = (v) =>
   String(v || '')
@@ -30,9 +35,6 @@ export async function onRequestPost({ request, env, data }) {
 
     const body = await readJson(request);
     const rows = Array.isArray(body?.rows) ? body.rows : [];
-    const assumeEffectiveNh = Boolean(body?.assumeEffectiveNh);
-    const allowDecrease = Boolean(body?.allowDecrease);
-    const forceResetOnDecrease = Boolean(body?.forceResetOnDecrease);
 
     const z = String(userZone(data) || 'BZV/POOL');
     const canAllZones = isSuperAdmin(data);
@@ -61,6 +63,7 @@ export async function onRequestPost({ request, env, data }) {
     let ignoredRetired = 0;
     let quarantinedNhBelowDv = 0;
     let quarantinedNhAbnormallyHigh = 0;
+    let quarantinedOther = 0;
 
     const ignoredSamples = [];
     const quarantinedSamples = [];
@@ -87,10 +90,6 @@ export async function onRequestPost({ request, env, data }) {
       });
     };
 
-    // Threshold for detecting abnormally high NH2 A vs NH1 DV
-    const ABNORMAL_HIGH_FACTOR = 3; // NH2 A > NH1 DV * 3 is considered abnormally high
-
-    const now = isoNow();
     const todayYmd = ymdToday();
 
     for (let i = 0; i < rows.length; i += 1) {
@@ -110,136 +109,69 @@ export async function onRequestPost({ request, env, data }) {
         continue;
       }
 
-      const retiredRaw = site?.retired;
-      const isRetired =
-        retiredRaw === true ||
-        retiredRaw === 1 ||
-        retiredRaw === '1' ||
-        String(retiredRaw || '').trim().toLowerCase() === 'true';
-
       const nextNh2A = r?.nh2A == null || r?.nh2A === '' ? null : Number(r.nh2A);
       const nextDateA = r?.dateA == null || String(r.dateA).trim() === '' ? '' : parseYmd(r.dateA);
 
-      // rule: don't modify a field if value is missing
       const hasNh = Number.isFinite(nextNh2A);
-      const hasDate = Boolean(nextDateA);
-      if (!hasNh && !hasDate) {
+      if (!hasNh) {
+        // Sans compteur, une ligne RMS n'apporte rien d'exploitable.
         skipped += 1;
         continue;
       }
+      // Sans date fournie : relevé daté d'aujourd'hui (jamais la date_a précédente —
+      // sinon la prochaine projection gonflerait le compteur).
+      const readingDate = nextDateA || todayYmd;
 
-      const prevNh2A = site.nh2_a == null ? null : Number(site.nh2_a);
-      const prevDateA = site.date_a == null ? '' : String(site.date_a);
-      const prevNh1DV = site.nh1_dv == null ? null : Number(site.nh1_dv);
-      const prevDateDV = site.date_dv == null ? '' : String(site.date_dv);
-      const prevOffset = site.nh_offset == null ? 0 : Number(site.nh_offset);
+      // Évaluation unifiée : mêmes règles que Auto et Manuel.
+      // INVARIANT : nh1_dv / date_dv ne sont jamais modifiés par ce canal.
+      // Les sites retirés sont évalués avec la même rigueur que les actifs.
+      const verdict = evaluateNhCandidate(site, { nh2A: nextNh2A, dateA: readingDate }, { todayYmd });
 
-      const effectivePrev = Number.isFinite(Number(prevNh2A)) ? Number(prevNh2A) : 0;
-      const prevRaw = effectivePrev - prevOffset;
-
-      const readingDate = hasDate ? nextDateA : (/^\d{4}-\d{2}-\d{2}$/.test(prevDateA) ? prevDateA : ymdToday());
-
-      if (/^\d{4}-\d{2}-\d{2}$/.test(readingDate) && readingDate > todayYmd) {
+      if (verdict.verdict === 'reject') {
         ignored += 1;
         ignoredBadDate += 1;
-        pushIgnoredSample('future_date', r, i, { readingDate, todayYmd, normalizedIdSite: idSite });
-        continue;
-      }
-      const dateDvYmd = String(prevDateDV || '').slice(0, 10);
-      if (/^\d{4}-\d{2}-\d{2}$/.test(dateDvYmd) && /^\d{4}-\d{2}-\d{2}$/.test(readingDate) && readingDate < dateDvYmd) {
-        ignored += 1;
-        ignoredDateBeforeDv += 1;
-        pushIgnoredSample('date_before_dv', r, i, { readingDate, dateDvYmd, normalizedIdSite: idSite });
+        pushIgnoredSample(verdict.reason, r, i, { normalizedIdSite: idSite });
         continue;
       }
 
-      // If NH is not provided, keep effective NH2A and offset as-is.
-      let effectiveNh = effectivePrev;
-      let nextOffset = prevOffset;
-      let isReset = 0;
-      let readingRawNh = prevRaw;
-
-      if (hasNh) {
-        const rawNh = Number(nextNh2A);
-        const hasPrev = Number.isFinite(Number(prevNh2A));
-        const inputLooksEffective = assumeEffectiveNh || (prevOffset > 0 && rawNh >= effectivePrev);
-
-        const effectiveMode = inputLooksEffective;
-        if (!allowDecrease) {
-          const isDecrease = effectiveMode ? (rawNh < effectivePrev) : (rawNh < prevRaw);
-          if (isDecrease && !forceResetOnDecrease) {
-            ignored += 1;
-            ignoredDecrease += 1;
-            pushIgnoredSample('decrease_blocked', r, i, { normalizedIdSite: idSite, prevNh2A, prevOffset });
-            continue;
-          }
-        }
-        isReset = hasPrev && !effectiveMode ? (rawNh < prevRaw ? 1 : 0) : 0;
-        nextOffset = isReset ? effectivePrev : prevOffset;
-        effectiveNh = effectiveMode ? rawNh : (nextOffset + rawNh);
-        readingRawNh = effectiveMode ? (effectiveNh - nextOffset) : rawNh;
-
-        // Quarantine: NH2 A < NH1 DV (incoherent) — skip for retired sites
-        if (!isRetired && Number.isFinite(Number(prevNh1DV)) && effectiveNh < Number(prevNh1DV)) {
-          quarantined += 1;
-          quarantinedNhBelowDv += 1;
-          pushQuarantinedSample('nh2a_below_nh1dv', r, i, { normalizedIdSite: idSite, prevNh1DV, effectiveNh });
-          continue;
-        }
-
-        // Quarantine: NH2 A abnormally high vs NH1 DV (incoherent) — skip for retired sites
-        if (!isRetired && Number.isFinite(Number(prevNh1DV)) && Number(prevNh1DV) > 0 && effectiveNh > Number(prevNh1DV) * ABNORMAL_HIGH_FACTOR) {
-          quarantined += 1;
-          quarantinedNhAbnormallyHigh += 1;
-          pushQuarantinedSample('nh2a_abnormally_high', r, i, { normalizedIdSite: idSite, prevNh1DV, effectiveNh, factor: ABNORMAL_HIGH_FACTOR });
-          continue;
-        }
+      if (verdict.verdict === 'quarantine') {
+        const rec = await recordQuarantine(
+          env,
+          site,
+          {
+            source: NH_SOURCE.RMS,
+            reason: verdict.reason,
+            proposedNh2A: verdict.nh2A,
+            proposedDateA: verdict.dateA,
+            detail: { ...(verdict.detail || {}), rmsRow: i + 1 }
+          },
+          { user: data?.user, zone: site?.zone }
+        );
+        quarantined += 1;
+        if (verdict.reason === 'nh_below_dv') quarantinedNhBelowDv += 1;
+        else if (verdict.reason === 'parasite_high') quarantinedNhAbnormallyHigh += 1;
+        else quarantinedOther += 1;
+        pushQuarantinedSample(verdict.reason, r, i, {
+          normalizedIdSite: idSite,
+          siteId: String(site.id),
+          quarantineId: rec?.id || null,
+          prevNh1DV: site?.nh1_dv,
+          prevNh2A: site?.nh2_a,
+          detail: verdict.detail || null
+        });
+        continue;
       }
 
-      // Recalculate regime from nh1DV, effectiveNh, dateDV, readingDate.
-      // INVARIANT: nh1_dv and date_dv are NEVER modified by this import.
-      // Only the vidange flow (complete.js) or manual PATCH by authorized roles can change them.
-      let regime = calculateRegime(prevNh1DV, effectiveNh, prevDateDV, readingDate);
-      if (regime === 0 && Number(site.regime) > 0) {
-        regime = Number(site.regime);
-      }
-      const nhEstimated = calculateEstimatedNH(effectiveNh, readingDate, regime);
-      const diffNHs = calculateDiffNHs(prevNh1DV, effectiveNh);
-      const diffEstimated = calculateDiffNHs(prevNh1DV, nhEstimated);
-
-      await env.DB.prepare(
-        'UPDATE sites SET nh2_a = ?, date_a = ?, nh_offset = ?, regime = ?, nh_estimated = ?, diff_nhs = ?, diff_estimated = ?, updated_at = ? WHERE id = ?'
-      )
-        .bind(effectiveNh, readingDate, nextOffset, regime, nhEstimated, diffNHs, diffEstimated, now, String(site.id))
-        .run();
-
-      const rid = newId();
-      await env.DB.prepare(
-        'INSERT INTO nh_readings (id, site_id, reading_date, nh_value, prev_nh2_a, prev_date_a, prev_nh1_dv, prev_date_dv, prev_nh_offset, new_nh_offset, is_reset, created_by_user_id, created_by_email, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-      )
-        .bind(
-          rid,
-          String(site.id),
-          readingDate,
-          Math.trunc(Number(readingRawNh) || 0),
-          prevNh2A,
-          prevDateA,
-          prevNh1DV,
-          prevDateDV,
-          prevOffset,
-          nextOffset,
-          isReset,
-          data?.user?.id ? String(data.user.id) : null,
-          data?.user?.email ? String(data.user.email) : null,
-          now,
-          now
-        )
-        .run();
-
+      await applyNhReading(
+        env,
+        site,
+        { nh2A: verdict.nh2A, dateA: verdict.dateA },
+        { source: NH_SOURCE.RMS, user: data?.user }
+      );
       updated += 1;
     }
 
-    if (updated > 0) {
+    if (updated > 0 || quarantined > 0) {
       await touchLastUpdatedAt(env);
     }
 
@@ -259,6 +191,7 @@ export async function onRequestPost({ request, env, data }) {
         ignoredRetired,
         quarantinedNhBelowDv,
         quarantinedNhAbnormallyHigh,
+        quarantinedOther,
         ignoredSamples,
         quarantinedSamples
       },

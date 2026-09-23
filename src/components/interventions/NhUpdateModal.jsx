@@ -1,5 +1,5 @@
 import React from 'react';
-import { X } from 'lucide-react';
+import { X, AlertTriangle } from 'lucide-react';
 
 const NhUpdateModal = ({
   open,
@@ -8,8 +8,9 @@ const NhUpdateModal = ({
   nhForm,
   onChangeReadingDate,
   onChangeNhValue,
-  onChangeReset,
   nhFormError,
+  quarantineInfo,
+  onOpenQuarantine,
   isAdmin,
   onClose,
   onCancel,
@@ -56,22 +57,35 @@ const NhUpdateModal = ({
             </div>
           </div>
 
-          <div className="flex items-start gap-2">
-            <input
-              id="nh-reset"
-              type="checkbox"
-              checked={Boolean(nhForm?.reset)}
-              onChange={(e) => onChangeReset(e.target.checked)}
-              className="mt-1"
-            />
-            <label htmlFor="nh-reset" className="text-xs text-gray-700">
-              Reset compteur (à cocher uniquement si le compteur a réellement été remis à zéro / remplacé).
-            </label>
+          <div className="text-[11px] text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+            Si le compteur/deepsea a été remplacé (NH inférieur à NH1 DV), la valeur sera mise en
+            quarantaine — un rebase pourra y être confirmé.
           </div>
 
           {nhFormError && (
             <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 text-sm">
               {nhFormError}
+            </div>
+          )}
+
+          {quarantineInfo && (
+            <div className="bg-amber-50 border border-amber-300 text-amber-800 rounded-lg px-3 py-2 text-sm">
+              <div className="flex items-start gap-2">
+                <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-semibold">Valeur mise en quarantaine</div>
+                  <div className="text-xs mt-0.5">{quarantineInfo.message}</div>
+                  {onOpenQuarantine && (
+                    <button
+                      type="button"
+                      onClick={onOpenQuarantine}
+                      className="mt-2 bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-amber-700"
+                    >
+                      Ouvrir le centre de quarantaine
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </div>

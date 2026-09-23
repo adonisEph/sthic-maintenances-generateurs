@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
+import { toastAlert as alert } from '../../utils/feedback';
 
 const FicheModal = ({
   open,

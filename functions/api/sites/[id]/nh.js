@@ -1,7 +1,14 @@
 import { ensureAdminUser } from '../../_utils/db.js';
-import { json, requireAuth, readJson, isoNow, newId, ymdToday, isSuperAdmin, userZone } from '../../_utils/http.js';
+import { json, requireAuth, readJson, ymdToday, isSuperAdmin, userZone } from '../../_utils/http.js';
 import { touchLastUpdatedAt } from '../../_utils/meta.js';
-import { calculateDiffNHs, calculateEstimatedNH, calculateRegime } from '../../_utils/calc.js';
+import {
+  NH_SOURCE,
+  evaluateNhCandidate,
+  applyNhReading,
+  recordQuarantine,
+  effectiveTechnicianName,
+  technicianMatches
+} from '../../_utils/nhCoherence.js';
 
 function mapSiteRow(row) {
   if (!row) return null;
@@ -27,6 +34,15 @@ function mapSiteRow(row) {
   };
 }
 
+const QUARANTINE_MESSAGES = {
+  nh_below_dv: 'Compteur inférieur à NH1 DV — possible changement deepsea/générateur. Valeur mise en quarantaine.',
+  parasite_high: 'Valeur incohérente (régime implicite > 24 H/J). Mise en quarantaine.',
+  date_before_dv: 'Date de relevé antérieure à la dernière vidange. Mise en quarantaine.',
+  future_date: 'Date de relevé dans le futur. Mise en quarantaine.',
+  date_regression: 'Date de relevé antérieure au dernier relevé connu. Mise en quarantaine.',
+  decrease: 'Compteur inférieur au dernier relevé connu. Mise en quarantaine.'
+};
+
 export async function onRequestPost({ request, env, data, params }) {
   try {
     await ensureAdminUser(env);
@@ -39,109 +55,73 @@ export async function onRequestPost({ request, env, data, params }) {
     const readingDateRaw = String(body?.readingDate || '').trim();
     const readingDate = /^\d{4}-\d{2}-\d{2}$/.test(readingDateRaw) ? readingDateRaw : ymdToday();
     const rawNh = Number(body?.nhValue);
-    const forceReset = Boolean(body?.reset || body?.forceReset);
-    const assumeEffectiveNh = Boolean(body?.assumeEffectiveNh);
-    const allowDecrease = Boolean(body?.allowDecrease);
 
     if (!Number.isFinite(rawNh) || rawNh < 0) return json({ error: 'Compteur (NH) invalide.' }, { status: 400 });
 
     const site = await env.DB.prepare('SELECT * FROM sites WHERE id = ?').bind(siteId).first();
     if (!site) return json({ error: 'Site introuvable.' }, { status: 404 });
 
-    if (!isSuperAdmin(data) && String(data?.user?.role || '').trim() !== 'manager_bzv_pool') {
+    const role = String(data?.user?.role || '');
+    if (role !== 'admin' && role !== 'technician' && role !== 'manager' && role !== 'manager_bzv_pool') {
+      return json({ error: 'Accès interdit.' }, { status: 403 });
+    }
+
+    // Techniciens : pas de filtre zone (comme GET /api/sites) — la sécurité
+    // repose sur le matching du nom de technicien ci-dessous.
+    if (!isSuperAdmin(data) && role !== 'technician' && role !== 'manager_bzv_pool') {
       const z = userZone(data);
       if (String(site.zone || 'BZV/POOL') !== z) {
         return json({ error: 'Accès interdit.' }, { status: 403 });
       }
     }
 
-    const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'technician' && role !== 'manager' && role !== 'manager_bzv_pool') {
-      return json({ error: 'Accès interdit.' }, { status: 403 });
-    }
-
     if (role === 'technician') {
-      const techName = String(data?.user?.technicianName || '').trim();
-      if (!techName || String(site.technician || '').trim() !== techName) {
+      // Même matching normalisé que GET /api/sites : nom DB en source de vérité.
+      const techName = await effectiveTechnicianName(env, data);
+      if (!technicianMatches(site?.technician, techName)) {
         return json({ error: 'Accès interdit.' }, { status: 403 });
       }
     }
 
-    const prevNh2A = site.nh2_a == null ? null : Number(site.nh2_a);
-    const prevDateA = site.date_a == null ? null : String(site.date_a);
-    const prevNh1DV = site.nh1_dv == null ? null : Number(site.nh1_dv);
-    const prevDateDV = site.date_dv == null ? null : String(site.date_dv);
-    const prevOffset = site.nh_offset == null ? 0 : Number(site.nh_offset);
+    // Évaluation unifiée : mêmes règles que Auto et RMS.
+    const verdict = evaluateNhCandidate(site, { nh2A: rawNh, dateA: readingDate });
 
-    const todayYmd = ymdToday();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(readingDate) && readingDate > todayYmd) {
-      return json({ error: 'Date A invalide (dans le futur).' }, { status: 400 });
-    }
-    const dateDvYmd = String(prevDateDV || '').slice(0, 10);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateDvYmd) && /^\d{4}-\d{2}-\d{2}$/.test(readingDate) && readingDate < dateDvYmd) {
-      return json({ error: 'Date A invalide (antérieure à Date DV).' }, { status: 400 });
+    if (verdict.verdict === 'reject') {
+      return json({ error: 'Compteur (NH) ou date invalide.' }, { status: 400 });
     }
 
-    const prevEffective = Number.isFinite(Number(prevNh2A)) ? Number(prevNh2A) : 0;
-    const prevRaw = prevEffective - prevOffset;
-
-    const hasPrev = Number.isFinite(Number(prevNh2A));
-    const inputLooksEffective = assumeEffectiveNh || (prevOffset > 0 && (rawNh >= prevEffective || (rawNh > prevRaw && Math.abs(rawNh - prevEffective) < Math.abs(rawNh - prevRaw))));
-    if (!allowDecrease) {
-      if (inputLooksEffective && rawNh < prevEffective && !forceReset) {
-        return json({ error: 'Baisse de NH détectée. Utilisez le mode reset (ou allowDecrease).' }, { status: 400 });
-      }
-      if (!inputLooksEffective && rawNh < prevRaw && !forceReset) {
-        return json({ error: 'Baisse de NH détectée. Cochez reset pour confirmer.' }, { status: 400 });
-      }
+    if (verdict.verdict === 'quarantine') {
+      const rec = await recordQuarantine(
+        env,
+        site,
+        {
+          source: NH_SOURCE.MANUAL,
+          reason: verdict.reason,
+          proposedNh2A: verdict.nh2A,
+          proposedDateA: verdict.dateA,
+          detail: verdict.detail
+        },
+        { user: data?.user, zone: site?.zone }
+      );
+      await touchLastUpdatedAt(env);
+      return json(
+        {
+          ok: false,
+          quarantined: true,
+          reason: verdict.reason,
+          quarantineId: rec?.id || null,
+          error: QUARANTINE_MESSAGES[verdict.reason] || 'Valeur incohérente. Mise en quarantaine.'
+        },
+        { status: 409 }
+      );
     }
-    const isReset = hasPrev && !inputLooksEffective ? (forceReset && rawNh < prevRaw ? 1 : 0) : 0;
-    const nextOffset = isReset ? prevEffective : prevOffset;
-    const effectiveNh = inputLooksEffective ? rawNh : (nextOffset + rawNh);
-    const readingRawNh = inputLooksEffective ? (effectiveNh - nextOffset) : rawNh;
 
-    if (Number.isFinite(Number(site.nh1_dv)) && effectiveNh < Number(site.nh1_dv)) {
-      return json({ error: "Le compteur (NH) ne peut pas être inférieur au NH1 DV du site." }, { status: 400 });
-    }
-
-    let regime = calculateRegime(site.nh1_dv, effectiveNh, site.date_dv, readingDate);
-    if (regime === 0 && Number(site.regime) > 0) {
-      regime = Number(site.regime);
-    }
-    const nhEstimated = calculateEstimatedNH(effectiveNh, readingDate, regime);
-    const diffNHs = calculateDiffNHs(site.nh1_dv, effectiveNh);
-    const diffEstimated = calculateDiffNHs(site.nh1_dv, nhEstimated);
-
-    const now = isoNow();
-
-    await env.DB.prepare(
-      'UPDATE sites SET nh2_a = ?, date_a = ?, nh_offset = ?, regime = ?, nh_estimated = ?, diff_nhs = ?, diff_estimated = ?, updated_at = ? WHERE id = ?'
-    )
-      .bind(effectiveNh, readingDate, nextOffset, regime, nhEstimated, diffNHs, diffEstimated, now, siteId)
-      .run();
-
-    const rid = newId();
-    await env.DB.prepare(
-      'INSERT INTO nh_readings (id, site_id, reading_date, nh_value, prev_nh2_a, prev_date_a, prev_nh1_dv, prev_date_dv, prev_nh_offset, new_nh_offset, is_reset, created_by_user_id, created_by_email, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    )
-      .bind(
-        rid,
-        siteId,
-        readingDate,
-        Math.trunc(Number(readingRawNh)),
-        prevNh2A,
-        prevDateA,
-        prevNh1DV,
-        prevDateDV,
-        prevOffset,
-        nextOffset,
-        isReset,
-        data?.user?.id ? String(data.user.id) : null,
-        data?.user?.email ? String(data.user.email) : null,
-        now,
-        now
-      )
-      .run();
+    const applied = await applyNhReading(
+      env,
+      site,
+      { nh2A: verdict.nh2A, dateA: verdict.dateA },
+      { source: NH_SOURCE.MANUAL, user: data?.user }
+    );
 
     await touchLastUpdatedAt(env);
 
@@ -150,8 +130,8 @@ export async function onRequestPost({ request, env, data, params }) {
       {
         ok: true,
         site: mapSiteRow(updated),
-        readingId: rid,
-        isReset: Boolean(isReset)
+        readingId: applied.readingId,
+        isReset: false
       },
       { status: 200 }
     );

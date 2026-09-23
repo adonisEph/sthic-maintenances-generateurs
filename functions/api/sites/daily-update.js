@@ -1,161 +1,115 @@
-import { ensureAdminUser } from '../_utils/db.js';
-import { json, requireAuth, isoNow, isSuperAdmin, userZone } from '../_utils/http.js';
+import { isoNow, json, requireAuth, isSuperAdmin, ymdToday } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
+import {
+  NH_MAX_REGIME,
+  NH_SOURCE,
+  evaluateStoredSite,
+  recordQuarantine
+} from '../_utils/nhCoherence.js';
+import { calculateRegime, calculateEstimatedNH, calculateDiffNHs } from '../_utils/calc.js';
 
-function ymdInTimeZone(date, timeZone) {
-  try {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    }).format(date);
-  } catch {
-    return new Date().toISOString().slice(0, 10);
-  }
-}
+const normYmd = (v) => {
+  const s = String(v || '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+};
 
-function ymdToUtcMs(ymd) {
-  const src = String(ymd || '').slice(0, 10);
-  const m = src.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return NaN;
-  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-}
-
-function normalizeDateA(raw) {
-  const v = String(raw || '').trim();
-  if (!v) return '';
-
-  const iso = v.slice(0, 10);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
-
-  const fr = v.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-  if (fr) {
-    const dd = fr[1];
-    const mm = fr[2];
-    const yyyy = fr[3];
-    return `${yyyy}-${mm}-${dd}`;
-  }
-
-  return '';
-}
+const daysSince = (dateYmd, todayYmd) => {
+  const m1 = String(dateYmd || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const m2 = String(todayYmd || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m1 || !m2) return 0;
+  const a = Date.UTC(Number(m1[1]), Number(m1[2]) - 1, Number(m1[3]));
+  const b = Date.UTC(Number(m2[1]), Number(m2[2]) - 1, Number(m2[3]));
+  const d = Math.floor((b - a) / (1000 * 60 * 60 * 24));
+  return Number.isFinite(d) && d > 0 ? d : 0;
+};
 
 export async function onRequestPost({ env, data }) {
   try {
-    await ensureAdminUser(env);
-    if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
+    if (!requireAuth(data)) {
+      return json({ error: 'Non autorisé.' }, { status: 401 });
+    }
 
-    const timeZone = 'Africa/Brazzaville';
-    const todayYmd = ymdInTimeZone(new Date(), timeZone);
+    const zone = isSuperAdmin(data) ? 'BZV/POOL' : String(data?.user?.zone || 'BZV/POOL');
+    const todayYmd = ymdToday();
 
-    const z = userZone(data);
-    const selectStmt = isSuperAdmin(data)
-      ? env.DB.prepare('SELECT id, nh2_a, date_a, regime, nh1_dv, retired FROM sites')
-      : env.DB
-          .prepare(
-            "SELECT id, nh2_a, date_a, regime, nh1_dv, retired FROM sites WHERE zone = ? OR zone IS NULL OR TRIM(zone) = ''"
-          )
-          .bind(z);
+    const selectSql = `SELECT id, zone, nh1_dv, date_dv, nh2_a, date_a, nh_offset, regime
+      FROM sites WHERE zone = ?`;
+    const res = await env.DB.prepare(selectSql).bind(zone).all();
+    const rows = res?.results || [];
 
-    const res = await selectStmt.all();
-    const rows = Array.isArray(res?.results) ? res.results : [];
-
-    const todayMs = ymdToUtcMs(todayYmd);
-    const now = isoNow();
-
-    let updated = 0;
-    let skippedNoDateA = 0;
-    let skippedNoRegime = 0;
-    let quarantined = 0;
-    let quarantinedNhBelowDv = 0;
-    let quarantinedNhAbnormallyHigh = 0;
-
-    const ABNORMAL_HIGH_FACTOR = 3;
-    const quarantinedSamples = [];
-
-    // INVARIANT: nh1_dv and date_dv are NEVER modified by this daily auto-update.
-    // Only the vidange flow (complete.js) or manual PATCH by authorized roles can change them.
-    const updateStmt = env.DB.prepare(
-      'UPDATE sites SET nh2_a = ?, date_a = ?, nh_estimated = ?, diff_nhs = ?, diff_estimated = ?, updated_at = ? WHERE id = ?'
+    const upd = await env.DB.prepare(
+      'UPDATE sites SET regime = ?, nh_estimated = ?, diff_nhs = ?, diff_estimated = ?, updated_at = ? WHERE id = ?'
     );
+    const statements = [];
+    let updated = 0;
+    let scanned = 0;
+    let flagged = 0;
+    const flaggedSamples = [];
 
     for (const row of rows) {
-      const retiredRaw = row?.retired;
-      const isRetired =
-        retiredRaw === true ||
-        retiredRaw === 1 ||
-        retiredRaw === '1' ||
-        String(retiredRaw || '').trim().toLowerCase() === 'true';
+      const siteId = String(row.id || '');
+      if (!siteId) continue;
+      scanned += 1;
 
-      const prevDateA = normalizeDateA(row?.date_a);
-      if (!prevDateA) {
-        skippedNoDateA += 1;
-        continue;
-      }
-
-      const r = Number(row?.regime);
-      if (!Number.isFinite(r) || r <= 0) {
-        skippedNoRegime += 1;
-        continue;
-      }
-
-      const prevMs = ymdToUtcMs(prevDateA);
-      if (!Number.isFinite(prevMs)) {
-        skippedNoDateA += 1;
-        continue;
-      }
-
-      const daysSince = Math.floor((todayMs - prevMs) / (1000 * 60 * 60 * 24));
-      if (!Number.isFinite(daysSince) || daysSince <= 0) continue;
-
-      const prevNh2A = Number(row?.nh2_a || 0);
-      const nh1Dv = Number(row?.nh1_dv || 0);
-      const nextNh2A = prevNh2A + (r * daysSince);
-      const nextDiff = nextNh2A - nh1Dv;
-
-      // Quarantine: NH2 A < NH1 DV — skip for retired sites
-      if (!isRetired && Number.isFinite(nh1Dv) && nextNh2A < nh1Dv) {
-        quarantined += 1;
-        quarantinedNhBelowDv += 1;
-        if (quarantinedSamples.length < 80) {
-          quarantinedSamples.push({ siteId: row?.id, reason: 'nh2a_below_nh1dv', nh1Dv, nextNh2A });
+      // Détection d'incohérences sur l'état STOCKÉ → quarantaine persistante.
+      // Les sites retirés sont traités avec la même rigueur que les actifs.
+      const check = evaluateStoredSite(row, { todayYmd });
+      if (check.verdict === 'quarantine') {
+        const rec = await recordQuarantine(
+          env,
+          row,
+          {
+            source: NH_SOURCE.AUTO,
+            reason: check.reason,
+            proposedNh2A: row?.nh2_a,
+            proposedDateA: row?.date_a,
+            detail: check.detail
+          },
+          { user: data?.user, zone }
+        );
+        if (!rec?.error) flagged += 1;
+        if (flaggedSamples.length < 25) {
+          flaggedSamples.push({ siteId, reason: check.reason, detail: check.detail });
         }
-        continue;
       }
 
-      // Quarantine: NH2 A abnormally high vs NH1 DV — skip for retired sites
-      if (!isRetired && Number.isFinite(nh1Dv) && nh1Dv > 0 && nextNh2A > nh1Dv * ABNORMAL_HIGH_FACTOR) {
-        quarantined += 1;
-        quarantinedNhAbnormallyHigh += 1;
-        if (quarantinedSamples.length < 80) {
-          quarantinedSamples.push({ siteId: row?.id, reason: 'nh2a_abnormally_high', nh1Dv, nextNh2A, factor: ABNORMAL_HIGH_FACTOR });
-        }
-        continue;
+      // Recalc PUR : uniquement les champs dérivés. Aucune écriture sur
+      // nh1_dv / date_dv / nh2_a / date_a — les sources restent intactes.
+      const nh1 = Number(row?.nh1_dv);
+      const dateDv = normYmd(row?.date_dv);
+      const prevNh2A = Number(row?.nh2_a);
+      const prevDateA = normYmd(row?.date_a);
+      if (!Number.isFinite(prevNh2A) || !prevDateA || !dateDv) continue;
+
+      let regime = calculateRegime(nh1, prevNh2A, dateDv, prevDateA);
+      if (!Number.isFinite(regime) || regime <= 0 || regime > NH_MAX_REGIME) {
+        regime = Number(row?.regime) > 0 ? Number(row.regime) : 0;
       }
 
-      await updateStmt.bind(nextNh2A, todayYmd, nextNh2A, nextDiff, nextDiff, now, row.id).run();
+      const d = daysSince(prevDateA, todayYmd);
+      const nhEstimated = Number.isFinite(regime) && regime > 0
+        ? Math.round(prevNh2A + regime * d)
+        : prevNh2A;
+      const diff = calculateDiffNHs(nh1, prevNh2A);
+      const diffEst = calculateDiffNHs(nh1, nhEstimated);
+
+      statements.push(upd.bind(regime, nhEstimated, diff, diffEst, isoNow(), siteId));
       updated += 1;
     }
 
-    if (updated > 0) {
-      await touchLastUpdatedAt(env);
-    }
+    if (statements.length) await env.DB.batch(statements);
+    const lastUpdatedAt = await touchLastUpdatedAt(env);
 
-    return json(
-      {
-        ok: true,
-        today: todayYmd,
-        updated,
-        skipped: updated === 0,
-        skippedNoDateA,
-        skippedNoRegime,
-        quarantined,
-        quarantinedNhBelowDv,
-        quarantinedNhAbnormallyHigh,
-        quarantinedSamples
-      },
-      { status: 200 }
-    );
+    return json({
+      success: true,
+      zone,
+      date: todayYmd,
+      updatedCount: updated,
+      scannedCount: scanned,
+      quarantinedCount: flagged,
+      quarantinedSamples: flaggedSamples,
+      lastUpdatedAt
+    });
   } catch (e) {
     return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
   }

@@ -1,6 +1,7 @@
 import { ensureAdminUser } from '../_utils/db.js';
 import { json, requireAuth, isSuperAdmin, userZone, readJson } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
+import { technicianMatches, effectiveTechnicianName } from '../_utils/nhCoherence.js';
 
 function mapRow(row) {
   if (!row) return null;
@@ -65,8 +66,10 @@ export async function onRequestGet({ request, env, data }) {
       binds.push(status);
     }
 
+    // Technicien : user_id OU nom (fallback normalisé en JS — assignments sans
+    // technician_user_id restent visibles, cohérent avec /api/interventions).
     if (data.user.role === 'technician') {
-      where += ' AND a.technician_user_id = ?';
+      where += ' AND (a.technician_user_id = ? OR a.technician_name IS NOT NULL)';
       binds.push(String(data.user.id));
     } else if (data.user.role === 'admin' && technicianUserId) {
       where += ' AND a.technician_user_id = ?';
@@ -83,7 +86,18 @@ export async function onRequestGet({ request, env, data }) {
        ORDER BY a.planned_date ASC, a.pm_number ASC`
     );
     const res = await stmt.bind(...binds).all();
-    const rows = Array.isArray(res?.results) ? res.results : [];
+    let rows = Array.isArray(res?.results) ? res.results : [];
+
+    if (data.user.role === 'technician') {
+      const myName = await effectiveTechnicianName(env, data);
+      const uid = String(data.user.id || '');
+      rows = rows.filter(
+        (r) =>
+          String(r?.technician_user_id || '') === uid ||
+          technicianMatches(r?.technician_name, myName)
+      );
+    }
+
     return json({ assignments: rows.map(mapRow) }, { status: 200 });
   } catch (e) {
     return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });

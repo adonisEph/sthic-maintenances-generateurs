@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, X, RotateCcw, Download, Copy } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
+import { toastAlert as alert } from '../utils/feedback';
 
 const TodayPlannedActivitiesModal = ({
   open,

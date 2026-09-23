@@ -13,7 +13,8 @@ export async function onRequestPost({ request, env, data, params }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
     const role = String(data?.user?.role || '').trim();
-    if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool') return json({ error: 'Accès interdit.' }, { status: 403 });
+    // Import retour client : strictement SuperAdmin (admin de la zone BZV/POOL).
+    if (!isSuperAdmin(data)) return json({ error: 'Accès interdit : réservé au SuperAdmin.' }, { status: 403 });
 
     const monthId = String(params?.id || '').trim();
     if (!monthId) return json({ error: 'Mois requis.' }, { status: 400 });

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Calendar, X, Users, MapPin, Clock, AlertCircle, Download, Sparkles, Activity, Menu, ChevronLeft } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { startOperation } from '../utils/feedback';
 
 const CalendarModal = (props) => {
   const {
@@ -258,14 +259,28 @@ const CalendarModal = (props) => {
         setIntelligentError('Veuillez sélectionner un technicien.');
         return;
       }
-      const resp = await fetch('/api/intelligent-planning/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ technicianUserId: intelligentTechUserId })
-      });
+      const op = startOperation('Génération du planning intelligent…', 'Construction des interventions et du snapshot PM.');
+      let resp;
+      try {
+        resp = await fetch('/api/intelligent-planning/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ technicianUserId: intelligentTechUserId })
+        });
+      } catch (e) {
+        op.dismiss();
+        throw e;
+      }
       const raw = await resp.text();
       const data = raw ? JSON.parse(raw) : null;
-      if (!resp.ok) throw new Error(data?.error || 'Erreur génération planning intelligent.');
+      if (!resp.ok) {
+        op.dismiss();
+        throw new Error(data?.error || 'Erreur génération planning intelligent.');
+      }
+      const st = data?.stats || {};
+      op.done(
+        `Jours ouvrés: ${st.workdays ?? '?'} • Snapshot: ${st.snapshotInserted ?? '?'} • Interventions: ${st.interventionsUpserted ?? '?'}`
+      );
 
       setIntelligentDoneTechIds((prev) => {
         const next = new Set(prev);

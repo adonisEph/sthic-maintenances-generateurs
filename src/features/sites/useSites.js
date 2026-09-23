@@ -120,22 +120,16 @@ export const useSites = ({ sites, setSites }) => {
       );
       if (!ok) return;
       const nh2 = parseInt(formData.nh2A);
-      const data = await apiFetchJson(`/api/sites/${site.id}/nh`, {
+      await apiFetchJson(`/api/sites/${site.id}/nh`, {
         method: 'POST',
         body: JSON.stringify({
           readingDate: formData.dateA,
-          nhValue: nh2,
-          reset: false,
-          assumeEffectiveNh: true
+          nhValue: nh2
         })
       });
 
       await loadData();
-      if (data?.isReset) {
-        alert('⚠️ Reset détecté (compteur revenu à 0 ou inférieur). Historique enregistré et calculs recalculés.');
-      } else {
-        alert('✅ NH mis à jour.');
-      }
+      alert('✅ NH mis à jour.');
 
       setShowUpdateForm(false);
       setSelectedSite(null);

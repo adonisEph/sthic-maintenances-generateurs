@@ -14,7 +14,7 @@ import SitesStats from './components/sites/SitesStats';
 import SitesTechnicianFilter from './components/sites/SitesTechnicianFilter';
 import SidebarSitesActions from './components/sites/SidebarSitesActions';
 import TechnicianNhSiteUpdateModal from './components/sites/TechnicianNhSiteUpdateModal';
-import QuarantineTreatmentModal from './components/sites/QuarantineTreatmentModal';
+import NhQuarantineCenterModal from './components/sites/NhQuarantineCenterModal';
 import DashboardHeader from './components/dashboard/DashboardHeader';
 import DashboardKpiGrid from './components/dashboard/DashboardKpiGrid';
 import DashboardDetailsModal from './components/dashboard/DashboardDetailsModal';
@@ -33,6 +33,8 @@ import ColisKitsVidangesModal from './components/colis-kits/ColisKitsVidangesMod
 import StockConsumablesModal from './components/StockConsumablesModal';
 import WarehouseDashboard from './components/dashboard/WarehouseDashboard';
 import TechnicianCalendarModal from './components/calendar/TechnicianCalendarModal';
+import ToastStack from './components/feedback/ToastStack';
+import { subscribeToasts, toastAlert, startOperation, toast } from './utils/feedback';
  
 
 import {
@@ -48,7 +50,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.8.9';
+const APP_VERSION = '6.13.0';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -66,8 +68,32 @@ const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
 const INACTIVITY_WARNING_MS = 5 * 60 * 1000;
 const INACTIVITY_STORAGE_KEY = 'gma_last_activity';
 
+// Tous les appels alert(...) de ce module sont routés vers le centre de
+// notifications (toast non bloquant) au lieu du popup natif bloquant.
+const alert = toastAlert;
+
+// Exécute une opération async en affichant un toast "en cours" (spinner)
+// pendant toute la durée, puis le ferme — le résultat est notifié par les
+// alert()/toast.* existants du handler.
+const runOp = async (title, fn, detail) => {
+  const op = startOperation(title, detail);
+  try {
+    return await fn(op);
+  } finally {
+    op.dismiss();
+  }
+};
+
+// En-tête de section du menu vertical.
+const MenuSectionTitle = ({ children }) => (
+  <div className="mt-3 mb-1 px-3 pt-3 text-[11px] font-bold uppercase tracking-wider text-sky-300/70 border-t border-white/10">
+    {children}
+  </div>
+);
+
 const GeneratorMaintenanceApp = () => {
   const storage = useStorage();
+  const [toasts, setToasts] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarDockedOpen, setSidebarDockedOpen] = useState(true);
   const [sites, setSites] = useState([]);
@@ -144,7 +170,8 @@ const GeneratorMaintenanceApp = () => {
   const [filterUrgency, setFilterUrgency] = useState([]);
   const [filterPmDate, setFilterPmDate] = useState('');
   const [vidangeInfoSite, setVidangeInfoSite] = useState(null);
-  const [quarantinedSites, setQuarantinedSites] = useState(null);
+  const [quarantineOpen, setQuarantineOpen] = useState(false);
+  const [nhPendingCount, setNhPendingCount] = useState(0);
   const [ticketNumber, setTicketNumber] = useState(1201);
   const [ticketLabel, setTicketLabel] = useState('');
   const [importBusy, setImportBusy] = useState(false);
@@ -345,6 +372,15 @@ const GeneratorMaintenanceApp = () => {
   const canUseInterventions = isAdmin || isAnyManager || isWarehouse || isTechnician || isController || isFieldSupervisor;
   const canUsePm = isAdmin || isAnyManager || isController || isFieldSupervisor;
 
+  // Visibilité des sections du menu vertical : une section n'apparaît que si
+  // au moins un de ses items est visible pour le rôle courant.
+  const menuSectionData = isAdmin || isAnyManager || canExportSites;
+  const menuSectionNh = !isWarehouse && (isTechnician || isAnyManager || isAdmin);
+  const menuSectionInterventions = !isWarehouse || canUseInterventions;
+  const menuSectionPm = canUsePm;
+  const menuSectionWarehouse = isAdmin || isWarehouse || (canManagerVidangeActions && !isManagerBzvPool);
+  const menuSectionAdmin = isAdmin || !DISABLE_PRESENCE_FEATURE;
+
   const zonalWarehousePresent = useMemo(() => {
     const zone = String(authZone || '').trim();
     const arr = Array.isArray(users) ? users : [];
@@ -399,18 +435,14 @@ const GeneratorMaintenanceApp = () => {
   };
 
   const loadPendingInterventionsForSite = async (siteId) => {
-    const data = await apiFetchJson(`/api/interventions?siteId=${encodeURIComponent(String(siteId))}`, { method: 'GET' });
+    const data = await apiFetchJson(
+      `/api/interventions?siteId=${encodeURIComponent(String(siteId))}&includeOpen=1`,
+      { method: 'GET' }
+    );
     const rows = Array.isArray(data?.interventions) ? data.interventions : [];
-    const todayYmd = getBrazzavilleTodayYmd();
-    const currentMonth = todayYmd.slice(0, 7);
     return rows
       .filter((it) => it && String(it.siteId) === String(siteId))
       .filter((it) => !isClosedInterventionStatus(it?.status))
-      .filter((it) => {
-        const pd = String(it?.plannedDate || '').slice(0, 10);
-        if (!pd) return true;
-        return pd.slice(0, 7) === currentMonth;
-      })
       .slice()
       .sort((a, b) => String(a?.plannedDate || '').localeCompare(String(b?.plannedDate || '')));
   };
@@ -530,15 +562,17 @@ const GeneratorMaintenanceApp = () => {
         return;
       }
 
-      await apiFetchJson(`/api/interventions/${interventionId}/complete`, {
-        method: 'POST',
-        body: JSON.stringify({ doneDate, nhNow })
-      });
+      await runOp(`Vidange du site "${site?.nameSite || ''}"…`, async () => {
+        await apiFetchJson(`/api/interventions/${interventionId}/complete`, {
+          method: 'POST',
+          body: JSON.stringify({ doneDate, nhNow })
+        });
 
-      await loadData();
-      await loadFicheHistory();
-      await loadInterventions();
-      bumpInterventionsUiRev();
+        await loadData();
+        await loadFicheHistory();
+        await loadInterventions();
+        bumpInterventionsUiRev();
+      });
 
       setShowEditForm(false);
       setSelectedSite(null);
@@ -636,6 +670,18 @@ const GeneratorMaintenanceApp = () => {
     return qs.toString();
   }, [isAdmin, isAnyManager, authUser?.id, showInterventions, interventionsMonth, interventionsStatus, interventionsTechnicianUserId]);
 
+  // Centre de notifications : tout module peut émettre des toasts via
+  // utils/feedback (toast.*, toastAlert, startOperation) — rendu <ToastStack/>.
+  useEffect(() => {
+    const apply = (prev, evt) => {
+      if (evt.type === 'add') return [...prev, evt.toast].slice(-6);
+      if (evt.type === 'update') return prev.map((t) => (t.id === evt.id ? { ...t, ...evt.patch } : t));
+      if (evt.type === 'dismiss') return prev.filter((t) => t.id !== evt.id);
+      return prev;
+    };
+    return subscribeToasts((evt) => setToasts((prev) => apply(prev, evt)));
+  }, []);
+
   useEffect(() => {
     if (!interventionsPollQuery) return;
 
@@ -696,7 +742,10 @@ const GeneratorMaintenanceApp = () => {
         res.status === 429
           ? 'Trop de requêtes (429). Merci de patienter quelques secondes puis de réessayer.'
           : fallbackMsg;
-      throw new Error(msg);
+      const err = new Error(msg);
+      err.status = res.status;
+      err.data = data;
+      throw err;
     }
     return data;
   };
@@ -997,12 +1046,15 @@ const GeneratorMaintenanceApp = () => {
         alert('Date invalide.');
         return;
       }
-      await apiFetchJson('/api/holidays', {
-        method: 'POST',
-        body: JSON.stringify({ dateYmd: d, label: String(label || '').trim() })
+      await runOp(`Ajout du jour férié ${d}…`, async () => {
+        await apiFetchJson('/api/holidays', {
+          method: 'POST',
+          body: JSON.stringify({ dateYmd: d, label: String(label || '').trim() })
+        });
+        const y = Number(d.slice(0, 4));
+        await loadCalendarHolidays(y);
       });
-      const y = Number(d.slice(0, 4));
-      await loadCalendarHolidays(y);
+      toast.success(`Jour férié ${d} ajouté.`);
     } catch (e) {
       alert(e?.message || 'Erreur ajout jour férié.');
     }
@@ -1015,12 +1067,15 @@ const GeneratorMaintenanceApp = () => {
       if (id) payload.id = String(id);
       if (dateYmd) payload.dateYmd = String(dateYmd).slice(0, 10);
       if (!payload.id && !payload.dateYmd) return;
-      await apiFetchJson('/api/holidays', {
-        method: 'DELETE',
-        body: JSON.stringify(payload)
+      await runOp(`Suppression du jour férié ${payload.dateYmd || ''}…`, async () => {
+        await apiFetchJson('/api/holidays', {
+          method: 'DELETE',
+          body: JSON.stringify(payload)
+        });
+        const y = payload.dateYmd ? Number(String(payload.dateYmd).slice(0, 4)) : Number(currentMonth?.getFullYear?.() || new Date().getFullYear());
+        await loadCalendarHolidays(y);
       });
-      const y = payload.dateYmd ? Number(String(payload.dateYmd).slice(0, 4)) : Number(currentMonth?.getFullYear?.() || new Date().getFullYear());
-      await loadCalendarHolidays(y);
+      toast.success(`Jour férié ${payload.dateYmd || ''} supprimé.`);
     } catch (e) {
       alert(e?.message || 'Erreur suppression jour férié.');
     }
@@ -1119,14 +1174,20 @@ const GeneratorMaintenanceApp = () => {
       if (!ok) return;
 
       setPmSendBusy(true);
-      const data = await apiFetchJson('/api/pm-assignments/send-month', {
-        method: 'POST',
-        body: JSON.stringify({ assignments })
-      });
+      const op = startOperation(`Envoi du planning PM ${month}…`, `Technicien : ${technicianName} — ${assignments.length} ticket(s)`);
+      try {
+        const data = await apiFetchJson('/api/pm-assignments/send-month', {
+          method: 'POST',
+          body: JSON.stringify({ assignments })
+        });
 
-      alert(
-        `✅ Planning PM envoyé.\n\nCréées: ${Number(data?.created || 0)}\nMises à jour: ${Number(data?.updated || 0)}\nEn statut envoyée: ${Number(data?.sent || 0)}`
-      );
+        op.dismiss();
+        alert(
+          `✅ Planning PM envoyé.\n\nCréées: ${Number(data?.created || 0)}\nMises à jour: ${Number(data?.updated || 0)}\nEn statut envoyée: ${Number(data?.sent || 0)}`
+        );
+      } finally {
+        op.dismiss();
+      }
     } catch (e) {
       alert(e?.message || "Erreur lors de l'envoi du planning PM.");
     } finally {
@@ -1446,6 +1507,7 @@ const GeneratorMaintenanceApp = () => {
 
   const runExport = async ({ label, fn }) => {
     if (exportBusyRef.current) return false;
+    const op = startOperation(String(label || 'Export…'), 'Génération du fichier…');
     setExportBusy(true);
     setExportProgress(10);
     setExportStep(String(label || 'Export…'));
@@ -1454,8 +1516,10 @@ const GeneratorMaintenanceApp = () => {
       setExportProgress(35);
       await fn();
       setExportProgress(100);
+      op.done('Fichier généré.');
       return true;
     } catch (e) {
+      op.dismiss();
       alert(e?.message || "Erreur lors de l'export.");
       return false;
     } finally {
@@ -1486,12 +1550,33 @@ const GeneratorMaintenanceApp = () => {
     const already = stored?.value ? String(stored.value).slice(0, 10) === todayYmd : false;
     if (already) return { ok: true, skipped: true, today: todayYmd };
 
-    const res = await apiFetchJson('/api/sites/daily-update', {
-      method: 'POST',
-      body: JSON.stringify({})
-    });
-    await storage.set(DAILY_NH_UPDATE_STORAGE_KEY, todayYmd);
-    return res;
+    const op = startOperation('Mise à jour quotidienne NH…', 'Recalcul des projections + contrôle de cohérence des compteurs.');
+    try {
+      const res = await apiFetchJson('/api/sites/daily-update', {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+      await storage.set(DAILY_NH_UPDATE_STORAGE_KEY, todayYmd);
+      const flagged = Number(res?.quarantinedCount || 0);
+      op.done(
+        flagged > 0
+          ? `${Number(res?.updatedCount || 0)} site(s) recalculés — ⚠️ ${flagged} relevé(s) incohérent(s) → quarantaine.`
+          : `${Number(res?.updatedCount || 0)} site(s) recalculés.`
+      );
+      return res;
+    } catch (e) {
+      op.dismiss();
+      throw e;
+    }
+  };
+
+  const loadNhQuarantineCount = async () => {
+    try {
+      const res = await apiFetchJson('/api/nh-quarantine?status=pending', { method: 'GET' });
+      setNhPendingCount(Number(res?.pendingCount || 0));
+    } catch {
+      setNhPendingCount(0);
+    }
   };
 
   useEffect(() => {
@@ -1511,6 +1596,7 @@ const GeneratorMaintenanceApp = () => {
         if (res && res.ok && !res.skipped) {
           await loadData();
         }
+        await loadNhQuarantineCount();
       } catch {
         // ignore
       } finally {
@@ -1739,6 +1825,24 @@ const GeneratorMaintenanceApp = () => {
           i
         ])
     );
+
+    // Fallback site+epvType : si la date EPV recalculée a dérivé depuis la création
+    // de l'intervention, on rattache quand même le record ouvert le plus proche —
+    // sinon le calendrier affiche 'planned' alors que l'intervention est 'sent'.
+    const interventionsBySiteEpv = new Map();
+    (Array.isArray(interventions) ? interventions : [])
+      .filter(Boolean)
+      .filter((i) => {
+        const st = String(i?.status || '').trim().toLowerCase();
+        return st !== 'done' && st !== 'non_fait';
+      })
+      .forEach((i) => {
+        const k = `${String(i?.siteId || '')}|${String(i?.epvType || '')}`;
+        const prev = interventionsBySiteEpv.get(k);
+        if (!prev || String(i?.updatedAt || i?.createdAt || '') > String(prev?.updatedAt || prev?.createdAt || '')) {
+          interventionsBySiteEpv.set(k, i);
+        }
+      });
     
     const pmItems = (Array.isArray(pmAssignments) ? pmAssignments : [])
     .filter(Boolean)
@@ -1769,7 +1873,11 @@ const GeneratorMaintenanceApp = () => {
   
             const k1 = `${String(site.id)}|${plannedDate}|${String(epvType || '')}`;
             const k2 = `${String(site.id)}|${src}|${String(epvType || '')}`;
-            const intervention = interventionsMap.get(k1) || interventionsMap.get(k2) || null;
+            const intervention =
+              interventionsMap.get(k1) ||
+              interventionsMap.get(k2) ||
+              interventionsBySiteEpv.get(`${String(site.id)}|${String(epvType || '')}`) ||
+              null;
   
             out.push({
               id: intervention?.id || `${site.id}:${epvType}:${plannedDate}`,
@@ -1840,6 +1948,9 @@ const GeneratorMaintenanceApp = () => {
       if ((isAdmin || isManager) && technicianUserId && technicianUserId !== 'all') {
         qs.set('technicianUserId', String(technicianUserId));
       }
+      // Technicien : charger aussi TOUTES les interventions encore ouvertes hors mois
+      // — sinon le backlog (retards inter-mois) disparaît des onglets.
+      if (isTechnician) qs.set('includeOpen', '1');
       const data = await apiFetchJson(`/api/interventions?${qs.toString()}`, { method: 'GET' });
       setInterventions(Array.isArray(data?.interventions) ? data.interventions : []);
     } catch (e) {
@@ -1859,9 +1970,13 @@ const GeneratorMaintenanceApp = () => {
   };
 
   const handleCompleteIntervention = async (interventionId, payload = {}) => {
+    let op = null;
     try {
       const it = (Array.isArray(interventions) ? interventions : []).find((x) => String(x?.id) === String(interventionId)) || null;
-      const site = (Array.isArray(sites) ? sites : []).find((s) => String(s?.id) === String(it?.siteId)) || null;
+      // Événement EPV synthétisé (pas de record persisté) : le site vient du payload.
+      const site = (Array.isArray(sites) ? sites : []).find(
+        (s) => String(s?.id) === String(it?.siteId || payload?.siteId || '')
+      ) || null;
       if (site?.retired) {
         alert('Site retiré : vidange bloquée.');
         return;
@@ -1873,9 +1988,9 @@ const GeneratorMaintenanceApp = () => {
       const msgLines = [
         `Confirmer "Marquer effectuée" ?`,
         '',
-        `Site: ${site?.nameSite || it?.siteId || ''}${site?.idSite ? ` (ID: ${site.idSite})` : ''}`,
-        `Date planifiée: ${formatDate(it?.plannedDate)}`,
-        `Type: ${String(it?.epvType || '')}`
+        `Site: ${site?.nameSite || it?.siteId || payload?.siteId || ''}${site?.idSite ? ` (ID: ${site.idSite})` : ''}`,
+        `Date planifiée: ${formatDate(it?.plannedDate || payload?.plannedDate)}`,
+        `Type: ${String(it?.epvType || payload?.epvType || '')}`
       ];
       if (payload && (payload.doneDate || payload.nhNow)) {
         msgLines.push('');
@@ -1898,10 +2013,46 @@ const GeneratorMaintenanceApp = () => {
       const ok = window.confirm(msgLines.join('\n'));
       if (!ok) return;
 
-      await apiFetchJson(`/api/interventions/${interventionId}/complete`, {
-        method: 'POST',
-        body: JSON.stringify(payload || {})
-      });
+      op = startOperation(
+        'Validation de la vidange…',
+        `${site?.nameSite || it?.siteId || payload?.siteId || ''} — ${String(it?.epvType || payload?.epvType || '')}`
+      );
+
+      const postComplete = async (extra = {}) => {
+        const bodyPayload = {
+          ...(payload || {}),
+          // Contexte pour la résolution find-or-create côté serveur (événement
+          // EPV synthétisé sans record) — ignoré quand l'id résout directement.
+          siteId: it?.siteId || payload?.siteId || site?.id || '',
+          epvType: it?.epvType || payload?.epvType || '',
+          plannedDate: it?.plannedDate || payload?.plannedDate || '',
+          technicianName: it?.technicianName || payload?.technicianName || site?.technician || '',
+          ...extra
+        };
+        const urlId = it?.id || 'auto';
+        return apiFetchJson(`/api/interventions/${encodeURIComponent(String(urlId))}/complete`, {
+          method: 'POST',
+          body: JSON.stringify(bodyPayload)
+        });
+      };
+
+      try {
+        await postComplete();
+      } catch (err) {
+        // Compteur < NH1 DV : le serveur demande une confirmation de rebase
+        // (deepsea/générateur changé) au lieu de bloquer sec.
+        if (err?.data?.code === 'nh_below_dv') {
+          const okRebase = window.confirm(
+            `${err?.data?.error || err.message}\n\nConfirmer le changement de compteur/générateur ?\n` +
+              `La vidange rebasera NH1 DV = ${Number(payload?.nhNow)}H (ancien NH1 DV : ${Number(err?.data?.nh1Dv)}H).`
+          );
+          if (!okRebase) return;
+          await postComplete({ allowRebase: true });
+        } else {
+          throw err;
+        }
+      }
+      op.update({ detail: 'Rechargement des données…' });
       await loadData();
       await loadInterventions();
       await loadFicheHistory();
@@ -1909,8 +2060,10 @@ const GeneratorMaintenanceApp = () => {
       const techName =
         String(authUser?.technicianName || authUser?.technician_name || it?.technicianName || it?.technician_name || authUser?.email || '').trim();
 
+      op.dismiss();
       alert(`VIDANGE DU SITE ${String(site?.nameSite || it?.siteId || '').trim()} EFFECTUEE par ${techName || 'Technicien'}`);
     } catch (e) {
+      try { op?.dismiss?.(); } catch { /* ignore */ }
       alert(e?.message || 'Erreur serveur.');
     }
   };
@@ -1942,12 +2095,14 @@ const GeneratorMaintenanceApp = () => {
       const ok = window.confirm(`Confirmer: prochain numéro = ${String(next).padStart(5, '0')} ?`);
       if (!ok) return;
 
-      const res = await apiFetchJson('/api/meta/ticket-number/set', {
-        method: 'POST',
-        body: JSON.stringify({ next, zone: String(authUser?.zone || '').trim() })
+      const res = await runOp('Mise à jour du prochain numéro de ticket…', async () => {
+        const r = await apiFetchJson('/api/meta/ticket-number/set', {
+          method: 'POST',
+          body: JSON.stringify({ next, zone: String(authUser?.zone || '').trim() })
+        });
+        await loadTicketNumber();
+        return r;
       });
-
-      await loadTicketNumber();
       alert(`✅ Prochain ticket défini sur ${String(res?.nextTicket || `T${String(next).padStart(5, '0')}`)}`);
     } catch (e) {
       alert(e?.message || 'Erreur serveur.');
@@ -2551,7 +2706,9 @@ useEffect(() => {
       }
 
       setBasePlanProgress(60);
-      await apiFetchJson(`/api/pm/base-plans/${String(plan.id)}`, { method: 'DELETE' });
+      await runOp(`Suppression du planning de base ${month}…`, async () => {
+        await apiFetchJson(`/api/pm/base-plans/${String(plan.id)}`, { method: 'DELETE' });
+      });
       setBasePlanProgress(100);
 
       // Après suppression DB, on réinitialise l'UI du planning de base pour éviter les confusions
@@ -2755,6 +2912,7 @@ useEffect(() => {
         .replace(/\s+/g, ' ');
 
     const reader = new FileReader();
+    const op = startOperation(`Import retour client PM — ${pmMonth}…`, file?.name || '');
     setPmBusy(true);
     setPmError('');
     setPmNotice('');
@@ -2994,6 +3152,7 @@ useEffect(() => {
 
         setPmClientProgress(85);
         setPmClientStep('Enregistrement planning mensuel…');
+        op.update({ detail: `Enregistrement de ${items.length} ticket(s)…` });
 
         const monthId = pmMonthId || (await ensurePmMonth(pmMonth));
         setPmMonthId(monthId);
@@ -3038,14 +3197,17 @@ useEffect(() => {
 
         setPmClientProgress(100);
         setPmClientStep('Terminé');
+        op.done(`${items.length} tickets — Retenus: ${retained.length} • Retirés: ${removed.length} • Ajouts: ${added.length}`);
         setPmNotice(
           `✅ Retour client importé. Planning mensuel mis à jour (${items.length} tickets). Retenus: ${retained.length} • Retirés: ${removed.length} • Ajouts: ${added.length}`
         );
       } catch (err) {
+        op.dismiss();
         setPmClientProgress(0);
         setPmClientStep('');
         setPmError(err?.message || 'Erreur lors de l\'import retour client.');
       } finally {
+        op.dismiss();
         setPmBusy(false);
       }
     };
@@ -3104,6 +3266,7 @@ useEffect(() => {
     };
 
     const reader = new FileReader();
+    const opGlobal = startOperation(`Import planning PM global — ${pmMonth}…`, file?.name || '');
     setPmBusy(true);
     setPmError('');
     setPmNotice('');
@@ -3202,6 +3365,7 @@ useEffect(() => {
 
         setPmGlobalProgress(60);
         setPmGlobalStep('Enregistrement planning PM global…');
+        opGlobal.update({ detail: `Enregistrement de ${items.length} ligne(s)…` });
 
         await apiFetchJson(`/api/pm/months/${monthId}/global-import`, {
           method: 'POST',
@@ -3219,12 +3383,15 @@ useEffect(() => {
 
         setPmGlobalProgress(100);
         setPmGlobalStep('Terminé');
+        opGlobal.done(`${items.length} ligne(s) importées.`);
         setPmNotice(`✅ Planning PM global importé (${items.length} lignes).`);
       } catch (err) {
+        opGlobal.dismiss();
         setPmGlobalProgress(0);
         setPmGlobalStep('');
         setPmError(err?.message || 'Erreur lors de l’import planning PM global.');
       } finally {
+        opGlobal.dismiss();
         setPmBusy(false);
       }
     };
@@ -3266,6 +3433,7 @@ useEffect(() => {
 
     setBasePlanBusy(true);
     setBasePlanProgress(15);
+    const op = startOperation(`Enregistrement du planning de base ${month}…`);
     try {
       const planRes = await apiFetchJson('/api/pm/base-plans', { method: 'POST', body: JSON.stringify({ month }) });
       const finalPlanId = String(planRes?.plan?.id || '').trim();
@@ -3286,10 +3454,13 @@ useEffect(() => {
         plannedDate: it.plannedDate,
         state: 'Planned'
       }));
+      op.update({ detail: `Enregistrement de ${payloadItems.length} ligne(s)…` });
       await apiFetchJson(`/api/pm/base-plans/${finalPlanId}/items`, { method: 'POST', body: JSON.stringify({ items: payloadItems }) });
       setBasePlanProgress(100);
+      op.done(`${payloadItems.length} ligne(s) enregistrées.`);
       alert('✅ Planning de base enregistré.');
     } catch (e) {
+      op.dismiss();
       alert(e?.message || 'Erreur serveur.');
     } finally {
       setTimeout(() => {
@@ -3537,6 +3708,7 @@ useEffect(() => {
     }
 
     const reader = new FileReader();
+    const op = startOperation(`Import NOC — ${pmMonth}…`, file?.name || '');
     setPmBusy(true);
     setPmError('');
     setPmNocProgress(0);
@@ -3607,6 +3779,7 @@ useEffect(() => {
 
           setPmNocProgress(Math.min(79, 20 + Math.round((pct * 59) / 100)));
           setPmNocStep(`Import NOC… ${pct}%`);
+          op.progress(pct, `Envoi des lignes… ${sent}/${total}`);
 
           // eslint-disable-next-line no-await-in-loop
           const res = await apiFetchJson(`/api/pm/months/${monthId}/noc-import`, {
@@ -3652,6 +3825,7 @@ useEffect(() => {
             : `✅ Import NOC terminé. Mis à jour: ${aggUpdated}`;
         setPmNotice(msg);
 
+        op.done(`Mis à jour: ${aggUpdated} • Ajoutés auto: ${autoAdded} • Introuvables: ${notFound}`);
         if (autoAdded > 0 || notFound > 0) {
           alert(
             `✅ Import NOC terminé.\n\nMis à jour: ${aggUpdated}\nAjoutés auto (NOC): ${autoAdded}\nIntrouvables: ${notFound}`
@@ -3660,6 +3834,7 @@ useEffect(() => {
           alert(`✅ Import NOC terminé. Mis à jour: ${aggUpdated}`);
         }
       } catch (err) {
+        op.dismiss();
         setPmNocProgress((p) => (Number(p || 0) > 0 ? p : 1));
         setPmNocStep('Erreur import NOC');
         setPmError(err?.message || "Erreur lors de l'import NOC.");
@@ -3694,10 +3869,13 @@ useEffect(() => {
       setPmError('');
       setPmNotice('');
 
-      const res = await apiFetchJson(`/api/pm/months/${pmMonthId}/reset`, {
-        method: 'POST',
-        body: JSON.stringify({ mode: isAll ? 'all' : 'imports' })
-      });
+      const res = await runOp(
+        isAll ? `Reset complet du mois PM ${pmMonth}…` : `Suppression des imports PM ${pmMonth}…`,
+        async () => apiFetchJson(`/api/pm/months/${pmMonthId}/reset`, {
+          method: 'POST',
+          body: JSON.stringify({ mode: isAll ? 'all' : 'imports' })
+        })
+      );
 
       await loadPmItems(pmMonthId);
       await loadPmImports(pmMonthId);
@@ -3765,11 +3943,13 @@ useEffect(() => {
     try {
       const ok = window.confirm(`Confirmer l'ajout du site "${newSite.nameSite}" (ID: ${newSite.idSite}) ?`);
       if (!ok) return;
-      await apiFetchJson('/api/sites', {
-        method: 'POST',
-        body: JSON.stringify(newSite)
+      await runOp(`Ajout du site "${newSite.nameSite}"…`, async () => {
+        await apiFetchJson('/api/sites', {
+          method: 'POST',
+          body: JSON.stringify(newSite)
+        });
+        await loadData();
       });
-      await loadData();
       setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
       setShowAddForm(false);
       alert('✅ Site ajouté avec succès.');
@@ -3792,31 +3972,32 @@ useEffect(() => {
       if (!ok) return;
       const nh2 = parseInt(formData.nh2A);
 
-      const data = await apiFetchJson(`/api/sites/${site.id}/nh`, {
-        method: 'POST',
-        body: JSON.stringify({
-          readingDate: formData.dateA,
-          nhValue: nh2,
-          reset: false,
-          assumeEffectiveNh: true,
-          allowDecrease: isAdmin || isAnyManager
-        })
+      await runOp(`Mise à jour NH — ${site?.nameSite || site?.idSite || ''}…`, async () => {
+        await apiFetchJson(`/api/sites/${site.id}/nh`, {
+          method: 'POST',
+          body: JSON.stringify({
+            readingDate: formData.dateA,
+            nhValue: nh2
+          })
+        });
+
+        await loadData();
+        await loadInterventions();
       });
 
-      await loadData();
-      await loadInterventions();
-
-      if (data?.isReset) {
-        alert('⚠️ Reset détecté (compteur revenu à 0 ou inférieur). Historique enregistré et calculs recalculés.');
-      } else {
-        alert('✅ NH mis à jour.');
-      }
+      alert('✅ NH mis à jour.');
 
       setShowUpdateForm(false);
       setSelectedSite(null);
       setFormData({ nameSite: '', idSite: '', technician: '', generateur: '', capacite: '', kitVidange: '', nh1DV: '', dateDV: '', nh2A: '', dateA: '', retired: false });
     } catch (e) {
-      alert(e?.message || 'Erreur serveur.');
+      if (e?.data?.quarantined) {
+        await loadNhQuarantineCount();
+        alert(`⚠️ ${e.message}\n\nLa valeur a été mise en quarantaine.`);
+        setQuarantineOpen(true);
+      } else {
+        alert(e?.message || 'Erreur serveur.');
+      }
     }
   };
 
@@ -3839,30 +4020,33 @@ useEffect(() => {
       const diffNHs = calculateDiffNHs(nh1, nh2);
       const diffEstimated = calculateDiffNHs(nh1, nhEstimated);
 
-      const data = await apiFetchJson(`/api/sites/${site.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          nameSite: formData.nameSite,
-          idSite: formData.idSite,
-          technician: formData.technician,
-          generateur: formData.generateur,
-          capacite: formData.capacite,
-          kitVidange: formData.kitVidange,
-          ...(canManagerVidangeActions ? { nh1DV: nh1, dateDV: formData.dateDV } : {}),
-          nh2A: nh2,
-          dateA: formData.dateA,
-          regime,
-          nhEstimated,
-          diffNHs,
-          diffEstimated,
-          retired: formData.retired
-        })
+      const data = await runOp(`Modification du site "${site?.nameSite || ''}"…`, async () => {
+        const res = await apiFetchJson(`/api/sites/${site.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            nameSite: formData.nameSite,
+            idSite: formData.idSite,
+            technician: formData.technician,
+            generateur: formData.generateur,
+            capacite: formData.capacite,
+            kitVidange: formData.kitVidange,
+            ...(canManagerVidangeActions ? { nh1DV: nh1, dateDV: formData.dateDV } : {}),
+            nh2A: nh2,
+            dateA: formData.dateA,
+            regime,
+            nhEstimated,
+            diffNHs,
+            diffEstimated,
+            retired: formData.retired
+          })
+        });
+        await loadData();
+        return res;
       });
 
       if (data?.site?.id) {
         setSites(sites.map((s) => (String(s.id) === String(data.site.id) ? data.site : s)));
       }
-      await loadData();
 
       setShowEditForm(false);
       setSelectedSite(null);
@@ -3889,7 +4073,9 @@ useEffect(() => {
 
   const handleDeleteSite = async () => {
     try {
-      await apiFetchJson(`/api/sites/${siteToDelete.id}`, { method: 'DELETE' });
+      await runOp(`Suppression du site "${siteToDelete?.nameSite || siteToDelete?.idSite || ''}"…`, async () => {
+        await apiFetchJson(`/api/sites/${siteToDelete.id}`, { method: 'DELETE' });
+      });
 
       const updatedSites = sites.filter(site => String(site.id) !== String(siteToDelete.id));
       setSites(updatedSites);
@@ -3912,7 +4098,9 @@ useEffect(() => {
       if (!ok) return;
       if (authUser?.role === 'admin') {
         try {
-          await apiFetchJson('/api/admin/reset', { method: 'POST', body: JSON.stringify({ includePm }) });
+          await runOp('Réinitialisation des données…', async () => {
+            await apiFetchJson('/api/admin/reset', { method: 'POST', body: JSON.stringify({ includePm }) });
+          }, includePm ? 'Vidanges + PM' : 'Vidanges uniquement');
         } catch (e) {
           // ignore
         }
@@ -4204,6 +4392,7 @@ useEffect(() => {
     setFicheFlowMode(isCase2NoWarehouse ? 'warehouseReturns' : 'preSend');
     setHideProcessButtonsOverride(false);
     setShowBannerUpload(false);
+    const op = startOperation(`Préparation de la fiche — ${site?.nameSite || ''}…`);
     try {
       const today = new Date().toISOString().split('T')[0];
 
@@ -4234,6 +4423,8 @@ useEffect(() => {
       await loadTicketLabelPreview(site);
     } catch (e) {
       setFicheContext(null);
+    } finally {
+      op.dismiss();
     }
     setShowFicheModal(true);
   };
@@ -4443,6 +4634,7 @@ useEffect(() => {
     setBatchFicheSites(uniqueEvents);
     setBatchFicheIndex(0);
     setSiteForFiche(uniqueEvents[0].site);
+    const op = startOperation('Préparation des fiches…', `${uniqueEvents.length} site(s) à traiter`);
     const plannedDate = uniqueEvents[0]?.date ? String(uniqueEvents[0].date).slice(0, 10) : null;
     const epvType = uniqueEvents[0]?.type ? String(uniqueEvents[0].type).trim() : null;
 
@@ -4478,6 +4670,7 @@ useEffect(() => {
     } catch {
       ficheId = null;
     }
+    op.dismiss();
     setFicheContext({ plannedDate, epvType, interventionId, ficheId });
   };
 
@@ -4863,14 +5056,16 @@ useEffect(() => {
       ? ficheHistory.find((f) => String(f?.id || '') === String(ficheId))
       : null;
 
-    await apiFetchJson(`/api/fiche-history/${encodeURIComponent(String(ficheId))}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        mode: 'warehouse-check',
-        warehouseAirFilterOk,
-        warehouseCoolant5lOk,
-        warehouseVentilationBeltOk
-      })
+    await runOp('Enregistrement du contrôle magasin…', async () => {
+      await apiFetchJson(`/api/fiche-history/${encodeURIComponent(String(ficheId))}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          mode: 'warehouse-check',
+          warehouseAirFilterOk,
+          warehouseCoolant5lOk,
+          warehouseVentilationBeltOk
+        })
+      });
     });
 
     const siteId = String(prevFiche?.siteId || activeFiche?.siteId || '').trim();
@@ -4931,42 +5126,47 @@ useEffect(() => {
   const handleSubmitWarehouseCheck = async ({ ficheId, warehouseAirFilterOk, warehouseCoolant5lOk, warehouseVentilationBeltOk }) => {
     if (!ficheId) return;
 
-    // 1) Re-sauvegarder les cases (au cas où) pour être sûr que le retour contient les bons états
-    await apiFetchJson(`/api/fiche-history/${encodeURIComponent(String(ficheId))}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        mode: 'warehouse-check',
-        warehouseAirFilterOk,
-        warehouseCoolant5lOk,
-        warehouseVentilationBeltOk
-      })
-    });
+    await runOp('Traitement et renvoi de la fiche au manager…', async () => {
+      // 1) Re-sauvegarder les cases (au cas où) pour être sûr que le retour contient les bons états
+      await apiFetchJson(`/api/fiche-history/${encodeURIComponent(String(ficheId))}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          mode: 'warehouse-check',
+          warehouseAirFilterOk,
+          warehouseCoolant5lOk,
+          warehouseVentilationBeltOk
+        })
+      });
 
-    // 2) Renvoyer au manager (changement de statut -> "Contrôle magasin")
-    await apiFetchJson(`/api/fiche-history/${encodeURIComponent(String(ficheId))}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        mode: 'warehouse-submit'
-      })
-    });
+      // 2) Renvoyer au manager (changement de statut -> "Contrôle magasin")
+      await apiFetchJson(`/api/fiche-history/${encodeURIComponent(String(ficheId))}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          mode: 'warehouse-submit'
+        })
+      });
 
-    await loadFicheHistory();
+      await loadFicheHistory();
+    });
     alert('FICHES TRAITEES ET RENVOYEES par le Magasinier');
   };
 
   const handleSendToWarehouse = async ({ ficheId }) => {
     if (!ficheId) return;
 
-    await apiFetchJson(`/api/fiche-history/${encodeURIComponent(String(ficheId))}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ mode: 'send-to-warehouse' })
-    });
+    await runOp('Envoi de la fiche au magasinier…', async () => {
+      await apiFetchJson(`/api/fiche-history/${encodeURIComponent(String(ficheId))}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ mode: 'send-to-warehouse' })
+      });
 
-    await loadFicheHistory();
-    await loadInterventions();
+      await loadFicheHistory();
+      await loadInterventions();
+    });
   };
 
   const handleTriggerInterventionFromHistory = async (fiche) => {
+    let op = null;
     try {
       const siteId = fiche?.siteId ? String(fiche.siteId) : '';
       const plannedDate = fiche?.plannedDate ? String(fiche.plannedDate).slice(0, 10) : '';
@@ -4976,12 +5176,18 @@ useEffect(() => {
       const resolvedInterventionId = fiche?.resolvedInterventionId ? String(fiche.resolvedInterventionId).trim() : '';
       const idToSend = interventionId || resolvedInterventionId;
 
+      op = startOperation(
+        'Envoi de l\'intervention au technicien…',
+        `${fiche?.siteCode || siteId || ''} — ${epvType || ''}${technicianName ? ` → ${technicianName}` : ''}`
+      );
+
       if (idToSend) {
         await apiFetchJson(`/api/interventions/${encodeURIComponent(idToSend)}/send`, {
           method: 'POST'
         });
       } else {
         if (!siteId || !plannedDate || !epvType || !technicianName) {
+          op.dismiss();
           alert("Impossible de déclencher: fiche incomplète (siteId / plannedDate / epvType / technicien).");
           return;
         }
@@ -4997,11 +5203,14 @@ useEffect(() => {
         });
       }
 
+      op.update({ detail: 'Rechargement des interventions…' });
       await loadInterventions();
       await loadFicheHistory();
 
+      op.dismiss();
       alert('✅ Intervention déclenchée et envoyée au technicien.');
     } catch (e) {
+      try { op?.dismiss?.(); } catch { /* ignore */ }
       alert(e?.message || "Erreur lors du déclenchement de l'intervention.");
     }
   };
@@ -5011,11 +5220,13 @@ useEffect(() => {
 
     try {
       setWarehouseRevokeBusyId(String(ficheId));
-      await apiFetchJson(`/api/fiche-history/${encodeURIComponent(String(ficheId))}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ mode: 'revoke-send-to-warehouse' })
+      await runOp('Révocation de l\'envoi au magasinier…', async () => {
+        await apiFetchJson(`/api/fiche-history/${encodeURIComponent(String(ficheId))}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ mode: 'revoke-send-to-warehouse' })
+        });
+        await loadFicheHistory();
       });
-      await loadFicheHistory();
     } finally {
       setWarehouseRevokeBusyId('');
     }
@@ -5152,42 +5363,46 @@ useEffect(() => {
     const ficheId = ficheContext?.ficheId ? String(ficheContext.ficheId) : null;
 
     if (ficheId) {
-      await apiFetchJson(`/api/fiche-history/${encodeURIComponent(ficheId)}`, {
-        method: 'PATCH',
+      await runOp('Enregistrement de la fiche…', async () => {
+        await apiFetchJson(`/api/fiche-history/${encodeURIComponent(ficheId)}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            mode,
+            ticketNumber: String(ticketNumberFull || '').trim(),
+            signatureTypedName: String(signatureTypedName || '').trim(),
+            signatureDrawnPng: String(signatureDrawnPng || '').trim()
+          })
+        });
+      }, `${siteForFiche?.nameSite || ''} — ${mode}`);
+      return;
+    }
+
+    await runOp('Enregistrement de la fiche…', async () => {
+      await apiFetchJson('/api/fiche-history', {
+        method: 'POST',
         body: JSON.stringify({
-          mode,
           ticketNumber: String(ticketNumberFull || '').trim(),
+          siteId: siteForFiche?.id ? String(siteForFiche.id) : '',
+          siteName: String(siteForFiche?.nameSite || '').trim(),
+          technician: String(siteForFiche?.technician || '').trim(),
+          plannedDate: ficheContext?.plannedDate ? String(ficheContext.plannedDate).slice(0, 10) : null,
+          epvType: ficheContext?.epvType ? String(ficheContext.epvType).trim() : null,
+          interventionId: interventionId ? String(interventionId) : null,
           signatureTypedName: String(signatureTypedName || '').trim(),
           signatureDrawnPng: String(signatureDrawnPng || '').trim()
         })
       });
-      return;
-    }
-
-    await apiFetchJson('/api/fiche-history', {
-      method: 'POST',
-      body: JSON.stringify({
-        ticketNumber: String(ticketNumberFull || '').trim(),
-        siteId: siteForFiche?.id ? String(siteForFiche.id) : '',
-        siteName: String(siteForFiche?.nameSite || '').trim(),
-        technician: String(siteForFiche?.technician || '').trim(),
-        plannedDate: ficheContext?.plannedDate ? String(ficheContext.plannedDate).slice(0, 10) : null,
-        epvType: ficheContext?.epvType ? String(ficheContext.epvType).trim() : null,
-        interventionId: interventionId ? String(interventionId) : null,
-        signatureTypedName: String(signatureTypedName || '').trim(),
-        signatureDrawnPng: String(signatureDrawnPng || '').trim()
-      })
-    });
+    }, `${siteForFiche?.nameSite || ''} — ${mode}`);
   };
 
   const handleColisKitsGenerate = async (items) => {
     setColisKitsGenerating(true);
     setColisKitsResult(null);
     try {
-      const data = await apiFetchJson('/api/colis-kits-vidanges/generate', {
+      const data = await runOp('Génération des fiches kits vidange…', async () => apiFetchJson('/api/colis-kits-vidanges/generate', {
         method: 'POST',
         body: JSON.stringify({ items })
-      });
+      }), `${Array.isArray(items) ? items.length : 0} kit(s)`);
       setColisKitsResult(data);
       // Refresh fiche history to show newly created fiches
       try { await loadFicheHistory(); } catch { /* ignore */ }
@@ -5217,20 +5432,25 @@ useEffect(() => {
   };
 
   const handleCreateStockMovement = async (payload) => {
-    const data = await apiFetchJson('/api/stock', {
-      method: 'POST',
-      body: JSON.stringify(payload)
+    const data = await runOp('Enregistrement du mouvement de stock…', async () => {
+      const res = await apiFetchJson('/api/stock', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      await loadStockMovements();
+      return res;
     });
-    await loadStockMovements();
     return data;
   };
 
   const handleDeleteStockMovement = async (id) => {
-    await apiFetchJson('/api/stock', {
-      method: 'DELETE',
-      body: JSON.stringify({ id })
+    await runOp('Suppression du mouvement de stock…', async () => {
+      await apiFetchJson('/api/stock', {
+        method: 'DELETE',
+        body: JSON.stringify({ id })
+      });
+      await loadStockMovements();
     });
-    await loadStockMovements();
   };
 
   const goBatchFiche = async (delta) => {
@@ -5338,6 +5558,7 @@ useEffect(() => {
     }
 
     const reader = new FileReader();
+    const op = startOperation('Import Excel des sites…', file?.name || '');
     setImportBusy(true);
     setImportProgress(0);
     setImportStep('Lecture du fichier…');
@@ -5454,6 +5675,7 @@ useEffect(() => {
 
         setImportStep('Envoi vers le serveur…');
         setImportProgress((p) => Math.max(p, 85));
+        op.update({ detail: `Envoi de ${importedSites.length} site(s) vers le serveur…` });
         console.log('Sites importés:', importedSites);
         await apiFetchJson('/api/sites/bulk-replace', {
           method: 'POST',
@@ -5463,11 +5685,14 @@ useEffect(() => {
         setImportProgress((p) => Math.max(p, 95));
         await loadData();
         setImportProgress(100);
+        op.dismiss();
         alert(`✅ ${importedSites.length} sites importés avec succès !`);
       } catch (error) {
         console.error('Erreur lors de l\'import:', error);
+        op.dismiss();
         alert(`❌ Erreur lors de l\'import du fichier Excel: ${error?.message || 'Erreur inconnue.'}`);
       } finally {
+        op.dismiss();
         setImportBusy(false);
         setTimeout(() => {
           setImportStep('');
@@ -5521,6 +5746,7 @@ useEffect(() => {
     };
 
     const reader = new FileReader();
+    const op = startOperation('Import CONSOLE RMS…', file?.name || '');
     setConsoleRmsImportBusy(true);
     setConsoleRmsImportProgress(5);
     setConsoleRmsImportStep('Lecture du fichier…');
@@ -5571,13 +5797,12 @@ useEffect(() => {
 
         setConsoleRmsImportStep('Envoi serveur…');
         setConsoleRmsImportProgress((p) => Math.max(p, 60));
+        op.update({ detail: `Contrôle de cohérence de ${rows.length} ligne(s) côté serveur…` });
 
         const res = await apiFetchJson('/api/sites/console-rms-import', {
           method: 'POST',
           body: JSON.stringify({
             filename: file?.name || null,
-            assumeEffectiveNh: true,
-            allowDecrease: true,
             rows: rows.map(({ idSite, nh2A, dateA }) => ({ idSite, nh2A, dateA }))
           })
         });
@@ -5601,6 +5826,7 @@ useEffect(() => {
         const ignoredNhBelowDv = Number(res?.ignoredNhBelowDv || 0);
         const quarantinedNhBelowDv = Number(res?.quarantinedNhBelowDv || 0);
         const quarantinedNhAbnormallyHigh = Number(res?.quarantinedNhAbnormallyHigh || 0);
+        const quarantinedOther = Number(res?.quarantinedOther || 0);
         const quarantinedSamples = Array.isArray(res?.quarantinedSamples) ? res.quarantinedSamples : [];
 
         const details =
@@ -5616,21 +5842,32 @@ useEffect(() => {
               (ignoredNhBelowDv > 0 ? `- NH < NH1 DV: ${ignoredNhBelowDv}\n` : '')
             : '';
 
+        const rmsReasonLabel = (r) =>
+          r === 'nh_below_dv' ? 'NH2 A < NH1 DV' :
+          r === 'parasite_high' ? 'Valeur parasitée' :
+          r === 'decrease' ? 'Compteur < dernier relevé' :
+          r === 'date_regression' ? 'Date < dernier relevé' :
+          r === 'date_before_dv' ? 'Date < Date DV' :
+          r === 'future_date' ? 'Date future' :
+          String(r || 'Incohérence');
+
         const quarantineDetails =
           quarantined > 0
             ?
-              `\n\n⚠️ Sites en quarantaine (à traiter manuellement):\n` +
+              `\n\n⚠️ Sites en quarantaine (persistés — centre de quarantaine):\n` +
               (quarantinedNhBelowDv > 0 ? `- NH2 A < NH1 DV: ${quarantinedNhBelowDv}\n` : '') +
-              (quarantinedNhAbnormallyHigh > 0 ? `- NH2 A anormalement > NH1 DV: ${quarantinedNhAbnormallyHigh}\n` : '') +
+              (quarantinedNhAbnormallyHigh > 0 ? `- Valeur parasitée (>24H/J): ${quarantinedNhAbnormallyHigh}\n` : '') +
+              (quarantinedOther > 0 ? `- Autres incohérences: ${quarantinedOther}\n` : '') +
               (quarantinedSamples.length > 0
                 ? `\nExemples:\n` +
                   quarantinedSamples.slice(0, 10).map((s) =>
-                    `  • ${s.idSite || '?'} — ${s.reason === 'nh2a_below_nh1dv' ? 'NH2 A < NH1 DV' : 'NH2 A >> NH1 DV'} (NH2 A: ${s.nh2A ?? '?'}, NH1 DV: ${s.prevNh1DV ?? '?'})`
+                    `  • ${s.idSite || '?'} — ${rmsReasonLabel(s.reason)} (NH2 A: ${s.nh2A ?? '?'}, NH1 DV: ${s.prevNh1DV ?? '?'})`
                   ).join('\n')
                 : ''
               )
             : '';
 
+        op.dismiss();
         alert(
           `✅ Import CONSOLE RMS terminé.\n\n` +
           `Sites mis à jour: ${updated}\n` +
@@ -5641,12 +5878,15 @@ useEffect(() => {
           quarantineDetails
         );
 
-        if (quarantined > 0 && quarantinedSamples.length > 0) {
-          setQuarantinedSites(quarantinedSamples);
+        await loadNhQuarantineCount();
+        if (quarantined > 0) {
+          setQuarantineOpen(true);
         }
       } catch (err) {
+        op.dismiss();
         alert(err?.message || 'Erreur lors de l’import CONSOLE RMS.');
       } finally {
+        op.dismiss();
         setConsoleRmsImportBusy(false);
         setTimeout(() => {
           setConsoleRmsImportStep('');
@@ -6143,15 +6383,32 @@ useEffect(() => {
 
   // --- Backward-compat: build doneEpvBySiteId from completedFichesBySiteId ---
   // Some downstream components (DashboardKpiGrid, calendar, etc.) still expect the old format.
+  // Mapping SÉMANTIQUE : la fiche masque son vrai epvType (pas sa position) — sinon une
+  // fiche EPV3 effectuée masquait l'événement EPV1 (omission). Les fiches sans type
+  // (legacy) remplissent les premiers slots vides dans l'ordre chronologique.
+  const fillDoneEpvRec = (fiches) => {
+    const rec = { EPV1: '', EPV2: '', EPV3: '' };
+    const untyped = [];
+    for (const f of fiches) {
+      const t = String(f?.epvType || '').trim().toUpperCase();
+      if (t === 'EPV1' || t === 'EPV2' || t === 'EPV3') {
+        rec[t] = f._doneAt; // fiches triées chrono → la plus récente gagne
+      } else {
+        untyped.push(f);
+      }
+    }
+    for (const f of untyped) {
+      const slot = ['EPV1', 'EPV2', 'EPV3'].find((k) => !rec[k]);
+      if (!slot) break;
+      rec[slot] = f._doneAt;
+    }
+    return rec;
+  };
+
   const doneEpvBySiteId = useMemo(() => {
     const map = new Map();
     for (const [siteId, fiches] of completedFichesBySiteId) {
-      const rec = { EPV1: '', EPV2: '', EPV3: '' };
-      for (let i = 0; i < fiches.length && i < 3; i++) {
-        const key = `EPV${i + 1}`;
-        rec[key] = fiches[i]._doneAt;
-      }
-      map.set(siteId, rec);
+      map.set(siteId, fillDoneEpvRec(fiches));
     }
     return map;
   }, [completedFichesBySiteId]);
@@ -6189,11 +6446,7 @@ useEffect(() => {
       const convertedMap = new Map();
       for (const [siteId, arr] of monthMap) {
         arr.sort((a, b) => new Date(a._doneAt) - new Date(b._doneAt));
-        const rec = { EPV1: '', EPV2: '', EPV3: '' };
-        for (let i = 0; i < arr.length && i < 3; i++) {
-          rec[`EPV${i + 1}`] = arr[i]._doneAt;
-        }
-        convertedMap.set(siteId, rec);
+        convertedMap.set(siteId, fillDoneEpvRec(arr));
       }
       result.set(month, convertedMap);
     }
@@ -6203,37 +6456,41 @@ useEffect(() => {
 
   // --- Dynamic passage builder ---
   // Builds an ordered list of passages for a site:
-  //   - First N entries are completed (from ficheHistory for this month)
-  //   - Remaining entries are pending (from calculated epvDates)
+  //   - Completed entries keyed by their REAL epvType (fiche.epv_type)
+  //   - Pending entries = slots EPV1/2/3 non effectués (dates recalculées)
   const getSitePassages = (site, epvDates) => {
     const sid = String(site?.id || '').trim();
     const completedFiches = completedFichesBySiteId.get(sid) || [];
-    const N = completedFiches.length;
 
     const allPassages = [];
+    const doneTypes = new Set();
 
-    // 1) Completed passages
-    for (let i = 0; i < N; i++) {
-      const f = completedFiches[i];
+    // 1) Completed passages — type réel de la fiche (fallback positionnel legacy)
+    completedFiches.forEach((f, i) => {
+      const t = String(f?.epvType || '').trim().toUpperCase();
+      const type = t === 'EPV1' || t === 'EPV2' || t === 'EPV3' ? t : `EPV${i + 1}`;
+      doneTypes.add(type);
       const doneAt = f._doneAt;
       allPassages.push({
-        type: `EPV${i + 1}`,
+        type,
         date: doneAt,
         done: true,
         doneDate: doneAt,
         ticketNumber: f.ticketNumber || ''
       });
-    }
+    });
 
-    // 2) Pending passages from calculated dates
-    if (epvDates?.epv1 && epvDates.epv1 !== 'N/A') {
-      allPassages.push({ type: `EPV${N + 1}`, date: epvDates.epv1, done: false });
-    }
-    if (epvDates?.epv2 && epvDates.epv2 !== 'N/A') {
-      allPassages.push({ type: `EPV${N + 2}`, date: epvDates.epv2, done: false });
-    }
-    if (epvDates?.epv3 && epvDates.epv3 !== 'N/A') {
-      allPassages.push({ type: `EPV${N + 3}`, date: epvDates.epv3, done: false });
+    // 2) Pending passages — slots EPV non couverts par une fiche effectuée
+    const epvPending = [
+      ['EPV1', epvDates?.epv1],
+      ['EPV2', epvDates?.epv2],
+      ['EPV3', epvDates?.epv3]
+    ];
+    for (const [type, date] of epvPending) {
+      if (doneTypes.has(type)) continue;
+      if (date && date !== 'N/A') {
+        allPassages.push({ type, date, done: false });
+      }
     }
 
     return allPassages;
@@ -7001,8 +7258,10 @@ useEffect(() => {
       if (!u?.id) return;
       const ok = window.confirm(`Confirmer la suppression de l'utilisateur ${String(u.email || '')} ?`);
       if (!ok) return;
-      await apiFetchJson(`/api/users/${String(u.id)}`, { method: 'DELETE' });
-      await refreshUsers();
+      await runOp(`Suppression de l'utilisateur ${String(u.email || '')}…`, async () => {
+        await apiFetchJson(`/api/users/${String(u.id)}`, { method: 'DELETE' });
+        await refreshUsers();
+      });
       resetUserForm();
       alert('✅ Utilisateur supprimé.');
     } catch (e) {
@@ -7030,17 +7289,19 @@ useEffect(() => {
       }
 
       if (userFormId) {
-        await apiFetchJson(`/api/users/${String(userFormId)}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ email, role, zone, technicianName })
-        });
-        if (password) {
+        await runOp(`Mise à jour de l'utilisateur ${email}…`, async () => {
           await apiFetchJson(`/api/users/${String(userFormId)}`, {
-            method: 'POST',
-            body: JSON.stringify({ password })
+            method: 'PATCH',
+            body: JSON.stringify({ email, role, zone, technicianName })
           });
-        }
-        await refreshUsers();
+          if (password) {
+            await apiFetchJson(`/api/users/${String(userFormId)}`, {
+              method: 'POST',
+              body: JSON.stringify({ password })
+            });
+          }
+          await refreshUsers();
+        });
         resetUserForm();
         alert('✅ Utilisateur mis à jour.');
         return;
@@ -7051,11 +7312,13 @@ useEffect(() => {
         return;
       }
 
-      await apiFetchJson('/api/users', {
-        method: 'POST',
-        body: JSON.stringify({ email, role, zone, technicianName, password })
+      await runOp(`Création de l'utilisateur ${email}…`, async () => {
+        await apiFetchJson('/api/users', {
+          method: 'POST',
+          body: JSON.stringify({ email, role, zone, technicianName, password })
+        });
+        await refreshUsers();
       });
-      await refreshUsers();
       resetUserForm();
       alert('✅ Utilisateur créé.');
     } catch (e) {
@@ -7725,14 +7988,14 @@ return (
         </div>
       )}
 
-      {/* Popup traitement manuel des sites en quarantaine */}
-      {quarantinedSites && (
-        <QuarantineTreatmentModal
-          sites={quarantinedSites}
-          allSites={sites}
+      {/* Centre de quarantaine NH (persisté — Auto / Manuel / RMS) */}
+      {quarantineOpen && (
+        <NhQuarantineCenterModal
+          open={quarantineOpen}
           apiFetchJson={apiFetchJson}
-          onRefresh={async () => { await loadData(); }}
-          onClose={() => setQuarantinedSites(null)}
+          canFixNh1Dv={Boolean(isAdmin || isAnyManager)}
+          onRefresh={async () => { await loadData(); await loadNhQuarantineCount(); }}
+          onClose={() => { setQuarantineOpen(false); loadNhQuarantineCount(); }}
         />
       )}
 
@@ -7789,6 +8052,8 @@ return (
           <div className="h-px bg-slate-700/60 my-1" />
 
 
+          {menuSectionData && <MenuSectionTitle>Sites &amp; données</MenuSectionTitle>}
+
         {(
           <SidebarSitesActions
             canWriteSites={canWriteSites}
@@ -7810,6 +8075,41 @@ return (
             onImportConsoleRmsChange={handleImportConsoleRms}
           />
         )}
+
+          {menuSectionNh && <MenuSectionTitle>Compteurs NH</MenuSectionTitle>}
+
+          {isTechnician && (
+            <button
+              onClick={() => {
+                setSidebarOpen(false);
+                setTechnicianNhSiteUpdateOpen(true);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
+            >
+              <RotateCcw size={18} />
+              Mettre à jour NH d'un site
+            </button>
+          )}
+
+          {!isWarehouse && (isTechnician || isAnyManager || isAdmin) && (
+            <button
+              onClick={() => {
+                setSidebarOpen(false);
+                setQuarantineOpen(true);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
+            >
+              <AlertTriangle size={18} />
+              Quarantaine NH
+              {nhPendingCount > 0 && (
+                <span className="ml-auto bg-amber-500 text-amber-950 text-xs font-bold px-2 py-0.5 rounded-full">
+                  {nhPendingCount}
+                </span>
+              )}
+            </button>
+          )}
+
+          {menuSectionInterventions && <MenuSectionTitle>Interventions &amp; vidanges</MenuSectionTitle>}
 
           {!isWarehouse && (!isTechnician ? (
             <button
@@ -7855,19 +8155,6 @@ return (
             </button>
           ))}
 
-          {isTechnician && (
-            <button
-              onClick={() => {
-                setSidebarOpen(false);
-                setTechnicianNhSiteUpdateOpen(true);
-              }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
-            >
-              <RotateCcw size={18} />
-              Mettre à jour NH d'un site
-            </button>
-          )}
-
           {canUseInterventions && (
             <button
               onClick={async () => {
@@ -7881,7 +8168,7 @@ return (
                 }
                 setInterventionsStatus('all');
                 setInterventionsTechnicianUserId('all');
-                setTechnicianInterventionsTab('tomorrow');
+                setTechnicianInterventionsTab(isTechnician ? 'tomorrow' : 'month');
                 setShowTechnicianInterventionsFilters(false);
                 setShowInterventions(true);
                 try {
@@ -7903,6 +8190,22 @@ return (
               {isTechnician ? 'Mes interventions' : 'Interventions'}
             </button>
           )}
+
+          {(
+            <button
+              onClick={() => {
+                setSidebarOpen(false);
+                setShowHistory(true);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
+            >
+              <Activity size={18} />
+              Historique
+            </button>
+
+          )}
+
+          {menuSectionPm && <MenuSectionTitle>Maintenance planifiée</MenuSectionTitle>}
 
           {canUsePm && (
             <button
@@ -7936,19 +8239,7 @@ return (
             </button>
           )}
 
-          {(
-            <button
-              onClick={() => {
-                setSidebarOpen(false);
-                setShowHistory(true);
-              }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
-            >
-              <Activity size={18} />
-              Historique
-            </button>
-
-          )}
+          {menuSectionWarehouse && <MenuSectionTitle>Magasin &amp; stocks</MenuSectionTitle>}
 
           {isAdmin && (
             <button
@@ -8088,6 +8379,8 @@ return (
               <span className="flex-1">Historique consommables GE</span>
             </button>
           )}
+
+          {menuSectionAdmin && <MenuSectionTitle>Administration</MenuSectionTitle>}
 
           {canReset && (
             <button
@@ -9750,6 +10043,7 @@ return (
             setInterventionsZone={setInterventionsZone}
             showZoneFilter={showZoneFilter}
             loadData={loadData}
+            onOpenQuarantine={() => setQuarantineOpen(true)}
           />
 
           <TechnicianNhSiteUpdateModal
@@ -9761,7 +10055,7 @@ return (
             loadData={loadData}
             loadInterventions={loadInterventions}
             bumpInterventionsUiRev={bumpInterventionsUiRev}
-            allowDecrease={isAdmin || isAnyManager}
+            onOpenQuarantine={() => setQuarantineOpen(true)}
           />
 
         {(
@@ -10111,9 +10405,10 @@ return (
       </div>
     </div>
       </div>
+
+      <ToastStack toasts={toasts} onDismiss={(id) => toast.dismiss(id)} />
     </div>
-    
-  
+
   );
 };
 

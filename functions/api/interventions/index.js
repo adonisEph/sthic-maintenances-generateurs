@@ -1,6 +1,7 @@
 import { ensureAdminUser } from '../_utils/db.js';
 import { json, requireAuth, readJson, isoNow, newId, ymdToday, isSuperAdmin, userZone } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
+import { technicianMatches, effectiveTechnicianName } from '../_utils/nhCoherence.js';
 
 function mapRow(row) {
   if (!row) return null;
@@ -39,6 +40,7 @@ export async function onRequestGet({ request, env, data }) {
     const status = url.searchParams.get('status');
     const technicianUserId = url.searchParams.get('technicianUserId');
     const siteId = url.searchParams.get('siteId');
+    const includeOpen = url.searchParams.get('includeOpen') === '1';
 
     let where = '1=1';
     const binds = [];
@@ -48,10 +50,8 @@ export async function onRequestGet({ request, env, data }) {
       where += ' AND i.zone = ?';
       binds.push(z);
     }
-    if (!isSuperAdmin(data) && role === 'technician') {
-      where += ' AND i.zone = ?';
-      binds.push(z);
-    }
+    // Technicien : PAS de filtre zone — la zone stockée sur l'intervention peut être
+    // erronée/périmée alors que le site lui est bien assigné (cohérent avec GET /api/sites).
     if (role === 'manager' || role === 'field_supervisor') {
       where += ' AND i.zone = ?';
       binds.push(z);
@@ -61,13 +61,28 @@ export async function onRequestGet({ request, env, data }) {
       binds.push(z);
     }
 
-    if (from) {
-      where += ' AND i.planned_date >= ?';
-      binds.push(from);
-    }
-    if (to) {
-      where += ' AND i.planned_date <= ?';
-      binds.push(to);
+    // includeOpen=1 : la plage de dates couvre aussi TOUTES les interventions encore
+    // ouvertes (planned/sent) hors plage — sinon le backlog du mois précédent disparaît.
+    if (includeOpen && (from || to)) {
+      const dateClauses = [];
+      if (from) {
+        dateClauses.push('i.planned_date >= ?');
+        binds.push(from);
+      }
+      if (to) {
+        dateClauses.push('i.planned_date <= ?');
+        binds.push(to);
+      }
+      where += ` AND ((${dateClauses.join(' AND ')}) OR i.status IN ('planned', 'sent'))`;
+    } else {
+      if (from) {
+        where += ' AND i.planned_date >= ?';
+        binds.push(from);
+      }
+      if (to) {
+        where += ' AND i.planned_date <= ?';
+        binds.push(to);
+      }
     }
     if (status) {
       where += ' AND i.status = ?';
@@ -79,8 +94,11 @@ export async function onRequestGet({ request, env, data }) {
       binds.push(String(siteId));
     }
 
+    // Technicien : visibilité par user_id OU par nom (fallback nom normalisé appliqué
+    // en JS ci-dessous — les accents/casse ne peuvent pas être normalisés en SQL).
+    // Le SQL élargit volontairement (technician_name IS NOT NULL) puis on resserre en JS.
     if (role === 'technician') {
-      where += ' AND i.technician_user_id = ?';
+      where += ' AND (i.technician_user_id = ? OR i.technician_name IS NOT NULL)';
       binds.push(data.user.id);
     } else if ((role === 'admin' && isSuperAdmin(data)) && technicianUserId) {
       where += ' AND i.technician_user_id = ?';
@@ -90,12 +108,30 @@ export async function onRequestGet({ request, env, data }) {
     const stmt = env.DB.prepare(
       `SELECT i.*, fh.ticket_number, fh.id as fiche_id
        FROM interventions i
-       LEFT JOIN fiche_history fh ON fh.intervention_id = i.id
+       LEFT JOIN (
+         SELECT intervention_id, MIN(id) AS fiche_id
+         FROM fiche_history
+         WHERE intervention_id IS NOT NULL
+         GROUP BY intervention_id
+       ) f ON f.intervention_id = i.id
+       LEFT JOIN fiche_history fh ON fh.id = f.fiche_id
        WHERE ${where}
        ORDER BY i.planned_date ASC`
     );
     const res = await stmt.bind(...binds).all();
-    const rows = Array.isArray(res?.results) ? res.results : [];
+    let rows = Array.isArray(res?.results) ? res.results : [];
+
+    // Technicien : resserrage JS — user_id exact OU nom normalisé (égalité/contient).
+    if (role === 'technician') {
+      const myName = await effectiveTechnicianName(env, data);
+      const uid = String(data.user.id || '');
+      rows = rows.filter(
+        (r) =>
+          String(r?.technician_user_id || '') === uid ||
+          technicianMatches(r?.technician_name, myName)
+      );
+    }
+
     return json(
       { interventions: rows.map(mapRow), today: ymdToday() },
       {
@@ -148,33 +184,36 @@ export async function onRequestPost({ request, env, data }) {
 
     // If technicianUserId is not provided, try to resolve it server-side
     // This makes fiche generation robust even if the frontend cannot match users.
+    // Recherche d'abord dans la zone du site, puis global — un compte tech dont la
+    // zone diffère du site ne doit pas laisser technician_user_id à NULL.
     if (!technicianUserId) {
       try {
         const norm = (v) =>
           String(v || '')
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '')
+
             .trim()
             .toLowerCase()
             .replace(/\s+/g, ' ');
         const key = norm(technicianName);
         if (key) {
           const res = await env.DB.prepare(
-            "SELECT id, technician_name FROM users WHERE role = 'technician' AND (disabled_at IS NULL OR disabled_at = '') AND zone = ?"
-          )
-            .bind(zone)
-            .all();
+            "SELECT id, technician_name, zone FROM users WHERE role = 'technician' AND (disabled_at IS NULL OR disabled_at = '')"
+          ).all();
           const rows = Array.isArray(res?.results) ? res.results : [];
-          const match = rows.find((r) => norm(r?.technician_name) === key) || null;
-          if (match?.id) {
-            technicianUserId = String(match.id);
-          } else {
-            const partial = rows.filter((r) => {
+          const inZone = rows.filter((r) => String(r?.zone || '') === zone);
+          const pickFrom = (list) => {
+            const exact = list.find((r) => norm(r?.technician_name) === key) || null;
+            if (exact?.id) return exact;
+            const partial = list.filter((r) => {
               const a = norm(r?.technician_name);
               return a && (a.includes(key) || key.includes(a));
             });
-            if (partial.length === 1 && partial[0]?.id) technicianUserId = String(partial[0].id);
-          }
+            return partial.length === 1 ? partial[0] : null;
+          };
+          const match = pickFrom(inZone) || pickFrom(rows);
+          if (match?.id) technicianUserId = String(match.id);
         }
       } catch {
         // ignore: technicianUserId will remain null
@@ -288,7 +327,7 @@ export async function onRequestDelete({ request, env, data }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
 
     const role = String(data?.user?.role || '');
-    if (role !== 'admin' && role !== 'manager') return json({ error: 'Accès interdit.' }, { status: 403 });
+    if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool') return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const body = await readJson(request);
     const id = String(body?.id || '').trim();
@@ -297,9 +336,9 @@ export async function onRequestDelete({ request, env, data }) {
     const row = await env.DB.prepare('SELECT * FROM interventions WHERE id = ?').bind(id).first();
     if (!row) return json({ ok: true, deleted: 0 }, { status: 200 });
 
-    if (role === 'admin' && !isSuperAdmin(data)) {
+    if (!isSuperAdmin(data)) {
       const z = userZone(data);
-      if (String(row.zone || 'BZV/POOL') !== z) {
+      if (z && String(row.zone || 'BZV/POOL') !== z) {
         return json({ error: 'Accès interdit.' }, { status: 403 });
       }
     }

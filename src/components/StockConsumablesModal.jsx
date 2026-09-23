@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { X, Package, ArrowDownCircle, ArrowUpCircle, Trash2, RotateCcw, Fan, Wrench, Droplet, AlertTriangle } from 'lucide-react';
+import { toastAlert as alert } from '../utils/feedback';
 
 const ITEM_LABELS = {
   air_filter: 'Filtre à air GE',
