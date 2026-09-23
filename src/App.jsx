@@ -50,7 +50,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.13.0';
+const APP_VERSION = '6.13.1';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -447,6 +447,46 @@ const GeneratorMaintenanceApp = () => {
       .sort((a, b) => String(a?.plannedDate || '').localeCompare(String(b?.plannedDate || '')));
   };
 
+  // Tri par pertinence des interventions ouvertes à clôturer : le type EPV du
+  // prochain passage attendu d'abord, puis la date la plus proche d'aujourd'hui.
+  // Les records obsolètes d'anciennes campagnes restent visibles mais en bas.
+  const sortVidangeInterventionChoices = (items, site) => {
+    const today = ymdInTimeZone(new Date(), 'Africa/Brazzaville');
+    const nextType = String(getNextPendingEpvForSite(site)?.epvType || '')
+      .trim()
+      .toUpperCase();
+    const ms = (d) => {
+      const m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      return m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : NaN;
+    };
+    const t0 = ms(today);
+    return (Array.isArray(items) ? items : [])
+      .slice()
+      .sort((a, b) => {
+        const ta = String(a?.epvType || '').trim().toUpperCase() === nextType ? 0 : 1;
+        const tb = String(b?.epvType || '').trim().toUpperCase() === nextType ? 0 : 1;
+        if (ta !== tb) return ta - tb;
+        const da = Math.abs((ms(a?.plannedDate) || t0) - t0);
+        const db = Math.abs((ms(b?.plannedDate) || t0) - t0);
+        if (da !== db) return da - db;
+        return String(a?.plannedDate || '').localeCompare(String(b?.plannedDate || ''));
+      });
+  };
+
+  const vidangeChoiceBadge = (plannedDate) => {
+    const d = String(plannedDate || '').slice(0, 10);
+    const today = ymdInTimeZone(new Date(), 'Africa/Brazzaville');
+    if (!d) return null;
+    if (d === today) return { label: "AUJOURD'HUI", cls: 'bg-green-100 text-green-800 border-green-200' };
+    if (d < today) {
+      const monthStart = `${today.slice(0, 7)}-01`;
+      return d < monthStart
+        ? { label: 'ANCIENNE CAMPAGNE', cls: 'bg-gray-100 text-gray-600 border-gray-300' }
+        : { label: 'EN RETARD', cls: 'bg-red-100 text-red-800 border-red-200' };
+    }
+    return { label: 'À VENIR', cls: 'bg-sky-100 text-sky-800 border-sky-200' };
+  };
+
   const handleStartManagerVidange = async (site) => {
     if (!site?.id) return;
     if (site?.retired) {
@@ -466,9 +506,12 @@ const GeneratorMaintenanceApp = () => {
         return;
       }
 
+      const sorted = sortVidangeInterventionChoices(pending, site);
       setVidangeInterventionChoiceSite(site);
-      setVidangeInterventionChoiceItems(pending);
-      setVidangeChosenIntervention(null);
+      setVidangeInterventionChoiceItems(sorted);
+      // Pré-sélection du candidat le plus probable (type EPV attendu + date
+      // la plus proche) — l'utilisateur peut toujours changer.
+      setVidangeChosenIntervention(sorted[0] || null);
       setVidangeInterventionChoiceOpen(true);
     } catch (e) {
       setVidangeInterventionChoiceError(e?.message || 'Erreur serveur.');
@@ -507,9 +550,10 @@ const GeneratorMaintenanceApp = () => {
 
         if (pending.length > 0) {
           alert('Veuillez sélectionner l\'intervention à clôturer.');
+          const sorted = sortVidangeInterventionChoices(pending, site);
           setVidangeInterventionChoiceSite(site);
-          setVidangeInterventionChoiceItems(pending);
-          setVidangeChosenIntervention(null);
+          setVidangeInterventionChoiceItems(sorted);
+          setVidangeChosenIntervention(sorted[0] || null);
           setVidangeInterventionChoiceOpen(true);
           return;
         }
@@ -8718,7 +8762,12 @@ return (
                     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
                       <div className="bg-white rounded-xl shadow-xl border border-gray-200 w-full max-w-lg p-4">
                         <div className="font-bold text-gray-900 mb-1">Choisir l'intervention à clôturer</div>
-                        <div className="text-sm text-gray-600 mb-3 truncate">{vidangeInterventionChoiceSite?.nameSite}</div>
+                        <div className="text-sm text-gray-600 mb-1 truncate">{vidangeInterventionChoiceSite?.nameSite}</div>
+                        <div className="text-xs text-gray-500 mb-3">
+                          Ce site a plusieurs interventions ouvertes (des records d'anciennes campagnes peuvent être restés ouverts).
+                          Sélectionnez celle que cette vidange doit clôturer — la plus probable est pré-cochée.
+                          Les obsolètes peuvent être annulées depuis le module Interventions.
+                        </div>
 
                         {vidangeInterventionChoiceError && (
                           <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">
@@ -8729,6 +8778,7 @@ return (
                         <div className="max-h-[50vh] overflow-auto border border-gray-200 rounded-lg">
                           {(Array.isArray(vidangeInterventionChoiceItems) ? vidangeInterventionChoiceItems : []).map((it) => {
                             const checked = String(vidangeChosenIntervention?.id || '') === String(it?.id || '');
+                            const badge = vidangeChoiceBadge(it?.plannedDate);
                             return (
                               <label
                                 key={String(it?.id || '')}
@@ -8742,10 +8792,17 @@ return (
                                   className="mt-1"
                                 />
                                 <div className="flex-1">
-                                  <div className="font-semibold text-gray-900">
-                                    {String(it?.epvType || '').trim() || '-'}
-                                    {' - '}
-                                    {String(it?.plannedDate || '').slice(0, 10) || '-'}
+                                  <div className="font-semibold text-gray-900 flex items-center gap-2 flex-wrap">
+                                    <span>
+                                      {String(it?.epvType || '').trim() || '-'}
+                                      {' - '}
+                                      {String(it?.plannedDate || '').slice(0, 10) || '-'}
+                                    </span>
+                                    {badge && (
+                                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${badge.cls}`}>
+                                        {badge.label}
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="text-xs text-gray-600">
                                     Statut: {String(it?.status || '').trim() || '-'}
@@ -10059,7 +10116,7 @@ return (
           />
 
         {(
-          <div className="mt-4 mb-6">
+          <div className="mt-4 mb-6 max-w-7xl mx-auto px-2 sm:px-4 md:px-6 w-full">
             {(!filterUrgency || filterUrgency.length === 0) && !filterPmDate && urgentSites.length > 0 && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-3 sm:p-4 mb-4">
                 <div className="flex items-center gap-2 font-bold text-red-900 mb-3 text-sm sm:text-base">
