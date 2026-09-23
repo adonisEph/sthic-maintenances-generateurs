@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle, CheckCircle2, Download, X } from 'lucide-react';
+import { CheckCircle, CheckCircle2, Download, Trash2, X } from 'lucide-react';
 import CompleteInterventionModal from './CompleteInterventionModal';
 import NhUpdateModal from './NhUpdateModal';
 import { calculateEPVDates, calculateEstimatedNH } from '../../utils/calculations';
@@ -94,6 +94,7 @@ const InterventionsModal = ({
   const [reassignTechUserId, setReassignTechUserId] = React.useState('');
   const [rowBusyId, setRowBusyId] = React.useState('');
   const [sendMonthBusy, setSendMonthBusy] = React.useState(false);
+  const [cleanStaleBusy, setCleanStaleBusy] = React.useState(false);
 
   const normTechName = (v) =>
     String(v || '')
@@ -707,6 +708,58 @@ const InterventionsModal = ({
     }
   };
 
+  // Nettoyage : clôture (non_fait) toutes les interventions ouvertes datées
+  // d'avant la campagne courante (1er du mois, Africa/Brazzaville côté serveur).
+  const cleanStale = async () => {
+    const op = startOperation('Analyse des interventions d’anciennes campagnes…');
+    try {
+      setCleanStaleBusy(true);
+      const scope = zoneActive ? { zone: zoneActive } : {};
+      const preview = await apiFetchJson('/api/interventions/close-stale', {
+        method: 'POST',
+        body: JSON.stringify({ dryRun: true, ...scope })
+      });
+      const n = Number(preview?.toClose || 0);
+      if (!n) {
+        op.dismiss();
+        alert('✅ Aucune intervention ouverte avant la campagne courante.');
+        return;
+      }
+      const beforeLabel = String(preview?.before || '')
+        .slice(0, 7)
+        .split('-')
+        .reverse()
+        .join('/');
+      op.dismiss();
+      const ok = window.confirm(
+        `${n} intervention(s) encore ouverte(s) datée(s) d'avant le ${beforeLabel} ` +
+          `(zone : ${zoneActive || 'toutes'}) seront clôturées en "non_fait".\n\n` +
+          `Ces records d'anciennes campagnes ne sont plus exécutables. Continuer ?`
+      );
+      if (!ok) return;
+      const run = startOperation(`Clôture de ${n} intervention(s)…`);
+      try {
+        const res = await apiFetchJson('/api/interventions/close-stale', {
+          method: 'POST',
+          body: JSON.stringify({ ...scope })
+        });
+        run.done(`✅ ${res?.closed || 0} intervention(s) clôturée(s).`);
+      } catch (e) {
+        run.dismiss();
+        throw e;
+      }
+      try {
+        await loadInterventions();
+      } catch {
+        // ignore
+      }
+    } catch (e) {
+      alert(e?.message || 'Erreur lors du nettoyage.');
+    } finally {
+      setCleanStaleBusy(false);
+    }
+  };
+
   React.useEffect(() => {
     if (!open) return;
     if (!isTechnician) return;
@@ -1014,6 +1067,16 @@ const InterventionsModal = ({
                   >
                     <Download size={16} className="rotate-180" />
                     Envoyer le mois aux techniciens
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cleanStale}
+                    disabled={cleanStaleBusy || sendMonthBusy || interventionsBusy}
+                    className="bg-rose-50 text-rose-700 border border-rose-300 px-3 py-2 rounded-lg hover:bg-rose-100 font-semibold text-xs sm:text-sm flex items-center gap-2 disabled:opacity-60"
+                    title="Clôturer en 'non_fait' les interventions ouvertes datées d'avant la campagne courante"
+                  >
+                    <Trash2 size={16} />
+                    Nettoyer anciennes campagnes
                   </button>
                 </div>
 
