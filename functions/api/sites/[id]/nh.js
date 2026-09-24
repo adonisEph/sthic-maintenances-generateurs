@@ -110,6 +110,8 @@ export async function onRequestPost({ request, env, data, params }) {
           quarantined: true,
           reason: verdict.reason,
           quarantineId: rec?.id || null,
+          quarantinePersisted: !rec?.error,
+          quarantineError: rec?.message || null,
           error: QUARANTINE_MESSAGES[verdict.reason] || 'Valeur incohérente. Mise en quarantaine.'
         },
         { status: 409 }

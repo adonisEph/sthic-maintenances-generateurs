@@ -44,6 +44,7 @@ export async function onRequestPost({ env, data }) {
     let updated = 0;
     let scanned = 0;
     let flagged = 0;
+    let quarantineFailed = 0;
     const flaggedSamples = [];
 
     for (const row of rows) {
@@ -67,9 +68,16 @@ export async function onRequestPost({ env, data }) {
           },
           { user: data?.user, zone }
         );
-        if (!rec?.error) flagged += 1;
-        if (flaggedSamples.length < 25) {
-          flaggedSamples.push({ siteId, reason: check.reason, detail: check.detail });
+        if (rec?.error) {
+          quarantineFailed += 1;
+          if (flaggedSamples.length < 25) {
+            flaggedSamples.push({ siteId, reason: check.reason, writeError: rec?.message || null });
+          }
+        } else {
+          flagged += 1;
+          if (flaggedSamples.length < 25) {
+            flaggedSamples.push({ siteId, reason: check.reason, detail: check.detail });
+          }
         }
       }
 
@@ -107,6 +115,7 @@ export async function onRequestPost({ env, data }) {
       updatedCount: updated,
       scannedCount: scanned,
       quarantinedCount: flagged,
+      quarantineFailedCount: quarantineFailed,
       quarantinedSamples: flaggedSamples,
       lastUpdatedAt
     });

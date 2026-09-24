@@ -53,6 +53,7 @@ export async function onRequestPost({ request, env, data }) {
     let ignored = 0;
     let skipped = 0;
     let quarantined = 0;
+    let quarantineFailed = 0;
 
     let ignoredBadDate = 0;
     let ignoredDateBeforeDv = 0;
@@ -147,18 +148,30 @@ export async function onRequestPost({ request, env, data }) {
           },
           { user: data?.user, zone: site?.zone }
         );
-        quarantined += 1;
-        if (verdict.reason === 'nh_below_dv') quarantinedNhBelowDv += 1;
-        else if (verdict.reason === 'parasite_high') quarantinedNhAbnormallyHigh += 1;
-        else quarantinedOther += 1;
-        pushQuarantinedSample(verdict.reason, r, i, {
-          normalizedIdSite: idSite,
-          siteId: String(site.id),
-          quarantineId: rec?.id || null,
-          prevNh1DV: site?.nh1_dv,
-          prevNh2A: site?.nh2_a,
-          detail: verdict.detail || null
-        });
+        if (rec?.error) {
+          // Incohérence détectée mais NON persistée : le récap doit le signaler
+          // au lieu de laisser croire que la quarantaine contient l'entrée.
+          quarantineFailed += 1;
+          pushIgnoredSample('quarantine_write_failed', r, i, {
+            normalizedIdSite: idSite,
+            siteId: String(site.id),
+            verdictReason: verdict.reason,
+            writeError: rec?.message || null
+          });
+        } else {
+          quarantined += 1;
+          if (verdict.reason === 'nh_below_dv') quarantinedNhBelowDv += 1;
+          else if (verdict.reason === 'parasite_high') quarantinedNhAbnormallyHigh += 1;
+          else quarantinedOther += 1;
+          pushQuarantinedSample(verdict.reason, r, i, {
+            normalizedIdSite: idSite,
+            siteId: String(site.id),
+            quarantineId: rec?.id || null,
+            prevNh1DV: site?.nh1_dv,
+            prevNh2A: site?.nh2_a,
+            detail: verdict.detail || null
+          });
+        }
         continue;
       }
 
@@ -182,6 +195,7 @@ export async function onRequestPost({ request, env, data }) {
         ignored,
         skipped,
         quarantined,
+        quarantineFailed,
         ignoredMissingId,
         ignoredUnknownId,
         ignoredBadDate,

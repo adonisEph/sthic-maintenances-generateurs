@@ -416,7 +416,8 @@ export async function recordQuarantine(env, site, entry, ctx = {}) {
       )
       .run();
     return { id, created: true };
-  } catch {
-    return { id: null, created: false, error: true };
+  } catch (e) {
+    // Jamais avalé en silence : l'appelant doit pouvoir signaler l'échec.
+    return { id: null, created: false, error: true, message: e?.message || 'Écriture quarantaine impossible.' };
   }
 }

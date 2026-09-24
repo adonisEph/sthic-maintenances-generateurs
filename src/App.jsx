@@ -50,7 +50,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.13.2';
+const APP_VERSION = '6.13.3';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -1602,11 +1602,15 @@ const GeneratorMaintenanceApp = () => {
       });
       await storage.set(DAILY_NH_UPDATE_STORAGE_KEY, todayYmd);
       const flagged = Number(res?.quarantinedCount || 0);
+      const failed = Number(res?.quarantineFailedCount || 0);
       op.done(
         flagged > 0
           ? `${Number(res?.updatedCount || 0)} site(s) recalculés — ⚠️ ${flagged} relevé(s) incohérent(s) → quarantaine.`
           : `${Number(res?.updatedCount || 0)} site(s) recalculés.`
       );
+      if (failed > 0) {
+        toast.error(`Quarantaine : ${failed} incohérence(s) NON persistée(s) — vérifier la base.`);
+      }
       return res;
     } catch (e) {
       op.dismiss();
@@ -5861,6 +5865,7 @@ useEffect(() => {
         const ignored = Number(res?.ignored || 0);
         const skipped = Number(res?.skipped || 0);
         const quarantined = Number(res?.quarantined || 0);
+        const quarantineFailed = Number(res?.quarantineFailed || 0);
         const ignoredRetired = Number(res?.ignoredRetired || 0);
         const ignoredMissingId = Number(res?.ignoredMissingId || 0);
         const ignoredUnknownId = Number(res?.ignoredUnknownId || 0);
@@ -5918,6 +5923,9 @@ useEffect(() => {
           `Lignes ignorées (ID inconnu / invalide): ${ignored}\n` +
           `Lignes sans valeur (NH2 A & Date A vides): ${skipped}\n` +
           `Sites en quarantaine: ${quarantined}` +
+          (quarantineFailed > 0
+            ? `\n⚠️ Incohérences NON persistées (erreur écriture quarantaine): ${quarantineFailed} — à vérifier.`
+            : '') +
           details +
           quarantineDetails
         );

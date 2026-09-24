@@ -25,6 +25,7 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [unavailable, setUnavailable] = useState(false);
   const [forms, setForms] = useState({});
   const [busy, setBusy] = useState({});
   const [results, setResults] = useState({});
@@ -40,6 +41,7 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
     setLoadError('');
     try {
       const res = await apiFetchJson('/api/nh-quarantine?status=pending', { method: 'GET' });
+      setUnavailable(Boolean(res?.unavailable));
       setItems(Array.isArray(res?.items) ? res.items : []);
     } catch (e) {
       setLoadError(e?.message || 'Erreur de chargement.');
@@ -182,6 +184,13 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
 
           {loadError && (
             <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">{loadError}</div>
+          )}
+
+          {unavailable && (
+            <div className="text-xs text-red-800 bg-red-50 border border-red-300 rounded-lg px-3 py-2 font-semibold">
+              ⚠️ Stockage quarantaine indisponible (table absente ou schéma incomplet). Les incohérences
+              signalées par les imports ne sont PAS persistées tant que ce problème n'est pas résolu.
+            </div>
           )}
 
           {!loading && pendingItems.length === 0 && (
