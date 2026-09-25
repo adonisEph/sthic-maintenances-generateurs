@@ -1,4 +1,4 @@
-import { isoNow, json, requireAuth, isSuperAdmin, ymdToday } from '../_utils/http.js';
+import { isoNow, json, requireAuth, ymdToday } from '../_utils/http.js';
 import { touchLastUpdatedAt } from '../_utils/meta.js';
 import {
   NH_MAX_REGIME,
@@ -29,12 +29,16 @@ export async function onRequestPost({ env, data }) {
       return json({ error: 'Non autorisé.' }, { status: 401 });
     }
 
-    const zone = isSuperAdmin(data) ? 'BZV/POOL' : String(data?.user?.zone || 'BZV/POOL');
+    // Processus système : recalc PUR de champs dérivés (jamais nh2_a/date_a/nh1_dv).
+    // Toutes les zones sont couvertes — sinon les zones sans utilisateur connecté
+    // ce jour-là garderaient des projections périmées (ex. PNR/KOUILOU jamais
+    // recalculé quand seul le SuperAdmin BZV/POOL déclenche).
     const todayYmd = ymdToday();
 
-    const selectSql = `SELECT id, zone, nh1_dv, date_dv, nh2_a, date_a, nh_offset, regime
-      FROM sites WHERE zone = ?`;
-    const res = await env.DB.prepare(selectSql).bind(zone).all();
+    const res = await env.DB.prepare(
+      `SELECT id, zone, nh1_dv, date_dv, nh2_a, date_a, nh_offset, regime
+       FROM sites`
+    ).all();
     const rows = res?.results || [];
 
     const upd = await env.DB.prepare(
@@ -46,6 +50,7 @@ export async function onRequestPost({ env, data }) {
     let flagged = 0;
     let quarantineFailed = 0;
     const flaggedSamples = [];
+    const byZone = {};
 
     for (const row of rows) {
       const siteId = String(row.id || '');
@@ -66,7 +71,7 @@ export async function onRequestPost({ env, data }) {
             proposedDateA: row?.date_a,
             detail: check.detail
           },
-          { user: data?.user, zone }
+          { user: data?.user, zone: row?.zone }
         );
         if (rec?.error) {
           quarantineFailed += 1;
@@ -103,6 +108,8 @@ export async function onRequestPost({ env, data }) {
 
       statements.push(upd.bind(regime, nhEstimated, diff, diffEst, isoNow(), siteId));
       updated += 1;
+      const zk = String(row?.zone || 'N/A');
+      byZone[zk] = (byZone[zk] || 0) + 1;
     }
 
     if (statements.length) await env.DB.batch(statements);
@@ -110,10 +117,10 @@ export async function onRequestPost({ env, data }) {
 
     return json({
       success: true,
-      zone,
       date: todayYmd,
       updatedCount: updated,
       scannedCount: scanned,
+      updatedByZone: byZone,
       quarantinedCount: flagged,
       quarantineFailedCount: quarantineFailed,
       quarantinedSamples: flaggedSamples,

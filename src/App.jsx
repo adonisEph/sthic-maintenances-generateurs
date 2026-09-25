@@ -50,7 +50,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.13.3';
+const APP_VERSION = '6.13.4';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -1603,10 +1603,13 @@ const GeneratorMaintenanceApp = () => {
       await storage.set(DAILY_NH_UPDATE_STORAGE_KEY, todayYmd);
       const flagged = Number(res?.quarantinedCount || 0);
       const failed = Number(res?.quarantineFailedCount || 0);
+      const zoneDetail = res?.updatedByZone && typeof res.updatedByZone === 'object'
+        ? ' (' + Object.entries(res.updatedByZone).map(([z, n]) => `${z}: ${n}`).join(' • ') + ')'
+        : '';
       op.done(
         flagged > 0
-          ? `${Number(res?.updatedCount || 0)} site(s) recalculés — ⚠️ ${flagged} relevé(s) incohérent(s) → quarantaine.`
-          : `${Number(res?.updatedCount || 0)} site(s) recalculés.`
+          ? `${Number(res?.updatedCount || 0)} site(s) recalculés${zoneDetail} — ⚠️ ${flagged} relevé(s) incohérent(s) → quarantaine.`
+          : `${Number(res?.updatedCount || 0)} site(s) recalculés${zoneDetail}.`
       );
       if (failed > 0) {
         toast.error(`Quarantaine : ${failed} incohérence(s) NON persistée(s) — vérifier la base.`);
