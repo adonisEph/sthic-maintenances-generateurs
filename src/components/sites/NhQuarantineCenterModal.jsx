@@ -18,8 +18,24 @@ const SOURCE_LABELS = {
   auto: 'Auto',
   manual: 'Manuel',
   rms: 'RMS',
+  vidange: 'Vidange',
+  edit: 'Édition',
   scan: 'Scan',
   quarantine: 'Quarantaine'
+};
+
+const TREATMENT_LABELS = {
+  correct: 'Correction relevé',
+  rebase: 'Rebase compteur',
+  fix_nh1dv: 'Réparation NH1 DV',
+  dismiss: 'Classé sans suite'
+};
+
+const STATUS_LABELS = {
+  pending: 'En attente',
+  treated: 'Traitée',
+  dismissed: 'Classée',
+  superseded: 'Remplacée'
 };
 
 const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFixNh1Dv }) => {
@@ -31,17 +47,30 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
   const [busy, setBusy] = useState({});
   const [results, setResults] = useState({});
   const [history, setHistory] = useState({});
+  const [tab, setTab] = useState('pending');
+  const [filters, setFilters] = useState({ site: '', source: '', from: '', to: '' });
 
   const pendingItems = useMemo(
     () => (Array.isArray(items) ? items.filter((i) => i.status === 'pending') : []),
     [items]
   );
+  const historyItems = useMemo(
+    () => (Array.isArray(items) ? items.filter((i) => i.status !== 'pending') : []),
+    [items]
+  );
 
-  const load = async () => {
+  const load = async (overrideFilters) => {
+    const f = overrideFilters || filters;
     setLoading(true);
     setLoadError('');
     try {
-      const res = await apiFetchJson('/api/nh-quarantine?status=pending', { method: 'GET' });
+      const params = new URLSearchParams();
+      params.set('status', tab === 'pending' ? 'pending' : 'all');
+      if (f.site.trim()) params.set('site', f.site.trim());
+      if (f.source) params.set('source', f.source);
+      if (f.from) params.set('from', f.from);
+      if (f.to) params.set('to', f.to);
+      const res = await apiFetchJson(`/api/nh-quarantine?${params.toString()}`, { method: 'GET' });
       setUnavailable(Boolean(res?.unavailable));
       const list = Array.isArray(res?.items) ? res.items : [];
       setItems(list);
@@ -66,7 +95,7 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
   useEffect(() => {
     if (open) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, tab]);
 
   if (!open) return null;
 
@@ -196,11 +225,20 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
       setResults((prev) => ({ ...prev, [entry.id]: { error: 'NH1 DV / Date DV corrigés invalides.' } }));
       return;
     }
+    const nh2Raw = String(f.nh2A || '').trim();
+    const extra = {};
+    if (nh2Raw !== '') extra.nh2A = Number(nh2Raw);
+    if (String(f.dateA || '').trim()) extra.dateA = String(f.dateA).slice(0, 10);
+    if (String(f.regime || '').trim()) extra.regime = Number(f.regime);
     const ok = window.confirm(
-      `Réparer NH1 DV ?\n\nSite: ${entry.siteName || entry.idSite}\nNH1 DV: ${entry.prevNh1DV ?? '?'} → ${nh1DV}\nDate DV: → ${dateDV}`
+      `Réparer NH1 DV ?\n\nSite: ${entry.siteName || entry.idSite}\n` +
+      `NH1 DV: ${entry.prevNh1DV ?? '?'} → ${nh1DV}\nDate DV: → ${dateDV}\n\n` +
+      (extra.nh2A != null
+        ? `NH2 A sera remplacé par ${extra.nh2A} (date ${extra.dateA || 'aujourd\'hui'}).`
+        : `NH2 A sera automatiquement remis en cohérence : NH1 DV + régime × jours depuis la vidange (date A = aujourd'hui).`)
     );
     if (!ok) return;
-    treat(entry, 'fix_nh1dv', { nh1DV, dateDV });
+    treat(entry, 'fix_nh1dv', { nh1DV, dateDV, ...extra });
   };
 
   const handleDismiss = (entry) => {
@@ -224,15 +262,17 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-black/70 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full overflow-hidden max-h-[90vh] flex flex-col">
-        <div className="bg-amber-600 text-white px-5 py-4 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-3">
+    <div className="fixed inset-0 z-[9999] bg-black/70 flex items-center justify-center p-1 sm:p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl overflow-hidden max-h-[95vh] sm:max-h-[92vh] flex flex-col">
+        <div className="bg-amber-600 text-white px-4 sm:px-5 py-3 sm:py-4 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
             <AlertTriangle size={22} className="flex-shrink-0" />
-            <div>
+            <div className="min-w-0">
               <div className="font-bold text-base">Centre de quarantaine NH</div>
-              <div className="text-xs text-amber-100">
-                {pendingItems.length} entrée(s) en attente — Auto / Manuel / RMS
+              <div className="text-xs text-amber-100 truncate">
+                {tab === 'pending'
+                  ? `${pendingItems.length} entrée(s) en attente — Auto / Manuel / RMS`
+                  : `${historyItems.length} traitement(s) — historique des remises en cohérence`}
               </div>
             </div>
           </div>
@@ -246,28 +286,158 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
           </div>
         </div>
 
-        <div className="overflow-y-auto p-4 space-y-3 flex-1">
-          <div className="text-xs text-gray-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            Chaque valeur incohérente rejetée par les MAJ Auto / Manuel / RMS est persistée ici avec
-            la valeur proposée et l'état du site. Traitez-les une par une : correction, rebase
-            (compteur/deepsea/générateur changé), réparation NH1 DV (managers) ou classement.
+        {/* Onglets + filtres */}
+        <div className="border-b border-gray-200 bg-gray-50 px-3 sm:px-4 pt-3 flex-shrink-0">
+          <div className="flex gap-1 mb-2">
+            <button
+              onClick={() => setTab('pending')}
+              className={`px-3 sm:px-4 py-1.5 rounded-t-lg text-xs sm:text-sm font-semibold ${
+                tab === 'pending' ? 'bg-white text-amber-700 border border-b-0 border-gray-200' : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              En attente ({pendingItems.length})
+            </button>
+            <button
+              onClick={() => setTab('history')}
+              className={`px-3 sm:px-4 py-1.5 rounded-t-lg text-xs sm:text-sm font-semibold ${
+                tab === 'history' ? 'bg-white text-amber-700 border border-b-0 border-gray-200' : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              Historique
+            </button>
           </div>
+          <div className="flex flex-wrap items-end gap-2 pb-2.5">
+            <div className="flex-1 min-w-[140px]">
+              <label className="text-[10px] text-gray-500 block mb-0.5">Site (ID ou nom)</label>
+              <input
+                type="text"
+                value={filters.site}
+                onChange={(e) => setFilters((p) => ({ ...p, site: e.target.value }))}
+                onKeyDown={(e) => e.key === 'Enter' && load()}
+                placeholder="CBKL0047, Kouilou…"
+                className="border border-gray-300 rounded-lg px-2 py-1 text-xs w-full bg-white"
+              />
+            </div>
+            <div className="w-28">
+              <label className="text-[10px] text-gray-500 block mb-0.5">Mode</label>
+              <select
+                value={filters.source}
+                onChange={(e) => setFilters((p) => ({ ...p, source: e.target.value }))}
+                className="border border-gray-300 rounded-lg px-2 py-1 text-xs w-full bg-white"
+              >
+                <option value="">Tous</option>
+                <option value="auto">Auto</option>
+                <option value="manual">Manuel</option>
+                <option value="rms">RMS</option>
+                <option value="vidange">Vidange</option>
+                <option value="scan">Scan</option>
+                <option value="quarantine">Quarantaine</option>
+              </select>
+            </div>
+            <div className="w-32">
+              <label className="text-[10px] text-gray-500 block mb-0.5">Reçu du</label>
+              <input
+                type="date"
+                value={filters.from}
+                onChange={(e) => setFilters((p) => ({ ...p, from: e.target.value }))}
+                className="border border-gray-300 rounded-lg px-2 py-1 text-xs w-full bg-white"
+              />
+            </div>
+            <div className="w-32">
+              <label className="text-[10px] text-gray-500 block mb-0.5">au</label>
+              <input
+                type="date"
+                value={filters.to}
+                onChange={(e) => setFilters((p) => ({ ...p, to: e.target.value }))}
+                className="border border-gray-300 rounded-lg px-2 py-1 text-xs w-full bg-white"
+              />
+            </div>
+            <button
+              onClick={load}
+              className="bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-amber-700 flex-shrink-0"
+            >
+              Rechercher
+            </button>
+            <button
+              onClick={() => { const empty = { site: '', source: '', from: '', to: '' }; setFilters(empty); load(empty); }}
+              className="text-gray-500 hover:text-gray-800 px-2 py-1.5 text-xs flex-shrink-0"
+              title="Réinitialiser les filtres"
+            >
+              Réinit.
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-y-auto p-3 sm:p-4 flex-1">
+          {tab === 'pending' && (
+            <div className="text-xs text-gray-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+              Chaque valeur incohérente rejetée par les MAJ Auto / Manuel / RMS est persistée ici avec
+              la valeur proposée et l'état du site. Traitez-les une par une : correction, rebase
+              (compteur/deepsea/générateur changé), réparation NH1 DV (managers) ou classement.
+            </div>
+          )}
 
           {loadError && (
-            <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">{loadError}</div>
+            <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2 mb-3">{loadError}</div>
           )}
 
           {unavailable && (
-            <div className="text-xs text-red-800 bg-red-50 border border-red-300 rounded-lg px-3 py-2 font-semibold">
+            <div className="text-xs text-red-800 bg-red-50 border border-red-300 rounded-lg px-3 py-2 mb-3 font-semibold">
               ⚠️ Stockage quarantaine indisponible (table absente ou schéma incomplet). Les incohérences
               signalées par les imports ne sont PAS persistées tant que ce problème n'est pas résolu.
             </div>
           )}
 
-          {!loading && pendingItems.length === 0 && (
+          {tab === 'pending' && !loading && pendingItems.length === 0 && (
             <div className="text-center text-gray-500 py-8">Aucune entrée en quarantaine.</div>
           )}
+          {tab === 'history' && !loading && historyItems.length === 0 && (
+            <div className="text-center text-gray-500 py-8">Aucun traitement trouvé pour ces critères.</div>
+          )}
 
+          {tab === 'history' && (
+            <div className="space-y-2">
+              {historyItems.map((entry) => {
+                return (
+                  <div key={entry.id} className="border border-gray-200 rounded-lg px-3 py-2 bg-white flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <div className="min-w-[150px]">
+                      <span className="font-bold text-sm text-gray-900">{entry.idSite || entry.siteId}</span>
+                      {entry.siteName && <span className="text-xs text-gray-500 ml-1.5 truncate">{entry.siteName}</span>}
+                    </div>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-white font-semibold uppercase">
+                      {SOURCE_LABELS[entry.source] || entry.source}
+                    </span>
+                    <span className="text-[11px] text-amber-700 font-semibold">
+                      {REASON_LABELS[entry.reason] || entry.reason}
+                    </span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                      entry.status === 'treated' ? 'bg-emerald-100 text-emerald-800' :
+                      entry.status === 'dismissed' ? 'bg-gray-200 text-gray-600' :
+                      'bg-slate-100 text-slate-600'
+                    }`}>
+                      {entry.status === 'treated'
+                        ? (TREATMENT_LABELS[entry.treatment] || 'Traitée')
+                        : (STATUS_LABELS[entry.status] || entry.status)}
+                    </span>
+                    <span className="text-[11px] text-gray-600">
+                      Rejeté: <span className="font-semibold">{entry.proposedNh2A ?? '-'}H</span>
+                      {entry.proposedDateA ? ` (${formatDate(entry.proposedDateA)})` : ''}
+                    </span>
+                    <span className="text-[11px] text-gray-500">
+                      Reçu: {entry.createdAt ? `${formatDate(String(entry.createdAt).slice(0, 10))} ${String(entry.createdAt).slice(11, 16)}` : '-'}
+                    </span>
+                    <span className="text-[11px] text-gray-500">
+                      Traité: {entry.treatedAt ? `${formatDate(String(entry.treatedAt).slice(0, 10))} ${String(entry.treatedAt).slice(11, 16)}` : '-'}
+                      {entry.treatedByEmail ? ` par ${entry.treatedByEmail}` : ''}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {tab === 'pending' && (
+          <div className="grid gap-3 xl:grid-cols-2">
           {pendingItems.map((entry) => {
             const f = getForm(entry.id);
             const result = results[entry.id];
@@ -491,11 +661,14 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
               </div>
             );
           })}
+          </div>
+          )}
         </div>
 
         <div className="border-t bg-white p-3 flex justify-between items-center flex-shrink-0">
           <div className="text-xs text-gray-500 flex items-center gap-1">
-            <CheckCircle size={13} className="text-green-600" /> {pendingItems.length} en attente
+            <CheckCircle size={13} className="text-green-600" />
+            {tab === 'pending' ? `${pendingItems.length} en attente` : `${historyItems.length} traitement(s)`}
           </div>
           <button
             onClick={onClose}

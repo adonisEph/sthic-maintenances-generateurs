@@ -4,6 +4,11 @@ import { calculateRegime, calculateEstimatedNH, calculateDiffNHs } from './calc.
 // Borne physique : un générateur ne peut pas tourner plus de 24 H/J.
 export const NH_MAX_REGIME = 24;
 
+// Dernière vidange "ancienne" (≈ 2 mois) : au-delà, un gros écart NH peut être
+// légitime (générateur ayant beaucoup tourné sans vidange) — le contrôle
+// parasite_high est alors désactivé pour ne pas saturer la quarantaine.
+export const NH_STALE_DV_DAYS = 60;
+
 // Canaux d'origine des relevés (colonne nh_readings.source / nh_quarantine.source)
 export const NH_SOURCE = {
   AUTO: 'auto',
@@ -126,7 +131,8 @@ export function evaluateNhCandidate(site, candidate, opts = {}) {
     const days = daysBetween(dateDv, dateA);
     const diff = nh - nh1Dv;
     const impliedRegime = days === null ? 0 : days > 0 ? diff / days : diff > 0 ? Infinity : 0;
-    if (impliedRegime > NH_MAX_REGIME) {
+    const staleDv = Number.isFinite(days) && days >= NH_STALE_DV_DAYS;
+    if (impliedRegime > NH_MAX_REGIME && !staleDv) {
       return {
         verdict: 'quarantine',
         reason: 'parasite_high',
@@ -172,7 +178,8 @@ export function evaluateStoredSite(site, opts = {}) {
     const days = daysBetween(dateDv, dateA);
     const diff = nh2A - nh1Dv;
     const impliedRegime = days === null ? 0 : days > 0 ? diff / days : diff > 0 ? Infinity : 0;
-    if (impliedRegime > NH_MAX_REGIME) {
+    const staleDv = Number.isFinite(days) && days >= NH_STALE_DV_DAYS;
+    if (impliedRegime > NH_MAX_REGIME && !staleDv) {
       return {
         verdict: 'quarantine',
         reason: 'parasite_high',

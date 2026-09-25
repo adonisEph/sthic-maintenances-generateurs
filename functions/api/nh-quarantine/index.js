@@ -33,20 +33,43 @@ export async function onRequestGet({ request, env, data }) {
 
     const url = new URL(request.url);
     const status = String(url.searchParams.get('status') || 'pending').trim();
+    const source = String(url.searchParams.get('source') || '').trim().toLowerCase();
+    const siteQ = String(url.searchParams.get('site') || '').trim();
+    const from = String(url.searchParams.get('from') || '').trim();
+    const to = String(url.searchParams.get('to') || '').trim();
+    const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 500, 1), 2000);
+
+    const clauses = [];
+    const binds = [];
+    if (status !== 'all') {
+      clauses.push('q.status = ?');
+      binds.push(status);
+    }
+    if (source) {
+      clauses.push('q.source = ?');
+      binds.push(source);
+    }
+    if (siteQ) {
+      clauses.push('(s.id_site LIKE ? OR s.name_site LIKE ? OR q.site_id LIKE ?)');
+      const like = `%${siteQ}%`;
+      binds.push(like, like, like);
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      clauses.push('date(q.created_at) >= ?');
+      binds.push(from);
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      clauses.push('date(q.created_at) <= ?');
+      binds.push(to);
+    }
 
     let rows = [];
     try {
-      const sql = status === 'all'
-        ? `SELECT q.*, s.name_site, s.id_site, s.technician, s.regime AS site_regime, s.zone AS site_zone
+      const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+      const sql = `SELECT q.*, s.name_site, s.id_site, s.technician, s.regime AS site_regime, s.zone AS site_zone
            FROM nh_quarantine q LEFT JOIN sites s ON s.id = q.site_id
-           ORDER BY q.created_at DESC LIMIT 500`
-        : `SELECT q.*, s.name_site, s.id_site, s.technician, s.regime AS site_regime, s.zone AS site_zone
-           FROM nh_quarantine q LEFT JOIN sites s ON s.id = q.site_id
-           WHERE q.status = ? ORDER BY q.created_at DESC LIMIT 500`;
-      const stmt = status === 'all'
-        ? env.DB.prepare(sql)
-        : env.DB.prepare(sql).bind(status);
-      const res = await stmt.all();
+           ${where} ORDER BY q.created_at DESC LIMIT ?`;
+      const res = await env.DB.prepare(sql).bind(...binds, limit).all();
       rows = Array.isArray(res?.results) ? res.results : [];
     } catch {
       // Table absente (migration non appliquée) → liste vide.
