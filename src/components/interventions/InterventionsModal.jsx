@@ -1545,6 +1545,11 @@ const InterventionsModal = ({
                         Motif : {String(it.closeReason)}
                       </div>
                     )}
+                    {st === 'done' && it?.doneByEmail && String(it.doneByRole || '') !== 'technician' && (
+                      <div className="text-[11px] text-indigo-700 mt-1 font-semibold">
+                        Clôturée par {it.doneByEmail} ({it.doneByRole})
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={`text-xs px-2 py-1 rounded border font-semibold ${statusColor}`}>{st}</span>

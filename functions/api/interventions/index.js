@@ -16,6 +16,8 @@ function mapRow(row) {
     status: row.status,
     sentAt: row.sent_at || null,
     doneAt: row.done_at || null,
+    doneByEmail: row.done_by_email || null,
+    doneByRole: row.done_by_role || null,
     closeReason: row.close_reason || null,
     ticketNumber: row.ticket_number || null,
     ficheId: row.fiche_id || null,

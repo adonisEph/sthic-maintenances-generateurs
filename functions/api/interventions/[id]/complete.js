@@ -241,11 +241,44 @@ export async function onRequestPost({ request, env, data, params }) {
     }
     await supersedePendingQuarantine(env, site.id, now, 'vidange_completed');
 
+    // done_by_* : trace le clôturant RÉEL (manager/admin quand le technicien
+    // est absent) — sans ça la vidange serait attribuée silencieusement au
+    // technicien assigné.
     await env.DB.prepare(
-      'UPDATE interventions SET status = ?, done_at = ?, updated_at = ? WHERE id = ?'
+      'UPDATE interventions SET status = ?, done_at = ?, done_by_user_id = ?, done_by_email = ?, done_by_role = ?, updated_at = ? WHERE id = ?'
     )
-      .bind('done', doneDate, now, id)
+      .bind(
+        'done',
+        doneDate,
+        data?.user?.id ? String(data.user.id) : null,
+        data?.user?.email ? String(data.user.email) : null,
+        role,
+        now,
+        id
+      )
       .run();
+
+    // Notification métier : vidange effectuée → managers de la zone + superadmin.
+    try {
+      await env.DB.prepare(
+        `INSERT INTO notifications (id, type, zone, audience, title, body, site_id, ref_id, actor_user_id, actor_email, created_at)
+         VALUES (?, 'intervention_done', ?, 'managers', ?, ?, ?, ?, ?, ?, ?)`
+      )
+        .bind(
+          newId(),
+          String(siteRow?.zone || intervention?.zone || 'BZV/POOL'),
+          'Vidange effectuée',
+          `${siteRow?.name_site || siteRow?.id_site || intervention.site_id} — ${String(intervention?.epv_type || 'EPV')} clôturée le ${doneDate} par ${String(data?.user?.email || 'inconnu')}`,
+          String(intervention.site_id || ''),
+          String(id),
+          data?.user?.id ? String(data.user.id) : null,
+          data?.user?.email ? String(data.user.email) : null,
+          now
+        )
+        .run();
+    } catch {
+      // notifications non bloquantes (table absente → migration 0033)
+    }
 
     const status = 'Effectuée';
 
