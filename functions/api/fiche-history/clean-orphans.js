@@ -85,7 +85,7 @@ export async function onRequestPost({ request, env, data }) {
 
     try {
       const resA = await env.DB.prepare(
-        `UPDATE fiche_history f
+        `UPDATE fiche_history AS f
          SET status = 'Annulée',
              warehouse_flow_status = NULL,
              cancel_reason = 'Fiche orpheline — intervention clôturée (done/non_fait)',
@@ -97,7 +97,7 @@ export async function onRequestPost({ request, env, data }) {
       cancelled += Number(resA?.meta?.changes || 0);
 
       const resB = await env.DB.prepare(
-        `UPDATE fiche_history f
+        `UPDATE fiche_history AS f
          SET status = 'Annulée',
              warehouse_flow_status = NULL,
              cancel_reason = 'Fiche orpheline — vidange effectuée via un autre ticket',
@@ -111,7 +111,7 @@ export async function onRequestPost({ request, env, data }) {
       // Compat pré-migration 0034 : colonne cancel_reason absente → sans motif.
       if (!String(e?.message || '').toLowerCase().includes('cancel_reason')) throw e;
       const resA = await env.DB.prepare(
-        `UPDATE fiche_history f
+        `UPDATE fiche_history AS f
          SET status = 'Annulée', warehouse_flow_status = NULL, updated_at = ?
          WHERE ${OPEN} AND ${ORPHAN_CLOSED_INT}${orphanZoneSub}`
       )
@@ -120,7 +120,7 @@ export async function onRequestPost({ request, env, data }) {
       cancelled += Number(resA?.meta?.changes || 0);
 
       const resB = await env.DB.prepare(
-        `UPDATE fiche_history f
+        `UPDATE fiche_history AS f
          SET status = 'Annulée', warehouse_flow_status = NULL, updated_at = ?
          WHERE ${OPEN} AND ${ORPHAN_SUPERSEDED}${orphanZoneSub}`
       )
