@@ -89,17 +89,23 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
   };
 
   // Valeur logique pour une entrée parasitée :
-  // nh2_a corrigé = nh1_dv + regime_site × jours(date_dv → date du relevé rejeté)
+  // nh2_a corrigé = nh1_dv + regime_site × jours(date_dv → aujourd'hui) ;
+  // date_a du site inchangée.
   const autoCorrectValue = (entry) => {
     const nh1 = Number(entry?.prevNh1DV);
     const regime = Number(entry?.siteRegime);
     const dDv = String(entry?.prevDateDV || '').slice(0, 10);
-    const dA = String(entry?.proposedDateA || '').slice(0, 10);
     if (!Number.isFinite(nh1) || !Number.isFinite(regime) || regime <= 0) return null;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dDv) || !/^\d{4}-\d{2}-\d{2}$/.test(dA)) return null;
-    const days = Math.floor((Date.parse(`${dA}T00:00:00Z`) - Date.parse(`${dDv}T00:00:00Z`)) / 86400000);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dDv)) return null;
+    const todayStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Brazzaville',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(new Date());
+    const days = Math.floor((Date.parse(`${todayStr}T00:00:00Z`) - Date.parse(`${dDv}T00:00:00Z`)) / 86400000);
     if (!Number.isFinite(days) || days < 0) return null;
-    return { nh2A: nh1 + regime * days, dateA: dA, days };
+    return { nh2A: nh1 + regime * days, days };
   };
 
   // "Corriger auto" : calcule la valeur logique, la charge dans le formulaire,
@@ -110,7 +116,7 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
       setResults((prev) => ({ ...prev, [entry.id]: { error: 'Correction auto impossible (régime/date_dv manquants).' } }));
       return;
     }
-    setForm(entry.id, { nh2A: String(v.nh2A), dateA: v.dateA });
+    setForm(entry.id, { nh2A: String(v.nh2A) });
     treat(entry, 'correct', { autoCorrect: true });
   };
 
@@ -281,7 +287,7 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
                   return v ? (
                     <div className="text-[11px] bg-indigo-50 border border-indigo-200 rounded px-2 py-1.5 mb-2 text-indigo-800">
                       Valeur logique suggérée : <span className="font-bold">{v.nh2A} H</span>
-                      <span className="text-indigo-600"> = {entry.prevNh1DV} (NH1 DV) + {entry.siteRegime} H/J × {v.days} j</span>
+                      <span className="text-indigo-600"> = {entry.prevNh1DV} (NH1 DV) + {entry.siteRegime} H/J × {v.days} j depuis la vidange</span>
                     </div>
                   ) : (
                     <div className="text-[11px] bg-gray-100 border border-gray-200 rounded px-2 py-1.5 mb-2 text-gray-600">

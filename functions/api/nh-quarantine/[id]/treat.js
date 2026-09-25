@@ -1,4 +1,4 @@
-import { json, requireAuth, readJson, isoNow, isSuperAdmin, userZone, ymdToday } from '../../_utils/http.js';
+import { json, requireAuth, readJson, isoNow, isSuperAdmin, userZone, ymdToday, newId } from '../../_utils/http.js';
 import { touchLastUpdatedAt } from '../../_utils/meta.js';
 import { calculateRegime, calculateEstimatedNH, calculateDiffNHs } from '../../_utils/calc.js';
 import {
@@ -79,14 +79,21 @@ export async function onRequestPost({ request, env, data, params }) {
       let dateA = String(body?.dateA || '').slice(0, 10);
 
       if (body?.autoCorrect === true) {
-        // Correction automatique des valeurs parasitées :
-        // nh2_a logique = nh1_dv + regime × jours(date_dv → date du relevé rejeté)
+        // Correction automatique des valeurs parasitées — réservée à
+        // parasite_high. Intervalle = jours(date_dv → jour de la correction) ;
+        // nh2_a corrigé = nh1_dv + regime × intervalle ; date_a inchangée.
+        // C'est une réparation d'état (pas un nouveau relevé) : on court-circuite
+        // evaluateNhCandidate — sinon la valeur logique, souvent inférieure au
+        // compteur parasité, serait rejetée en "decrease".
+        if (String(entry.reason || '') !== 'parasite_high') {
+          return json({ error: 'Correction auto réservée aux valeurs parasitées.' }, { status: 400 });
+        }
         const nh1 = Number(site.nh1_dv);
         const dateDV = String(site.date_dv || '').slice(0, 10);
         const regime = Number(site.regime);
-        dateA = String(entry.proposed_date_a || site.date_a || '').slice(0, 10);
-        const days = dateDV && dateA
-          ? Math.floor((Date.parse(`${dateA}T00:00:00Z`) - Date.parse(`${dateDV}T00:00:00Z`)) / 86400000)
+        const todayStr = ymdToday();
+        const days = dateDV
+          ? Math.floor((Date.parse(`${todayStr}T00:00:00Z`) - Date.parse(`${dateDV}T00:00:00Z`)) / 86400000)
           : NaN;
         if (!Number.isFinite(nh1) || !Number.isFinite(regime) || regime <= 0 || !Number.isFinite(days) || days < 0) {
           return json(
@@ -95,26 +102,74 @@ export async function onRequestPost({ request, env, data, params }) {
           );
         }
         nh = nh1 + regime * days;
+        const storedDateA = String(site.date_a || '').slice(0, 10);
+        const nhEstimated = calculateEstimatedNH(nh, storedDateA, regime);
+        const diffNHs = calculateDiffNHs(nh1, nh);
+        const diffEstimated = calculateDiffNHs(nh1, nhEstimated);
+        await env.DB.prepare(
+          'UPDATE sites SET nh2_a = ?, regime = ?, nh_estimated = ?, diff_nhs = ?, diff_estimated = ?, updated_at = ? WHERE id = ?'
+        )
+          .bind(nh, regime, nhEstimated, diffNHs, diffEstimated, now, String(site.id))
+          .run();
+        await env.DB.prepare(
+          `INSERT INTO nh_readings
+           (id, site_id, reading_date, nh_value, prev_nh2_a, prev_date_a, prev_nh1_dv, prev_date_dv,
+            prev_nh_offset, new_nh_offset, is_reset, source, quarantine_id,
+            created_by_user_id, created_by_email, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+          .bind(
+            newId(),
+            String(site.id),
+            todayStr,
+            Math.trunc(nh),
+            site?.nh2_a ?? null,
+            site?.date_a ?? null,
+            site?.nh1_dv ?? null,
+            site?.date_dv ?? null,
+            site?.nh_offset ?? null,
+            0,
+            0,
+            NH_SOURCE.QUARANTINE,
+            id,
+            data?.user?.id ? String(data.user.id) : null,
+            data?.user?.email ? String(data.user.email) : null,
+            now,
+            now
+          )
+          .run();
+        updatedSite = {
+          ...site,
+          nh2_a: nh,
+          regime,
+          nh_estimated: nhEstimated,
+          diff_nhs: diffNHs,
+          diff_estimated: diffEstimated,
+          updated_at: now
+        };
+        payload = { nh2A: nh, dateA: storedDateA || todayStr, autoCorrect: true, days, regime };
       }
 
-      if (!Number.isFinite(nh) || nh < 0) {
-        return json({ error: 'Compteur corrigé invalide.' }, { status: 400 });
-      }
-      const verdict = evaluateNhCandidate(site, { nh2A: nh, dateA }, { todayYmd: ymdToday() });
-      if (verdict.verdict !== 'apply') {
-        return json(
-          { error: 'Valeur corrigée toujours incohérente.', reason: verdict.reason },
-          { status: 409 }
+      if (updatedSite === null) {
+        if (!Number.isFinite(nh) || nh < 0) {
+          return json({ error: 'Compteur corrigé invalide.' }, { status: 400 });
+        }
+        const verdict = evaluateNhCandidate(site, { nh2A: nh, dateA }, { todayYmd: ymdToday() });
+        if (verdict.verdict !== 'apply') {
+          return json(
+            { error: 'Valeur corrigée toujours incohérente.', reason: verdict.reason },
+            { status: 409 }
+          );
+        }
+        const applied = await applyNhReading(
+          env,
+          site,
+          { nh2A: verdict.nh2A, dateA: verdict.dateA },
+          { source: NH_SOURCE.QUARANTINE, user: data?.user, quarantineId: id }
         );
+        updatedSite = applied.site;
+        payload = { nh2A: verdict.nh2A, dateA: verdict.dateA };
       }
-      const applied = await applyNhReading(
-        env,
-        site,
-        { nh2A: verdict.nh2A, dateA: verdict.dateA },
-        { source: NH_SOURCE.QUARANTINE, user: data?.user, quarantineId: id }
-      );
-      updatedSite = applied.site;
-      payload = { nh2A: verdict.nh2A, dateA: verdict.dateA };
     } else if (action === 'rebase') {
       // Changement deepsea/générateur confirmé : la valeur proposée (ou corrigée)
       // devient la nouvelle base nh1_dv.
