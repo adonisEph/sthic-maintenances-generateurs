@@ -7,6 +7,7 @@ const mapRow = (r) => ({
   siteName: r.name_site || '',
   idSite: r.id_site || '',
   technician: r.technician || '',
+  siteRegime: r.site_regime != null ? Number(r.site_regime) : null,
   zone: r.site_zone || r.zone || 'BZV/POOL',
   source: r.source,
   reason: r.reason,
@@ -36,10 +37,10 @@ export async function onRequestGet({ request, env, data }) {
     let rows = [];
     try {
       const sql = status === 'all'
-        ? `SELECT q.*, s.name_site, s.id_site, s.technician, s.zone AS site_zone
+        ? `SELECT q.*, s.name_site, s.id_site, s.technician, s.regime AS site_regime, s.zone AS site_zone
            FROM nh_quarantine q LEFT JOIN sites s ON s.id = q.site_id
            ORDER BY q.created_at DESC LIMIT 500`
-        : `SELECT q.*, s.name_site, s.id_site, s.technician, s.zone AS site_zone
+        : `SELECT q.*, s.name_site, s.id_site, s.technician, s.regime AS site_regime, s.zone AS site_zone
            FROM nh_quarantine q LEFT JOIN sites s ON s.id = q.site_id
            WHERE q.status = ? ORDER BY q.created_at DESC LIMIT 500`;
       const stmt = status === 'all'

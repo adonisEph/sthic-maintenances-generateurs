@@ -88,6 +88,32 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
     }
   };
 
+  // Valeur logique pour une entrée parasitée :
+  // nh2_a corrigé = nh1_dv + regime_site × jours(date_dv → date du relevé rejeté)
+  const autoCorrectValue = (entry) => {
+    const nh1 = Number(entry?.prevNh1DV);
+    const regime = Number(entry?.siteRegime);
+    const dDv = String(entry?.prevDateDV || '').slice(0, 10);
+    const dA = String(entry?.proposedDateA || '').slice(0, 10);
+    if (!Number.isFinite(nh1) || !Number.isFinite(regime) || regime <= 0) return null;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dDv) || !/^\d{4}-\d{2}-\d{2}$/.test(dA)) return null;
+    const days = Math.floor((Date.parse(`${dA}T00:00:00Z`) - Date.parse(`${dDv}T00:00:00Z`)) / 86400000);
+    if (!Number.isFinite(days) || days < 0) return null;
+    return { nh2A: nh1 + regime * days, dateA: dA, days };
+  };
+
+  // "Corriger auto" : calcule la valeur logique, la charge dans le formulaire,
+  // puis laisse le serveur recalculer/appliquer de façon autoritaire.
+  const handleAutoCorrect = (entry) => {
+    const v = autoCorrectValue(entry);
+    if (!v) {
+      setResults((prev) => ({ ...prev, [entry.id]: { error: 'Correction auto impossible (régime/date_dv manquants).' } }));
+      return;
+    }
+    setForm(entry.id, { nh2A: String(v.nh2A), dateA: v.dateA });
+    treat(entry, 'correct', { autoCorrect: true });
+  };
+
   const handleCorrect = (entry) => {
     const f = getForm(entry.id);
     const nh2A = Number(String(f.nh2A || '').trim());
@@ -250,6 +276,20 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
                   </div>
                 )}
 
+                {entry.reason === 'parasite_high' && (() => {
+                  const v = autoCorrectValue(entry);
+                  return v ? (
+                    <div className="text-[11px] bg-indigo-50 border border-indigo-200 rounded px-2 py-1.5 mb-2 text-indigo-800">
+                      Valeur logique suggérée : <span className="font-bold">{v.nh2A} H</span>
+                      <span className="text-indigo-600"> = {entry.prevNh1DV} (NH1 DV) + {entry.siteRegime} H/J × {v.days} j</span>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] bg-gray-100 border border-gray-200 rounded px-2 py-1.5 mb-2 text-gray-600">
+                      Correction auto indisponible : régime ou date_dv manquant.
+                    </div>
+                  );
+                })()}
+
                 <div className="flex flex-col gap-2">
                   <div className="flex flex-col sm:flex-row gap-2 items-end">
                     <div className="flex-1">
@@ -274,6 +314,16 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
                       />
                     </div>
                     <div className="flex gap-1.5 flex-shrink-0">
+                      {entry.reason === 'parasite_high' && autoCorrectValue(entry) ? (
+                        <button
+                          onClick={() => handleAutoCorrect(entry)}
+                          disabled={isBusy}
+                          className="bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-emerald-800 disabled:opacity-50"
+                          title="Applique la valeur logique : NH1 DV + régime × jours (calculée côté serveur)"
+                        >
+                          Corriger auto
+                        </button>
+                      ) : null}
                       <button
                         onClick={() => handleCorrect(entry)}
                         disabled={isBusy}

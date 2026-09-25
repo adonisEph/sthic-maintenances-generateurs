@@ -75,8 +75,28 @@ export async function onRequestPost({ request, env, data, params }) {
       payload = { note: String(body?.note || '') };
     } else if (action === 'correct') {
       // La valeur corrigée est réévaluée contre l'état ACTUEL du site.
-      const nh = Number(body?.nh2A);
-      const dateA = String(body?.dateA || '').slice(0, 10);
+      let nh = Number(body?.nh2A);
+      let dateA = String(body?.dateA || '').slice(0, 10);
+
+      if (body?.autoCorrect === true) {
+        // Correction automatique des valeurs parasitées :
+        // nh2_a logique = nh1_dv + regime × jours(date_dv → date du relevé rejeté)
+        const nh1 = Number(site.nh1_dv);
+        const dateDV = String(site.date_dv || '').slice(0, 10);
+        const regime = Number(site.regime);
+        dateA = String(entry.proposed_date_a || site.date_a || '').slice(0, 10);
+        const days = dateDV && dateA
+          ? Math.floor((Date.parse(`${dateA}T00:00:00Z`) - Date.parse(`${dateDV}T00:00:00Z`)) / 86400000)
+          : NaN;
+        if (!Number.isFinite(nh1) || !Number.isFinite(regime) || regime <= 0 || !Number.isFinite(days) || days < 0) {
+          return json(
+            { error: 'Correction auto impossible : régime ou date_dv manquant/incohérent.' },
+            { status: 400 }
+          );
+        }
+        nh = nh1 + regime * days;
+      }
+
       if (!Number.isFinite(nh) || nh < 0) {
         return json({ error: 'Compteur corrigé invalide.' }, { status: 400 });
       }
