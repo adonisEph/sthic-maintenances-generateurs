@@ -774,9 +774,11 @@ const InterventionsModal = ({
         body: JSON.stringify({ dryRun: true, ...scope })
       });
       const n = Number(preview?.toCancel || 0);
-      if (!n) {
+      const nStale = Number(preview?.staleOnly || 0);
+      const total = n + nStale;
+      if (!total) {
         op.dismiss();
-        alert('✅ Aucune fiche orpheline à nettoyer.');
+        alert('✅ Aucune fiche orpheline ou périmée à nettoyer.');
         return;
       }
       const sample = Array.isArray(preview?.sample) ? preview.sample.slice(0, 5) : [];
@@ -785,19 +787,21 @@ const InterventionsModal = ({
         .join('\n');
       op.dismiss();
       const ok = window.confirm(
-        `${n} fiche(s) orpheline(s) détectée(s) (zone : ${zoneActive || 'toutes'}) — vidange déjà ` +
-          `terminée via un autre ticket ou intervention clôturée.\n\n` +
+        `${n} fiche(s) orpheline(s) + ${nStale} fiche(s) périmée(s) détectée(s) ` +
+          `(zone : ${zoneActive || 'toutes'}).\n\n` +
+          `• Orphelines : vidange déjà terminée via un autre ticket ou intervention clôturée\n` +
+          `• Périmées : site retiré, type EPV invalide, ou vidange déjà effectuée\n\n` +
           (sampleLines ? `${sampleLines}\n\n` : '') +
-          `Elles seront annulées (statut "Annulée", motif tracé). Continuer ?`
+          `Les ${total} seront annulées (statut "Annulée", motif tracé). Continuer ?`
       );
       if (!ok) return;
-      const run = startOperation(`Annulation de ${n} fiche(s)…`);
+      const run = startOperation(`Annulation de ${total} fiche(s)…`);
       try {
         const res = await apiFetchJson('/api/fiche-history/clean-orphans', {
           method: 'POST',
-          body: JSON.stringify({ ...scope })
+          body: JSON.stringify({ ...scope, includeStale: true })
         });
-        run.done(`✅ ${res?.cancelled || 0} fiche(s) orpheline(s) annulée(s).`);
+        run.done(`✅ ${res?.cancelled || 0} fiche(s) orpheline(s)/périmée(s) annulée(s).`);
       } catch (e) {
         run.dismiss();
         throw e;
