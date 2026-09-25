@@ -43,34 +43,97 @@ export async function onRequestGet({ request, env, data }) {
     if (!/^\d{4}-\d{2}$/.test(month)) return json({ error: 'month invalide (YYYY-MM).' }, { status: 400 });
 
     const requestedZone = String(url.searchParams.get('zone') || '').trim();
+    const wantSummary = String(url.searchParams.get('summary') || '').trim() === '1';
     const scopeZone = (role === 'admin' || role === 'manager') && !isSuperAdmin(data) ? userZone(data) : null;
 
+    const reqUp = requestedZone.toUpperCase();
+    const allZones = !scopeZone && (reqUp === 'ALL' || reqUp === '');
     const zone = scopeZone ? String(scopeZone) : requestedZone;
-    if (!zone) return json({ error: 'zone requise.' }, { status: 400 });
 
-    if (scopeZone && String(zone) !== String(scopeZone)) {
+    if (scopeZone && requestedZone && reqUp !== 'ALL' && requestedZone !== String(scopeZone)) {
       return json({ error: 'Accès interdit.' }, { status: 403 });
     }
+    if (!zone && !allZones) return json({ error: 'zone requise.' }, { status: 400 });
 
-    const plan = await env.DB.prepare('SELECT * FROM intelligent_plans WHERE month = ? AND zone = ?').bind(month, zone).first();
-    if (!plan?.id) {
+    const plansRes = allZones
+      ? await env.DB.prepare('SELECT * FROM intelligent_plans WHERE month = ? ORDER BY zone ASC').bind(month).all()
+      : await env.DB.prepare('SELECT * FROM intelligent_plans WHERE month = ? AND zone = ?').bind(month, zone).all();
+    const plans = Array.isArray(plansRes?.results) ? plansRes.results : [];
+
+    // Mode résumé : progression lue depuis la DB (survit aux rechargements) —
+    // pour chaque plan : techniciens déjà générés + nb d'items + date de génération.
+    if (wantSummary) {
+      const planIds = plans.map((p) => String(p.id)).filter(Boolean);
+      const grouped = new Map();
+      if (planIds.length > 0) {
+        const ph = planIds.map(() => '?').join(',');
+        const agg = await env.DB.prepare(
+          `SELECT plan_id, technician_user_id AS tid, COUNT(*) AS n
+           FROM intelligent_plan_items WHERE plan_id IN (${ph}) GROUP BY plan_id, technician_user_id`
+        )
+          .bind(...planIds)
+          .all();
+        for (const r of agg?.results || []) {
+          const pid = String(r?.plan_id || '');
+          const cur = grouped.get(pid) || { tids: new Set(), itemCount: 0 };
+          if (r?.tid) cur.tids.add(String(r.tid));
+          cur.itemCount += Number(r?.n || 0);
+          grouped.set(pid, cur);
+        }
+      }
+      return json(
+        {
+          month,
+          zone: allZones ? 'all' : zone,
+          plans: plans.map((p) => {
+            const g = grouped.get(String(p.id)) || { tids: new Set(), itemCount: 0 };
+            return {
+              zone: String(p.zone || ''),
+              planId: String(p.id),
+              generatedAt: p.generated_at || null,
+              itemCount: g.itemCount,
+              doneTechnicianIds: Array.from(g.tids)
+            };
+          })
+        },
+        { status: 200 }
+      );
+    }
+
+    if (!allZones && plans.length === 0) {
       return json({ month, zone, items: [] }, { status: 200 });
     }
 
-    const res = await env.DB.prepare(
-      'SELECT * FROM intelligent_plan_items WHERE plan_id = ? ORDER BY scheduled_wo_date ASC, COALESCE(site_code, \'\') ASC'
-    )
-      .bind(String(plan.id))
-      .all();
-
-    const rows = Array.isArray(res?.results) ? res.results : [];
+    let rows;
+    if (allZones) {
+      if (plans.length === 0) rows = [];
+      else {
+        const ph = plans.map(() => '?').join(',');
+        const res = await env.DB.prepare(
+          `SELECT i.*, p.zone AS p_zone FROM intelligent_plan_items i
+           JOIN intelligent_plans p ON p.id = i.plan_id
+           WHERE i.plan_id IN (${ph})
+           ORDER BY p.zone ASC, i.scheduled_wo_date ASC, COALESCE(i.site_code, '') ASC`
+        )
+          .bind(...plans.map((p) => String(p.id)))
+          .all();
+        rows = Array.isArray(res?.results) ? res.results : [];
+      }
+    } else {
+      const res = await env.DB.prepare(
+        'SELECT * FROM intelligent_plan_items WHERE plan_id = ? ORDER BY scheduled_wo_date ASC, COALESCE(site_code, \'\') ASC'
+      )
+        .bind(String(plans[0].id))
+        .all();
+      rows = Array.isArray(res?.results) ? res.results : [];
+    }
 
     return json(
       {
         month,
-        zone,
-        planId: String(plan.id),
-        generatedAt: plan.generated_at,
+        zone: allZones ? 'all' : zone,
+        planId: allZones ? null : String(plans[0].id),
+        generatedAt: allZones ? null : plans[0].generated_at,
         items: rows.map(mapRow).filter(Boolean)
       },
       { status: 200 }

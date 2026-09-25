@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Calendar, X, Users, MapPin, Clock, AlertCircle, Download, Sparkles, Activity, Menu, ChevronLeft } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { startOperation } from '../utils/feedback';
@@ -77,6 +77,8 @@ const CalendarModal = (props) => {
   const [intelligentError, setIntelligentError] = useState('');
   const [intelligentLastStats, setIntelligentLastStats] = useState(null);
   const [intelligentExportBusy, setIntelligentExportBusy] = useState(false);
+  const [intelligentGeneratedAt, setIntelligentGeneratedAt] = useState('');
+  const [allZonePlans, setAllZonePlans] = useState([]);
 
   const [wizardHolidayDate, setWizardHolidayDate] = useState('');
   const [wizardHolidayLabel, setWizardHolidayLabel] = useState('');
@@ -121,6 +123,9 @@ const CalendarModal = (props) => {
   }, []);
 
   const isIntelligentDay = todayDay === 23;
+
+  // Rôles pouvant générer/exporter sur toutes les zones (même règle que le backend).
+  const canAllZonesPlanning = isSuperAdmin || role === 'manager_bzv_pool';
 
   const zoneForIntelligent = useMemo(() => {
     if (isSuperAdmin) return String(calendarZone || authZone || 'BZV/POOL');
@@ -199,6 +204,53 @@ const CalendarModal = (props) => {
     }
   }, []);
 
+  // Progression lue depuis la DB (et non la mémoire de session) : permet
+  // d'exporter même si le modal a été fermé/rouvert entre les générations.
+  const loadIntelligentProgress = async () => {
+    try {
+      const z = String(zoneForIntelligent || '').trim();
+      const params = new URLSearchParams({ month: targetMonthLabel, summary: '1' });
+      if (z) params.set('zone', z);
+      const resp = await fetch(`/api/intelligent-planning/items?${params.toString()}`);
+      const raw = await resp.text();
+      const data = raw ? JSON.parse(raw) : null;
+      if (!resp.ok) return;
+      const plans = Array.isArray(data?.plans) ? data.plans : [];
+      const mine = plans.find((p) => String(p?.zone || '').trim() === z);
+      setIntelligentDoneTechIds(new Set((mine?.doneTechnicianIds || []).map(String)));
+      setIntelligentGeneratedAt(String(mine?.generatedAt || ''));
+      if (canAllZonesPlanning) {
+        const respAll = await fetch(`/api/intelligent-planning/items?month=${encodeURIComponent(targetMonthLabel)}&zone=all&summary=1`);
+        const rawAll = await respAll.text();
+        const dataAll = rawAll ? JSON.parse(rawAll) : null;
+        setAllZonePlans(respAll.ok && Array.isArray(dataAll?.plans) ? dataAll.plans : []);
+      }
+    } catch {
+      // Silencieux : la progression est indicative.
+    }
+  };
+
+  useEffect(() => {
+    if (showIntelligentWizard) loadIntelligentProgress();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showIntelligentWizard, zoneForIntelligent, targetMonthLabel]);
+
+  const buildPlanRows = (items) =>
+    items.map((it) => ({
+      Site: String(it?.siteCode || it?.siteId || ''),
+      'Site Name': String(it?.siteName || ''),
+      Region: String(it?.zone || it?.region || ''),
+      'Short description': String(it?.shortDescription || ''),
+      Number: String(it?.number || ''),
+      'Assigned to': String(it?.assignedTo || ''),
+      'Scheduled WO Date': String(it?.scheduledWoDate || ''),
+      'Date of closing': String(it?.dateOfClosing || ''),
+      State: String(it?.state || ''),
+      EPV2: String(it?.epv2 || ''),
+      EPV3: String(it?.epv3 || ''),
+      'Paire Site': String(it?.pairSiteCode || '')
+    }));
+
   const exportIntelligentExcel = async () => {
     setIntelligentExportBusy(true);
     setIntelligentError('');
@@ -218,27 +270,51 @@ const CalendarModal = (props) => {
         return;
       }
 
-      const rows = items.map((it) => ({
-        Site: String(it?.siteCode || it?.siteId || ''),
-        'Site Name': String(it?.siteName || ''),
-        Region: String(it?.zone || it?.region || ''),
-        'Short description': String(it?.shortDescription || ''),
-        Number: String(it?.number || ''),
-        'Assigned to': String(it?.assignedTo || ''),
-        'Scheduled WO Date': String(it?.scheduledWoDate || ''),
-        'Date of closing': String(it?.dateOfClosing || ''),
-        State: String(it?.state || ''),
-        EPV2: String(it?.epv2 || ''),
-        EPV3: String(it?.epv3 || ''),
-        'Paire Site': String(it?.pairSiteCode || '')
-      }));
+      const rows = buildPlanRows(items);
 
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.json_to_sheet(rows);
       XLSX.utils.book_append_sheet(wb, ws, 'Planning PM');
-      XLSX.writeFile(wb, `planning_intelligent_${z}_${targetMonthLabel}.xlsx`);
+      XLSX.writeFile(wb, `planning_PM_${targetMonthLabel}_${z.replace(/\//g, '-')}.xlsx`);
     } catch (e) {
       setIntelligentError(e?.message || 'Erreur export.');
+    } finally {
+      setIntelligentExportBusy(false);
+    }
+  };
+
+  // Export consolidé toutes zones : un classeur, un onglet par zone.
+  const exportAllZonesExcel = async () => {
+    setIntelligentExportBusy(true);
+    setIntelligentError('');
+    try {
+      const resp = await fetch(`/api/intelligent-planning/items?month=${encodeURIComponent(targetMonthLabel)}&zone=all`);
+      const raw = await resp.text();
+      const data = raw ? JSON.parse(raw) : null;
+      const items = Array.isArray(data?.items) ? data.items : [];
+      if (!resp.ok) throw new Error(data?.error || 'Erreur export consolidé.');
+      if (items.length === 0) {
+        setIntelligentError(`Aucun planning trouvé pour la campagne ${targetMonthLabel}.`);
+        return;
+      }
+
+      const byZone = new Map();
+      for (const it of items) {
+        const z = String(it?.zone || it?.region || 'SANS ZONE').trim() || 'SANS ZONE';
+        if (!byZone.has(z)) byZone.set(z, []);
+        byZone.get(z).push(it);
+      }
+
+      const wb = XLSX.utils.book_new();
+      for (const [z, list] of Array.from(byZone.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
+        const ws = XLSX.utils.json_to_sheet(buildPlanRows(list));
+        // Nom d'onglet : 31 car max, sans caractères interdits Excel.
+        const sheetName = z.replace(/[\\/?*[\]:]/g, '-').slice(0, 31) || 'Zone';
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+      }
+      XLSX.writeFile(wb, `planning_PM_${targetMonthLabel}_toutes_zones.xlsx`);
+    } catch (e) {
+      setIntelligentError(e?.message || 'Erreur export consolidé.');
     } finally {
       setIntelligentExportBusy(false);
     }
@@ -288,6 +364,7 @@ const CalendarModal = (props) => {
         return next;
       });
       setIntelligentLastStats(data?.stats || null);
+      loadIntelligentProgress();
     } catch (e) {
       setIntelligentError(e?.message || 'Erreur génération planning intelligent.');
     } finally {
@@ -966,7 +1043,15 @@ const CalendarModal = (props) => {
                         ))}
                       </select>
                       <div className="text-[11px] text-indigo-900/70 mt-1">
-                        Avancement zone: {intelligentDoneTechIds.size}/{zoneTechnicians.length} technicien(s) traités
+                        {(() => {
+                          const doneCount = zoneTechnicians.filter((t) => intelligentDoneTechIds.has(String(t.id))).length;
+                          return (
+                            <>
+                              Avancement zone: {doneCount}/{zoneTechnicians.length} technicien(s) traités
+                              {intelligentGeneratedAt ? ` • plan généré le ${String(intelligentGeneratedAt).slice(0, 16).replace('T', ' ')}` : ''}
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
 
@@ -986,15 +1071,31 @@ const CalendarModal = (props) => {
                         disabled={
                           intelligentExportBusy ||
                           zoneTechnicians.length === 0 ||
-                          intelligentDoneTechIds.size !== zoneTechnicians.length
+                          zoneTechnicians.filter((t) => intelligentDoneTechIds.has(String(t.id))).length !== zoneTechnicians.length
                         }
                         className="w-full bg-white text-indigo-900 border border-indigo-200 px-3 py-2 rounded-lg hover:bg-indigo-50 text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2"
+                        title="Disponible quand tous les techniciens de la zone ont leur planning en base"
                       >
                         <Download size={16} />
                         {intelligentExportBusy
                           ? 'Export...'
                           : `Exporter en Excel (Planning PM campagne '${targetMonthLabel}')`}
                       </button>
+
+                      {canAllZonesPlanning && (
+                        <button
+                          type="button"
+                          onClick={exportAllZonesExcel}
+                          disabled={intelligentExportBusy || allZonePlans.length === 0}
+                          className="w-full bg-emerald-700 text-white px-3 py-2 rounded-lg hover:bg-emerald-800 text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2"
+                          title={allZonePlans.length > 0
+                            ? `Zones prêtes : ${allZonePlans.map((p) => p.zone).join(', ')}`
+                            : 'Aucun planning généré pour cette campagne'}
+                        >
+                          <Download size={16} />
+                          {intelligentExportBusy ? 'Export...' : `Exporter toutes zones — campagne '${targetMonthLabel}'`}
+                        </button>
+                      )}
                     </div>
                   </div>
 
