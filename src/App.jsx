@@ -52,7 +52,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.15.0';
+const APP_VERSION = '6.15.1';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -8091,7 +8091,6 @@ return (
             <Activity size={20} className="text-slate-100/90" />
             <div className="text-lg font-bold text-slate-100 leading-tight">Navigation</div>
             <div className="ml-auto flex items-center">
-              <NotificationsBell apiFetchJson={apiFetchJson} enabled={isAdmin || isAnyManager} />
               <button
                 type="button"
                 onClick={() => setSidebarDockedOpen(!sidebarDockedOpen)}
@@ -8561,8 +8560,9 @@ return (
                   </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
+                <div className="flex flex-col sm:flex-row gap-2 sm:justify-end sm:items-center">
 
+                  <NotificationsBell apiFetchJson={apiFetchJson} enabled={isAdmin || isAnyManager} />
                   <button
                     onClick={() => {
                       setAccountForm({ password: '', confirm: '' });

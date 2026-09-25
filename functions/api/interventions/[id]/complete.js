@@ -34,8 +34,18 @@ export async function onRequestPost({ request, env, data, params }) {
       : '';
 
     if (!intervention && bodySiteId && bodyEpvType) {
+      // Préférence au record auquel une fiche (ticket) est déjà rattachée :
+      // le technicien doit clôturer LE ticket généré par le manager, pas un
+      // éventuel doublon d'intervention sans fiche.
       intervention = await env.DB.prepare(
-        "SELECT * FROM interventions WHERE site_id = ? AND epv_type = ? AND status IN ('planned', 'sent') ORDER BY planned_date DESC LIMIT 1"
+        `SELECT i.* FROM interventions i
+         WHERE i.site_id = ? AND i.epv_type = ? AND i.status IN ('planned', 'sent')
+         ORDER BY EXISTS(
+           SELECT 1 FROM fiche_history fh
+           WHERE fh.intervention_id = i.id
+             AND (fh.status IS NULL OR fh.status NOT IN ('Annulée', 'Effectuée'))
+         ) DESC, i.planned_date DESC
+         LIMIT 1`
       )
         .bind(bodySiteId, bodyEpvType)
         .first();
@@ -112,26 +122,48 @@ export async function onRequestPost({ request, env, data, params }) {
       }
     }
 
+    // IMPORTANT : intervention.id (record résolu) — PAS le `id` de l'URL qui peut
+    // valoir 'auto' (événement EPV synthétisé) ou pointer un doublon.
     const relatedFicheByIntervention = await env.DB.prepare(
-      'SELECT id, ticket_number, status, warehouse_flow_status FROM fiche_history WHERE intervention_id = ?'
+      "SELECT id, ticket_number, status, warehouse_flow_status, intervention_id FROM fiche_history WHERE intervention_id = ? AND (status IS NULL OR status != 'Annulée') ORDER BY created_at DESC LIMIT 1"
     )
-      .bind(id)
+      .bind(intervention.id)
       .first();
 
-    const relatedFallbackFiche = !relatedFicheByIntervention?.id
-      ? await env.DB.prepare(
-          `SELECT id, ticket_number, status, warehouse_flow_status
-           FROM fiche_history
-           WHERE site_id = ?
-             AND planned_date IS ?
-             AND epv_type IS ?
-             AND (status IS NULL OR status != 'Annulée')
-           ORDER BY created_at DESC
-           LIMIT 1`
-        )
-          .bind(site.id, intervention.planned_date || null, intervention.epv_type || null)
-          .first()
-      : null;
+    // Fallback élargi : fiche OUVERTE du même site (EPV identique ou fiche
+    // générique), même si sa date planifiée diffère ou si elle pointe vers un
+    // autre record d'intervention encore ouvert (doublon). C'est le ticket
+    // généré par le manager : il doit être clôturé, pas orpheliné.
+    let relatedFallbackFiche = null;
+    let orphanInterventionId = null;
+    if (!relatedFicheByIntervention?.id) {
+      const epv = String(intervention.epv_type || '').trim();
+      const res = await env.DB.prepare(
+        `SELECT fh.id, fh.ticket_number, fh.status, fh.warehouse_flow_status, fh.intervention_id, fh.planned_date, fh.epv_type
+         FROM fiche_history fh
+         WHERE fh.site_id = ?
+           AND (fh.status IS NULL OR fh.status NOT IN ('Annulée', 'Effectuée'))
+           AND (fh.epv_type IS NULL OR fh.epv_type = '' OR ? = '' OR fh.epv_type = ?)
+         ORDER BY CASE WHEN fh.planned_date IS ? THEN 0 ELSE 1 END, fh.created_at DESC
+         LIMIT 5`
+      )
+        .bind(site.id, epv, epv, intervention.planned_date || null)
+        .all();
+      const candidates = Array.isArray(res?.results) ? res.results : [];
+      for (const f of candidates) {
+        const oid = String(f.intervention_id || '');
+        if (!oid || oid === String(intervention.id)) {
+          relatedFallbackFiche = f;
+          break;
+        }
+        const other = await env.DB.prepare('SELECT status FROM interventions WHERE id = ?').bind(oid).first();
+        if (!other || ['planned', 'sent'].includes(String(other.status || ''))) {
+          relatedFallbackFiche = f;
+          orphanInterventionId = oid || null;
+          break;
+        }
+      }
+    }
 
     const relatedFiche = relatedFicheByIntervention?.id ? relatedFicheByIntervention : relatedFallbackFiche;
 
@@ -210,7 +242,7 @@ export async function onRequestPost({ request, env, data, params }) {
 
     // Audit vidange : la vidange est le seul canal autorisé à réécrire nh1_dv.
     const prevNh1DV = site.nh1_dv == null ? null : Number(site.nh1_dv);
-    const rid = `${id}-vidange-${Date.now()}`;
+    const rid = `${intervention.id}-vidange-${Date.now()}`;
     try {
       await env.DB.prepare(
         `INSERT INTO nh_readings
@@ -254,7 +286,7 @@ export async function onRequestPost({ request, env, data, params }) {
         data?.user?.email ? String(data.user.email) : null,
         role,
         now,
-        id
+        intervention.id
       )
       .run();
 
@@ -270,7 +302,7 @@ export async function onRequestPost({ request, env, data, params }) {
           'Vidange effectuée',
           `${siteRow?.name_site || siteRow?.id_site || intervention.site_id} — ${String(intervention?.epv_type || 'EPV')} clôturée le ${doneDate} par ${String(data?.user?.email || 'inconnu')}`,
           String(intervention.site_id || ''),
-          String(id),
+          String(intervention.id),
           data?.user?.id ? String(data.user.id) : null,
           data?.user?.email ? String(data.user.email) : null,
           now
@@ -289,13 +321,26 @@ export async function onRequestPost({ request, env, data, params }) {
     const fallbackFiche = relatedFallbackFiche;
     const existingFiche = relatedFiche;
 
-    // si on a trouvé une fiche fallback: on l'attache à l'intervention courante
+    // si on a trouvé une fiche fallback: on l'attache à l'intervention RÉSOLUE
     if (fallbackFiche?.id) {
       await env.DB.prepare(
         'UPDATE fiche_history SET intervention_id = ?, updated_at = ? WHERE id = ?'
       )
-        .bind(id, now, String(fallbackFiche.id))
+        .bind(intervention.id, now, String(fallbackFiche.id))
         .run();
+      // Doublon : l'autre record ouvert auquel la fiche pointait est clôturé en
+      // non_fait — sinon il resterait indéfiniment dans "à clôturer".
+      if (orphanInterventionId) {
+        try {
+          await env.DB.prepare(
+            "UPDATE interventions SET status = 'non_fait', close_reason = ?, updated_at = ? WHERE id = ? AND status IN ('planned', 'sent')"
+          )
+            .bind('Doublon — vidange effectuée via une autre intervention', now, orphanInterventionId)
+            .run();
+        } catch {
+          // non bloquant
+        }
+      }
     }
 
     // Ticket: ne générer un nouveau ticket que si on crée une nouvelle fiche, ou si la fiche trouvée n'en a pas.
@@ -362,7 +407,7 @@ export async function onRequestPost({ request, env, data, params }) {
       return json({ ok: true, epv: epvDates, site: updatedSite ? { id: updatedSite.id } : null }, { status: 200 });
     }
 
-    const ficheId = `fiche-${id}`;
+    const ficheId = `fiche-${intervention.id}`;
 
     try {
       await env.DB.prepare(
@@ -384,7 +429,7 @@ export async function onRequestPost({ request, env, data, params }) {
           intervalHours,
           contractSeuil,
           isWithinContract === null ? null : (isWithinContract ? 1 : 0),
-          id,
+          intervention.id,
           site.nh1_dv,
           site.date_dv,
           nhNow,
@@ -411,7 +456,7 @@ export async function onRequestPost({ request, env, data, params }) {
           intervalHours,
           contractSeuil,
           isWithinContract === null ? null : (isWithinContract ? 1 : 0),
-          id,
+          intervention.id,
           now,
           now
         )

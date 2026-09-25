@@ -73,10 +73,10 @@ const NotificationsBell = ({ apiFetchJson, enabled }) => {
           setOpen(next);
           if (next) markAllRead();
         }}
-        className="relative p-2 rounded hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70"
+        className="relative p-2 rounded-lg hover:bg-gray-100 border border-gray-200 bg-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/70"
         title="Notifications"
       >
-        <Bell size={18} className="text-slate-100" />
+        <Bell size={18} className="text-slate-700" />
         {unread > 0 && (
           <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
             {unread > 99 ? '99+' : unread}
@@ -85,7 +85,7 @@ const NotificationsBell = ({ apiFetchJson, enabled }) => {
       </button>
 
       {open && (
-        <div className="fixed top-14 left-2 sm:left-4 z-[9999] w-[min(92vw,380px)] bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
+        <div className="fixed top-16 right-2 sm:right-4 z-[9999] w-[min(92vw,380px)] bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
           <div className="bg-slate-800 text-white px-3 py-2.5 flex items-center justify-between">
             <div className="font-bold text-sm flex items-center gap-2">
               <Bell size={15} /> Notifications
