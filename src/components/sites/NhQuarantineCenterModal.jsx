@@ -10,6 +10,7 @@ const REASON_LABELS = {
   future_date: 'Date relevé dans le futur',
   date_regression: 'Date relevé < dernier relevé connu',
   decrease: 'Compteur < dernier relevé connu',
+  retired_site: 'Relevé sur site retiré (remise en cohérence requise)',
   stored_incoherent: 'État stocké incohérent'
 };
 

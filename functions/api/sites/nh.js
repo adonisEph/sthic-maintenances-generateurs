@@ -22,7 +22,8 @@ function mapSiteRow(row) {
     diffNHs: row.diff_nhs,
     diffEstimated: row.diff_estimated,
     seuil: row.seuil,
-    retired: Boolean(row.retired)
+    retired: Boolean(row.retired),
+    updatedAt: row.updated_at || null
   };
 }
 

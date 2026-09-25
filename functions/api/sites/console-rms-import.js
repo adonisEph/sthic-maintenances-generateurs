@@ -64,6 +64,7 @@ export async function onRequestPost({ request, env, data }) {
     let ignoredRetired = 0;
     let quarantinedNhBelowDv = 0;
     let quarantinedNhAbnormallyHigh = 0;
+    let quarantinedRetired = 0;
     let quarantinedOther = 0;
 
     const ignoredSamples = [];
@@ -125,26 +126,32 @@ export async function onRequestPost({ request, env, data }) {
 
       // Évaluation unifiée : mêmes règles que Auto et Manuel.
       // INVARIANT : nh1_dv / date_dv ne sont jamais modifiés par ce canal.
-      // Les sites retirés sont évalués avec la même rigueur que les actifs.
+      // Sites retirés : TOUT relevé est systématiquement quarantiné pour
+      // remise en cohérence manuelle — jamais appliqué automatiquement.
       const verdict = evaluateNhCandidate(site, { nh2A: nextNh2A, dateA: readingDate }, { todayYmd });
+      const isRetired = site?.retired === true || site?.retired === 1
+        || String(site?.retired || '').trim().toLowerCase() === 'true';
+      const effectiveVerdict = isRetired && verdict.verdict === 'apply'
+        ? { ...verdict, verdict: 'quarantine', reason: 'retired_site', detail: { ...(verdict.detail || {}), retired: true } }
+        : verdict;
 
-      if (verdict.verdict === 'reject') {
+      if (effectiveVerdict.verdict === 'reject') {
         ignored += 1;
         ignoredBadDate += 1;
-        pushIgnoredSample(verdict.reason, r, i, { normalizedIdSite: idSite });
+        pushIgnoredSample(effectiveVerdict.reason, r, i, { normalizedIdSite: idSite });
         continue;
       }
 
-      if (verdict.verdict === 'quarantine') {
+      if (effectiveVerdict.verdict === 'quarantine') {
         const rec = await recordQuarantine(
           env,
           site,
           {
             source: NH_SOURCE.RMS,
-            reason: verdict.reason,
-            proposedNh2A: verdict.nh2A,
-            proposedDateA: verdict.dateA,
-            detail: { ...(verdict.detail || {}), rmsRow: i + 1 }
+            reason: effectiveVerdict.reason,
+            proposedNh2A: effectiveVerdict.nh2A,
+            proposedDateA: effectiveVerdict.dateA,
+            detail: { ...(effectiveVerdict.detail || {}), rmsRow: i + 1, retired: isRetired === true }
           },
           { user: data?.user, zone: site?.zone }
         );
@@ -155,21 +162,22 @@ export async function onRequestPost({ request, env, data }) {
           pushIgnoredSample('quarantine_write_failed', r, i, {
             normalizedIdSite: idSite,
             siteId: String(site.id),
-            verdictReason: verdict.reason,
+            verdictReason: effectiveVerdict.reason,
             writeError: rec?.message || null
           });
         } else {
           quarantined += 1;
-          if (verdict.reason === 'nh_below_dv') quarantinedNhBelowDv += 1;
-          else if (verdict.reason === 'parasite_high') quarantinedNhAbnormallyHigh += 1;
+          if (effectiveVerdict.reason === 'nh_below_dv') quarantinedNhBelowDv += 1;
+          else if (effectiveVerdict.reason === 'parasite_high') quarantinedNhAbnormallyHigh += 1;
+          else if (effectiveVerdict.reason === 'retired_site') quarantinedRetired += 1;
           else quarantinedOther += 1;
-          pushQuarantinedSample(verdict.reason, r, i, {
+          pushQuarantinedSample(effectiveVerdict.reason, r, i, {
             normalizedIdSite: idSite,
             siteId: String(site.id),
             quarantineId: rec?.id || null,
             prevNh1DV: site?.nh1_dv,
             prevNh2A: site?.nh2_a,
-            detail: verdict.detail || null
+            detail: effectiveVerdict.detail || null
           });
         }
         continue;
@@ -178,7 +186,7 @@ export async function onRequestPost({ request, env, data }) {
       await applyNhReading(
         env,
         site,
-        { nh2A: verdict.nh2A, dateA: verdict.dateA },
+        { nh2A: effectiveVerdict.nh2A, dateA: effectiveVerdict.dateA },
         { source: NH_SOURCE.RMS, user: data?.user }
       );
       updated += 1;
@@ -205,6 +213,7 @@ export async function onRequestPost({ request, env, data }) {
         ignoredRetired,
         quarantinedNhBelowDv,
         quarantinedNhAbnormallyHigh,
+        quarantinedRetired,
         quarantinedOther,
         ignoredSamples,
         quarantinedSamples

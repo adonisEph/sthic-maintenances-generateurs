@@ -30,7 +30,8 @@ function mapSiteRow(row) {
     diffNHs: row.diff_nhs,
     diffEstimated: row.diff_estimated,
     seuil: row.seuil,
-    retired: Boolean(row.retired)
+    retired: Boolean(row.retired),
+    updatedAt: row.updated_at || null
   };
 }
 
@@ -40,7 +41,8 @@ const QUARANTINE_MESSAGES = {
   date_before_dv: 'Date de relevé antérieure à la dernière vidange. Mise en quarantaine.',
   future_date: 'Date de relevé dans le futur. Mise en quarantaine.',
   date_regression: 'Date de relevé antérieure au dernier relevé connu. Mise en quarantaine.',
-  decrease: 'Compteur inférieur au dernier relevé connu. Mise en quarantaine.'
+  decrease: 'Compteur inférieur au dernier relevé connu. Mise en quarantaine.',
+  retired_site: 'Site retiré — relevé mis en quarantaine pour remise en cohérence manuelle.'
 };
 
 export async function onRequestPost({ request, env, data, params }) {
@@ -90,16 +92,24 @@ export async function onRequestPost({ request, env, data, params }) {
       return json({ error: 'Compteur (NH) ou date invalide.' }, { status: 400 });
     }
 
-    if (verdict.verdict === 'quarantine') {
+    // Site retiré : relevé systématiquement quarantiné (remise en cohérence
+    // manuelle) — jamais appliqué automatiquement, même s'il est cohérent.
+    const isRetired = site?.retired === true || site?.retired === 1
+      || String(site?.retired || '').trim().toLowerCase() === 'true';
+    const effectiveVerdict = isRetired && verdict.verdict === 'apply'
+      ? { ...verdict, verdict: 'quarantine', reason: 'retired_site', detail: { ...(verdict.detail || {}), retired: true } }
+      : verdict;
+
+    if (effectiveVerdict.verdict === 'quarantine') {
       const rec = await recordQuarantine(
         env,
         site,
         {
           source: NH_SOURCE.MANUAL,
-          reason: verdict.reason,
-          proposedNh2A: verdict.nh2A,
-          proposedDateA: verdict.dateA,
-          detail: verdict.detail
+          reason: effectiveVerdict.reason,
+          proposedNh2A: effectiveVerdict.nh2A,
+          proposedDateA: effectiveVerdict.dateA,
+          detail: effectiveVerdict.detail
         },
         { user: data?.user, zone: site?.zone }
       );
@@ -108,11 +118,11 @@ export async function onRequestPost({ request, env, data, params }) {
         {
           ok: false,
           quarantined: true,
-          reason: verdict.reason,
+          reason: effectiveVerdict.reason,
           quarantineId: rec?.id || null,
           quarantinePersisted: !rec?.error,
           quarantineError: rec?.message || null,
-          error: QUARANTINE_MESSAGES[verdict.reason] || 'Valeur incohérente. Mise en quarantaine.'
+          error: QUARANTINE_MESSAGES[effectiveVerdict.reason] || 'Valeur incohérente. Mise en quarantaine.'
         },
         { status: 409 }
       );
@@ -121,7 +131,7 @@ export async function onRequestPost({ request, env, data, params }) {
     const applied = await applyNhReading(
       env,
       site,
-      { nh2A: verdict.nh2A, dateA: verdict.dateA },
+      { nh2A: effectiveVerdict.nh2A, dateA: effectiveVerdict.dateA },
       { source: NH_SOURCE.MANUAL, user: data?.user }
     );
 

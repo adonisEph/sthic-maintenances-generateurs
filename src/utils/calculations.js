@@ -104,6 +104,25 @@ export const formatDate = (dateStr) => {
   return `${day}/${month}/${year}`;
 };
 
+// Date+heure d'une opération (updated_at ISO UTC) affichée en heure de Brazzaville.
+export const formatDateTime = (isoStr) => {
+  if (!isoStr || isoStr === 'N/A') return '-';
+  const date = new Date(isoStr);
+  if (Number.isNaN(date.getTime())) return String(isoStr);
+  try {
+    return new Intl.DateTimeFormat('fr-FR', {
+      timeZone: 'Africa/Brazzaville',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(date);
+  } catch {
+    return formatDate(isoStr);
+  }
+};
+
 export const getDaysUntil = (dateStr) => {
   if (!dateStr || dateStr === 'N/A') return null;
   const today = new Date();

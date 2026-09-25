@@ -43,6 +43,7 @@ import {
   calculateEstimatedNH,
   calculateEPVDates,
   formatDate,
+  formatDateTime,
   getDaysUntil,
   getUrgencyClass,
   getEPVTilesCount,
@@ -50,7 +51,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.13.8';
+const APP_VERSION = '6.13.9';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -5878,6 +5879,7 @@ useEffect(() => {
         const ignoredNhBelowDv = Number(res?.ignoredNhBelowDv || 0);
         const quarantinedNhBelowDv = Number(res?.quarantinedNhBelowDv || 0);
         const quarantinedNhAbnormallyHigh = Number(res?.quarantinedNhAbnormallyHigh || 0);
+        const quarantinedRetired = Number(res?.quarantinedRetired || 0);
         const quarantinedOther = Number(res?.quarantinedOther || 0);
         const quarantinedSamples = Array.isArray(res?.quarantinedSamples) ? res.quarantinedSamples : [];
 
@@ -5901,6 +5903,7 @@ useEffect(() => {
           r === 'date_regression' ? 'Date < dernier relevé' :
           r === 'date_before_dv' ? 'Date < Date DV' :
           r === 'future_date' ? 'Date future' :
+          r === 'retired_site' ? 'Site retiré' :
           String(r || 'Incohérence');
 
         const quarantineDetails =
@@ -5909,6 +5912,7 @@ useEffect(() => {
               `\n\n⚠️ Sites en quarantaine (persistés — centre de quarantaine):\n` +
               (quarantinedNhBelowDv > 0 ? `- NH2 A < NH1 DV: ${quarantinedNhBelowDv}\n` : '') +
               (quarantinedNhAbnormallyHigh > 0 ? `- Valeur parasitée (>24H/J): ${quarantinedNhAbnormallyHigh}\n` : '') +
+              (quarantinedRetired > 0 ? `- Relevé sur site retiré: ${quarantinedRetired}\n` : '') +
               (quarantinedOther > 0 ? `- Autres incohérences: ${quarantinedOther}\n` : '') +
               (quarantinedSamples.length > 0
                 ? `\nExemples:\n` +
@@ -5975,7 +5979,7 @@ useEffect(() => {
             'Date DV': formatDate(updatedSite.dateDV),
             'NH2 A': updatedSite.nh2A,
             'Date A': formatDate(updatedSite.dateA),
-            'Date updatée': formatDate(updatedSite.dateA),
+            'Date updatée': formatDateTime(updatedSite.updatedAt),
             'NH updaté': updatedSite.nhEstimated,
             'Diff NHs': updatedSite.diffNHs,
             'Diff updatée': updatedSite.diffEstimated,
@@ -10334,7 +10338,7 @@ return (
                           </div>
                           <div className="bg-white rounded-lg border border-gray-200 p-2 text-center min-w-0">
                             <div className="text-[10px] text-gray-500">Date updatée</div>
-                            <div className="text-xs font-semibold text-gray-800 break-words leading-tight">{formatDate(site.dateA)}</div>
+                            <div className="text-xs font-semibold text-gray-800 break-words leading-tight" title={`Dernier relevé réel: ${formatDate(site.dateA)}`}>{formatDateTime(site.updatedAt)}</div>
                           </div>
                         </div>
 
