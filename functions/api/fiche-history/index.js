@@ -28,6 +28,7 @@ function mapRow(row) {
     resolvedInterventionId: row.resolved_intervention_id || row.intervention_id || null,
     interventionStatus: row.intervention_status || null,
     interventionSentAt: row.intervention_sent_at || null,
+    cancelReason: row.cancel_reason || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     signatureTypedName: row.signature_typed_name || null,

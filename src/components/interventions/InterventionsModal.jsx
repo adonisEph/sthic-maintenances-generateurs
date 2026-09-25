@@ -95,6 +95,7 @@ const InterventionsModal = ({
   const [rowBusyId, setRowBusyId] = React.useState('');
   const [sendMonthBusy, setSendMonthBusy] = React.useState(false);
   const [cleanStaleBusy, setCleanStaleBusy] = React.useState(false);
+  const [cleanFichesBusy, setCleanFichesBusy] = React.useState(false);
 
   const normTechName = (v) =>
     String(v || '')
@@ -760,6 +761,59 @@ const InterventionsModal = ({
     }
   };
 
+  // Nettoyage : annule les fiches restées ouvertes alors que la vidange est
+  // déjà terminée (intervention clôturée ou autre ticket 'Effectuée') —
+  // tickets orphelins qui ne seront plus jamais consommés.
+  const cleanOrphanFiches = async () => {
+    const op = startOperation('Analyse des fiches orphelines…');
+    try {
+      setCleanFichesBusy(true);
+      const scope = zoneActive ? { zone: zoneActive } : {};
+      const preview = await apiFetchJson('/api/fiche-history/clean-orphans', {
+        method: 'POST',
+        body: JSON.stringify({ dryRun: true, ...scope })
+      });
+      const n = Number(preview?.toCancel || 0);
+      if (!n) {
+        op.dismiss();
+        alert('✅ Aucune fiche orpheline à nettoyer.');
+        return;
+      }
+      const sample = Array.isArray(preview?.sample) ? preview.sample.slice(0, 5) : [];
+      const sampleLines = sample
+        .map((f) => `  • ${f.ticket_number || '(sans ticket)'} — ${f.site_id} ${f.epv_type || ''} (${f.status || '?'})`)
+        .join('\n');
+      op.dismiss();
+      const ok = window.confirm(
+        `${n} fiche(s) orpheline(s) détectée(s) (zone : ${zoneActive || 'toutes'}) — vidange déjà ` +
+          `terminée via un autre ticket ou intervention clôturée.\n\n` +
+          (sampleLines ? `${sampleLines}\n\n` : '') +
+          `Elles seront annulées (statut "Annulée", motif tracé). Continuer ?`
+      );
+      if (!ok) return;
+      const run = startOperation(`Annulation de ${n} fiche(s)…`);
+      try {
+        const res = await apiFetchJson('/api/fiche-history/clean-orphans', {
+          method: 'POST',
+          body: JSON.stringify({ ...scope })
+        });
+        run.done(`✅ ${res?.cancelled || 0} fiche(s) orpheline(s) annulée(s).`);
+      } catch (e) {
+        run.dismiss();
+        throw e;
+      }
+      try {
+        await loadInterventions();
+      } catch {
+        // ignore
+      }
+    } catch (e) {
+      alert(e?.message || 'Erreur lors du nettoyage des fiches.');
+    } finally {
+      setCleanFichesBusy(false);
+    }
+  };
+
   React.useEffect(() => {
     if (!open) return;
     if (!isTechnician) return;
@@ -1077,6 +1131,16 @@ const InterventionsModal = ({
                   >
                     <Trash2 size={16} />
                     Nettoyer anciennes campagnes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cleanOrphanFiches}
+                    disabled={cleanFichesBusy || cleanStaleBusy || sendMonthBusy || interventionsBusy}
+                    className="bg-amber-50 text-amber-700 border border-amber-300 px-3 py-2 rounded-lg hover:bg-amber-100 font-semibold text-xs sm:text-sm flex items-center gap-2 disabled:opacity-60"
+                    title="Annuler les fiches restées ouvertes alors que la vidange est déjà terminée (tickets orphelins)"
+                  >
+                    <Trash2 size={16} />
+                    Nettoyer fiches orphelines
                   </button>
                 </div>
 
