@@ -90,7 +90,59 @@ export async function onRequestPost({ request, env, data, params }) {
         }
         const nh1 = Number(site.nh1_dv);
         const dateDV = String(site.date_dv || '').slice(0, 10);
-        const regime = Number(site.regime);
+
+        // Régime — le régime stocké peut être parasité : cascade hybride.
+        // 1) choix manuel validé (entier 1..24)
+        // 2) régime implicite des valeurs prev_* de l'entrée (état pré-parasite)
+        // 3) régime dérivé de l'historique nh_readings (dernier relevé cohérent)
+        // 4) régime stocké si sain
+        const sane = (r) => Number.isFinite(r) && r >= 1 && r <= NH_MAX_REGIME;
+        const between = (a, b) => {
+          const m1 = String(a || '').match(/^\d{4}-\d{2}-\d{2}$/);
+          const m2 = String(b || '').match(/^\d{4}-\d{2}-\d{2}$/);
+          if (!m1 || !m2) return NaN;
+          return Math.floor((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
+        };
+        const implied = (nh2, nh1v, d1, d2) => {
+          const dd = between(d1, d2);
+          const dv = Number(nh2) - Number(nh1v);
+          return Number.isFinite(dd) && dd > 0 && Number.isFinite(dv) ? Math.round(dv / dd) : NaN;
+        };
+
+        let regime = Number(body?.regime);
+        let regimeSource = 'manual';
+        if (!sane(regime)) {
+          regime = implied(entry?.prev_nh2_a, entry?.prev_nh1_dv, entry?.prev_date_dv, entry?.prev_date_a);
+          regimeSource = 'prev_state';
+        }
+        if (!sane(regime)) {
+          try {
+            const hist = await env.DB.prepare(
+              `SELECT nh_value, reading_date, prev_nh1_dv, prev_date_dv FROM nh_readings
+               WHERE site_id = ? ORDER BY reading_date DESC, created_at DESC LIMIT 20`
+            )
+              .bind(String(site.id))
+              .all();
+            for (const h of hist?.results || []) {
+              const r = implied(h?.nh_value, h?.prev_nh1_dv, h?.prev_date_dv, h?.reading_date);
+              if (sane(r)) { regime = r; regimeSource = 'history'; break; }
+            }
+          } catch {
+            // historique indisponible
+          }
+        }
+        if (!sane(regime) && sane(Number(site.regime))) {
+          regime = Number(site.regime);
+          regimeSource = 'stored';
+        }
+        if (!sane(regime)) {
+          return json(
+            { error: 'Régime indéterminable : choisissez un régime (1-24 H/J) avant la correction.' },
+            { status: 400 }
+          );
+        }
+        regime = Math.round(regime);
+
         const todayStr = ymdToday();
         const days = dateDV
           ? Math.floor((Date.parse(`${todayStr}T00:00:00Z`) - Date.parse(`${dateDV}T00:00:00Z`)) / 86400000)
@@ -147,7 +199,7 @@ export async function onRequestPost({ request, env, data, params }) {
           diff_estimated: diffEstimated,
           updated_at: now
         };
-        payload = { nh2A: nh, dateA: storedDateA || todayStr, autoCorrect: true, days, regime };
+        payload = { nh2A: nh, dateA: storedDateA || todayStr, autoCorrect: true, days, regime, regimeSource };
       }
 
       if (updatedSite === null) {

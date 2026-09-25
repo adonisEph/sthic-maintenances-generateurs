@@ -42,7 +42,19 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
     try {
       const res = await apiFetchJson('/api/nh-quarantine?status=pending', { method: 'GET' });
       setUnavailable(Boolean(res?.unavailable));
-      setItems(Array.isArray(res?.items) ? res.items : []);
+      const list = Array.isArray(res?.items) ? res.items : [];
+      setItems(list);
+      // Pré-remplir le régime des entrées parasitées avec la suggestion.
+      setForms((prev) => {
+        const next = { ...prev };
+        for (const it of list) {
+          if (it?.reason === 'parasite_high' && !(next[it.id]?.regime)) {
+            const s = suggestedRegime(it);
+            next[it.id] = { ...(next[it.id] || { nh2A: '', dateA: '', nh1DV: '', dateDV: '', regime: '' }), regime: s != null ? String(s) : '' };
+          }
+        }
+        return next;
+      });
     } catch (e) {
       setLoadError(e?.message || 'Erreur de chargement.');
     } finally {
@@ -57,9 +69,9 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
 
   if (!open) return null;
 
-  const getForm = (id) => forms[id] || { nh2A: '', dateA: '', nh1DV: '', dateDV: '' };
+  const getForm = (id) => forms[id] || { nh2A: '', dateA: '', nh1DV: '', dateDV: '', regime: '' };
   const setForm = (id, patch) =>
-    setForms((prev) => ({ ...prev, [id]: { ...(prev[id] || { nh2A: '', dateA: '', nh1DV: '', dateDV: '' }), ...patch } }));
+    setForms((prev) => ({ ...prev, [id]: { ...(prev[id] || { nh2A: '', dateA: '', nh1DV: '', dateDV: '', regime: '' }), ...patch } }));
 
   const treat = async (entry, action, extra = {}) => {
     setBusy((prev) => ({ ...prev, [entry.id]: true }));
@@ -88,14 +100,35 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
     }
   };
 
+  const saneRegime = (r) => Number.isFinite(Number(r)) && Number(r) >= 1 && Number(r) <= 24;
+
+  // Régime suggéré : implicite sur l'état pré-parasite (prev_*), sinon régime
+  // stocké sain. Le traitant peut l'ajuster avant d'appliquer (hybride B→C).
+  const suggestedRegime = (entry) => {
+    const nh2p = Number(entry?.prevNh2A);
+    const nh1p = Number(entry?.prevNh1DV);
+    const d1 = String(entry?.prevDateDV || '').slice(0, 10);
+    const d2 = String(entry?.prevDateA || '').slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d1) && /^\d{4}-\d{2}-\d{2}$/.test(d2)) {
+      const dd = Math.floor((Date.parse(`${d2}T00:00:00Z`) - Date.parse(`${d1}T00:00:00Z`)) / 86400000);
+      const dv = nh2p - nh1p;
+      if (dd > 0 && Number.isFinite(dv)) {
+        const r = Math.round(dv / dd);
+        if (saneRegime(r)) return r;
+      }
+    }
+    const rs = Number(entry?.siteRegime);
+    return saneRegime(rs) ? Math.round(rs) : null;
+  };
+
   // Valeur logique pour une entrée parasitée :
-  // nh2_a corrigé = nh1_dv + regime_site × jours(date_dv → aujourd'hui) ;
+  // nh2_a corrigé = nh1_dv + regime × jours(date_dv → aujourd'hui) ;
   // date_a du site inchangée.
-  const autoCorrectValue = (entry) => {
+  const autoCorrectValue = (entry, regime) => {
     const nh1 = Number(entry?.prevNh1DV);
-    const regime = Number(entry?.siteRegime);
+    const r = Number(regime);
     const dDv = String(entry?.prevDateDV || '').slice(0, 10);
-    if (!Number.isFinite(nh1) || !Number.isFinite(regime) || regime <= 0) return null;
+    if (!Number.isFinite(nh1) || !saneRegime(r)) return null;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dDv)) return null;
     const todayStr = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Africa/Brazzaville',
@@ -105,19 +138,22 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
     }).format(new Date());
     const days = Math.floor((Date.parse(`${todayStr}T00:00:00Z`) - Date.parse(`${dDv}T00:00:00Z`)) / 86400000);
     if (!Number.isFinite(days) || days < 0) return null;
-    return { nh2A: nh1 + regime * days, days };
+    return { nh2A: nh1 + Math.round(r) * days, regime: Math.round(r), days };
   };
 
-  // "Corriger auto" : calcule la valeur logique, la charge dans le formulaire,
-  // puis laisse le serveur recalculer/appliquer de façon autoritaire.
+  // "Corriger auto" : le régime choisi (champ) prime ; à défaut le serveur
+  // dérive l'historique. La valeur logique est chargée dans le formulaire.
   const handleAutoCorrect = (entry) => {
-    const v = autoCorrectValue(entry);
+    const f = getForm(entry.id);
+    const chosen = Number(String(f.regime ?? '').trim());
+    const regime = saneRegime(chosen) ? Math.round(chosen) : suggestedRegime(entry);
+    const v = autoCorrectValue(entry, regime);
     if (!v) {
-      setResults((prev) => ({ ...prev, [entry.id]: { error: 'Correction auto impossible (régime/date_dv manquants).' } }));
+      setResults((prev) => ({ ...prev, [entry.id]: { error: 'Correction auto impossible : régime indéterminable ou date_dv manquante.' } }));
       return;
     }
-    setForm(entry.id, { nh2A: String(v.nh2A) });
-    treat(entry, 'correct', { autoCorrect: true });
+    setForm(entry.id, { nh2A: String(v.nh2A), regime: String(v.regime) });
+    treat(entry, 'correct', { autoCorrect: true, regime: v.regime });
   };
 
   const handleCorrect = (entry) => {
@@ -283,15 +319,19 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
                 )}
 
                 {entry.reason === 'parasite_high' && (() => {
-                  const v = autoCorrectValue(entry);
-                  return v ? (
+                  const chosen = Number(String(getForm(entry.id).regime ?? '').trim());
+                  const regime = saneRegime(chosen) ? Math.round(chosen) : suggestedRegime(entry);
+                  const v = autoCorrectValue(entry, regime);
+                  return (
                     <div className="text-[11px] bg-indigo-50 border border-indigo-200 rounded px-2 py-1.5 mb-2 text-indigo-800">
-                      Valeur logique suggérée : <span className="font-bold">{v.nh2A} H</span>
-                      <span className="text-indigo-600"> = {entry.prevNh1DV} (NH1 DV) + {entry.siteRegime} H/J × {v.days} j depuis la vidange</span>
-                    </div>
-                  ) : (
-                    <div className="text-[11px] bg-gray-100 border border-gray-200 rounded px-2 py-1.5 mb-2 text-gray-600">
-                      Correction auto indisponible : régime ou date_dv manquant.
+                      {v ? (
+                        <>
+                          Valeur logique suggérée : <span className="font-bold">{v.nh2A} H</span>
+                          <span className="text-indigo-600"> = {entry.prevNh1DV} (NH1 DV) + {v.regime} H/J × {v.days} j depuis la vidange</span>
+                        </>
+                      ) : (
+                        <span className="text-gray-600">Correction auto indisponible : régime indéterminable ou date_dv manquante.</span>
+                      )}
                     </div>
                   );
                 })()}
@@ -319,8 +359,23 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
                         disabled={isBusy}
                       />
                     </div>
+                    {entry.reason === 'parasite_high' && (
+                      <div className="w-20 flex-shrink-0">
+                        <label className="text-[10px] text-gray-500 block mb-0.5">Régime H/J</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="24"
+                          value={f.regime}
+                          onChange={(e) => setForm(entry.id, { regime: e.target.value })}
+                          placeholder={(() => { const s = suggestedRegime(entry); return s != null ? String(s) : '?'; })()}
+                          className="border border-indigo-300 rounded-lg px-2 py-1.5 text-sm w-full"
+                          disabled={isBusy}
+                        />
+                      </div>
+                    )}
                     <div className="flex gap-1.5 flex-shrink-0">
-                      {entry.reason === 'parasite_high' && autoCorrectValue(entry) ? (
+                      {entry.reason === 'parasite_high' && autoCorrectValue(entry, saneRegime(Number(f.regime)) ? Number(f.regime) : suggestedRegime(entry)) ? (
                         <button
                           onClick={() => handleAutoCorrect(entry)}
                           disabled={isBusy}
