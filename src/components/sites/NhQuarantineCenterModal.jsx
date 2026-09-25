@@ -144,16 +144,18 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
   // "Corriger auto" : le régime choisi (champ) prime ; à défaut le serveur
   // dérive l'historique. La valeur logique est chargée dans le formulaire.
   const handleAutoCorrect = (entry) => {
+    const dDv = String(entry?.prevDateDV || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dDv)) {
+      setResults((prev) => ({ ...prev, [entry.id]: { error: 'Correction auto impossible : date_dv manquante.' } }));
+      return;
+    }
     const f = getForm(entry.id);
     const chosen = Number(String(f.regime ?? '').trim());
     const regime = saneRegime(chosen) ? Math.round(chosen) : suggestedRegime(entry);
     const v = autoCorrectValue(entry, regime);
-    if (!v) {
-      setResults((prev) => ({ ...prev, [entry.id]: { error: 'Correction auto impossible : régime indéterminable ou date_dv manquante.' } }));
-      return;
-    }
-    setForm(entry.id, { nh2A: String(v.nh2A), regime: String(v.regime) });
-    treat(entry, 'correct', { autoCorrect: true, regime: v.regime });
+    if (v) setForm(entry.id, { nh2A: String(v.nh2A), regime: String(v.regime) });
+    // Sans régime résoluble côté client, le serveur tente l'historique nh_readings.
+    treat(entry, 'correct', v ? { autoCorrect: true, regime: v.regime } : { autoCorrect: true });
   };
 
   const handleCorrect = (entry) => {
@@ -322,6 +324,7 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
                   const chosen = Number(String(getForm(entry.id).regime ?? '').trim());
                   const regime = saneRegime(chosen) ? Math.round(chosen) : suggestedRegime(entry);
                   const v = autoCorrectValue(entry, regime);
+                  const hasDateDv = /^\d{4}-\d{2}-\d{2}$/.test(String(entry?.prevDateDV || '').slice(0, 10));
                   return (
                     <div className="text-[11px] bg-indigo-50 border border-indigo-200 rounded px-2 py-1.5 mb-2 text-indigo-800">
                       {v ? (
@@ -329,8 +332,12 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
                           Valeur logique suggérée : <span className="font-bold">{v.nh2A} H</span>
                           <span className="text-indigo-600"> = {entry.prevNh1DV} (NH1 DV) + {v.regime} H/J × {v.days} j depuis la vidange</span>
                         </>
+                      ) : !hasDateDv ? (
+                        <span className="text-gray-600">Correction auto indisponible : date_dv manquante.</span>
                       ) : (
-                        <span className="text-gray-600">Correction auto indisponible : régime indéterminable ou date_dv manquante.</span>
+                        <span className="text-indigo-700">
+                          Régime non suggérable (état stocké corrompu) — saisissez le régime (1–24) dans le champ, ou cliquez "Corriger auto" : le serveur tentera de le déduire de l'historique des relevés.
+                        </span>
                       )}
                     </div>
                   );
@@ -375,7 +382,7 @@ const NhQuarantineCenterModal = ({ open, onClose, apiFetchJson, onRefresh, canFi
                       </div>
                     )}
                     <div className="flex gap-1.5 flex-shrink-0">
-                      {entry.reason === 'parasite_high' && autoCorrectValue(entry, saneRegime(Number(f.regime)) ? Number(f.regime) : suggestedRegime(entry)) ? (
+                      {entry.reason === 'parasite_high' && /^\d{4}-\d{2}-\d{2}$/.test(String(entry?.prevDateDV || '').slice(0, 10)) ? (
                         <button
                           onClick={() => handleAutoCorrect(entry)}
                           disabled={isBusy}
