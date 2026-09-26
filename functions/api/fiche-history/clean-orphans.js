@@ -4,11 +4,14 @@ import { touchLastUpdatedAt } from '../_utils/meta.js';
 
 // Nettoyage des fiches orphelines : une fiche restée ouverte (ni 'Annulée' ni
 // 'Effectuée') alors que la vidange correspondante est déjà terminée. Deux cas :
-//   A) la fiche pointe vers une intervention clôturée (done/non_fait)
+//   A) la fiche pointe vers une intervention 'done' (vidange effectuée sans
+//      consommer ce ticket). 'non_fait' ne compte PAS : une campagne clôturée
+//      ne prouve pas la vidange — le ticket colis peut être encore en attente.
 //   B) une autre fiche 'Effectuée' plus récente existe pour le même site + EPV
 //      (le ticket affiché aux techniciens a été clôturé via un autre ticket)
-// Les fiches ouvertes SANS intervention ni doublon effectué sont conservées :
-// ce sont des tickets de travail légitimes en attente.
+// Les fiches ouvertes SANS preuve de vidange effectuée sont conservées — y
+// compris les tickets "Colis Kits Vidanges" (envoyés par le magasinier aux
+// techniciens éloignés, valables même si EPV/date décalés).
 //
 // Body : { zone?: 'BZV/POOL'|..., dryRun?: bool }
 // - superadmin : zone optionnelle (toutes si absente) ; autres rôles : zone forcée
@@ -16,7 +19,7 @@ import { touchLastUpdatedAt } from '../_utils/meta.js';
 const OPEN = "(f.status IS NULL OR f.status NOT IN ('Annulée', 'Effectuée'))";
 const ORPHAN_CLOSED_INT = `EXISTS (
     SELECT 1 FROM interventions i
-    WHERE i.id = f.intervention_id AND i.status IN ('done', 'non_fait')
+    WHERE i.id = f.intervention_id AND i.status = 'done'
   )`;
 const ORPHAN_SUPERSEDED = `EXISTS (
     SELECT 1 FROM fiche_history g
@@ -26,21 +29,6 @@ const ORPHAN_SUPERSEDED = `EXISTS (
         g.date_completed >= f.date_generated
         OR (f.planned_date IS NOT NULL AND g.planned_date IS f.planned_date)
       )
-  )`;
-// Périmées (option includeStale) : ticket jamais consommable —
-//   C1) site retiré (vidange bloquée sur site retiré)
-//   C2) epv_type hors EPV1/2/3 (EPV4+, jamais dû — artéfacts de génération en masse)
-//   C3) date_dv du site postérieure à la date planifiée du ticket
-//       (la vidange a eu lieu sans consommer ce ticket)
-const STALE_SELECT = `(
-    s.retired = 1
-    OR (f.epv_type IS NOT NULL AND f.epv_type <> '' AND f.epv_type NOT IN ('EPV1', 'EPV2', 'EPV3'))
-    OR (s.date_dv IS NOT NULL AND f.planned_date IS NOT NULL AND s.date_dv > f.planned_date)
-  )`;
-const STALE_UPDATE = `(
-    EXISTS (SELECT 1 FROM sites st WHERE st.id = f.site_id AND st.retired = 1)
-    OR (f.epv_type IS NOT NULL AND f.epv_type <> '' AND f.epv_type NOT IN ('EPV1', 'EPV2', 'EPV3'))
-    OR EXISTS (SELECT 1 FROM sites st WHERE st.id = f.site_id AND st.date_dv IS NOT NULL AND f.planned_date IS NOT NULL AND st.date_dv > f.planned_date)
   )`;
 
 export async function onRequestPost({ request, env, data }) {
@@ -55,7 +43,6 @@ export async function onRequestPost({ request, env, data }) {
 
     const body = await readJson(request);
     const dryRun = Boolean(body?.dryRun);
-    const includeStale = Boolean(body?.includeStale);
 
     // Zone : managers/admin non-superadmin confinés à leur zone (jointure sites).
     let zoneClause = '';
@@ -80,13 +67,6 @@ export async function onRequestPost({ request, env, data }) {
 
     if (dryRun) {
       const row = await env.DB.prepare(`SELECT COUNT(*) AS n ${baseWhere}`).bind(...zoneBinds).first();
-      const staleRow = await env.DB.prepare(
-        `SELECT COUNT(*) AS n FROM fiche_history f
-         JOIN sites s ON s.id = f.site_id
-         WHERE ${OPEN} AND ${STALE_SELECT} AND NOT (${ORPHAN_CLOSED_INT} OR ${ORPHAN_SUPERSEDED})${zoneClause}`
-      )
-        .bind(...zoneBinds)
-        .first();
       const sample = await env.DB.prepare(
         `SELECT f.id, f.ticket_number, f.site_id, f.epv_type, f.planned_date, f.status ${baseWhere}
          ORDER BY f.site_id LIMIT 20`
@@ -98,7 +78,6 @@ export async function onRequestPost({ request, env, data }) {
           ok: true,
           dryRun: true,
           toCancel: Number(row?.n || 0),
-          staleOnly: Number(staleRow?.n || 0),
           sample: Array.isArray(sample?.results) ? sample.results : []
         },
         { status: 200 }
@@ -117,7 +96,7 @@ export async function onRequestPost({ request, env, data }) {
         `UPDATE fiche_history AS f
          SET status = 'Annulée',
              warehouse_flow_status = NULL,
-             cancel_reason = 'Fiche orpheline — intervention clôturée (done/non_fait)',
+             cancel_reason = 'Fiche orpheline — intervention clôturée (done)',
              updated_at = ?
          WHERE ${OPEN} AND ${ORPHAN_CLOSED_INT}${orphanZoneSub}`
       )
@@ -136,20 +115,6 @@ export async function onRequestPost({ request, env, data }) {
         .bind(now, ...zoneBinds)
         .run();
       cancelled += Number(resB?.meta?.changes || 0);
-
-      if (includeStale) {
-        const resC = await env.DB.prepare(
-          `UPDATE fiche_history AS f
-           SET status = 'Annulée',
-               warehouse_flow_status = NULL,
-               cancel_reason = 'Fiche périmée — site retiré, EPV invalide ou vidange déjà effectuée',
-               updated_at = ?
-           WHERE ${OPEN} AND ${STALE_UPDATE}${orphanZoneSub}`
-        )
-          .bind(now, ...zoneBinds)
-          .run();
-        cancelled += Number(resC?.meta?.changes || 0);
-      }
     } catch (e) {
       // Compat pré-migration 0034 : colonne cancel_reason absente → sans motif.
       if (!String(e?.message || '').toLowerCase().includes('cancel_reason')) throw e;
@@ -170,17 +135,6 @@ export async function onRequestPost({ request, env, data }) {
         .bind(now, ...zoneBinds)
         .run();
       cancelled += Number(resB?.meta?.changes || 0);
-
-      if (includeStale) {
-        const resC = await env.DB.prepare(
-          `UPDATE fiche_history AS f
-           SET status = 'Annulée', warehouse_flow_status = NULL, updated_at = ?
-           WHERE ${OPEN} AND ${STALE_UPDATE}${orphanZoneSub}`
-        )
-          .bind(now, ...zoneBinds)
-          .run();
-        cancelled += Number(resC?.meta?.changes || 0);
-      }
     }
 
     if (cancelled > 0) {

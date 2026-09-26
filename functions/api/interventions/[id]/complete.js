@@ -130,10 +130,10 @@ export async function onRequestPost({ request, env, data, params }) {
       .bind(intervention.id)
       .first();
 
-    // Fallback élargi : fiche OUVERTE du même site (EPV identique ou fiche
-    // générique), même si sa date planifiée diffère ou si elle pointe vers un
-    // autre record d'intervention encore ouvert (doublon). C'est le ticket
-    // généré par le manager : il doit être clôturé, pas orpheliné.
+    // Fallback élargi : fiche OUVERTE du même site. Priorité à l'EPV/date
+    // correspondants, mais tout ticket ouvert peut être consommé — les fiches
+    // "Colis Kits Vidanges" portent parfois un label EPV décalé (EPV4+, N/A)
+    // alors qu'elles matérialisent la prochaine vidange du site.
     let relatedFallbackFiche = null;
     let orphanInterventionId = null;
     if (!relatedFicheByIntervention?.id) {
@@ -143,11 +143,25 @@ export async function onRequestPost({ request, env, data, params }) {
          FROM fiche_history fh
          WHERE fh.site_id = ?
            AND (fh.status IS NULL OR fh.status NOT IN ('Annulée', 'Effectuée'))
-           AND (fh.epv_type IS NULL OR fh.epv_type = '' OR ? = '' OR fh.epv_type = ?)
-         ORDER BY CASE WHEN fh.planned_date IS ? THEN 0 ELSE 1 END, fh.created_at DESC
-         LIMIT 5`
+         ORDER BY
+           CASE
+             WHEN fh.epv_type IS ? AND fh.planned_date IS ? THEN 0
+             WHEN fh.epv_type IS ? THEN 1
+             WHEN fh.epv_type IS NULL OR fh.epv_type = '' THEN 2
+             ELSE 3
+           END,
+           CASE WHEN fh.planned_date IS NULL THEN 1 ELSE 0 END,
+           fh.planned_date ASC,
+           fh.created_at DESC
+         LIMIT 10`
       )
-        .bind(site.id, epv, epv, intervention.planned_date || null)
+        .bind(
+          site.id,
+          epv || null,
+          intervention.planned_date || null,
+          epv || null,
+          intervention.planned_date || null
+        )
         .all();
       const candidates = Array.isArray(res?.results) ? res.results : [];
       for (const f of candidates) {
