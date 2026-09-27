@@ -329,18 +329,24 @@ const InterventionsModal = ({
       const epv2 = norm(site?.epv2);
       const epv3 = norm(site?.epv3);
 
-      if (epv1 || epv2 || epv3) {
-        add(site, 'EPV1', epv1);
-        add(site, 'EPV2', epv2);
-        add(site, 'EPV3', epv3);
-        return;
+      let dates = [epv1, epv2, epv3];
+      if (!epv1 && !epv2 && !epv3) {
+        const nhEstimated = calculateEstimatedNH(site?.nh2A, site?.dateA, site?.regime);
+        const epvDates = calculateEPVDates(site?.regime, site?.dateA, site?.nh1DV, nhEstimated, site?.seuil);
+        dates = [norm(epvDates?.epv1), norm(epvDates?.epv2), norm(epvDates?.epv3)];
       }
 
-      const nhEstimated = calculateEstimatedNH(site?.nh2A, site?.dateA, site?.regime);
-      const epvDates = calculateEPVDates(site?.regime, site?.dateA, site?.nh1DV, nhEstimated, site?.seuil);
-      add(site, 'EPV1', epvDates?.epv1);
-      add(site, 'EPV2', epvDates?.epv2);
-      add(site, 'EPV3', epvDates?.epv3);
+      // Même règle que getSitePassages : les dates calculées sont les 3
+      // prochaines vidanges depuis la baseline — les types EPV non faits
+      // prennent les dates dans l'ordre (epv1 = vraie prochaine date).
+      const sid = String(site?.id || '').trim();
+      const done = doneEpvBySiteId instanceof Map ? doneEpvBySiteId.get(sid) : null;
+      const pendingTypes = ['EPV1', 'EPV2', 'EPV3'].filter(
+        (t) => !(currentCampaignMonth && done && String(done?.[t] || '').trim())
+      );
+      pendingTypes.forEach((t, i) => {
+        if (dates[i]) add(site, t, dates[i]);
+      });
     });
 
     // Records orphelins : jamais masqués — un record réel sans événement EPV
@@ -441,21 +447,22 @@ const InterventionsModal = ({
   };
 
   // Suggestion : prochain slot EPV non fait du site (même logique que "Fiches")
-  // + date décalée jours ouvrés.
+  // + date décalée jours ouvrés. Les dates epv1/2/3 sont les prochaines
+  // vidanges : le premier type non fait prend epv1 (vraie prochaine date).
   const suggestDispatchForSite = (site) => {
     const sid = String(site?.id || '');
     const done = doneEpvBySiteId instanceof Map ? doneEpvBySiteId.get(sid) : null;
-    const slots = ['EPV1', 'EPV2', 'EPV3']
-      .map((t) => {
-        const raw = t === 'EPV1' ? site?.epv1 : t === 'EPV2' ? site?.epv2 : site?.epv3;
-        const src = String(raw || '').slice(0, 10);
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(src)) return null;
-        const shifted = typeof ymdShiftForWorkdays === 'function' ? ymdShiftForWorkdays(src) : '';
-        return { type: t, date: String(shifted || src).slice(0, 10), done: Boolean(done?.[t]) };
-      })
-      .filter(Boolean);
-    const pick = slots.find((s) => !s.done) || slots[0] || null;
-    return { epvType: pick?.type || 'EPV1', date: pick?.date || today };
+    const dates = [site?.epv1, site?.epv2, site?.epv3];
+    const pending = ['EPV1', 'EPV2', 'EPV3'].filter(
+      (t) => !(done && String(done?.[t] || '').trim())
+    );
+    const pickType = pending[0] || 'EPV1';
+    const src = String(dates[0] || '').slice(0, 10);
+    const shifted =
+      /^\d{4}-\d{2}-\d{2}$/.test(src) && typeof ymdShiftForWorkdays === 'function'
+        ? ymdShiftForWorkdays(src)
+        : '';
+    return { epvType: pickType, date: String(shifted || src || today).slice(0, 10) };
   };
 
   const onDispatchSiteChange = (siteId) => {
@@ -470,7 +477,13 @@ const InterventionsModal = ({
   const onDispatchEpvChange = (t) => {
     setDispatchEpvType(t);
     const site = siteById.get(String(dispatchSiteId)) || null;
-    const raw = t === 'EPV1' ? site?.epv1 : t === 'EPV2' ? site?.epv2 : site?.epv3;
+    const done = doneEpvBySiteId instanceof Map ? doneEpvBySiteId.get(String(site?.id || '')) : null;
+    const dates = [site?.epv1, site?.epv2, site?.epv3];
+    const pending = ['EPV1', 'EPV2', 'EPV3'].filter(
+      (x) => !(done && String(done?.[x] || '').trim())
+    );
+    const pIdx = pending.indexOf(t);
+    const raw = pIdx >= 0 ? dates[pIdx] : t === 'EPV1' ? site?.epv1 : t === 'EPV2' ? site?.epv2 : site?.epv3;
     const src = String(raw || '').slice(0, 10);
     if (/^\d{4}-\d{2}-\d{2}$/.test(src)) {
       const shifted = typeof ymdShiftForWorkdays === 'function' ? ymdShiftForWorkdays(src) : '';

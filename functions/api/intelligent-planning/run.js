@@ -732,7 +732,11 @@ export async function onRequestPost({ request, env, data }) {
       const seeded = clampToMonthWorkday(rawSeed, workdays);
       const startIdx = Number(workdayIndex.get(seeded) ?? 0);
 
-      const effectiveStartIdx = Math.min(startIdx, workdayCursorIdx);
+      // Site déclaré "vidangé ce mois-ci" : sa baseline est simulée → le seed
+      // est sa VRAIE date projetée. On l'épingle (le curseur ne doit pas
+      // l'aspirer plus tôt) — sinon la déclaration perdrait son effet.
+      const pinnedToSeed = Boolean(String(urgentSite?.assumedDoneAt || '').trim());
+      const effectiveStartIdx = pinnedToSeed ? startIdx : Math.min(startIdx, workdayCursorIdx);
 
       // Anti-conflict: cadence enforcement by number of sites planned that day.
       // A pair consumes 2 slots; a single-site visit consumes 1 slot.

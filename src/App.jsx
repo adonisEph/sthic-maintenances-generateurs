@@ -52,7 +52,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.15.6';
+const APP_VERSION = '6.15.7';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -6540,18 +6540,19 @@ useEffect(() => {
       });
     });
 
-    // 2) Pending passages — slots EPV non couverts par une fiche effectuée
-    const epvPending = [
-      ['EPV1', epvDates?.epv1],
-      ['EPV2', epvDates?.epv2],
-      ['EPV3', epvDates?.epv3]
-    ];
-    for (const [type, date] of epvPending) {
-      if (doneTypes.has(type)) continue;
+    // 2) Pending passages — les dates epv1/2/3 calculées sont les 3 PROCHAINES
+    // vidanges depuis la baseline courante. Après un passage effectué, la
+    // séquence se décale : les types non faits reçoivent les dates dans
+    // l'ordre (epv1 = vraie prochaine date), pas la date de leur propre
+    // index — sinon un site dont la vidange est déjà due paraît à jour.
+    const pendingTypes = ['EPV1', 'EPV2', 'EPV3'].filter((t) => !doneTypes.has(t));
+    const pendingDates = [epvDates?.epv1, epvDates?.epv2, epvDates?.epv3];
+    pendingTypes.forEach((type, i) => {
+      const date = pendingDates[i];
       if (date && date !== 'N/A') {
         allPassages.push({ type, date, done: false });
       }
-    }
+    });
 
     return allPassages;
   };
