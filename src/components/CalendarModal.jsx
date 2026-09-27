@@ -79,6 +79,10 @@ const CalendarModal = (props) => {
   const [intelligentExportBusy, setIntelligentExportBusy] = useState(false);
   const [intelligentGeneratedAt, setIntelligentGeneratedAt] = useState('');
   const [allZonePlans, setAllZonePlans] = useState([]);
+  const [showPendingVidanges, setShowPendingVidanges] = useState(false);
+  const [pendingVidangeSites, setPendingVidangeSites] = useState([]);
+  const [pendingVidangeDecl, setPendingVidangeDecl] = useState({});
+  const [pendingDeclError, setPendingDeclError] = useState('');
 
   const [wizardHolidayDate, setWizardHolidayDate] = useState('');
   const [wizardHolidayLabel, setWizardHolidayLabel] = useState('');
@@ -326,6 +330,43 @@ const CalendarModal = (props) => {
     setShowIntelligentWizard(true);
   };
 
+  const executeIntelligentRun = async (pendingVidanges) => {
+    const op = startOperation('Génération du planning intelligent…', 'Construction des interventions et du snapshot PM.');
+    let resp;
+    try {
+      resp = await fetch('/api/intelligent-planning/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ technicianUserId: intelligentTechUserId, pendingVidanges })
+      });
+    } catch (e) {
+      op.dismiss();
+      throw e;
+    }
+    const raw = await resp.text();
+    const data = raw ? JSON.parse(raw) : null;
+    if (!resp.ok) {
+      op.dismiss();
+      throw new Error(data?.error || 'Erreur génération planning intelligent.');
+    }
+    const st = data?.stats || {};
+    op.done(
+      `Jours ouvrés: ${st.workdays ?? '?'} • Snapshot: ${st.snapshotInserted ?? '?'} • Interventions: ${st.interventionsUpserted ?? '?'}${
+        pendingVidanges.length ? ` • ${pendingVidanges.length} vidange(s) déclarée(s)` : ''
+      }`
+    );
+
+    setIntelligentDoneTechIds((prev) => {
+      const next = new Set(prev);
+      next.add(String(intelligentTechUserId));
+      return next;
+    });
+    setIntelligentLastStats(data?.stats || null);
+    loadIntelligentProgress();
+  };
+
+  // Étape 1 : détecte les sites du technicien pas encore vidangés ce mois-ci.
+  // S'il y en a → popup de déclaration ; sinon → run direct.
   const runIntelligentForTechnician = async () => {
     setPlanningBusy(true);
     setIntelligentError('');
@@ -335,36 +376,51 @@ const CalendarModal = (props) => {
         setIntelligentError('Veuillez sélectionner un technicien.');
         return;
       }
-      const op = startOperation('Génération du planning intelligent…', 'Construction des interventions et du snapshot PM.');
-      let resp;
-      try {
-        resp = await fetch('/api/intelligent-planning/run', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ technicianUserId: intelligentTechUserId })
-        });
-      } catch (e) {
-        op.dismiss();
-        throw e;
-      }
+      const resp = await fetch('/api/intelligent-planning/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ technicianUserId: intelligentTechUserId, detectPending: true })
+      });
       const raw = await resp.text();
       const data = raw ? JSON.parse(raw) : null;
-      if (!resp.ok) {
-        op.dismiss();
-        throw new Error(data?.error || 'Erreur génération planning intelligent.');
+      if (!resp.ok) throw new Error(data?.error || 'Erreur détection des vidanges en attente.');
+      const pending = Array.isArray(data?.pendingSites) ? data.pendingSites : [];
+      if (pending.length > 0) {
+        const decl = {};
+        for (const s of pending) decl[String(s.siteId)] = { checked: false, date: '' };
+        setPendingVidangeSites(pending);
+        setPendingVidangeDecl(decl);
+        setPendingDeclError('');
+        setShowPendingVidanges(true);
+        return;
       }
-      const st = data?.stats || {};
-      op.done(
-        `Jours ouvrés: ${st.workdays ?? '?'} • Snapshot: ${st.snapshotInserted ?? '?'} • Interventions: ${st.interventionsUpserted ?? '?'}`
-      );
+      await executeIntelligentRun([]);
+    } catch (e) {
+      setIntelligentError(e?.message || 'Erreur génération planning intelligent.');
+    } finally {
+      setPlanningBusy(false);
+    }
+  };
 
-      setIntelligentDoneTechIds((prev) => {
-        const next = new Set(prev);
-        next.add(String(intelligentTechUserId));
-        return next;
-      });
-      setIntelligentLastStats(data?.stats || null);
-      loadIntelligentProgress();
+  // Étape 2 : le manager confirme les déclarations → run avec baseline simulée.
+  const confirmPendingVidanges = async () => {
+    const declared = [];
+    for (const s of pendingVidangeSites) {
+      const d = pendingVidangeDecl[String(s.siteId)] || {};
+      if (d.checked) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d.date || ''))) {
+          setPendingDeclError(`Date de vidange manquante pour ${s.nameSite || s.siteCode}.`);
+          return;
+        }
+        declared.push({ siteId: String(s.siteId), doneDate: String(d.date).slice(0, 10) });
+      }
+    }
+    setPendingDeclError('');
+    setShowPendingVidanges(false);
+    setPlanningBusy(true);
+    setIntelligentError('');
+    try {
+      await executeIntelligentRun(declared);
     } catch (e) {
       setIntelligentError(e?.message || 'Erreur génération planning intelligent.');
     } finally {
@@ -1241,6 +1297,112 @@ const CalendarModal = (props) => {
 
         <div className="p-3 border-t bg-white" />
       </div>
+
+      {showPendingVidanges && (() => {
+        const n = new Date();
+        const todayYmd = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+        const last = new Date(n.getFullYear(), n.getMonth() + 1, 0);
+        const monthEndYmd = `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
+        const setDecl = (siteId, patch) =>
+          setPendingVidangeDecl((prev) => ({ ...prev, [siteId]: { ...(prev[siteId] || { checked: false, date: '' }), ...patch } }));
+        return (
+          <div className="fixed inset-0 z-[80] bg-black/50 flex items-center justify-center p-3 sm:p-6">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+              <div className="flex items-start justify-between p-4 border-b border-indigo-100">
+                <div>
+                  <div className="text-sm font-bold text-indigo-900 flex items-center gap-2">
+                    <Calendar size={16} />
+                    Vidanges du mois en cours — déclarations
+                  </div>
+                  <div className="text-[11px] text-gray-600 mt-1 max-w-xl">
+                    Ces sites n'ont pas encore été vidangés ce mois-ci. Pour chacun, indiquez si la vidange
+                    <b> sera réalisée avant la fin du mois</b> (et à quelle date) : elle sera alors simulée et le site
+                    sera positionné dans la campagne cible à sa <b>vraie date projetée</b> (selon son régime).
+                    Les sites non cochés restent prioritaires et seront placés tôt dans le planning cible.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPendingVidanges(false)}
+                  className="text-gray-400 hover:text-gray-700 ml-3"
+                  title="Annuler"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                {pendingVidangeSites.map((s) => {
+                  const sid = String(s.siteId);
+                  const d = pendingVidangeDecl[sid] || { checked: false, date: '' };
+                  return (
+                    <div key={sid} className={`border rounded-lg p-3 transition-colors ${d.checked ? 'border-indigo-300 bg-indigo-50/50' : 'border-gray-200 bg-white'}`}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="flex items-center gap-2 flex-1 min-w-[200px] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={d.checked}
+                            onChange={(e) => setDecl(sid, { checked: e.target.checked, date: e.target.checked ? d.date : '' })}
+                            className="w-4 h-4 accent-indigo-600"
+                          />
+                          <span className="text-sm font-semibold text-gray-900 truncate">{s.nameSite}</span>
+                          <span className="text-[10px] font-mono text-gray-500">{s.siteCode}</span>
+                        </label>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">
+                          {Array.isArray(s.missingEpv) ? s.missingEpv.join(' + ') : 'EPV'} en attente
+                        </span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 font-semibold">
+                          Régime H{Number(s.regime) || 0}
+                        </span>
+                      </div>
+                      {d.checked && (
+                        <div className="mt-2 flex flex-wrap items-center gap-2 pl-6">
+                          <span className="text-[11px] text-gray-600">Date de vidange prévue :</span>
+                          <input
+                            type="date"
+                            value={d.date}
+                            min={todayYmd}
+                            max={monthEndYmd}
+                            onChange={(e) => setDecl(sid, { date: e.target.value })}
+                            className="border border-indigo-200 rounded-lg px-2 py-1 text-sm bg-white text-gray-900"
+                          />
+                          <span className="text-[10px] text-gray-500">(entre aujourd'hui et le {monthEndYmd.split('-').reverse().join('/')})</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="p-4 border-t border-indigo-100">
+                {pendingDeclError && (
+                  <div className="mb-2 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded p-2 flex items-center gap-2">
+                    <AlertCircle size={14} />
+                    {pendingDeclError}
+                  </div>
+                )}
+                <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowPendingVidanges(false)}
+                    className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmPendingVidanges}
+                    disabled={planningBusy}
+                    className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60"
+                  >
+                    {planningBusy ? 'Construction...' : 'Générer le planning'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
     </div>
   );

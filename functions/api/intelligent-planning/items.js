@@ -23,6 +23,7 @@ function mapRow(r) {
     epv3: r.epv3,
     pairSiteCode: r.pair_site_code,
     pairSiteId: r.pair_site_id,
+    assumedDoneAt: r.assumed_done_at || null,
     createdAt: r.created_at,
     updatedAt: r.updated_at
   };

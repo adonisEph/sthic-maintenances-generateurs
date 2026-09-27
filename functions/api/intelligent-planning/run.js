@@ -452,7 +452,7 @@ async function upsertPlanSnapshot(env, { month, zone, items, createdBy }) {
   for (const it of items) {
     const id = newId();
     await env.DB.prepare(
-      'INSERT INTO intelligent_plan_items (id, plan_id, month, zone, site_id, site_code, site_name, region, short_description, number, assigned_to, technician_user_id, scheduled_wo_date, date_of_closing, state, epv2, epv3, pair_site_code, pair_site_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO intelligent_plan_items (id, plan_id, month, zone, site_id, site_code, site_name, region, short_description, number, assigned_to, technician_user_id, scheduled_wo_date, date_of_closing, state, epv2, epv3, pair_site_code, pair_site_id, assumed_done_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     )
       .bind(
         id,
@@ -474,6 +474,7 @@ async function upsertPlanSnapshot(env, { month, zone, items, createdBy }) {
         it.epv3 || null,
         it.pairSiteCode || null,
         it.pairSiteId || null,
+        it.assumedDoneAt || null,
         now,
         now
       )
@@ -585,6 +586,62 @@ export async function onRequestPost({ request, env, data }) {
       sites.map((s) => String(s?.id || '').trim()).filter(Boolean),
       sourceMonth
     );
+
+    // Mode détection (appelé avant le vrai run) : sites du technicien dont la
+    // vidange du mois courant n'est pas encore faite → le frontend affiche le
+    // popup de déclaration avant de relancer le run avec pendingVidanges.
+    if (body?.detectPending) {
+      const pendingSites = sites
+        .filter((s) => !s.retired)
+        .map((s) => {
+          const d = doneEpvBySiteIdSourceMonth.get(String(s.id)) || { EPV1: '', EPV2: '', EPV3: '' };
+          const missingEpv = ['EPV1', 'EPV2', 'EPV3'].filter((e) => !String(d[e] || '').trim());
+          if (!missingEpv.length) return null;
+          return {
+            siteId: String(s.id),
+            siteCode: s.idSite,
+            nameSite: s.nameSite,
+            missingEpv,
+            regime: Number(s.regime || 0)
+          };
+        })
+        .filter(Boolean);
+      return json({ ok: true, detectPending: true, sourceMonth, targetMonth, pendingSites }, { status: 200 });
+    }
+
+    // Déclarations pré-génération : vidanges du mois courant qui SERONT faites
+    // avant la campagne cible (popup manager). Baseline simulée par site :
+    // compteur projeté à doneDate → nh1' = nh2A + régime × jours(dateA→doneDate),
+    // et l'EPV en attente est marquée faite. Le tri de priorité et les seeds
+    // se recalculent alors sur l'état post-vidange : le site sort du bucket
+    // "urgent" et se place à sa vraie date projetée — dépendant du régime
+    // (un H16/H24 peut retomber tôt dans le mois cible, c'est correct).
+    const declaredDoneBySiteId = new Map();
+    for (const p of Array.isArray(body?.pendingVidanges) ? body.pendingVidanges : []) {
+      const sid = String(p?.siteId || '').trim();
+      const d = String(p?.doneDate || '').slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) declaredDoneBySiteId.set(sid, d);
+    }
+    if (declaredDoneBySiteId.size > 0) {
+      const monthEnd = `${sourceMonth}-${String(new Date(Date.UTC(curYear, curMonth, 0)).getUTCDate()).padStart(2, '0')}`;
+      for (const s of sites) {
+        const d = declaredDoneBySiteId.get(String(s.id));
+        if (!d) continue;
+        if (d < today || d > monthEnd) continue; // borne au reste du mois courant
+        const cur = doneEpvBySiteIdSourceMonth.get(String(s.id)) || { EPV1: '', EPV2: '', EPV3: '' };
+        if (cur.EPV1 && cur.EPV2 && cur.EPV3) continue; // rien de pending
+        const regime = Number(s.regime || 0);
+        const proj = Number(s.nh2A || 0) + regime * Math.max(0, daysBetweenYmd(String(s.dateA || '').slice(0, 10), d));
+        s.nh1DV = proj;
+        s.nh2A = proj;
+        s.dateA = d;
+        s.assumedDoneAt = d;
+        if (!cur.EPV1) cur.EPV1 = d;
+        else if (!cur.EPV2) cur.EPV2 = d;
+        else cur.EPV3 = d;
+        doneEpvBySiteIdSourceMonth.set(String(s.id), cur);
+      }
+    }
 
     // Build visits
     const siteById = new Map(sites.map((s) => [String(s.id), s]));
@@ -725,6 +782,7 @@ export async function onRequestPost({ request, env, data }) {
           scheduledWoDate: epv1,
           epv2,
           epv3,
+          assumedDoneAt: String(s?.assumedDoneAt || ''),
           pairSiteId: v.sites.length === 2 ? String(v.sites.find((x) => String(x) !== String(sid)) || '') : '',
           pairSiteCode: v.sites.length === 2 ? (siteById.get(String(v.sites.find((x) => String(x) !== String(sid))))?.idSite || '') : ''
         });
@@ -770,6 +828,7 @@ export async function onRequestPost({ request, env, data }) {
       state: '',
       epv2: a.epv2,
       epv3: a.epv3,
+      assumedDoneAt: a.assumedDoneAt || '',
       pairSiteCode: a.pairSiteCode,
       pairSiteId: a.pairSiteId
     }));
