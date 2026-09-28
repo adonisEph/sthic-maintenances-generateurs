@@ -587,25 +587,35 @@ export async function onRequestPost({ request, env, data }) {
       sourceMonth
     );
 
-    // Mode détection (appelé avant le vrai run) : sites du technicien dont la
-    // vidange du mois courant n'est pas encore faite → le frontend affiche le
-    // popup de déclaration avant de relancer le run avec pendingVidanges.
+    // Mode détection (appelé avant le vrai run) : sites du technicien dont une
+    // vidange est RÉELLEMENT due au plus tard à la fin du mois courant (échue
+    // ou à échoir) — pas encore couverte par un rebase. Le critère est la date
+    // EPV1 calculée depuis l'état réel (nh2_a/date_a/nh1_dv/régime), JAMAIS
+    // les labels EPV des fiches : un site vidangé une fois n'a pas 3 vidanges
+    // dues par mois, et un site sans échéance ce mois n'a rien à déclarer.
     if (body?.detectPending) {
+      const monthEndYmd = `${sourceMonth}-${String(new Date(Date.UTC(curYear, curMonth, 0)).getUTCDate()).padStart(2, '0')}`;
       const pendingSites = sites
         .filter((s) => !s.retired)
         .map((s) => {
-          const d = doneEpvBySiteIdSourceMonth.get(String(s.id)) || { EPV1: '', EPV2: '', EPV3: '' };
-          const missingEpv = ['EPV1', 'EPV2', 'EPV3'].filter((e) => !String(d[e] || '').trim());
-          if (!missingEpv.length) return null;
+          const regime = Number(s.regime || 0);
+          const seuilRaw = Number(s.seuil);
+          const seuil = Number.isFinite(seuilRaw) && seuilRaw > 0 ? seuilRaw : DEFAULT_SEUIL;
+          const nhEstimated = calculateEstimatedNH(Number(s.nh2A || 0), String(s.dateA || ''), regime);
+          const calculated = calculateEPVDates(regime, Number(s.nh1DV || 0), nhEstimated, seuil);
+          const nextDue = String(calculated?.epv1 || '').slice(0, 10);
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDue) || nextDue > monthEndYmd) return null;
           return {
             siteId: String(s.id),
             siteCode: s.idSite,
             nameSite: s.nameSite,
-            missingEpv,
-            regime: Number(s.regime || 0)
+            nextDue,
+            overdue: nextDue < today,
+            regime
           };
         })
-        .filter(Boolean);
+        .filter(Boolean)
+        .sort((a, b) => String(a.nextDue).localeCompare(String(b.nextDue)));
       return json({ ok: true, detectPending: true, sourceMonth, targetMonth, pendingSites }, { status: 200 });
     }
 

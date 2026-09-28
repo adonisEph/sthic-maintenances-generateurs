@@ -1315,7 +1315,7 @@ const CalendarModal = (props) => {
                     Vidanges du mois en cours — déclarations
                   </div>
                   <div className="text-[11px] text-gray-600 mt-1 max-w-xl">
-                    Ces sites n'ont pas encore été vidangés ce mois-ci. Pour chacun, indiquez si la vidange
+                    Ces sites ont une vidange <b>due ou en retard</b> avant la fin du mois en cours. Pour chacun, indiquez si la vidange
                     <b> sera réalisée avant la fin du mois</b> (et à quelle date) : elle sera alors simulée et le site
                     sera positionné dans la campagne cible à sa <b>vraie date projetée</b> (selon son régime).
                     Les sites non cochés restent prioritaires et seront placés tôt dans le planning cible.
@@ -1348,8 +1348,8 @@ const CalendarModal = (props) => {
                           <span className="text-sm font-semibold text-gray-900 truncate">{s.nameSite}</span>
                           <span className="text-[10px] font-mono text-gray-500">{s.siteCode}</span>
                         </label>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">
-                          {Array.isArray(s.missingEpv) ? s.missingEpv.join(' + ') : 'EPV'} en attente
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${s.overdue ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'}`}>
+                          {s.overdue ? 'En retard' : 'Échéance'} — due le {s.nextDue ? String(s.nextDue).split('-').reverse().join('/') : '?'}
                         </span>
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 font-semibold">
                           Régime H{Number(s.regime) || 0}
