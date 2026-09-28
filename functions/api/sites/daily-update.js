@@ -49,6 +49,7 @@ export async function onRequestPost({ env, data }) {
     let scanned = 0;
     let flagged = 0;
     let quarantineFailed = 0;
+    let autoDismissed = 0;
     const flaggedSamples = [];
     const byZone = {};
 
@@ -78,6 +79,9 @@ export async function onRequestPost({ env, data }) {
           if (flaggedSamples.length < 25) {
             flaggedSamples.push({ siteId, reason: check.reason, writeError: rec?.message || null });
           }
+        } else if (rec?.status === 'dismissed') {
+          // Site retiré : auto-classé (audit), pas de travail pending.
+          autoDismissed += 1;
         } else {
           flagged += 1;
           if (flaggedSamples.length < 25) {
@@ -122,6 +126,7 @@ export async function onRequestPost({ env, data }) {
       scannedCount: scanned,
       updatedByZone: byZone,
       quarantinedCount: flagged,
+      autoDismissedCount: autoDismissed,
       quarantineFailedCount: quarantineFailed,
       quarantinedSamples: flaggedSamples,
       lastUpdatedAt

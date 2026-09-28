@@ -3,6 +3,8 @@ import { calculateRegime, calculateEstimatedNH, calculateDiffNHs } from './calc.
 
 // Borne physique : un générateur ne peut pas tourner plus de 24 H/J.
 export const NH_MAX_REGIME = 24;
+/** Recul de compteur ≤ 1 journée max de consommation = bruit de relecture RMS (pas un reset). */
+export const NH_DECREASE_EPSILON_H = 24;
 
 // Dernière vidange "ancienne" (≈ 2 mois) : au-delà, un gros écart NH peut être
 // légitime (générateur ayant beaucoup tourné sans vidange) — le contrôle
@@ -130,9 +132,13 @@ export function evaluateNhCandidate(site, candidate, opts = {}) {
   if (Number.isFinite(nh1Dv) && dateDv) {
     const days = daysBetween(dateDv, dateA);
     const diff = nh - nh1Dv;
+    // Physiquement impossible : diff > 24 H/J × (jours + 1). La marge +1 jour
+    // absorbe la granularité des dates (vidange le soir vs relevé le matin) —
+    // sans elle un site fraîchement rebasé se re-quarantaine au relevé suivant.
+    const maxPlausible = Number.isFinite(days) ? NH_MAX_REGIME * (days + 1) : 0;
     const impliedRegime = days === null ? 0 : days > 0 ? diff / days : diff > 0 ? Infinity : 0;
     const staleDv = Number.isFinite(days) && days >= NH_STALE_DV_DAYS;
-    if (impliedRegime > NH_MAX_REGIME && !staleDv) {
+    if (Number.isFinite(days) && diff > maxPlausible && !staleDv) {
       return {
         verdict: 'quarantine',
         reason: 'parasite_high',
@@ -145,7 +151,13 @@ export function evaluateNhCandidate(site, candidate, opts = {}) {
     return { verdict: 'quarantine', reason: 'date_regression', ...base, detail: { prevDateA } };
   }
   if (Number.isFinite(prevNh2A) && nh < prevNh2A) {
-    return { verdict: 'quarantine', reason: 'decrease', ...base, detail: { prevNh2A } };
+    const drop = prevNh2A - nh;
+    // Micro-recul (≤ epsilon) : bruit de relecture RMS — ignoré, pas quarantainé.
+    // Un vrai reset (< nh1_dv) est déjà capturé par nh_below_dv plus haut.
+    if (drop <= NH_DECREASE_EPSILON_H) {
+      return { verdict: 'reject', reason: 'noise_decrease', ...base, detail: { prevNh2A, drop } };
+    }
+    return { verdict: 'quarantine', reason: 'decrease', ...base, detail: { prevNh2A, drop } };
   }
 
   return { verdict: 'apply', reason: 'ok', ...base };
@@ -177,9 +189,10 @@ export function evaluateStoredSite(site, opts = {}) {
   if (Number.isFinite(nh1Dv) && dateDv) {
     const days = daysBetween(dateDv, dateA);
     const diff = nh2A - nh1Dv;
+    const maxPlausible = Number.isFinite(days) ? NH_MAX_REGIME * (days + 1) : 0;
     const impliedRegime = days === null ? 0 : days > 0 ? diff / days : diff > 0 ? Infinity : 0;
     const staleDv = Number.isFinite(days) && days >= NH_STALE_DV_DAYS;
-    if (impliedRegime > NH_MAX_REGIME && !staleDv) {
+    if (Number.isFinite(days) && diff > maxPlausible && !staleDv) {
       return {
         verdict: 'quarantine',
         reason: 'parasite_high',
@@ -361,6 +374,15 @@ export async function recordQuarantine(env, site, entry, ctx = {}) {
   const userId = ctx?.user?.id ? String(ctx.user.id) : null;
   const userEmail = ctx?.user?.email ? String(ctx.user.email) : null;
 
+  // Site retiré : jamais de travail pending — le relevé est auto-classé
+  // (audit conservé, visible en Historique) au lieu de re-quarantainer le site
+  // à chaque import. Un site retiré n'a plus besoin de remise en cohérence.
+  const isRetired =
+    site?.retired === true || site?.retired === 1 ||
+    String(site?.retired || '').trim().toLowerCase() === 'true';
+  const autoStatus = isRetired ? 'dismissed' : 'pending';
+  const autoDetail = isRetired ? ` | auto_dismissed_retired` : '';
+
   try {
     const existing = await env.DB.prepare(
       "SELECT id FROM nh_quarantine WHERE site_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1"
@@ -368,11 +390,22 @@ export async function recordQuarantine(env, site, entry, ctx = {}) {
       .bind(String(site.id))
       .first();
 
-    if (existing?.id) {
+    // Retiré sans pending : réutiliser la dernière ligne classée au lieu
+    // d'empiler une ligne d'audit par import.
+    const existingDismissed = !existing?.id && isRetired
+      ? await env.DB.prepare(
+          "SELECT id FROM nh_quarantine WHERE site_id = ? AND status = 'dismissed' ORDER BY created_at DESC LIMIT 1"
+        )
+          .bind(String(site.id))
+          .first()
+      : null;
+
+    if (existing?.id || existingDismissed?.id) {
+      const rowId = String(existing?.id || existingDismissed?.id);
       await env.DB.prepare(
         `UPDATE nh_quarantine SET source = ?, reason = ?, proposed_nh2_a = ?, proposed_date_a = ?,
          prev_nh1_dv = ?, prev_date_dv = ?, prev_nh2_a = ?, prev_date_a = ?, prev_nh_offset = ?,
-         detail = ?, created_by_user_id = ?, created_by_email = ?, updated_at = ? WHERE id = ?`
+         detail = ?, status = ?, created_by_user_id = ?, created_by_email = ?, updated_at = ? WHERE id = ?`
       )
         .bind(
           String(entry?.source || ''),
@@ -384,14 +417,15 @@ export async function recordQuarantine(env, site, entry, ctx = {}) {
           prev.nh2A,
           prev.dateA,
           prev.nhOffset,
-          detailJson,
+          detailJson ? detailJson + autoDetail : autoDetail.trim() || null,
+          autoStatus,
           userId,
           userEmail,
           now,
-          String(existing.id)
+          rowId
         )
         .run();
-      return { id: String(existing.id), created: false };
+      return { id: rowId, created: false, status: autoStatus };
     }
 
     const id = newId();
@@ -400,7 +434,7 @@ export async function recordQuarantine(env, site, entry, ctx = {}) {
        (id, site_id, zone, source, reason, proposed_nh2_a, proposed_date_a,
         prev_nh1_dv, prev_date_dv, prev_nh2_a, prev_date_a, prev_nh_offset,
         detail, status, created_by_user_id, created_by_email, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
       .bind(
         id,
@@ -415,14 +449,15 @@ export async function recordQuarantine(env, site, entry, ctx = {}) {
         prev.nh2A,
         prev.dateA,
         prev.nhOffset,
-        detailJson,
+        detailJson ? detailJson + autoDetail : autoDetail.trim() || null,
+        autoStatus,
         userId,
         userEmail,
         now,
         now
       )
       .run();
-    return { id, created: true };
+    return { id, created: true, status: autoStatus };
   } catch (e) {
     // Jamais avalé en silence : l'appelant doit pouvoir signaler l'échec.
     return { id: null, created: false, error: true, message: e?.message || 'Écriture quarantaine impossible.' };

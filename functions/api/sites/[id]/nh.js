@@ -42,7 +42,8 @@ const QUARANTINE_MESSAGES = {
   future_date: 'Date de relevé dans le futur. Mise en quarantaine.',
   date_regression: 'Date de relevé antérieure au dernier relevé connu. Mise en quarantaine.',
   decrease: 'Compteur inférieur au dernier relevé connu. Mise en quarantaine.',
-  retired_site: 'Site retiré — relevé mis en quarantaine pour remise en cohérence manuelle.'
+  noise_decrease: 'Écart minime ignoré (bruit de relecture) — le dernier relevé connu est conservé.',
+  retired_site: 'Site retiré — relevé classé automatiquement (audit conservé, aucune action requise).'
 };
 
 export async function onRequestPost({ request, env, data, params }) {
@@ -89,7 +90,8 @@ export async function onRequestPost({ request, env, data, params }) {
     const verdict = evaluateNhCandidate(site, { nh2A: rawNh, dateA: readingDate });
 
     if (verdict.verdict === 'reject') {
-      return json({ error: 'Compteur (NH) ou date invalide.' }, { status: 400 });
+      const msg = QUARANTINE_MESSAGES[verdict.reason] || 'Compteur (NH) ou date invalide.';
+      return json({ error: msg, reason: verdict.reason }, { status: 400 });
     }
 
     // Site retiré : relevé systématiquement quarantiné (remise en cohérence
@@ -120,6 +122,7 @@ export async function onRequestPost({ request, env, data, params }) {
           quarantined: true,
           reason: effectiveVerdict.reason,
           quarantineId: rec?.id || null,
+          autoDismissed: rec?.status === 'dismissed',
           quarantinePersisted: !rec?.error,
           quarantineError: rec?.message || null,
           error: QUARANTINE_MESSAGES[effectiveVerdict.reason] || 'Valeur incohérente. Mise en quarantaine.'

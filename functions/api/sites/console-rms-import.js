@@ -58,6 +58,8 @@ export async function onRequestPost({ request, env, data }) {
     let ignoredBadDate = 0;
     let ignoredDateBeforeDv = 0;
     let ignoredDecrease = 0;
+    let ignoredNoiseDecrease = 0;
+    let autoDismissedRetired = 0;
     let ignoredMissingId = 0;
     let ignoredUnknownId = 0;
     let ignoredNhBelowDv = 0;
@@ -137,7 +139,8 @@ export async function onRequestPost({ request, env, data }) {
 
       if (effectiveVerdict.verdict === 'reject') {
         ignored += 1;
-        ignoredBadDate += 1;
+        if (effectiveVerdict.reason === 'noise_decrease') ignoredNoiseDecrease += 1;
+        else ignoredBadDate += 1;
         pushIgnoredSample(effectiveVerdict.reason, r, i, { normalizedIdSite: idSite });
         continue;
       }
@@ -165,6 +168,9 @@ export async function onRequestPost({ request, env, data }) {
             verdictReason: effectiveVerdict.reason,
             writeError: rec?.message || null
           });
+        } else if (rec?.status === 'dismissed') {
+          // Auto-classée (site retiré) : tracée en historique, zéro travail pending.
+          autoDismissedRetired += 1;
         } else {
           quarantined += 1;
           if (effectiveVerdict.reason === 'nh_below_dv') quarantinedNhBelowDv += 1;
@@ -209,6 +215,8 @@ export async function onRequestPost({ request, env, data }) {
         ignoredBadDate,
         ignoredDateBeforeDv,
         ignoredDecrease,
+        ignoredNoiseDecrease,
+        autoDismissedRetired,
         ignoredNhBelowDv,
         ignoredRetired,
         quarantinedNhBelowDv,

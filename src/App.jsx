@@ -52,7 +52,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.16.0';
+const APP_VERSION = '6.16.1';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -5887,6 +5887,8 @@ useEffect(() => {
         const ignoredBadDate = Number(res?.ignoredBadDate || 0);
         const ignoredDateBeforeDv = Number(res?.ignoredDateBeforeDv || 0);
         const ignoredDecrease = Number(res?.ignoredDecrease || 0);
+        const ignoredNoiseDecrease = Number(res?.ignoredNoiseDecrease || 0);
+        const autoDismissedRetired = Number(res?.autoDismissedRetired || 0);
         const ignoredNhBelowDv = Number(res?.ignoredNhBelowDv || 0);
         const quarantinedNhBelowDv = Number(res?.quarantinedNhBelowDv || 0);
         const quarantinedNhAbnormallyHigh = Number(res?.quarantinedNhAbnormallyHigh || 0);
@@ -5904,6 +5906,7 @@ useEffect(() => {
               (ignoredBadDate > 0 ? `- Date invalide/dans le futur: ${ignoredBadDate}\n` : '') +
               (ignoredDateBeforeDv > 0 ? `- Date A < Date DV: ${ignoredDateBeforeDv}\n` : '') +
               (ignoredDecrease > 0 ? `- Baisse NH bloquée: ${ignoredDecrease}\n` : '') +
+              (ignoredNoiseDecrease > 0 ? `- Micro-recul ignoré (bruit relecture): ${ignoredNoiseDecrease}\n` : '') +
               (ignoredNhBelowDv > 0 ? `- NH < NH1 DV: ${ignoredNhBelowDv}\n` : '')
             : '';
 
@@ -5940,7 +5943,8 @@ useEffect(() => {
           `Sites mis à jour: ${updated}\n` +
           `Lignes ignorées (ID inconnu / invalide): ${ignored}\n` +
           `Lignes sans valeur (NH2 A & Date A vides): ${skipped}\n` +
-          `Sites en quarantaine: ${quarantined}` +
+          `Sites en quarantaine: ${quarantined}\n` +
+          `Sites retirés auto-classés (audit, aucune action): ${autoDismissedRetired}` +
           (quarantineFailed > 0
             ? `\n⚠️ Incohérences NON persistées (erreur écriture quarantaine): ${quarantineFailed} — à vérifier.`
             : '') +
