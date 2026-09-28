@@ -52,7 +52,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.15.8';
+const APP_VERSION = '6.15.9';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -10340,8 +10340,8 @@ return (
                             <div className="text-xs font-semibold text-gray-800 break-words leading-tight">{site.diffEstimated}H</div>
                           </div>
                           <div className="bg-white rounded-lg border border-gray-200 p-2 text-center min-w-0">
-                            <div className="text-[10px] text-gray-500">Date updatée</div>
-                            <div className="text-xs font-semibold text-gray-800 break-words leading-tight" title={`Dernier relevé réel: ${formatDate(site.dateA)}`}>{formatDateTime(site.updatedAt)}</div>
+                            <div className="text-[10px] text-gray-500">Dernier relevé</div>
+                            <div className="text-xs font-semibold text-gray-800 break-words leading-tight" title={`Synchro (recalcul auto): ${formatDateTime(site.updatedAt)}`}>{formatDate(site.dateA) || '-'}</div>
                           </div>
                         </div>
 
