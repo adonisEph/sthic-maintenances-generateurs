@@ -1,4 +1,4 @@
-const CACHE = 'gmga-pwa-v84';
+const CACHE = 'gmga-pwa-v85';
 const CORE_ASSETS = ['/index.html', '/manifest.webmanifest', '/icon-192.svg', '/icon-512.svg'];
 
 self.addEventListener('install', (event) => {
@@ -56,7 +56,13 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/')) return;
   if (url.pathname === '/app-version.json') {
-    event.respondWith(fetch(req));
+    // Réseau-only, mais une réponse propre hors-ligne — évite le bruit
+    // net::ERR_FAILED dans la console quand la connexion tombe.
+    event.respondWith(
+      fetch(req).catch(
+        () => new Response('{"version":""}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+      )
+    );
     return;
   }
   if (

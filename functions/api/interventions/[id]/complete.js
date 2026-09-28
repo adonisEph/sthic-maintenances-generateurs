@@ -312,9 +312,9 @@ export async function onRequestPost({ request, env, data, params }) {
       )
         .bind(
           newId(),
-          String(siteRow?.zone || intervention?.zone || 'BZV/POOL'),
+          String(site?.zone || intervention?.zone || 'BZV/POOL'),
           'Vidange effectuée',
-          `${siteRow?.name_site || siteRow?.id_site || intervention.site_id} — ${String(intervention?.epv_type || 'EPV')} clôturée le ${doneDate} par ${String(data?.user?.email || 'inconnu')}`,
+          `${site?.name_site || site?.id_site || intervention.site_id} — ${String(intervention?.epv_type || 'EPV')} clôturée le ${doneDate} par ${String(data?.user?.email || 'inconnu')}`,
           String(intervention.site_id || ''),
           String(intervention.id),
           data?.user?.id ? String(data.user.id) : null,
@@ -483,6 +483,12 @@ export async function onRequestPost({ request, env, data, params }) {
 
     return json({ ok: true, epv: epvDates, site: updatedSite ? { id: updatedSite.id } : null }, { status: 200 });
   } catch (e) {
-    return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
+    return json(
+      {
+        error: e?.message || 'Erreur serveur.',
+        detail: String(e?.stack || '').split('\n').slice(0, 3).join(' | ')
+      },
+      { status: 500 }
+    );
   }
 }
