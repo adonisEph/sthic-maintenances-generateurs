@@ -201,19 +201,50 @@ export async function onRequestPost({ request, env, data, params }) {
       if (!Number.isFinite(Number(userNhNowRaw))) {
         return json({ error: 'Compteur (NH) invalide.' }, { status: 400 });
       }
-      // Compteur < NH1 DV : deepsea/générateur probablement changé → rebase explicite.
-      // Pas de blocage sec : la vidange est le canal autorisé à réécrire nh1_dv,
-      // mais le technicien doit confirmer le reset (allowRebase) — audit is_reset=1.
-      if (Number(site.nh1_dv) > nhNow && body?.allowRebase !== true) {
-        return json(
-          {
-            error: 'Le compteur (NH) est inférieur au NH1 DV du site — compteur/deepsea ou générateur probablement changé.',
-            code: 'nh_below_dv',
-            nh1Dv: Number(site.nh1_dv)
-          },
-          { status: 409 }
-        );
-      }
+    }
+
+    // Compteur < NH1 DV : deepsea/générateur probablement changé → rebase
+    // explicite pour TOUS les rôles (technicien, manager, admin). Pas de blocage
+    // sec : la vidange est le canal autorisé à réécrire nh1_dv, mais le reset
+    // doit être confirmé (allowRebase) — audit is_reset=1.
+    if (Number(site.nh1_dv) > nhNow && body?.allowRebase !== true) {
+      return json(
+        {
+          error: 'Le compteur (NH) est inférieur au NH1 DV du site — compteur/deepsea ou générateur probablement changé.',
+          code: 'nh_below_dv',
+          nh1Dv: Number(site.nh1_dv)
+        },
+        { status: 409 }
+      );
+    }
+
+    // Vidange rétroactive ou compteur en recul : doneDate/nhNow antérieurs au
+    // dernier relevé réel. Le compteur physique ne peut pas reculer — écraser
+    // nh2_a/date_a avec des valeurs plus anciennes détruirait des relevés réels
+    // (et le prochain relevé RMS passerait pour un parasite). La baseline
+    // nh1_dv/date_dv accepte la date rétro (la vidange a réellement eu lieu ce
+    // jour-là), mais nh2_a/date_a conservent l'état réel le plus frais.
+    // Confirmation explicite requise : une valeur plus ancienne peut aussi être
+    // une erreur de saisie.
+    const siteDateA = String(site?.date_a || '').slice(0, 10);
+    const siteNh2A = Number(site?.nh2_a);
+    const isRetro =
+      (siteDateA && doneDate < siteDateA) ||
+      (Number.isFinite(siteNh2A) && nhNow < siteNh2A);
+    if (isRetro && body?.allowRetro !== true) {
+      return json(
+        {
+          error:
+            `Vidange rétroactive : compteur ${Math.trunc(nhNow)}H au ${doneDate}, ` +
+            `alors que le dernier relevé réel est ${Number.isFinite(siteNh2A) ? Math.trunc(siteNh2A) : '?'}H au ${siteDateA || '?'}.`,
+          code: 'retro_vidange',
+          doneDate,
+          nhNow: Math.trunc(nhNow),
+          lastNh2A: Number.isFinite(siteNh2A) ? Math.trunc(siteNh2A) : null,
+          lastDateA: siteDateA || null
+        },
+        { status: 409 }
+      );
     }
 
     const intervalHours = nhNow - Number(site.nh1_dv);
@@ -222,8 +253,12 @@ export async function onRequestPost({ request, env, data, params }) {
 
     const nextNh1DV = nhNow;
     const nextDateDV = doneDate;
-    const nextNh2A = nhNow;
-    const nextDateA = doneDate;
+    // Vidange rétroactive confirmée : la baseline repart à doneDate, mais les
+    // relevés réels postérieurs à la vidange restent le dernier état réel —
+    // le compteur physique ne peut pas reculer.
+    const keepFresherRealState = isRetro && siteDateA > doneDate;
+    const nextNh2A = keepFresherRealState ? siteNh2A : nhNow;
+    const nextDateA = keepFresherRealState ? siteDateA : doneDate;
 
     // Recalcul métier (régime + estimations + diffs)
     let nextRegime = calculateRegime(nextNh1DV, nextNh2A, nextDateDV, nextDateA);
@@ -231,7 +266,7 @@ export async function onRequestPost({ request, env, data, params }) {
       nextRegime = Number(site.regime);
     }
     const nextNhEstimated = calculateEstimatedNH(nextNh2A, nextDateA, nextRegime);
-    const nextDiffNHs = calculateDiffNHs(nextNh1DV, nextNh2A); // = 0
+    const nextDiffNHs = calculateDiffNHs(nextNh1DV, nextNh2A); // 0 sauf vidange rétro (état réel plus frais préservé)
     const nextDiffEstimated = calculateDiffNHs(nextNh1DV, nextNhEstimated);
 
     const epvDates = calculateEPVDates(nextRegime, nextNh1DV, nextNhEstimated, contractSeuil);

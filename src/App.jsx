@@ -52,7 +52,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.15.9';
+const APP_VERSION = '6.16.0';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -2101,6 +2101,16 @@ const GeneratorMaintenanceApp = () => {
           );
           if (!okRebase) return;
           await postComplete({ allowRebase: true });
+        } else if (err?.data?.code === 'retro_vidange') {
+          const okRetro = window.confirm(
+            `${err?.data?.error || err.message}\n\n` +
+              `Le site possède un relevé réel plus récent (${Number(err?.data?.lastNh2A)}H le ${String(err?.data?.lastDateA || '')}).\n` +
+              `NH1 DV sera rebasé à ${Number(payload?.nhNow)}H au ${String(payload?.doneDate || '')}, ` +
+              `et le dernier relevé réel sera conservé comme état actuel (le compteur ne peut pas reculer).\n\n` +
+              `Confirmer la vidange rétroactive ?`
+          );
+          if (!okRetro) return;
+          await postComplete({ allowRetro: true });
         } else {
           throw err;
         }
