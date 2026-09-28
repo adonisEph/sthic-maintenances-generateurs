@@ -159,8 +159,7 @@ export async function onRequestPost({ request, env, data, params }) {
           site.id,
           epv || null,
           intervention.planned_date || null,
-          epv || null,
-          intervention.planned_date || null
+          epv || null
         )
         .all();
       const candidates = Array.isArray(res?.results) ? res.results : [];
