@@ -110,13 +110,10 @@ export async function onRequestGet({ request, env, data }) {
     const stmt = env.DB.prepare(
       `SELECT i.*, fh.ticket_number, fh.id as fiche_id
        FROM interventions i
-       LEFT JOIN (
-         SELECT intervention_id, MIN(id) AS fiche_id
-         FROM fiche_history
-         WHERE intervention_id IS NOT NULL
-         GROUP BY intervention_id
-       ) f ON f.intervention_id = i.id
-       LEFT JOIN fiche_history fh ON fh.id = f.fiche_id
+       LEFT JOIN fiche_history fh ON fh.id = (
+         SELECT MIN(fh2.id) FROM fiche_history fh2
+         WHERE fh2.intervention_id = i.id
+       )
        WHERE ${where}
        ORDER BY i.planned_date ASC`
     );

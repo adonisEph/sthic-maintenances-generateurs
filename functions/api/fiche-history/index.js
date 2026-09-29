@@ -111,19 +111,17 @@ export async function onRequestGet({ request, env, data }) {
 
     const stmt = env.DB.prepare(
       `SELECT fh.*, s.zone as site_zone,
-              i.id as resolved_intervention_id,
-              i.status as intervention_status,
-              i.sent_at as intervention_sent_at
+              COALESCE(i1.id, i2.id) as resolved_intervention_id,
+              COALESCE(i1.status, i2.status) as intervention_status,
+              COALESCE(i1.sent_at, i2.sent_at) as intervention_sent_at
        FROM fiche_history fh
        LEFT JOIN sites s ON s.id = fh.site_id
-       LEFT JOIN interventions i
-         ON i.id = fh.intervention_id
-         OR (
-           fh.intervention_id IS NULL
-           AND i.site_id = fh.site_id
-           AND i.planned_date IS fh.planned_date
-           AND i.epv_type IS fh.epv_type
-         )
+       LEFT JOIN interventions i1 ON i1.id = fh.intervention_id
+       LEFT JOIN interventions i2
+         ON fh.intervention_id IS NULL
+         AND i2.site_id = fh.site_id
+         AND i2.planned_date IS fh.planned_date
+         AND i2.epv_type IS fh.epv_type
        WHERE ${where}
        ORDER BY fh.date_generated DESC
        ${role === 'technician' ? '' : 'LIMIT 500'}`
