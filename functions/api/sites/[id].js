@@ -72,6 +72,27 @@ export async function onRequestPatch({ request, env, data, params }) {
     const canEditNh1DV = isSuperAdmin(data) ||
       (role === 'manager' && (userZone(data) === 'PNR/KOUILOU' || userZone(data) === 'UPCN'));
 
+    // Validation stricte : ce canal écrit directement en base (pas d'évaluation
+    // de cohérence). Sans garde, NaN → NULL silencieux, '' → 0, et des dates
+    // malformées corrompraient toutes les projections dérivées.
+    const normDate = (v) => {
+      const s = String(v || '').slice(0, 10);
+      return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+    };
+    const numFields = ['nh1DV', 'nh2A', 'regime', 'nhEstimated', 'diffNHs', 'diffEstimated', 'seuil'];
+    for (const k of numFields) {
+      const v = body[k];
+      if (v != null && v !== '' && !Number.isFinite(Number(v))) {
+        return json({ error: `Valeur numérique invalide pour ${k}.` }, { status: 400 });
+      }
+    }
+    if (body.dateDV != null && normDate(body.dateDV) == null) {
+      return json({ error: 'dateDV invalide (format AAAA-MM-JJ attendu).' }, { status: 400 });
+    }
+    if (body.dateA != null && normDate(body.dateA) == null) {
+      return json({ error: 'dateA invalide (format AAAA-MM-JJ attendu).' }, { status: 400 });
+    }
+
     const next = {
       nameSite: body.nameSite != null ? String(body.nameSite) : existing.name_site,
       idSite: body.idSite != null ? String(body.idSite) : existing.id_site,
@@ -79,10 +100,10 @@ export async function onRequestPatch({ request, env, data, params }) {
       generateur: body.generateur != null ? String(body.generateur) : existing.generateur,
       capacite: body.capacite != null ? String(body.capacite) : existing.capacite,
       kitVidange: body.kitVidange != null ? String(body.kitVidange) : existing.kit_vidange,
-      nh1DV: canEditNh1DV && body.nh1DV != null ? Number(body.nh1DV) : existing.nh1_dv,
-      dateDV: canEditNh1DV && body.dateDV != null ? String(body.dateDV) : existing.date_dv,
-      nh2A: body.nh2A != null ? Number(body.nh2A) : existing.nh2_a,
-      dateA: body.dateA != null ? String(body.dateA) : existing.date_a,
+      nh1DV: canEditNh1DV && body.nh1DV != null && body.nh1DV !== '' ? Number(body.nh1DV) : existing.nh1_dv,
+      dateDV: canEditNh1DV && body.dateDV != null ? normDate(body.dateDV) : existing.date_dv,
+      nh2A: body.nh2A != null && body.nh2A !== '' ? Number(body.nh2A) : existing.nh2_a,
+      dateA: body.dateA != null ? normDate(body.dateA) : existing.date_a,
       regime: body.regime != null ? Number(body.regime) : existing.regime,
       nhEstimated: body.nhEstimated != null ? Number(body.nhEstimated) : existing.nh_estimated,
       diffNHs: body.diffNHs != null ? Number(body.diffNHs) : existing.diff_nhs,

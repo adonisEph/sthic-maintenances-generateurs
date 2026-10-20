@@ -86,7 +86,9 @@ export async function effectiveTechnicianName(env, data) {
  *  - future_date      : reading_date > aujourd'hui
  *  - date_before_dv   : reading_date < date_dv (antérieur à la dernière vidange)
  *  - nh_below_dv      : nh < nh1_dv → candidat rebase (deepsea/générateur changé)
- *  - parasite_high    : régime implicite > 24 H/J → donnée parasitée
+ *  - parasite_high    : régime implicite vs baseline > 24 H/J → donnée parasitée
+ *  - parasite_step    : saut impossible vs le dernier relevé réel (> 24 H/J × jours)
+ *                       — indépendant de l'âge de la baseline (pas de bypass staleDv)
  *  - date_regression  : reading_date < date_a actuelle
  *  - decrease         : nh < nh2_a actuel (compteur ne décroît pas physiquement)
  */
@@ -144,6 +146,24 @@ export function evaluateNhCandidate(site, candidate, opts = {}) {
         reason: 'parasite_high',
         ...base,
         detail: { nh1Dv, dateDv, diff, days, impliedRegime: Math.round(impliedRegime) }
+      };
+    }
+  }
+  // Saut incrémental impossible vs le dernier relevé réel — indépendant de
+  // l'âge de la baseline. Sans ce contrôle, un parasite (ex. 274114 ou 87758
+  // observés en prod) passe dès que le cumul baseline est tolérant (staleDv)
+  // ou que l'écart relatif au relevé précédent est grand.
+  if (Number.isFinite(prevNh2A) && prevDateA && nh > prevNh2A) {
+    const stepDays = daysBetween(prevDateA, dateA);
+    const step = nh - prevNh2A;
+    // stepDays >= 0 requis : un candidat antérieur au dernier relevé relève de
+    // date_regression (plus bas), pas d'un saut incrémental.
+    if (Number.isFinite(stepDays) && stepDays >= 0 && step > NH_MAX_REGIME * (stepDays + 1)) {
+      return {
+        verdict: 'quarantine',
+        reason: 'parasite_step',
+        ...base,
+        detail: { prevNh2A, prevDateA, step, stepDays }
       };
     }
   }
@@ -399,6 +419,32 @@ export async function recordQuarantine(env, site, entry, ctx = {}) {
           .bind(String(site.id))
           .first()
       : null;
+
+    // Dédup post-traitement : la MÊME incohérence (raison + valeur proposée +
+    // état site inchangé) déjà tranchée ne doit pas recréer un pending à
+    // chaque import/scan — sinon une entrée "dismissed"/"treated" revient en
+    // boucle. Si l'état du site a changé entre-temps, le contexte de décision
+    // a changé → nouvelle entrée légitime.
+    if (!existing?.id && !existingDismissed?.id) {
+      const lastResolved = await env.DB.prepare(
+        `SELECT id, proposed_nh2_a, proposed_date_a, prev_nh1_dv, prev_nh2_a
+         FROM nh_quarantine
+         WHERE site_id = ? AND status IN ('treated', 'dismissed', 'superseded') AND reason = ?
+         ORDER BY created_at DESC LIMIT 1`
+      )
+        .bind(String(site.id), String(entry?.reason || ''))
+        .first();
+      const sameNum = (a, b) => (a == null && b == null) || Number(a) === Number(b);
+      if (
+        lastResolved?.id &&
+        sameNum(lastResolved.proposed_nh2_a, proposed.nh2A) &&
+        String(lastResolved.proposed_date_a || '') === String(proposed.dateA || '') &&
+        sameNum(lastResolved.prev_nh1_dv, prev.nh1DV) &&
+        sameNum(lastResolved.prev_nh2_a, prev.nh2A)
+      ) {
+        return { id: String(lastResolved.id), created: false, status: 'deduped' };
+      }
+    }
 
     if (existing?.id || existingDismissed?.id) {
       const rowId = String(existing?.id || existingDismissed?.id);

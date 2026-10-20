@@ -1,7 +1,10 @@
 export function calculateRegime(nh1, nh2, date1, date2) {
   const diffNH = Number(nh2) - Number(nh1);
-  const diffDays = Math.abs(Math.ceil((new Date(date2) - new Date(date1)) / (1000 * 60 * 60 * 24)));
-  if (diffDays === 0) return 0;
+  // Signé : des dates inversées (date2 < date1) doivent produire un régime
+  // négatif/0 (détectable par les appelants), pas un résultat plausible qui
+  // masquerait l'incohérence.
+  const diffDays = Math.ceil((new Date(date2) - new Date(date1)) / (1000 * 60 * 60 * 24));
+  if (!Number.isFinite(diffDays) || diffDays <= 0) return 0;
   return Math.round(diffNH / diffDays);
 }
 

@@ -6,6 +6,7 @@ import { startOperation, toast } from '../../utils/feedback';
 const REASON_LABELS = {
   nh_below_dv: 'NH2 A < NH1 DV (rebase possible)',
   parasite_high: 'Valeur parasitée (> 24 H/J implicite)',
+  parasite_step: 'Saut de compteur impossible vs dernier relevé',
   date_before_dv: 'Date relevé < Date vidange',
   future_date: 'Date relevé dans le futur',
   date_regression: 'Date relevé < dernier relevé connu',

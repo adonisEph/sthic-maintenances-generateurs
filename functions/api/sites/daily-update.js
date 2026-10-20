@@ -36,7 +36,7 @@ export async function onRequestPost({ env, data }) {
     const todayYmd = ymdToday();
 
     const res = await env.DB.prepare(
-      `SELECT id, zone, nh1_dv, date_dv, nh2_a, date_a, nh_offset, regime
+      `SELECT id, zone, nh1_dv, date_dv, nh2_a, date_a, nh_offset, regime, retired
        FROM sites`
     ).all();
     const rows = res?.results || [];
@@ -50,6 +50,7 @@ export async function onRequestPost({ env, data }) {
     let flagged = 0;
     let quarantineFailed = 0;
     let autoDismissed = 0;
+    let deduped = 0;
     const flaggedSamples = [];
     const byZone = {};
 
@@ -82,6 +83,9 @@ export async function onRequestPost({ env, data }) {
         } else if (rec?.status === 'dismissed') {
           // Site retiré : auto-classé (audit), pas de travail pending.
           autoDismissed += 1;
+        } else if (rec?.status === 'deduped') {
+          // Même incohérence déjà tranchée précédemment : pas de nouveau pending.
+          deduped += 1;
         } else {
           flagged += 1;
           if (flaggedSamples.length < 25) {
@@ -127,6 +131,7 @@ export async function onRequestPost({ env, data }) {
       updatedByZone: byZone,
       quarantinedCount: flagged,
       autoDismissedCount: autoDismissed,
+      dedupedCount: deduped,
       quarantineFailedCount: quarantineFailed,
       quarantinedSamples: flaggedSamples,
       lastUpdatedAt

@@ -52,7 +52,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.16.3';
+const APP_VERSION = '6.16.4';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -5905,6 +5905,7 @@ useEffect(() => {
         const ignoredDecrease = Number(res?.ignoredDecrease || 0);
         const ignoredNoiseDecrease = Number(res?.ignoredNoiseDecrease || 0);
         const autoDismissedRetired = Number(res?.autoDismissedRetired || 0);
+        const quarantineDeduped = Number(res?.quarantineDeduped || 0);
         const ignoredNhBelowDv = Number(res?.ignoredNhBelowDv || 0);
         const quarantinedNhBelowDv = Number(res?.quarantinedNhBelowDv || 0);
         const quarantinedNhAbnormallyHigh = Number(res?.quarantinedNhAbnormallyHigh || 0);
@@ -5929,6 +5930,7 @@ useEffect(() => {
         const rmsReasonLabel = (r) =>
           r === 'nh_below_dv' ? 'NH2 A < NH1 DV' :
           r === 'parasite_high' ? 'Valeur parasitée' :
+          r === 'parasite_step' ? 'Saut de compteur impossible' :
           r === 'decrease' ? 'Compteur < dernier relevé' :
           r === 'date_regression' ? 'Date < dernier relevé' :
           r === 'date_before_dv' ? 'Date < Date DV' :
@@ -5961,6 +5963,9 @@ useEffect(() => {
           `Lignes sans valeur (NH2 A & Date A vides): ${skipped}\n` +
           `Sites en quarantaine: ${quarantined}\n` +
           `Sites retirés auto-classés (audit, aucune action): ${autoDismissedRetired}` +
+          (quarantineDeduped > 0
+            ? `\nIncohérences déjà tranchées (dédupliquées): ${quarantineDeduped}`
+            : '') +
           (quarantineFailed > 0
             ? `\n⚠️ Incohérences NON persistées (erreur écriture quarantaine): ${quarantineFailed} — à vérifier.`
             : '') +

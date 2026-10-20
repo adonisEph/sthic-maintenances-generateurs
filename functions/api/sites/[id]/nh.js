@@ -38,6 +38,7 @@ function mapSiteRow(row) {
 const QUARANTINE_MESSAGES = {
   nh_below_dv: 'Compteur inférieur à NH1 DV — possible changement deepsea/générateur. Valeur mise en quarantaine.',
   parasite_high: 'Valeur incohérente (régime implicite > 24 H/J). Mise en quarantaine.',
+  parasite_step: 'Saut de compteur impossible par rapport au dernier relevé réel (> 24 H/J). Mise en quarantaine.',
   date_before_dv: 'Date de relevé antérieure à la dernière vidange. Mise en quarantaine.',
   future_date: 'Date de relevé dans le futur. Mise en quarantaine.',
   date_regression: 'Date de relevé antérieure au dernier relevé connu. Mise en quarantaine.',
@@ -123,6 +124,7 @@ export async function onRequestPost({ request, env, data, params }) {
           reason: effectiveVerdict.reason,
           quarantineId: rec?.id || null,
           autoDismissed: rec?.status === 'dismissed',
+          deduped: rec?.status === 'deduped',
           quarantinePersisted: !rec?.error,
           quarantineError: rec?.message || null,
           error: QUARANTINE_MESSAGES[effectiveVerdict.reason] || 'Valeur incohérente. Mise en quarantaine.'

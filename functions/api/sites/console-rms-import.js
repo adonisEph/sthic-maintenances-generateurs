@@ -60,6 +60,7 @@ export async function onRequestPost({ request, env, data }) {
     let ignoredDecrease = 0;
     let ignoredNoiseDecrease = 0;
     let autoDismissedRetired = 0;
+    let quarantineDeduped = 0;
     let ignoredMissingId = 0;
     let ignoredUnknownId = 0;
     let ignoredNhBelowDv = 0;
@@ -171,10 +172,14 @@ export async function onRequestPost({ request, env, data }) {
         } else if (rec?.status === 'dismissed') {
           // Auto-classée (site retiré) : tracée en historique, zéro travail pending.
           autoDismissedRetired += 1;
+        } else if (rec?.status === 'deduped') {
+          // Même incohérence déjà tranchée (même valeur, même état site) :
+          // rejetée sans recréer un pending.
+          quarantineDeduped += 1;
         } else {
           quarantined += 1;
           if (effectiveVerdict.reason === 'nh_below_dv') quarantinedNhBelowDv += 1;
-          else if (effectiveVerdict.reason === 'parasite_high') quarantinedNhAbnormallyHigh += 1;
+          else if (effectiveVerdict.reason === 'parasite_high' || effectiveVerdict.reason === 'parasite_step') quarantinedNhAbnormallyHigh += 1;
           else if (effectiveVerdict.reason === 'retired_site') quarantinedRetired += 1;
           else quarantinedOther += 1;
           pushQuarantinedSample(effectiveVerdict.reason, r, i, {
@@ -217,6 +222,7 @@ export async function onRequestPost({ request, env, data }) {
         ignoredDecrease,
         ignoredNoiseDecrease,
         autoDismissedRetired,
+        quarantineDeduped,
         ignoredNhBelowDv,
         ignoredRetired,
         quarantinedNhBelowDv,
