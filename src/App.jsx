@@ -52,7 +52,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.16.2';
+const APP_VERSION = '6.16.3';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -2111,6 +2111,22 @@ const GeneratorMaintenanceApp = () => {
           );
           if (!okRetro) return;
           await postComplete({ allowRetro: true });
+        } else if (err?.data?.code === 'counter_regress') {
+          const okRegress = window.confirm(
+            `${err?.data?.error || err.message}\n\n` +
+              `Le compteur saisi est inférieur au dernier relevé connu — possible erreur de saisie, ` +
+              `ou relevé précédent erroné. La valeur saisie remplacera l'état actuel.\n\n` +
+              `Confirmer ce compteur ?`
+          );
+          if (!okRegress) return;
+          await postComplete({ allowCounterRegress: true });
+        } else if (err?.data?.code === 'counter_conflict') {
+          // Conflit de données non résolvable automatiquement — bloquant.
+          alert(
+            `${err?.data?.error || err.message}\n\n` +
+              `Cette vidange ne peut pas être appliquée en l'état : les données se contredisent.`
+          );
+          return;
         } else {
           throw err;
         }

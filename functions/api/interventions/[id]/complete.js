@@ -2,7 +2,7 @@ import { ensureAdminUser } from '../../_utils/db.js';
 import { json, requireAuth, readJson, isoNow, newId, isSuperAdmin, userZone, ymdToday } from '../../_utils/http.js';
 import { nextPnrDayTicketNumber, formatPnrDayTicket, nextTicketNumberForZone, formatTicket, touchLastUpdatedAt } from '../../_utils/meta.js';
 import { calculateEstimatedNH, calculateDiffNHs, calculateEPVDates, calculateRegime } from '../../_utils/calc.js';
-import { NH_SOURCE, supersedePendingQuarantine, technicianMatches, effectiveTechnicianName } from '../../_utils/nhCoherence.js';
+import { NH_SOURCE, NH_DECREASE_EPSILON_H, supersedePendingQuarantine, technicianMatches, effectiveTechnicianName } from '../../_utils/nhCoherence.js';
 
 export async function onRequestPost({ request, env, data, params }) {
   try {
@@ -218,20 +218,46 @@ export async function onRequestPost({ request, env, data, params }) {
       );
     }
 
-    // Vidange rétroactive ou compteur en recul : doneDate/nhNow antérieurs au
-    // dernier relevé réel. Le compteur physique ne peut pas reculer — écraser
-    // nh2_a/date_a avec des valeurs plus anciennes détruirait des relevés réels
-    // (et le prochain relevé RMS passerait pour un parasite). La baseline
-    // nh1_dv/date_dv accepte la date rétro (la vidange a réellement eu lieu ce
-    // jour-là), mais nh2_a/date_a conservent l'état réel le plus frais.
-    // Confirmation explicite requise : une valeur plus ancienne peut aussi être
-    // une erreur de saisie.
+    // Deux anomalies distinctes — NE PAS les fusionner :
+    //
+    // 1) Rétro-datation (doneDate < date_a) : la vidange a réellement eu lieu
+    //    dans le passé, des relevés réels postérieurs existent. Confirmable
+    //    (retro_vidange) → nh1_dv/date_dv repartent à doneDate, mais
+    //    nh2_a/date_a conservent l'état réel le plus frais (le compteur
+    //    physique ne peut pas reculer).
+    //    EXIGE nhNow ≤ nh2_a — sinon conflit de données (le compteur saisi à la
+    //    vidange dépasserait les relevés postérieurs : impossible). Ce cas est
+    //    bloquant (counter_conflict) : l'une des deux valeurs est fausse et
+    //    seul un humain peut trancher — pas de résolution auto, sinon l'état
+    //    stocké deviendrait incohérent (nh2_a < nh1_dv, diff négatif).
+    //
+    // 2) Recul de compteur SANS rétro-datation (doneDate ≥ date_a, nhNow <
+    //    nh2_a) : la valeur saisie est l'observation la plus fraîche — elle
+    //    fait foi. Micro-écart (≤ epsilon, bruit de relevé RMS) → appliqué
+    //    silencieusement ; recul plus grand → confirmation counter_regress.
     const siteDateA = String(site?.date_a || '').slice(0, 10);
     const siteNh2A = Number(site?.nh2_a);
-    const isRetro =
-      (siteDateA && doneDate < siteDateA) ||
-      (Number.isFinite(siteNh2A) && nhNow < siteNh2A);
-    if (isRetro && body?.allowRetro !== true) {
+    const backdated = Boolean(siteDateA) && doneDate < siteDateA;
+    const counterDrop = Number.isFinite(siteNh2A) ? siteNh2A - nhNow : 0;
+
+    if (backdated && counterDrop < 0) {
+      return json(
+        {
+          error:
+            `Incohérence : le compteur saisi à la vidange (${Math.trunc(nhNow)}H au ${doneDate}) ` +
+            `dépasse le relevé réel postérieur (${Math.trunc(siteNh2A)}H au ${siteDateA}). ` +
+            `Le compteur physique ne peut pas décroître — vérifiez la valeur saisie ou corrigez via le centre de quarantaine.`,
+          code: 'counter_conflict',
+          doneDate,
+          nhNow: Math.trunc(nhNow),
+          lastNh2A: Math.trunc(siteNh2A),
+          lastDateA: siteDateA
+        },
+        { status: 409 }
+      );
+    }
+
+    if (backdated && body?.allowRetro !== true) {
       return json(
         {
           error:
@@ -247,6 +273,22 @@ export async function onRequestPost({ request, env, data, params }) {
       );
     }
 
+    if (!backdated && counterDrop > NH_DECREASE_EPSILON_H && body?.allowCounterRegress !== true) {
+      return json(
+        {
+          error:
+            `Le compteur saisi (${Math.trunc(nhNow)}H) recule de ${Math.trunc(counterDrop)}H ` +
+            `par rapport au dernier relevé réel (${Math.trunc(siteNh2A)}H au ${siteDateA}).`,
+          code: 'counter_regress',
+          nhNow: Math.trunc(nhNow),
+          lastNh2A: Math.trunc(siteNh2A),
+          lastDateA: siteDateA || null,
+          drop: Math.trunc(counterDrop)
+        },
+        { status: 409 }
+      );
+    }
+
     const intervalHours = nhNow - Number(site.nh1_dv);
     const contractSeuil = Number(site.seuil || 250);
     const isWithinContract = Number.isFinite(intervalHours) ? (intervalHours <= contractSeuil) : null;
@@ -255,10 +297,10 @@ export async function onRequestPost({ request, env, data, params }) {
     const nextDateDV = doneDate;
     // Vidange rétroactive confirmée : la baseline repart à doneDate, mais les
     // relevés réels postérieurs à la vidange restent le dernier état réel —
-    // le compteur physique ne peut pas reculer.
-    const keepFresherRealState = isRetro && siteDateA > doneDate;
-    const nextNh2A = keepFresherRealState ? siteNh2A : nhNow;
-    const nextDateA = keepFresherRealState ? siteDateA : doneDate;
+    // le compteur physique ne peut pas reculer. (backdated ⇒ nhNow ≤ nh2_a :
+    // le cas contraire est bloqué en counter_conflict plus haut.)
+    const nextNh2A = backdated ? siteNh2A : nhNow;
+    const nextDateA = backdated ? siteDateA : doneDate;
 
     // Recalcul métier (régime + estimations + diffs)
     let nextRegime = calculateRegime(nextNh1DV, nextNh2A, nextDateDV, nextDateA);
