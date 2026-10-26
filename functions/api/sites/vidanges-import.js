@@ -55,7 +55,7 @@ export async function onRequestPost({ request, env, data }) {
     const rows = Array.isArray(body?.rows) ? body.rows : [];
 
     const z = String(userZone(data) || 'BZV/POOL');
-    const canAllZones = isSuperAdmin(data) || role === 'manager_bzv_pool';
+    const canAllZones = isSuperAdmin(data);
     const todayYmd = ymdToday();
     const now = isoNow();
     const userId = data?.user?.id ? String(data.user.id) : null;
