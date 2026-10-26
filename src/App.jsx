@@ -52,7 +52,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.16.4';
+const APP_VERSION = '6.16.5';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -608,17 +608,58 @@ const GeneratorMaintenanceApp = () => {
         return;
       }
 
+      let completed = false;
       await runOp(`Vidange du site "${site?.nameSite || ''}"…`, async () => {
-        await apiFetchJson(`/api/interventions/${interventionId}/complete`, {
-          method: 'POST',
-          body: JSON.stringify({ doneDate, nhNow })
-        });
+        const postVidange = (extra = {}) =>
+          apiFetchJson(`/api/interventions/${interventionId}/complete`, {
+            method: 'POST',
+            body: JSON.stringify({ doneDate, nhNow, ...extra })
+          });
+        try {
+          await postVidange();
+        } catch (err) {
+          const code = err?.data?.code;
+          if (code === 'nh_below_dv') {
+            const okRebase = window.confirm(
+              `${err?.data?.error || err.message}\n\nConfirmer le changement de compteur/générateur ?\n` +
+                `La vidange rebasera NH1 DV = ${Number(nhNow)}H (ancien NH1 DV : ${Number(err?.data?.nh1Dv)}H).`
+            );
+            if (!okRebase) return;
+            await postVidange({ allowRebase: true });
+          } else if (code === 'retro_vidange') {
+            const okRetro = window.confirm(
+              `${err?.data?.error || err.message}\n\n` +
+                `Le site possède un relevé réel plus récent (${Number(err?.data?.lastNh2A)}H le ${String(err?.data?.lastDateA || '')}).\n` +
+                `NH1 DV sera rebasé à ${Number(nhNow)}H au ${String(doneDate)}, ` +
+                `et le dernier relevé réel sera conservé comme état actuel (le compteur ne peut pas reculer).\n\n` +
+                `Confirmer la vidange rétroactive ?`
+            );
+            if (!okRetro) return;
+            await postVidange({ allowRetro: true });
+          } else if (code === 'counter_regress') {
+            const okRegress = window.confirm(
+              `${err?.data?.error || err.message}\n\n` +
+                `Le compteur saisi est inférieur au dernier relevé connu — possible erreur de saisie, ` +
+                `ou relevé précédent erroné. La valeur saisie remplacera l'état actuel.\n\n` +
+                `Confirmer ce compteur ?`
+            );
+            if (!okRegress) return;
+            await postVidange({ allowCounterRegress: true });
+          } else if (code === 'counter_conflict') {
+            alert(`${err?.data?.error || err.message}`);
+            return;
+          } else {
+            throw err;
+          }
+        }
 
         await loadData();
         await loadFicheHistory();
         await loadInterventions();
         bumpInterventionsUiRev();
+        completed = true;
       });
+      if (!completed) return;
 
       setShowEditForm(false);
       setSelectedSite(null);
