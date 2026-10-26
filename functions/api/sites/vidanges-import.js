@@ -197,8 +197,11 @@ export async function onRequestPost({ request, env, data }) {
 
         let intervention = await env.DB.prepare(
           `SELECT * FROM interventions WHERE site_id = ? AND status IN ('planned', 'sent')
-           ORDER BY CASE WHEN planned_date IS NULL THEN 1 ELSE 0 END, planned_date ASC LIMIT 1`
-        ).bind(String(site.id)).first();
+           ORDER BY CASE WHEN substr(planned_date, 1, 7) = ? THEN 0 ELSE 1 END,
+                    CASE WHEN planned_date IS NULL THEN 1 ELSE 0 END,
+                    planned_date DESC
+           LIMIT 1`
+        ).bind(String(site.id), doneDate.slice(0, 7)).first();
 
         let interventionId = '';
         if (intervention?.id) {
