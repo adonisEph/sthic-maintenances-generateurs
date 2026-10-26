@@ -52,7 +52,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.16.5';
+const APP_VERSION = '6.16.6';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -417,6 +417,12 @@ const GeneratorMaintenanceApp = () => {
     setSelectedSite(site);
     setEditSiteFormMode('vidange');
     setVidangeChosenIntervention(chosenIntervention);
+    // Pré-remplissage métier : le compteur de vidange attendu = la PROJECTION
+    // (nh_estimated ≈ compteur physique à J), pas l'ancienne baseline nh1_dv —
+    // sinon un oubli de saisie soumet une valeur obsolète et déclenche les
+    // gardes de cohérence. La date = aujourd'hui (vidange faite maintenant ;
+    // une date passée reste saisissable → confirmation rétro-active).
+    const projected = Number(site.nhEstimated);
     setFormData({
       nameSite: site.nameSite,
       idSite: site.idSite,
@@ -424,8 +430,10 @@ const GeneratorMaintenanceApp = () => {
       generateur: site.generateur,
       capacite: site.capacite,
       kitVidange: site.kitVidange,
-      nh1DV: site.nh1DV,
-      dateDV: '',
+      nh1DV: Number.isFinite(projected) && projected > 0
+        ? String(Math.trunc(projected))
+        : String(site.nh2A ?? site.nh1DV ?? ''),
+      dateDV: ymdInTimeZone(new Date(), 'Africa/Brazzaville'),
       nh2A: site.nh2A,
       dateA: site.dateA,
       retired: site.retired

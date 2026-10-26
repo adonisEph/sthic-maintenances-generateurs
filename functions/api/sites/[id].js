@@ -122,8 +122,57 @@ export async function onRequestPatch({ request, env, data, params }) {
       body.diffNHs == null ||
       body.diffEstimated == null
     ) {
+      // Intent vidange via édition : la baseline (nh1_dv/date_dv) est remontée
+      // au-dessus du dernier relevé réel SANS que l'utilisateur ait modifié
+      // nh2_a. Une vidange fait du compteur-du-jour le nouvel état réel →
+      // aligner nh2_a/date_a sur la baseline au lieu de bloquer.
+      // Cas rétro (date_a existante > nouvelle date_dv) : les relevés réels
+      // postérieurs priment — ils sont conservés s'ils restent ≥ baseline,
+      // sinon contradiction pure → erreur bloquante.
+      const dvEdited = canEditNh1DV && (
+        (body.nh1DV != null && body.nh1DV !== '' && Number(body.nh1DV) !== Number(existing.nh1_dv)) ||
+        (body.dateDV != null && normDate(body.dateDV) !== String(existing.date_dv || '').slice(0, 10))
+      );
+      const nh2TouchedByUser =
+        body.nh2A != null && body.nh2A !== '' && Number(body.nh2A) !== Number(existing.nh2_a);
+
       if (Number.isFinite(next.nh1DV) && Number.isFinite(next.nh2A) && next.nh2A < next.nh1DV) {
-        return json({ error: "Le compteur (NH) ne peut pas être inférieur au NH1 DV du site." }, { status: 400 });
+        if (dvEdited && !nh2TouchedByUser) {
+          const existDateA = normDate(existing.date_a);
+          const dvYmd = normDate(next.dateDV);
+          if (existDateA && dvYmd && existDateA > dvYmd) {
+            // Relevés réels postérieurs à la date de vidange saisie → rétro :
+            // conservés uniquement si le compteur réel ≥ nouvelle baseline.
+            if (Number(existing.nh2_a) >= Number(next.nh1DV)) {
+              next.nh2A = Number(existing.nh2_a);
+              next.dateA = existDateA;
+            } else {
+              return json(
+                {
+                  error:
+                    `Incohérence : la baseline saisie (${Math.trunc(next.nh1DV)}H au ${dvYmd}) dépasse ` +
+                    `le relevé réel postérieur (${Math.trunc(Number(existing.nh2_a))}H au ${existDateA}). ` +
+                    `Vérifiez les valeurs — le compteur physique ne peut pas décroître.`
+                },
+                { status: 400 }
+              );
+            }
+          } else {
+            // Vidange : le compteur au jour J devient le nouvel état réel.
+            next.nh2A = Number(next.nh1DV);
+            next.dateA = dvYmd || existDateA;
+          }
+        } else {
+          return json(
+            {
+              error:
+                "Le compteur (NH2 A) ne peut pas être inférieur au NH1 DV du site. " +
+                "S'il s'agit d'une vidange, mettez à jour NH1 DV + Date DV sans toucher NH2 A/Date A ; " +
+                "s'il s'agit d'un reset compteur, passez par le centre de quarantaine."
+            },
+            { status: 400 }
+          );
+        }
       }
 
       let regime = calculateRegime(next.nh1DV, next.nh2A, next.dateDV, next.dateA);

@@ -88,13 +88,15 @@ const EditSiteForm = ({ selectedSite, vidangeIntervention, formData, setFormData
         )}
         <input
           type="number"
-          placeholder="NH1 DV"
+          placeholder={isVidange ? 'Compteur actuel (NH) — valeur lue sur place' : 'NH1 DV'}
+          title={isVidange ? 'Compteur réel au jour de la vidange (pré-rempli avec la projection)' : 'NH1 DV'}
           value={formData.nh1DV}
           onChange={(e) => setFormData({ ...formData, nh1DV: e.target.value })}
           className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
         />
         <input
           type="date"
+          title={isVidange ? 'Date réelle de la vidange' : 'Date DV'}
           value={formData.dateDV}
           onChange={(e) => setFormData({ ...formData, dateDV: e.target.value })}
           className="border border-gray-300 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base"
