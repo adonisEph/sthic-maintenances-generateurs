@@ -52,7 +52,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.16.6';
+const APP_VERSION = '6.16.7';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -182,6 +182,9 @@ const GeneratorMaintenanceApp = () => {
   const [consoleRmsImportBusy, setConsoleRmsImportBusy] = useState(false);
   const [consoleRmsImportProgress, setConsoleRmsImportProgress] = useState(0);
   const [consoleRmsImportStep, setConsoleRmsImportStep] = useState('');
+  const [vidangesImportBusy, setVidangesImportBusy] = useState(false);
+  const [vidangesImportProgress, setVidangesImportProgress] = useState(0);
+  const [vidangesImportStep, setVidangesImportStep] = useState('');
   const [exportBusy, setExportBusy] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportStep, setExportStep] = useState('');
@@ -6043,6 +6046,167 @@ useEffect(() => {
     e.target.value = '';
   };
 
+  // Import VIDANGES DONE : déclare en masse les vidanges effectuées
+  // (colonnes : ID Site, NH1 DV, Date DV). Sémantique identique à
+  // "Effectuer une vidange" par site : baseline + état réel préservé +
+  // recalcul + intervention done + fiche Effectuée.
+  const handleImportVidanges = (e) => {
+    const file = e?.target?.files?.[0];
+    if (!file) return;
+    if (!(isAdmin || isAnyManager)) {
+      alert('Accès interdit.');
+      e.target.value = '';
+      return;
+    }
+
+    const ok = window.confirm(
+      `Confirmer l'import VIDANGES DONE ?\n\n` +
+      `Ce fichier déclare des vidanges effectuées : NH1 DV et Date DV seront mis à jour\n` +
+      `pour chaque site (même sémantique qu'"Effectuer une vidange"), avec recalcul\n` +
+      `des projections et fiche marquée "Effectuée".\n` +
+      `Les relevés réels postérieurs à une vidange déclarée sont préservés.\n\n` +
+      `Colonnes attendues: "ID Site", "NH1 DV", "Date DV"\n` +
+      `Fichier: ${file?.name || ''}`
+    );
+    if (!ok) {
+      e.target.value = '';
+      return;
+    }
+
+    const parseExcelDateToYmd = (value) => {
+      if (value == null || String(value).trim() === '') return '';
+      if (typeof value === 'number') {
+        try {
+          const d = XLSX.SSF.parse_date_code(value);
+          if (!d || !d.y || !d.m || !d.d) return '';
+          return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
+        } catch {
+          return '';
+        }
+      }
+      const raw = String(value).trim();
+      if (!raw) return '';
+      if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+      const m1 = raw.match(/^(\d{2})[\/\.\-](\d{2})[\/\.\-](\d{4})/);
+      if (m1) return `${m1[3]}-${m1[2]}-${m1[1]}`;
+      return raw.slice(0, 10);
+    };
+
+    const reader = new FileReader();
+    const op = startOperation('Import VIDANGES DONE…', file?.name || '');
+    setVidangesImportBusy(true);
+    setVidangesImportProgress(5);
+    setVidangesImportStep('Lecture du fichier…');
+
+    reader.onprogress = (evt) => {
+      try {
+        if (!evt || !evt.total) return;
+        const pct = Math.max(0, Math.min(15, Math.round((evt.loaded / evt.total) * 15)));
+        setVidangesImportProgress(pct);
+      } catch {
+        // ignore
+      }
+    };
+
+    reader.onload = async (event) => {
+      try {
+        setVidangesImportStep('Analyse Excel…');
+        setVidangesImportProgress((p) => Math.max(p, 20));
+
+        const data = new Uint8Array(event.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonRows = XLSX.utils.sheet_to_json(sheet);
+
+        setVidangesImportStep('Préparation…');
+        setVidangesImportProgress((p) => Math.max(p, 35));
+
+        const rows = (Array.isArray(jsonRows) ? jsonRows : []).map((r, idx) => {
+          const idSite = String(r?.['ID Site'] || r?.['IDSite'] || r?.['Id Site'] || r?.['idSite'] || '').trim();
+          const nh1Raw = r?.['NH1 DV'] ?? r?.['NH1DV'] ?? r?.['nh1DV'] ?? r?.['NH DV'] ?? r?.['NHDV'];
+          const dvRaw = r?.['Date DV'] ?? r?.['DateDV'] ?? r?.['dateDV'] ?? r?.['Date Vidange'];
+          const nh1DV =
+            nh1Raw == null || String(nh1Raw).trim() === ''
+              ? null
+              : Number(String(nh1Raw).replace(',', '.'));
+          const dateDV = parseExcelDateToYmd(dvRaw) || '';
+          return { idSite, nh1DV: Number.isFinite(nh1DV) ? nh1DV : null, dateDV };
+        });
+
+        setVidangesImportStep('Envoi serveur…');
+        setVidangesImportProgress((p) => Math.max(p, 60));
+        op.update({ detail: `Application de ${rows.length} vidange(s) déclarée(s)…` });
+
+        const res = await apiFetchJson('/api/sites/vidanges-import', {
+          method: 'POST',
+          body: JSON.stringify({ filename: file?.name || null, rows })
+        });
+
+        setVidangesImportProgress((p) => Math.max(p, 90));
+        await loadData();
+        await loadFicheHistory();
+        await loadInterventions();
+        bumpInterventionsUiRev();
+
+        setVidangesImportProgress(100);
+
+        const applied = Number(res?.applied || 0);
+        const appliedRetro = Number(res?.appliedRetro || 0);
+        const appliedReset = Number(res?.appliedReset || 0);
+        const appliedRegress = Number(res?.appliedRegress || 0);
+        const skipped = Number(res?.skipped || 0);
+        const errors = Number(res?.errors || 0);
+        const skippedSamples = Array.isArray(res?.skippedSamples) ? res.skippedSamples : [];
+
+        const reasonLabel = (r) =>
+          r === 'missing_id_site' ? 'ID Site manquant' :
+          r === 'unknown_id_site' ? 'ID Site inconnu' :
+          r === 'retired_site' ? 'Site retiré' :
+          r === 'invalid_nh' ? 'Compteur invalide' :
+          r === 'invalid_date' ? 'Date invalide' :
+          r === 'future_date' ? 'Date dans le futur' :
+          r === 'before_dv' ? 'Antérieure à la dernière baseline' :
+          r === 'conflict' ? 'Conflit données (compteur > relevés)' :
+          r === 'already_done' ? 'Vidange déjà enregistrée' :
+          r === 'write_error' ? 'Erreur écriture' :
+          String(r || 'Ignoré');
+
+        op.dismiss();
+        alert(
+          `✅ Import VIDANGES DONE terminé.\n\n` +
+          `Vidanges appliquées: ${applied}\n` +
+          (appliedRetro > 0 ? `- dont rétroactives (état réel préservé): ${appliedRetro}\n` : '') +
+          (appliedReset > 0 ? `- dont reset compteur (NH < ancienne baseline): ${appliedReset}\n` : '') +
+          (appliedRegress > 0 ? `- dont compteur en recul vs dernier relevé: ${appliedRegress}\n` : '') +
+          `Lignes ignorées: ${skipped}` +
+          (errors > 0 ? `\n⚠️ Erreurs d'écriture: ${errors} — à vérifier.` : '') +
+          (skippedSamples.length > 0
+            ? `\n\nDétails ignorés:\n` +
+              skippedSamples.slice(0, 12).map((s) =>
+                `  • L${s.row} ${s.idSite || '?'} — ${reasonLabel(s.reason)}` +
+                (s.doneDate ? ` (${s.doneDate}` : '') +
+                (s.nhNow != null ? `, ${s.nhNow}H` : '') +
+                (s.doneDate || s.nhNow != null ? ')' : '')
+              ).join('\n')
+            : '')
+        );
+      } catch (err) {
+        op.dismiss();
+        alert(err?.message || "Erreur lors de l'import VIDANGES DONE.");
+      } finally {
+        op.dismiss();
+        setVidangesImportBusy(false);
+        setTimeout(() => {
+          setVidangesImportStep('');
+          setVidangesImportProgress(0);
+        }, 500);
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
+  };
+
   const handleExportExcel = async () => {
     const ok = window.confirm('Exporter la liste des sites en Excel ?');
     if (!ok) return;
@@ -8213,6 +8377,11 @@ return (
             sitesCount={sites.length}
             exportBusy={exportBusy}
             onExportExcel={handleExportExcel}
+            canImportVidanges={Boolean(isAdmin || isAnyManager)}
+            vidangesImportBusy={vidangesImportBusy}
+            vidangesImportStep={vidangesImportStep}
+            vidangesImportProgress={vidangesImportProgress}
+            onImportVidangesChange={handleImportVidanges}
             canImportConsoleRms={Boolean(isAdmin || isAnyManager)}
             consoleRmsImportBusy={consoleRmsImportBusy}
             consoleRmsImportStep={consoleRmsImportStep}
