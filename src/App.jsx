@@ -6147,6 +6147,7 @@ useEffect(() => {
         await loadFicheHistory();
         await loadInterventions();
         bumpInterventionsUiRev();
+        try { await loadNhQuarantineCount(); } catch { /* badge non bloquant */ }
 
         setVidangesImportProgress(100);
 
