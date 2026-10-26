@@ -52,7 +52,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.16.9';
+const APP_VERSION = '6.17.0';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -6116,22 +6116,71 @@ useEffect(() => {
         const data = new Uint8Array(event.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonRows = XLSX.utils.sheet_to_json(sheet);
+        // Parsing tolérant : en-têtes détectées par scan (ligne de titre possible),
+        // noms de colonnes normalisés (accents, espaces insécables, casse).
+        const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+
+        const normCol = (k) => {
+          const isWs = (cp) => cp === 0x20 || cp === 0x9 || cp === 0xa || cp === 0xd ||
+            cp === 0xa0 || (cp >= 0x2000 && cp <= 0x200a) || cp === 0x202f ||
+            cp === 0x205f || cp === 0x3000 || cp === 0xfeff || (cp >= 0x200b && cp <= 0x200d);
+          return String(k || '')
+            .normalize('NFD')
+            .split('')
+            .filter((c) => { const cp = c.codePointAt(0); return !(cp >= 0x300 && cp <= 0x36f); })
+            .map((c) => (isWs(c.codePointAt(0)) ? ' ' : c))
+            .join('')
+            .split(' ')
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+        };
+        const ID_COLS = ['id site', 'idsite', 'id_site', 'site id', 'siteid', 'id'];
+        const NH_COLS = ['nh1 dv', 'nh1dv', 'nh1_dv', 'nh dv', 'nhdv', 'nh1'];
+        const DV_COLS = ['date dv', 'datedv', 'date_dv', 'date de vidange', 'date vidange', 'dv'];
+        const findCol = (headers, candidates) => headers.findIndex((h) => candidates.includes(h));
 
         setVidangesImportStep('Préparation…');
         setVidangesImportProgress((p) => Math.max(p, 35));
 
-        const rows = (Array.isArray(jsonRows) ? jsonRows : []).map((r, idx) => {
-          const idSite = String(r?.['ID Site'] || r?.['IDSite'] || r?.['Id Site'] || r?.['idSite'] || '').trim();
-          const nh1Raw = r?.['NH1 DV'] ?? r?.['NH1DV'] ?? r?.['nh1DV'] ?? r?.['NH DV'] ?? r?.['NHDV'];
-          const dvRaw = r?.['Date DV'] ?? r?.['DateDV'] ?? r?.['dateDV'] ?? r?.['Date Vidange'];
+        // Repérer la ligne d'en-têtes : celle qui contient une colonne "ID Site"
+        let headerIdx = -1;
+        for (let i = 0; i < Math.min(aoa.length, 15); i += 1) {
+          const headers = (Array.isArray(aoa[i]) ? aoa[i] : []).map(normCol);
+          if (findCol(headers, ID_COLS) >= 0) { headerIdx = i; break; }
+        }
+        if (headerIdx === -1) {
+          throw new Error(
+            'Colonne "ID Site" introuvable dans le fichier.\n' +
+            'En-têtes attendues : "ID Site", "NH1 DV", "Date DV".'
+          );
+        }
+        const headers = (Array.isArray(aoa[headerIdx]) ? aoa[headerIdx] : []).map(normCol);
+        const colId = findCol(headers, ID_COLS);
+        const colNh = findCol(headers, NH_COLS);
+        const colDv = findCol(headers, DV_COLS);
+        if (colNh === -1 || colDv === -1) {
+          throw new Error(
+            `Colonnes introuvables : ${colNh === -1 ? '"NH1 DV" ' : ''}${colDv === -1 ? '"Date DV"' : ''}\n` +
+            `En-têtes détectées : ${(Array.isArray(aoa[headerIdx]) ? aoa[headerIdx] : []).filter((c) => String(c || '').trim()).join(' | ')}`
+          );
+        }
+
+        const rows = [];
+        for (let i = headerIdx + 1; i < aoa.length; i += 1) {
+          const arr = Array.isArray(aoa[i]) ? aoa[i] : [];
+          const idSite = String(arr[colId] || '').trim();
+          const nh1Raw = arr[colNh];
+          const dvRaw = arr[colDv];
+          // Ligne totalement vide → ignorée en amont (pas rapportée)
+          if (!idSite && String(nh1Raw || '').trim() === '' && String(dvRaw || '').trim() === '') continue;
           const nh1DV =
             nh1Raw == null || String(nh1Raw).trim() === ''
               ? null
               : Number(String(nh1Raw).replace(',', '.'));
           const dateDV = parseExcelDateToYmd(dvRaw) || '';
-          return { idSite, nh1DV: Number.isFinite(nh1DV) ? nh1DV : null, dateDV };
-        });
+          rows.push({ idSite, nh1DV: Number.isFinite(nh1DV) ? nh1DV : null, dateDV });
+        }
 
         setVidangesImportStep('Envoi serveur…');
         setVidangesImportProgress((p) => Math.max(p, 60));
