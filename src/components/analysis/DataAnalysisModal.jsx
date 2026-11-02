@@ -154,7 +154,7 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
     () => Math.max(1, ...data.months.map((m) => Math.max(Number(m.planned) || 0, Number(m.done) || 0))),
     [data.months]
   );
-  const totals = data.totals || { planned: 0, done: 0, delta: 0, coverage: null, depassementMonths: 0, manualDone: 0, manualPlanned: 0 };
+  const totals = data.totals || { planned: 0, done: 0, delta: 0, coverage: null, depassementMonths: 0, manualDone: 0, manualPlanned: 0, manualPlannedUsed: 0 };
 
   if (!open) return null;
 
@@ -394,7 +394,8 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                 Croisement <span className="font-semibold">PM × Vidanges</span> : sites planifiés
                 avec ticket <span className="font-semibold">FullPMWO</span> vs fiches
                 <span className="font-semibold"> « Effectuée »</span> — par mois de campagne
-                (clé : date planifiée). Planifiés = applicatif seul ; Effectuées = fiches
+                (clé : date planifiée). Planifiés = tickets applicatifs (+ saisies
+                historiques pour les mois d'avant févr. 2026) ; Effectuées = fiches
                 applicatives + vidanges historiques saisies.
               </div>
 
@@ -408,7 +409,9 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
                 <div
                   className="rounded-lg bg-indigo-50 border border-indigo-200 px-3 py-2"
-                  title="Comptage strictement applicatif — sites avec ticket FullPMWO"
+                  title={totals.manualPlannedUsed > 0
+                    ? `dont ${totals.planned - totals.manualPlannedUsed} tickets applicatifs + ${totals.manualPlannedUsed} saisies historiques (avant févr. 2026)`
+                    : 'Comptage strictement applicatif — sites avec ticket FullPMWO'}
                 >
                   <div className="text-[10px] font-semibold text-indigo-900">Planifiés (ticket FullPMWO)</div>
                   <div className="text-xl font-bold text-indigo-800">{totals.planned}</div>
@@ -468,9 +471,18 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                       <tr key={m.month} className={`border-t border-gray-100 ${m.depassement ? 'bg-amber-50/60' : ''}`}>
                         <td
                           className="px-3 py-2 font-semibold text-gray-800 capitalize whitespace-nowrap"
-                          title={(m.manualPlanned > 0 || m.manualDone > 0)
-                            ? `Données hors application : ${m.manualPlanned} planifiés (non comptés) · ${m.manualDone} effectuées (incluses dans « Effectuées »)`
-                            : undefined}
+                          title={(() => {
+                            const parts = [];
+                            if (m.manualPlanned > 0) {
+                              parts.push(m.plannedFromManual
+                                ? `Planifiés : ${m.manualPlanned} saisies historiques (avant l'application)`
+                                : `${m.manualPlanned} planifiés saisis non comptés — tickets applicatifs seuls`);
+                            }
+                            if (m.manualDone > 0) {
+                              parts.push(`Effectuées : ${m.manualDone} vidanges historiques saisies (incluses)`);
+                            }
+                            return parts.length ? `Données hors application — ${parts.join(' · ')}` : undefined;
+                          })()}
                         >
                           {monthLabel(m.month)}
                           {m.depassement && (
@@ -479,7 +491,14 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-right font-semibold text-indigo-800 whitespace-nowrap">
+                        <td
+                          className="px-3 py-2 text-right font-semibold text-indigo-800 whitespace-nowrap"
+                          title={m.plannedFromManual
+                            ? `${m.planned} planifiés issus des saisies historiques (avant l'application)`
+                            : m.manualPlanned > 0
+                              ? `${m.manualPlanned} planifiés saisis non comptés — tickets applicatifs seuls`
+                              : undefined}
+                        >
                           {m.planned}
                           <span className="block text-[10px] font-normal text-gray-400">{m.plannedSites} sites</span>
                         </td>
@@ -531,7 +550,7 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                 <span className="flex items-center gap-1"><span className="inline-block w-3 h-2 rounded bg-indigo-500" /> Planifiés</span>
                 <span className="flex items-center gap-1"><span className="inline-block w-3 h-2 rounded bg-emerald-500" /> Effectuées</span>
                 <span className="flex items-center gap-1"><TrendingUp size={11} /> Dépassement = effectuées &gt; planifiées</span>
-                <span className="text-gray-400">Planifiés = tickets FullPMWO applicatifs seuls · Effectuées = fiches applicatives + vidanges historiques saisies · survol du mois = décomposition</span>
+                <span className="text-gray-400">Planifiés = tickets applicatifs (+ saisies historiques avant févr. 2026) · Effectuées = fiches applicatives + saisies historiques · survol = décomposition</span>
               </div>
 
               {/* Manual entries list */}

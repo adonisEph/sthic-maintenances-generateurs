@@ -3,6 +3,9 @@ import { json, readJson, requireAuth, isSuperAdmin, userZone, ymdToday, isoNow, 
 
 const VALID_ZONES = ['BZV/POOL', 'PNR/KOUILOU', 'UPCN'];
 const YM = /^\d{4}-\d{2}$/;
+// Mois de démarrage d'utilisation de l'application — les campagnes
+// antérieures relèvent des saisies historiques (process pré-app).
+const APP_START_MONTH = '2026-02';
 
 const isManagerRole = (data) =>
   ['admin', 'manager', 'manager_bzv_pool'].includes(String(data?.user?.role || ''));
@@ -25,11 +28,14 @@ const scopeZone = (data, url) => {
  *   ?from=YYYY-MM&to=  → plage de campagnes (max 36)
  *   ?zone=             → SuperAdmin uniquement ; managers verrouillés.
  *
- * Par campagne : planned (pm_items FullPMWO + ticket — STRICTEMENT
- * applicatif, les « planifiés » manuels ne sont jamais additionnés) /
- * done (fiches 'Effectuée' + vidanges historiques saisies — elles ont
- * réellement eu lieu hors-app). Clé de campagne : planned_date.
- * manualPlanned/manualDone exposés pour la décomposition au survol.
+ * Par campagne :
+ *   planned = pm_items FullPMWO + ticket — applicatif seul, SAUF les mois
+ *             antérieurs à APP_START_MONTH sans aucune donnée applicative
+ *             où les saisies historiques tiennent lieu de données.
+ *   done    = fiches 'Effectuée' + vidanges historiques saisies (elles
+ *             ont réellement eu lieu hors-app — elles comptent).
+ * Clé de campagne : planned_date. manualPlanned/manualDone exposés
+ * pour la décomposition au survol.
  */
 export async function onRequestGet({ request, env, data }) {
   try {
@@ -136,14 +142,22 @@ export async function onRequestGet({ request, env, data }) {
     months = months
       .sort((a, b) => b.month.localeCompare(a.month))
       .map((r) => {
-        // « Planifiés » : strictement applicatif (tickets FullPMWO) — la
-        // saisie manuelle de planifiés n'est jamais additionnée.
+        // « Planifiés » : tickets FullPMWO applicatifs. Exception — mois
+        // antérieurs au démarrage de l'app sans aucune donnée applicative :
+        // les saisies historiques TIENNENT LIEU de planifiés (le process
+        // existait avant l'app ; le rapport doit couvrir tout l'historique).
         // « Effectuées » : fiches applicatives + vidanges historiques
         // saisies (réellement effectuées hors-app — elles comptent).
-        const planned = r.planned;
+        const manualPlannedUsed =
+          r.planned === 0 && r.month < APP_START_MONTH ? r.manualPlanned : 0;
+        const planned = r.planned + manualPlannedUsed;
         const done = r.done + r.manualDone;
         return {
           ...r,
+          planned,
+          plannedSites: r.planned > 0 ? r.plannedSites : manualPlannedUsed,
+          plannedFromManual: manualPlannedUsed > 0,
+          manualPlannedUsed,
           done,
           doneSites: r.doneSites + r.manualDone,
           delta: done - planned,
@@ -160,9 +174,10 @@ export async function onRequestGet({ request, env, data }) {
         doneSites: acc.doneSites + r.doneSites,
         manualDone: acc.manualDone + r.manualDone,
         manualPlanned: acc.manualPlanned + r.manualPlanned,
+        manualPlannedUsed: acc.manualPlannedUsed + (r.manualPlannedUsed || 0),
         depassementMonths: acc.depassementMonths + (r.depassement ? 1 : 0)
       }),
-      { planned: 0, plannedSites: 0, done: 0, doneSites: 0, manualDone: 0, manualPlanned: 0, depassementMonths: 0 }
+      { planned: 0, plannedSites: 0, done: 0, doneSites: 0, manualDone: 0, manualPlanned: 0, manualPlannedUsed: 0, depassementMonths: 0 }
     );
     totals.delta = totals.done - totals.planned;
     totals.coverage = totals.planned > 0 ? Math.round((totals.done / totals.planned) * 1000) / 10 : null;
