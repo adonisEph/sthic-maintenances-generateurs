@@ -118,9 +118,12 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
     setManualFormOpen(true);
   };
 
-  // Ouverture rapide du formulaire pour ajuster les "Effectuées" d'une campagne.
-  const editDoneForMonth = (m) => {
-    const existing = data.manualEntries.find((e) => e.month === m.month);
+  // CRUD par campagne : ouvre le formulaire pré-rempli avec la saisie
+  // existante du mois (de préférence celle de la zone filtrée), sinon vierge.
+  const editMonthManual = (m) => {
+    const entries = data.manualEntries.filter((e) => e.month === m.month);
+    const existing =
+      entries.find((e) => zone !== 'ALL' && e.zone === zone) || entries[0] || null;
     setManualForm({
       month: m.month,
       zone: existing?.zone || (zone !== 'ALL' ? zone : 'BZV/POOL'),
@@ -130,6 +133,12 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
     });
     setManualFormOpen(true);
   };
+
+  // Saisie existante correspondant au couple (mois, zone) du formulaire —
+  // permet le mode édition + la suppression directe dans le formulaire.
+  const currentManualEntry = data.manualEntries.find(
+    (e) => e.month === manualForm.month && e.zone === manualForm.zone
+  );
 
   const deleteManual = async (id) => {
     if (!window.confirm('Supprimer cette saisie historique ?')) return;
@@ -351,8 +360,18 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                 disabled={manualBusy}
                 className="px-4 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-bold hover:bg-amber-500 disabled:opacity-60"
               >
-                {manualBusy ? 'Enregistrement…' : 'Enregistrer'}
+                {manualBusy ? 'Enregistrement…' : currentManualEntry ? 'Mettre à jour' : 'Enregistrer'}
               </button>
+              {currentManualEntry && (
+                <button
+                  type="button"
+                  onClick={async () => { await deleteManual(currentManualEntry.id); setManualFormOpen(false); }}
+                  disabled={manualBusy}
+                  className="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-bold hover:bg-rose-500 disabled:opacity-60 flex items-center gap-1"
+                >
+                  <Trash2 size={12} /> Supprimer
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -422,6 +441,7 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                       <th className="px-3 py-2 text-right whitespace-nowrap">Écart</th>
                       <th className="px-3 py-2 text-right whitespace-nowrap">Couverture</th>
                       <th className="px-3 py-2 w-72">Comparaison</th>
+                      {isSuperAdmin && <th className="px-2 py-2 w-10" title="Saisie manuelle" />}
                     </tr>
                   </thead>
                   <tbody>
@@ -457,16 +477,6 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                               +{m.manualDone}
                             </span>
                           )}
-                          {isSuperAdmin && (
-                            <button
-                              type="button"
-                              onClick={() => editDoneForMonth(m)}
-                              className="ml-1 inline-block p-0.5 rounded hover:bg-emerald-100 text-emerald-600 align-middle"
-                              title="Ajuster les effectuées (saisie historique)"
-                            >
-                              <Pencil size={11} />
-                            </button>
-                          )}
                           <span className="block text-[10px] font-normal text-gray-400">{m.doneSites} sites</span>
                         </td>
                         <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${m.delta > 0 ? 'text-amber-700' : 'text-gray-600'}`}>
@@ -487,6 +497,18 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                             </div>
                           </div>
                         </td>
+                        {isSuperAdmin && (
+                          <td className="px-2 py-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => editMonthManual(m)}
+                              className="p-1 rounded text-gray-300 hover:text-amber-600 hover:bg-amber-50"
+                              title={`Saisir/ajuster les données historiques de ${monthLabel(m.month)}`}
+                            >
+                              <Pencil size={13} />
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
