@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, TrendingUp, RefreshCw, AlertTriangle, BarChart3, PlusCircle, Trash2, Database, Calendar, Pencil } from 'lucide-react';
+import { X, TrendingUp, RefreshCw, AlertTriangle, BarChart3, PlusCircle, Trash2, Database, Calendar, Pencil, Printer } from 'lucide-react';
 
 const ZONES = ['BZV/POOL', 'PNR/KOUILOU', 'UPCN'];
 const MONTH_OPTIONS = [6, 12, 24];
@@ -156,6 +156,122 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
     [data.months]
   );
   const totals = data.totals || { planned: 0, done: 0, delta: 0, coverage: null, depassementMonths: 0, manualDone: 0, manualPlanned: 0, manualPlannedUsed: 0 };
+
+  // Libellés dynamiques des filtres en cours — repris dans le rapport.
+  const periodLabel = () => {
+    if (filterMode === 'single' && singleMonth) return `Campagne : ${monthLabel(singleMonth)}`;
+    if (filterMode === 'range' && rangeFrom && rangeTo) {
+      const [lo, hi] = rangeFrom <= rangeTo ? [rangeFrom, rangeTo] : [rangeTo, rangeFrom];
+      return `Période : ${monthLabel(lo)} → ${monthLabel(hi)}`;
+    }
+    return `Période : ${monthsCount} derniers mois bouclés`;
+  };
+  const zoneLabel = isSuperAdmin ? (zone === 'ALL' ? 'Toutes zones' : zone) : (effZone || '—');
+
+  const esc = (s) =>
+    String(s ?? '').replace(/[&<>"']/g, (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // Impression : document dédié reflétant EXACTEMENT les filtres affichés.
+  // La colonne « Écart » (et les actions/pencils) est absente du rapport.
+  const printReport = () => {
+    const months = data.months;
+    if (!months.length) return;
+    const shownMonths = new Set(months.map((m) => m.month));
+    const manualRows = data.manualEntries.filter((e) => shownMonths.has(e.month));
+    const now = new Date();
+    const genStr = `${now.toLocaleDateString('fr-FR')} à ${now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+
+    const rowsHtml = months.map((m) => {
+      const dep = m.depassement ? ' <span class="dep">DÉPASSEMENT</span>' : '';
+      const pSub = `${m.plannedSites} sites${m.plannedFromManual ? ' · historique' : ''}`;
+      const dSub = `${m.doneSites} sites${m.manualDone > 0 ? ` · dont ${m.manualDone} hist.` : ''}`;
+      const cov = m.coverage == null ? '—' : `${m.coverage}%`;
+      const pW = Math.max(2, (m.planned / maxVal) * 100);
+      const dW = Math.max(2, (m.done / maxVal) * 100);
+      return `<tr class="${m.depassement ? 'dep-row' : ''}">
+        <td class="cap">${esc(monthLabel(m.month))}${dep}</td>
+        <td class="num"><b>${m.planned}</b><div class="sub">${esc(pSub)}</div></td>
+        <td class="num"><b>${m.done}</b><div class="sub">${esc(dSub)}</div></td>
+        <td class="num">${cov}</td>
+        <td>
+          <div class="bar-row"><div class="bar" style="width:${pW}%;background:#6366f1"></div><span>${m.planned}</span></div>
+          <div class="bar-row"><div class="bar" style="width:${dW}%;background:${m.depassement ? '#f59e0b' : '#10b981'}"></div><span>${m.done}</span></div>
+        </td>
+      </tr>`;
+    }).join('');
+
+    const manualHtml = manualRows.length ? `
+      <h3>Saisies manuelles historiques (données hors application)</h3>
+      <table>
+        <thead><tr><th>Mois</th><th>Zone</th><th class="num">Planifiés</th><th class="num">Effectuées</th><th>Note</th></tr></thead>
+        <tbody>${manualRows.map((e) => `<tr>
+          <td class="cap">${esc(monthLabel(e.month))}</td><td>${esc(e.zone)}</td>
+          <td class="num">${e.planned}</td><td class="num">${e.done}</td><td>${esc(e.note || '—')}</td>
+        </tr>`).join('')}</tbody>
+      </table>` : '';
+
+    const html = `<!doctype html><html><head><meta charset="utf-8">
+      <title>Analyse — Tendance des vidanges / Campagnes</title>
+      <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; color: #111827; margin: 0; }
+        h1 { font-size: 17px; margin: 0 0 2px; }
+        .meta { font-size: 11px; color: #6b7280; margin-bottom: 12px; }
+        .chips { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+        .chip { border: 1px solid #d1d5db; border-radius: 8px; padding: 6px 10px; min-width: 125px; }
+        .chip .l { font-size: 8px; font-weight: 700; color: #6b7280; text-transform: uppercase; }
+        .chip .v { font-size: 15px; font-weight: 800; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        th { background: #f3f4f6; text-transform: uppercase; font-size: 9px; letter-spacing: .05em; color: #4b5563; text-align: left; }
+        th, td { border: 1px solid #e5e7eb; padding: 5px 7px; }
+        .num { text-align: right; }
+        .sub { font-size: 9px; color: #9ca3af; font-weight: 400; }
+        .cap { text-transform: capitalize; font-weight: 600; }
+        .dep { background: #fde68a; color: #92400e; font-size: 8px; font-weight: 800; padding: 1px 5px; border-radius: 4px; }
+        .dep-row { background: #fffbeb; }
+        .bar-row { display: flex; align-items: center; gap: 4px; margin: 1px 0; }
+        .bar { height: 6px; border-radius: 3px; }
+        .bar-row span { font-size: 9px; color: #4b5563; }
+        h3 { font-size: 12px; margin: 16px 0 6px; }
+        .foot { font-size: 9px; color: #9ca3af; margin-top: 10px; }
+        @media print { * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+      </style></head><body>
+      <h1>Tendance des vidanges / Campagnes</h1>
+      <div class="meta">${esc(periodLabel())} · Zone : ${esc(zoneLabel)} · Généré le ${genStr}</div>
+      <div class="chips">
+        <div class="chip"><div class="l">Planifiés (ticket FullPMWO)</div><div class="v">${totals.planned}</div></div>
+        <div class="chip"><div class="l">Vidanges effectuées</div><div class="v">${totals.done}</div></div>
+        <div class="chip"><div class="l">Couverture globale</div><div class="v">${totals.coverage == null ? '—' : `${totals.coverage}%`}</div></div>
+        <div class="chip"><div class="l">Campagnes en dépassement</div><div class="v">${totals.depassementMonths}</div></div>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Campagne</th>
+          <th class="num">Planifiés (ticket FullPMWO)</th>
+          <th class="num">Effectuées (fiches + historique)</th>
+          <th class="num">Couverture</th>
+          <th>Comparaison</th>
+        </tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+      ${manualHtml}
+      <div class="foot">Planifiés = tickets applicatifs (+ saisies historiques avant févr. 2026) · Effectuées = fiches applicatives + saisies historiques · Rapport généré depuis l'application — Analyse des données.</div>
+      </body></html>`;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+    document.body.appendChild(iframe);
+    const w = iframe.contentWindow;
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    const cleanup = () => { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); };
+    w.onafterprint = cleanup;
+    w.focus();
+    w.print();
+    setTimeout(cleanup, 30000);
+  };
 
   if (!open) return null;
 
@@ -449,8 +565,24 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                 </div>
               )}
 
-              {/* Table — conteneur scrollable, en-tête figée */}
-              <div className="border border-gray-200 rounded-lg overflow-auto" style={{ maxHeight: '58vh' }}>
+              {/* Table — bandeau d'entête (périmètre filtré + impression),
+                  conteneur scrollable, en-tête de colonnes figée */}
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-gray-50 border-b border-gray-200">
+                  <div className="text-[11px] text-gray-500 truncate">
+                    {data.months.length} campagne(s) · {periodLabel()} · Zone : {zoneLabel}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={printReport}
+                    disabled={!data.months.length || loading}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-800 text-white text-[11px] font-semibold hover:bg-gray-700 disabled:opacity-50 shrink-0"
+                    title="Imprimer le rapport tel que filtré (colonne Écart masquée)"
+                  >
+                    <Printer size={12} /> Imprimer le rapport
+                  </button>
+                </div>
+                <div className="overflow-auto" style={{ maxHeight: '54vh' }}>
                 <table className="w-full text-sm border-collapse">
                   <thead className="sticky top-0 z-10">
                     <tr className="bg-gray-100 text-left text-[11px] uppercase tracking-wide text-gray-600 shadow-[0_1px_0_0_#e5e7eb]">
@@ -548,6 +680,7 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
               <div className="mt-2 flex items-center gap-4 text-[10px] text-gray-500 flex-wrap">
                 <span className="flex items-center gap-1"><span className="inline-block w-3 h-2 rounded bg-indigo-500" /> Planifiés</span>
