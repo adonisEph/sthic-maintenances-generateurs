@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, TrendingUp, RefreshCw, AlertTriangle, BarChart3 } from 'lucide-react';
+import { X, TrendingUp, RefreshCw, AlertTriangle, BarChart3, PlusCircle, Trash2, Database, Calendar } from 'lucide-react';
 
 const ZONES = ['BZV/POOL', 'PNR/KOUILOU', 'UPCN'];
 const MONTH_OPTIONS = [6, 12, 24];
@@ -12,36 +12,63 @@ const monthLabel = (ym) => {
   }
 };
 
-// Registre des analyses par croisement — extensible : chaque entrée =
-// une fonctionnalité de la rubrique "Analyse des données".
+const currentYm = () => new Date().toISOString().slice(0, 7);
+
+// Registre des analyses par croisement — extensible.
 const FEATURES = [
   { id: 'vidanges-trend', label: 'Tendance des vidanges / Campagnes' }
 ];
 
+const FILTER_MODES = [
+  { id: 'preset', label: 'Derniers mois' },
+  { id: 'single', label: 'Mois précis' },
+  { id: 'range', label: 'Entre 2 mois' }
+];
+
 const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone }) => {
   const [feature, setFeature] = useState('vidanges-trend');
+  const [filterMode, setFilterMode] = useState('preset');
   const [monthsCount, setMonthsCount] = useState(12);
+  const [singleMonth, setSingleMonth] = useState(currentYm().slice(0, 7));
+  const [rangeFrom, setRangeFrom] = useState('');
+  const [rangeTo, setRangeTo] = useState('');
   const [zone, setZone] = useState('ALL');
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
-  const [data, setData] = useState({ months: [], totals: null });
+  const [data, setData] = useState({ months: [], totals: null, manualEntries: [] });
+  const [manualFormOpen, setManualFormOpen] = useState(false);
+  const [manualBusy, setManualBusy] = useState(false);
+  const [manualForm, setManualForm] = useState({ month: '', zone: 'BZV/POOL', planned: '', done: '', note: '' });
 
   const effZone = isSuperAdmin ? zone : String(userZone || '');
+
+  const buildParams = () => {
+    const params = new URLSearchParams();
+    if (filterMode === 'single' && singleMonth) {
+      params.set('month', singleMonth);
+    } else if (filterMode === 'range' && rangeFrom && rangeTo) {
+      params.set('from', rangeFrom);
+      params.set('to', rangeTo);
+    } else {
+      params.set('months', String(monthsCount));
+    }
+    if (isSuperAdmin && zone && zone !== 'ALL') params.set('zone', zone);
+    return params;
+  };
 
   const load = async () => {
     setLoading(true);
     setLoadError('');
     try {
-      const params = new URLSearchParams({ months: String(monthsCount) });
-      if (isSuperAdmin && zone && zone !== 'ALL') params.set('zone', zone);
-      const res = await apiFetchJson(`/api/analytics/vidanges-trend?${params.toString()}`, { method: 'GET' });
+      const res = await apiFetchJson(`/api/analytics/vidanges-trend?${buildParams().toString()}`, { method: 'GET' });
       setData({
         months: Array.isArray(res?.months) ? res.months : [],
-        totals: res?.totals || null
+        totals: res?.totals || null,
+        manualEntries: Array.isArray(res?.manualEntries) ? res.manualEntries : []
       });
     } catch (e) {
       setLoadError(e?.message || 'Erreur de chargement.');
-      setData({ months: [], totals: null });
+      setData({ months: [], totals: null, manualEntries: [] });
     } finally {
       setLoading(false);
     }
@@ -50,19 +77,56 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
   useEffect(() => {
     if (open) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, monthsCount, zone, feature]);
+  }, [open, filterMode, monthsCount, singleMonth, rangeFrom, rangeTo, zone, feature]);
+
+  const submitManual = async () => {
+    if (!manualForm.month) { alert('Choisissez le mois.'); return; }
+    const planned = Number(manualForm.planned) || 0;
+    const done = Number(manualForm.done) || 0;
+    if (planned <= 0 && done <= 0) { alert('Saisir au moins une valeur non nulle.'); return; }
+    setManualBusy(true);
+    try {
+      await apiFetchJson('/api/analytics/vidanges-trend', {
+        method: 'POST',
+        body: JSON.stringify({
+          month: manualForm.month,
+          zone: manualForm.zone,
+          plannedFullpmwo: planned,
+          doneVidanges: done,
+          note: manualForm.note
+        })
+      });
+      setManualForm({ month: '', zone: 'BZV/POOL', planned: '', done: '', note: '' });
+      setManualFormOpen(false);
+      await load();
+    } catch (e) {
+      alert(e?.message || 'Erreur lors de la saisie.');
+    } finally {
+      setManualBusy(false);
+    }
+  };
+
+  const deleteManual = async (id) => {
+    if (!window.confirm('Supprimer cette saisie historique ?')) return;
+    try {
+      await apiFetchJson(`/api/analytics/vidanges-trend?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await load();
+    } catch (e) {
+      alert(e?.message || 'Erreur lors de la suppression.');
+    }
+  };
 
   const maxVal = useMemo(
     () => Math.max(1, ...data.months.map((m) => Math.max(Number(m.planned) || 0, Number(m.done) || 0))),
     [data.months]
   );
-  const totals = data.totals || { planned: 0, done: 0, delta: 0, coverage: null, depassementMonths: 0 };
+  const totals = data.totals || { planned: 0, done: 0, delta: 0, coverage: null, depassementMonths: 0, manualDone: 0, manualPlanned: 0 };
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col">
+    <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-2 sm:p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-[97vw] max-w-[1600px] h-[94vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
           <div className="flex items-center gap-2">
@@ -77,7 +141,7 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
           </button>
         </div>
 
-        {/* Feature tabs (extensible) */}
+        {/* Feature tabs */}
         <div className="px-5 pt-3 flex items-center gap-2 flex-wrap">
           {FEATURES.map((f) => (
             <button
@@ -96,19 +160,69 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
         </div>
 
         {/* Controls */}
-        <div className="px-5 py-3 flex items-center gap-3 flex-wrap border-b border-gray-100">
-          <label className="text-xs text-gray-600 font-semibold flex items-center gap-1.5">
-            Campagnes :
-            <select
-              value={monthsCount}
-              onChange={(e) => setMonthsCount(Number(e.target.value))}
-              className="border border-gray-300 rounded-lg px-2 py-1 text-xs font-semibold"
-            >
-              {MONTH_OPTIONS.map((n) => (
-                <option key={n} value={n}>{n} derniers mois</option>
-              ))}
-            </select>
-          </label>
+        <div className="px-5 py-3 flex items-center gap-x-4 gap-y-2 flex-wrap border-b border-gray-100">
+          <div className="flex items-center rounded-lg border border-gray-300 overflow-hidden">
+            {FILTER_MODES.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setFilterMode(m.id)}
+                className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  filterMode === m.id ? 'bg-gray-800 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+
+          {filterMode === 'preset' && (
+            <label className="text-xs text-gray-600 font-semibold flex items-center gap-1.5">
+              Période :
+              <select
+                value={monthsCount}
+                onChange={(e) => setMonthsCount(Number(e.target.value))}
+                className="border border-gray-300 rounded-lg px-2 py-1 text-xs font-semibold"
+              >
+                {MONTH_OPTIONS.map((n) => (
+                  <option key={n} value={n}>{n} derniers mois bouclés</option>
+                ))}
+              </select>
+            </label>
+          )}
+          {filterMode === 'single' && (
+            <label className="text-xs text-gray-600 font-semibold flex items-center gap-1.5">
+              <Calendar size={13} /> Campagne :
+              <input
+                type="month"
+                value={singleMonth}
+                max={currentYm()}
+                onChange={(e) => setSingleMonth(e.target.value)}
+                className="border border-gray-300 rounded-lg px-2 py-1 text-xs font-semibold"
+              />
+            </label>
+          )}
+          {filterMode === 'range' && (
+            <div className="flex items-center gap-2 text-xs text-gray-600 font-semibold">
+              <Calendar size={13} />
+              <input
+                type="month"
+                value={rangeFrom}
+                max={currentYm()}
+                onChange={(e) => setRangeFrom(e.target.value)}
+                className="border border-gray-300 rounded-lg px-2 py-1 text-xs font-semibold"
+              />
+              →
+              <input
+                type="month"
+                value={rangeTo}
+                max={currentYm()}
+                onChange={(e) => setRangeTo(e.target.value)}
+                className="border border-gray-300 rounded-lg px-2 py-1 text-xs font-semibold"
+              />
+            </div>
+          )}
+
           <label className="text-xs text-gray-600 font-semibold flex items-center gap-1.5">
             Zone :
             {isSuperAdmin ? (
@@ -126,16 +240,97 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
               <span className="px-2 py-1 bg-gray-100 rounded-lg text-gray-700">{effZone || '—'}</span>
             )}
           </label>
-          <button
-            type="button"
-            onClick={load}
-            disabled={loading}
-            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 text-white text-xs font-semibold hover:bg-gray-700 disabled:opacity-60"
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            Actualiser
-          </button>
+
+          <div className="ml-auto flex items-center gap-2">
+            {isSuperAdmin && (
+              <button
+                type="button"
+                onClick={() => setManualFormOpen((v) => !v)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 text-amber-950 text-xs font-bold hover:bg-amber-400"
+              >
+                <PlusCircle size={14} />
+                Données historiques
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={load}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 text-white text-xs font-semibold hover:bg-gray-700 disabled:opacity-60"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              Actualiser
+            </button>
+          </div>
         </div>
+
+        {/* Manual insert form (SuperAdmin) */}
+        {isSuperAdmin && manualFormOpen && (
+          <div className="px-5 py-3 bg-amber-50 border-b border-amber-200">
+            <div className="text-xs font-bold text-amber-900 mb-2">
+              Saisie historique — vidanges effectuées hors application (une ligne par mois + zone ; une saisie existante est remplacée)
+            </div>
+            <div className="flex items-end gap-3 flex-wrap">
+              <label className="text-[11px] font-semibold text-amber-900 flex flex-col gap-1">
+                Mois (campagne)
+                <input
+                  type="month"
+                  value={manualForm.month}
+                  max={currentYm()}
+                  onChange={(e) => setManualForm((f) => ({ ...f, month: e.target.value }))}
+                  className="border border-amber-300 rounded-lg px-2 py-1.5 text-xs bg-white"
+                />
+              </label>
+              <label className="text-[11px] font-semibold text-amber-900 flex flex-col gap-1">
+                Zone
+                <select
+                  value={manualForm.zone}
+                  onChange={(e) => setManualForm((f) => ({ ...f, zone: e.target.value }))}
+                  className="border border-amber-300 rounded-lg px-2 py-1.5 text-xs bg-white"
+                >
+                  {ZONES.map((z) => (
+                    <option key={z} value={z}>{z}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-[11px] font-semibold text-amber-900 flex flex-col gap-1">
+                Planifiés FullPMWO
+                <input
+                  type="number" min="0" placeholder="0"
+                  value={manualForm.planned}
+                  onChange={(e) => setManualForm((f) => ({ ...f, planned: e.target.value }))}
+                  className="border border-amber-300 rounded-lg px-2 py-1.5 text-xs bg-white w-32"
+                />
+              </label>
+              <label className="text-[11px] font-semibold text-amber-900 flex flex-col gap-1">
+                Vidanges effectuées
+                <input
+                  type="number" min="0" placeholder="0"
+                  value={manualForm.done}
+                  onChange={(e) => setManualForm((f) => ({ ...f, done: e.target.value }))}
+                  className="border border-amber-300 rounded-lg px-2 py-1.5 text-xs bg-white w-36"
+                />
+              </label>
+              <label className="text-[11px] font-semibold text-amber-900 flex flex-col gap-1 flex-1 min-w-40">
+                Note (optionnel)
+                <input
+                  type="text" placeholder="ex : rapport papier T1 2025"
+                  value={manualForm.note}
+                  onChange={(e) => setManualForm((f) => ({ ...f, note: e.target.value }))}
+                  className="border border-amber-300 rounded-lg px-2 py-1.5 text-xs bg-white"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={submitManual}
+                disabled={manualBusy}
+                className="px-4 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-bold hover:bg-amber-500 disabled:opacity-60"
+              >
+                {manualBusy ? 'Enregistrement…' : 'Enregistrer'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
@@ -145,7 +340,7 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                 Croisement <span className="font-semibold">PM × Vidanges</span> : sites planifiés
                 avec ticket <span className="font-semibold">FullPMWO</span> vs fiches
                 <span className="font-semibold"> « Effectuée »</span> — par mois de campagne
-                (clé : date planifiée de la fiche).
+                (clé : date planifiée). Les saisies historiques manuelles sont fusionnées.
               </div>
 
               {loadError && (
@@ -159,10 +354,16 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                 <div className="rounded-lg bg-indigo-50 border border-indigo-200 px-3 py-2">
                   <div className="text-[10px] font-semibold text-indigo-900">Planifiés (ticket FullPMWO)</div>
                   <div className="text-xl font-bold text-indigo-800">{totals.planned}</div>
+                  {totals.manualPlanned > 0 && (
+                    <div className="text-[10px] text-amber-700 font-semibold">dont +{totals.manualPlanned} saisies manuelles</div>
+                  )}
                 </div>
                 <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2">
                   <div className="text-[10px] font-semibold text-emerald-900">Vidanges effectuées</div>
                   <div className="text-xl font-bold text-emerald-800">{totals.done}</div>
+                  {totals.manualDone > 0 && (
+                    <div className="text-[10px] text-amber-700 font-semibold">dont +{totals.manualDone} saisies manuelles</div>
+                  )}
                 </div>
                 <div className={`rounded-lg border px-3 py-2 ${totals.delta > 0 ? 'bg-amber-50 border-amber-200' : 'bg-sky-50 border-sky-200'}`}>
                   <div className={`text-[10px] font-semibold ${totals.delta > 0 ? 'text-amber-900' : 'text-sky-900'}`}>Écart (eff. − plan.)</div>
@@ -195,7 +396,7 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                       <th className="px-3 py-2 text-right">Effectuées<br /><span className="normal-case font-normal">(fiches)</span></th>
                       <th className="px-3 py-2 text-right">Écart</th>
                       <th className="px-3 py-2 text-right">Couverture</th>
-                      <th className="px-3 py-2 w-56">Comparaison</th>
+                      <th className="px-3 py-2 w-72">Comparaison</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -217,10 +418,20 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                         </td>
                         <td className="px-3 py-2 text-right font-semibold text-indigo-800">
                           {m.planned}
+                          {m.manualPlanned > 0 && (
+                            <span className="ml-1 inline-block px-1 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 align-middle" title="Saisie manuelle">
+                              +{m.manualPlanned}
+                            </span>
+                          )}
                           <span className="block text-[10px] font-normal text-gray-400">{m.plannedSites} sites</span>
                         </td>
                         <td className="px-3 py-2 text-right font-semibold text-emerald-700">
                           {m.done}
+                          {m.manualDone > 0 && (
+                            <span className="ml-1 inline-block px-1 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 align-middle" title="Saisie manuelle">
+                              +{m.manualDone}
+                            </span>
+                          )}
                           <span className="block text-[10px] font-normal text-gray-400">{m.doneSites} sites</span>
                         </td>
                         <td className={`px-3 py-2 text-right font-bold ${m.delta > 0 ? 'text-amber-700' : 'text-gray-600'}`}>
@@ -246,11 +457,58 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                   </tbody>
                 </table>
               </div>
-              <div className="mt-2 flex items-center gap-4 text-[10px] text-gray-500">
+              <div className="mt-2 flex items-center gap-4 text-[10px] text-gray-500 flex-wrap">
                 <span className="flex items-center gap-1"><span className="inline-block w-3 h-2 rounded bg-indigo-500" /> Planifiés</span>
                 <span className="flex items-center gap-1"><span className="inline-block w-3 h-2 rounded bg-emerald-500" /> Effectuées</span>
-                <span className="flex items-center gap-1"><TrendingUp size={11} /> Dépassement = effectuées &gt; planifiées (anomalie)</span>
+                <span className="flex items-center gap-1"><span className="inline-block px-1 rounded bg-amber-100 text-amber-800 font-bold">+N</span> Saisie manuelle historique</span>
+                <span className="flex items-center gap-1"><TrendingUp size={11} /> Dépassement = effectuées &gt; planifiées</span>
               </div>
+
+              {/* Manual entries list */}
+              {data.manualEntries.length > 0 && (
+                <div className="mt-5 border border-amber-200 rounded-lg overflow-hidden">
+                  <div className="px-3 py-2 bg-amber-50 text-xs font-bold text-amber-900 flex items-center gap-2">
+                    <Database size={13} /> Saisies manuelles historiques ({data.manualEntries.length})
+                  </div>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-amber-50/50 text-left text-[10px] uppercase tracking-wide text-amber-800">
+                        <th className="px-3 py-1.5">Mois</th>
+                        <th className="px-3 py-1.5">Zone</th>
+                        <th className="px-3 py-1.5 text-right">Planifiés</th>
+                        <th className="px-3 py-1.5 text-right">Effectuées</th>
+                        <th className="px-3 py-1.5">Note</th>
+                        <th className="px-3 py-1.5">Saisi par</th>
+                        {isSuperAdmin && <th className="px-3 py-1.5 w-10" />}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.manualEntries.map((e) => (
+                        <tr key={e.id} className="border-t border-amber-100">
+                          <td className="px-3 py-1.5 font-semibold capitalize">{monthLabel(e.month)}</td>
+                          <td className="px-3 py-1.5">{e.zone}</td>
+                          <td className="px-3 py-1.5 text-right">{e.planned}</td>
+                          <td className="px-3 py-1.5 text-right">{e.done}</td>
+                          <td className="px-3 py-1.5 text-gray-500">{e.note || '—'}</td>
+                          <td className="px-3 py-1.5 text-gray-400">{e.createdByEmail || '—'}</td>
+                          {isSuperAdmin && (
+                            <td className="px-3 py-1.5 text-right">
+                              <button
+                                type="button"
+                                onClick={() => deleteManual(e.id)}
+                                className="p-1 rounded hover:bg-rose-100 text-rose-600"
+                                title="Supprimer"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </>
           )}
         </div>
