@@ -177,8 +177,6 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
   const printReport = () => {
     const months = data.months;
     if (!months.length) return;
-    const shownMonths = new Set(months.map((m) => m.month));
-    const manualRows = data.manualEntries.filter((e) => shownMonths.has(e.month));
     const now = new Date();
     const genStr = `${now.toLocaleDateString('fr-FR')} à ${now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
 
@@ -200,16 +198,6 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
         </td>
       </tr>`;
     }).join('');
-
-    const manualHtml = manualRows.length ? `
-      <h3>Saisies manuelles historiques (données hors application)</h3>
-      <table>
-        <thead><tr><th>Mois</th><th>Zone</th><th class="num">Planifiés</th><th class="num">Effectuées</th><th>Note</th></tr></thead>
-        <tbody>${manualRows.map((e) => `<tr>
-          <td class="cap">${esc(monthLabel(e.month))}</td><td>${esc(e.zone)}</td>
-          <td class="num">${e.planned}</td><td class="num">${e.done}</td><td>${esc(e.note || '—')}</td>
-        </tr>`).join('')}</tbody>
-      </table>` : '';
 
     const html = `<!doctype html><html><head><meta charset="utf-8">
       <title>Analyse — Tendance des vidanges / Campagnes</title>
@@ -234,7 +222,11 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
         .bar { height: 6px; border-radius: 3px; }
         .bar-row span { font-size: 9px; color: #4b5563; }
         h3 { font-size: 12px; margin: 16px 0 6px; }
-        .foot { font-size: 9px; color: #9ca3af; margin-top: 10px; }
+        .foot { font-size: 9px; color: #6b7280; margin-top: 10px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+        .lg { display: inline-flex; align-items: center; gap: 4px; }
+        .lg i { display: inline-block; width: 10px; height: 6px; border-radius: 2px; }
+        .lg.dim { color: #9ca3af; }
+        .gen { font-size: 9px; color: #9ca3af; margin-top: 4px; }
         @media print { * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
       </style></head><body>
       <h1>Tendance des vidanges / Campagnes</h1>
@@ -255,8 +247,13 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
         </tr></thead>
         <tbody>${rowsHtml}</tbody>
       </table>
-      ${manualHtml}
-      <div class="foot">Planifiés = tickets applicatifs (+ saisies historiques avant févr. 2026) · Effectuées = fiches applicatives + saisies historiques · Rapport généré depuis l'application — Analyse des données.</div>
+      <div class="foot">
+        <span class="lg"><i style="background:#6366f1"></i>Planifiés</span>
+        <span class="lg"><i style="background:#10b981"></i>Effectuées</span>
+        <span class="lg">Dépassement = effectuées &gt; planifiées</span>
+        <span class="lg dim">Planifiés = tickets applicatifs (+ saisies historiques avant févr. 2026) · Effectuées = fiches applicatives + saisies historiques · survol = décomposition</span>
+      </div>
+      <div class="gen">Rapport généré depuis l'application — Analyse des données.</div>
       </body></html>`;
 
     const iframe = document.createElement('iframe');
