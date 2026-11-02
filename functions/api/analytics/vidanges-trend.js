@@ -25,9 +25,11 @@ const scopeZone = (data, url) => {
  *   ?from=YYYY-MM&to=  → plage de campagnes (max 36)
  *   ?zone=             → SuperAdmin uniquement ; managers verrouillés.
  *
- * Par campagne : planned (pm_items FullPMWO + ticket) / done (fiches
- * 'Effectuée', clé = planned_date) + contributions manuelles fusionnées
- * (manualPlanned / manualDone — données historiques hors application).
+ * Par campagne : planned (pm_items FullPMWO + ticket — STRICTEMENT
+ * applicatif, les « planifiés » manuels ne sont jamais additionnés) /
+ * done (fiches 'Effectuée' + vidanges historiques saisies — elles ont
+ * réellement eu lieu hors-app). Clé de campagne : planned_date.
+ * manualPlanned/manualDone exposés pour la décomposition au survol.
  */
 export async function onRequestGet({ request, env, data }) {
   try {
@@ -134,13 +136,16 @@ export async function onRequestGet({ request, env, data }) {
     months = months
       .sort((a, b) => b.month.localeCompare(a.month))
       .map((r) => {
-        // Comptages STRICTEMENT applicatifs : les saisies manuelles
-        // (données hors-app) ne sont jamais additionnées — exposées
-        // séparément via manualPlanned/manualDone pour affichage au survol.
+        // « Planifiés » : strictement applicatif (tickets FullPMWO) — la
+        // saisie manuelle de planifiés n'est jamais additionnée.
+        // « Effectuées » : fiches applicatives + vidanges historiques
+        // saisies (réellement effectuées hors-app — elles comptent).
         const planned = r.planned;
-        const done = r.done;
+        const done = r.done + r.manualDone;
         return {
           ...r,
+          done,
+          doneSites: r.doneSites + r.manualDone,
           delta: done - planned,
           coverage: planned > 0 ? Math.round((done / planned) * 1000) / 10 : null,
           depassement: planned > 0 ? done > planned : done > 0
