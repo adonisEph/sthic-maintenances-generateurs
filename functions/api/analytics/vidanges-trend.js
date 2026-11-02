@@ -134,16 +134,13 @@ export async function onRequestGet({ request, env, data }) {
     months = months
       .sort((a, b) => b.month.localeCompare(a.month))
       .map((r) => {
-        const planned = r.planned + r.manualPlanned;
-        const done = r.done + r.manualDone;
+        // Comptages STRICTEMENT applicatifs : les saisies manuelles
+        // (données hors-app) ne sont jamais additionnées — exposées
+        // séparément via manualPlanned/manualDone pour affichage au survol.
+        const planned = r.planned;
+        const done = r.done;
         return {
           ...r,
-          planned,
-          done,
-          // Les saisies manuelles = volumes de sites (données historiques
-          // sans détail site-par-site) → elles s'ajoutent aux compteurs.
-          plannedSites: r.plannedSites + r.manualPlanned,
-          doneSites: r.doneSites + r.manualDone,
           delta: done - planned,
           coverage: planned > 0 ? Math.round((done / planned) * 1000) / 10 : null,
           depassement: planned > 0 ? done > planned : done > 0

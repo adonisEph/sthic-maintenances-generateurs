@@ -408,16 +408,10 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                 <div className="rounded-lg bg-indigo-50 border border-indigo-200 px-3 py-2">
                   <div className="text-[10px] font-semibold text-indigo-900">Planifiés (ticket FullPMWO)</div>
                   <div className="text-xl font-bold text-indigo-800">{totals.planned}</div>
-                  {totals.manualPlanned > 0 && (
-                    <div className="text-[10px] text-amber-700 font-semibold">dont +{totals.manualPlanned} saisies manuelles</div>
-                  )}
                 </div>
                 <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2">
                   <div className="text-[10px] font-semibold text-emerald-900">Vidanges effectuées</div>
                   <div className="text-xl font-bold text-emerald-800">{totals.done}</div>
-                  {totals.manualDone > 0 && (
-                    <div className="text-[10px] text-amber-700 font-semibold">dont +{totals.manualDone} saisies manuelles</div>
-                  )}
                 </div>
                 <div className={`rounded-lg border px-3 py-2 ${totals.delta > 0 ? 'bg-amber-50 border-amber-200' : 'bg-sky-50 border-sky-200'}`}>
                   <div className={`text-[10px] font-semibold ${totals.delta > 0 ? 'text-amber-900' : 'text-sky-900'}`}>Écart (eff. − plan.)</div>
@@ -463,7 +457,12 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                     )}
                     {data.months.map((m) => (
                       <tr key={m.month} className={`border-t border-gray-100 ${m.depassement ? 'bg-amber-50/60' : ''}`}>
-                        <td className="px-3 py-2 font-semibold text-gray-800 capitalize whitespace-nowrap">
+                        <td
+                          className="px-3 py-2 font-semibold text-gray-800 capitalize whitespace-nowrap"
+                          title={(m.manualPlanned > 0 || m.manualDone > 0)
+                            ? `Données hors application : +${m.manualPlanned} planifiés · +${m.manualDone} effectuées`
+                            : undefined}
+                        >
                           {monthLabel(m.month)}
                           {m.depassement && (
                             <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-200 text-amber-900 align-middle">
@@ -473,26 +472,10 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                         </td>
                         <td className="px-3 py-2 text-right font-semibold text-indigo-800 whitespace-nowrap">
                           {m.planned}
-                          {m.manualPlanned > 0 && (
-                            <span
-                              className="ml-1 inline-block px-1 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 align-middle cursor-help"
-                              title={`dont ${m.planned - m.manualPlanned} via application + ${m.manualPlanned} saisies manuelles`}
-                            >
-                              +{m.manualPlanned}
-                            </span>
-                          )}
                           <span className="block text-[10px] font-normal text-gray-400">{m.plannedSites} sites</span>
                         </td>
                         <td className="px-3 py-2 text-right font-semibold text-emerald-700 whitespace-nowrap">
                           {m.done}
-                          {m.manualDone > 0 && (
-                            <span
-                              className="ml-1 inline-block px-1 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 align-middle cursor-help"
-                              title={`dont ${m.done - m.manualDone} via application + ${m.manualDone} saisies manuelles`}
-                            >
-                              +{m.manualDone}
-                            </span>
-                          )}
                           <span className="block text-[10px] font-normal text-gray-400">{m.doneSites} sites</span>
                         </td>
                         <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${m.delta > 0 ? 'text-amber-700' : 'text-gray-600'}`}>
@@ -533,8 +516,8 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
               <div className="mt-2 flex items-center gap-4 text-[10px] text-gray-500 flex-wrap">
                 <span className="flex items-center gap-1"><span className="inline-block w-3 h-2 rounded bg-indigo-500" /> Planifiés</span>
                 <span className="flex items-center gap-1"><span className="inline-block w-3 h-2 rounded bg-emerald-500" /> Effectuées</span>
-                <span className="flex items-center gap-1"><span className="inline-block px-1 rounded bg-amber-100 text-amber-800 font-bold">+N</span> = N saisies manuelles incluses dans le total affiché</span>
                 <span className="flex items-center gap-1"><TrendingUp size={11} /> Dépassement = effectuées &gt; planifiées</span>
+                <span className="text-gray-400">Comptages strictement applicatifs — saisies historiques affichées séparément (survol du mois + liste dédiée)</span>
               </div>
 
               {/* Manual entries list */}
