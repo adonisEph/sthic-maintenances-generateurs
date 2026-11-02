@@ -372,6 +372,16 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                   <Trash2 size={12} /> Supprimer
                 </button>
               )}
+              <button
+                type="button"
+                onClick={() => {
+                  setManualFormOpen(false);
+                  setManualForm({ month: '', zone: 'BZV/POOL', planned: '', done: '', note: '' });
+                }}
+                className="px-3 py-1.5 rounded-lg bg-white border border-amber-300 text-amber-800 text-xs font-bold hover:bg-amber-100"
+              >
+                Annuler
+              </button>
             </div>
           </div>
         )}
@@ -464,7 +474,10 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                         <td className="px-3 py-2 text-right font-semibold text-indigo-800 whitespace-nowrap">
                           {m.planned}
                           {m.manualPlanned > 0 && (
-                            <span className="ml-1 inline-block px-1 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 align-middle" title="Saisie manuelle">
+                            <span
+                              className="ml-1 inline-block px-1 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 align-middle cursor-help"
+                              title={`dont ${m.planned - m.manualPlanned} via application + ${m.manualPlanned} saisies manuelles`}
+                            >
                               +{m.manualPlanned}
                             </span>
                           )}
@@ -473,7 +486,10 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                         <td className="px-3 py-2 text-right font-semibold text-emerald-700 whitespace-nowrap">
                           {m.done}
                           {m.manualDone > 0 && (
-                            <span className="ml-1 inline-block px-1 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 align-middle" title="Saisie manuelle">
+                            <span
+                              className="ml-1 inline-block px-1 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 align-middle cursor-help"
+                              title={`dont ${m.done - m.manualDone} via application + ${m.manualDone} saisies manuelles`}
+                            >
                               +{m.manualDone}
                             </span>
                           )}
@@ -517,7 +533,7 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
               <div className="mt-2 flex items-center gap-4 text-[10px] text-gray-500 flex-wrap">
                 <span className="flex items-center gap-1"><span className="inline-block w-3 h-2 rounded bg-indigo-500" /> Planifiés</span>
                 <span className="flex items-center gap-1"><span className="inline-block w-3 h-2 rounded bg-emerald-500" /> Effectuées</span>
-                <span className="flex items-center gap-1"><span className="inline-block px-1 rounded bg-amber-100 text-amber-800 font-bold">+N</span> Saisie manuelle historique</span>
+                <span className="flex items-center gap-1"><span className="inline-block px-1 rounded bg-amber-100 text-amber-800 font-bold">+N</span> = N saisies manuelles incluses dans le total affiché</span>
                 <span className="flex items-center gap-1"><TrendingUp size={11} /> Dépassement = effectuées &gt; planifiées</span>
               </div>
 
