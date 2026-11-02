@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, TrendingUp, RefreshCw, AlertTriangle, BarChart3, PlusCircle, Trash2, Database, Calendar } from 'lucide-react';
+import { X, TrendingUp, RefreshCw, AlertTriangle, BarChart3, PlusCircle, Trash2, Database, Calendar, Pencil } from 'lucide-react';
 
 const ZONES = ['BZV/POOL', 'PNR/KOUILOU', 'UPCN'];
 const MONTH_OPTIONS = [6, 12, 24];
@@ -104,6 +104,31 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
     } finally {
       setManualBusy(false);
     }
+  };
+
+  // Pré-remplit le formulaire pour éditer une saisie existante (upsert mois+zone).
+  const editManual = (e) => {
+    setManualForm({
+      month: e.month || '',
+      zone: e.zone || 'BZV/POOL',
+      planned: e.planned > 0 ? String(e.planned) : '',
+      done: e.done > 0 ? String(e.done) : '',
+      note: e.note || ''
+    });
+    setManualFormOpen(true);
+  };
+
+  // Ouverture rapide du formulaire pour ajuster les "Effectuées" d'une campagne.
+  const editDoneForMonth = (m) => {
+    const existing = data.manualEntries.find((e) => e.month === m.month);
+    setManualForm({
+      month: m.month,
+      zone: existing?.zone || (zone !== 'ALL' ? zone : 'BZV/POOL'),
+      planned: existing?.planned > 0 ? String(existing.planned) : '',
+      done: existing?.done > 0 ? String(existing.done) : '',
+      note: existing?.note || ''
+    });
+    setManualFormOpen(true);
   };
 
   const deleteManual = async (id) => {
@@ -386,16 +411,16 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                 </div>
               )}
 
-              {/* Table */}
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
-                      <th className="px-3 py-2">Campagne</th>
-                      <th className="px-3 py-2 text-right">Planifiés<br /><span className="normal-case font-normal">(ticket FullPMWO)</span></th>
-                      <th className="px-3 py-2 text-right">Effectuées<br /><span className="normal-case font-normal">(fiches)</span></th>
-                      <th className="px-3 py-2 text-right">Écart</th>
-                      <th className="px-3 py-2 text-right">Couverture</th>
+              {/* Table — conteneur scrollable, en-tête figée */}
+              <div className="border border-gray-200 rounded-lg overflow-auto" style={{ maxHeight: '58vh' }}>
+                <table className="w-full text-sm border-collapse">
+                  <thead className="sticky top-0 z-10">
+                    <tr className="bg-gray-100 text-left text-[11px] uppercase tracking-wide text-gray-600 shadow-[0_1px_0_0_#e5e7eb]">
+                      <th className="px-3 py-2 whitespace-nowrap w-36">Campagne</th>
+                      <th className="px-3 py-2 text-right whitespace-nowrap">Planifiés<br /><span className="normal-case font-normal">(ticket FullPMWO)</span></th>
+                      <th className="px-3 py-2 text-right whitespace-nowrap">Effectuées<br /><span className="normal-case font-normal">(fiches)</span></th>
+                      <th className="px-3 py-2 text-right whitespace-nowrap">Écart</th>
+                      <th className="px-3 py-2 text-right whitespace-nowrap">Couverture</th>
                       <th className="px-3 py-2 w-72">Comparaison</th>
                     </tr>
                   </thead>
@@ -408,15 +433,15 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                     )}
                     {data.months.map((m) => (
                       <tr key={m.month} className={`border-t border-gray-100 ${m.depassement ? 'bg-amber-50/60' : ''}`}>
-                        <td className="px-3 py-2 font-semibold text-gray-800 capitalize">
+                        <td className="px-3 py-2 font-semibold text-gray-800 capitalize whitespace-nowrap">
                           {monthLabel(m.month)}
                           {m.depassement && (
-                            <span className="ml-2 inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-200 text-amber-900 align-middle">
+                            <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-200 text-amber-900 align-middle">
                               DÉPASSEMENT
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-right font-semibold text-indigo-800">
+                        <td className="px-3 py-2 text-right font-semibold text-indigo-800 whitespace-nowrap">
                           {m.planned}
                           {m.manualPlanned > 0 && (
                             <span className="ml-1 inline-block px-1 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 align-middle" title="Saisie manuelle">
@@ -425,19 +450,29 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                           )}
                           <span className="block text-[10px] font-normal text-gray-400">{m.plannedSites} sites</span>
                         </td>
-                        <td className="px-3 py-2 text-right font-semibold text-emerald-700">
+                        <td className="px-3 py-2 text-right font-semibold text-emerald-700 whitespace-nowrap">
                           {m.done}
                           {m.manualDone > 0 && (
                             <span className="ml-1 inline-block px-1 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 align-middle" title="Saisie manuelle">
                               +{m.manualDone}
                             </span>
                           )}
+                          {isSuperAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => editDoneForMonth(m)}
+                              className="ml-1 inline-block p-0.5 rounded hover:bg-emerald-100 text-emerald-600 align-middle"
+                              title="Ajuster les effectuées (saisie historique)"
+                            >
+                              <Pencil size={11} />
+                            </button>
+                          )}
                           <span className="block text-[10px] font-normal text-gray-400">{m.doneSites} sites</span>
                         </td>
-                        <td className={`px-3 py-2 text-right font-bold ${m.delta > 0 ? 'text-amber-700' : 'text-gray-600'}`}>
+                        <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${m.delta > 0 ? 'text-amber-700' : 'text-gray-600'}`}>
                           {m.delta > 0 ? '+' : ''}{m.delta}
                         </td>
-                        <td className="px-3 py-2 text-right text-gray-700">
+                        <td className="px-3 py-2 text-right text-gray-700 whitespace-nowrap">
                           {m.coverage == null ? '—' : `${m.coverage}%`}
                         </td>
                         <td className="px-3 py-2">
@@ -492,7 +527,15 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                           <td className="px-3 py-1.5 text-gray-500">{e.note || '—'}</td>
                           <td className="px-3 py-1.5 text-gray-400">{e.createdByEmail || '—'}</td>
                           {isSuperAdmin && (
-                            <td className="px-3 py-1.5 text-right">
+                            <td className="px-3 py-1.5 text-right whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => editManual(e)}
+                                className="p-1 rounded hover:bg-amber-100 text-amber-700"
+                                title="Modifier"
+                              >
+                                <Pencil size={13} />
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => deleteManual(e.id)}
