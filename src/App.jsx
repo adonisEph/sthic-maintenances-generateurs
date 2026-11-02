@@ -15,6 +15,7 @@ import SitesTechnicianFilter from './components/sites/SitesTechnicianFilter';
 import SidebarSitesActions from './components/sites/SidebarSitesActions';
 import TechnicianNhSiteUpdateModal from './components/sites/TechnicianNhSiteUpdateModal';
 import NhQuarantineCenterModal from './components/sites/NhQuarantineCenterModal';
+import DataAnalysisModal from './components/analysis/DataAnalysisModal';
 import DashboardHeader from './components/dashboard/DashboardHeader';
 import DashboardKpiGrid from './components/dashboard/DashboardKpiGrid';
 import DashboardDetailsModal from './components/dashboard/DashboardDetailsModal';
@@ -52,7 +53,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.17.0';
+const APP_VERSION = '6.18.0';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -173,6 +174,7 @@ const GeneratorMaintenanceApp = () => {
   const [filterPmDate, setFilterPmDate] = useState('');
   const [vidangeInfoSite, setVidangeInfoSite] = useState(null);
   const [quarantineOpen, setQuarantineOpen] = useState(false);
+  const [dataAnalysisOpen, setDataAnalysisOpen] = useState(false);
   const [nhPendingCount, setNhPendingCount] = useState(0);
   const [ticketNumber, setTicketNumber] = useState(1201);
   const [ticketLabel, setTicketLabel] = useState('');
@@ -8358,6 +8360,17 @@ return (
         />
       )}
 
+      {/* Analyse des données — croisements PM × Vidanges */}
+      {dataAnalysisOpen && (
+        <DataAnalysisModal
+          open={dataAnalysisOpen}
+          onClose={() => setDataAnalysisOpen(false)}
+          apiFetchJson={apiFetchJson}
+          isSuperAdmin={isSuperAdmin}
+          userZone={authZone}
+        />
+      )}
+
       {exportBusy && (
         <div className="fixed inset-0 z-[60] bg-black/30 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-5">
@@ -8439,6 +8452,19 @@ return (
             onImportConsoleRmsChange={handleImportConsoleRms}
           />
         )}
+
+          {(isAdmin || isAnyManager) && (
+            <button
+              onClick={() => {
+                setSidebarOpen(false);
+                setDataAnalysisOpen(true);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
+            >
+              <TrendingUp size={18} />
+              Analyse des données
+            </button>
+          )}
 
           {menuSectionNh && <MenuSectionTitle>Compteurs NH</MenuSectionTitle>}
 
