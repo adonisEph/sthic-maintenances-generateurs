@@ -197,7 +197,10 @@ export async function onRequestGet({ request, env, data }) {
 
 /**
  * POST /api/analytics/vidanges-trend — saisie manuelle historique
- * (SuperAdmin uniquement). Unicité (month, zone) → upsert.
+ * (SuperAdmin uniquement). Unicité (month, zone) → upsert PAR CHAMP :
+ * une métrique absente du body est INCHANGÉE (CRUD indépendant sur
+ * « Planifiés » et « Effectuées ») ; 0 explicite = remise à zéro ;
+ * si une mise à jour rend les deux à 0 → la ligne est supprimée.
  * Body: { month:'YYYY-MM', zone:'BZV/POOL', plannedFullpmwo?, doneVidanges?, note? }
  */
 export async function onRequestPost({ request, env, data }) {
@@ -209,16 +212,19 @@ export async function onRequestPost({ request, env, data }) {
     const body = await readJson(request);
     const month = String(body?.month || '').slice(0, 7);
     const zone = String(body?.zone || '').trim().toUpperCase();
-    const planned = Math.max(0, Math.min(999999, Math.trunc(Number(body?.plannedFullpmwo) || 0)));
-    const done = Math.max(0, Math.min(999999, Math.trunc(Number(body?.doneVidanges) || 0)));
+    const hasPlanned = body?.plannedFullpmwo !== undefined && body?.plannedFullpmwo !== null && body?.plannedFullpmwo !== '';
+    const hasDone = body?.doneVidanges !== undefined && body?.doneVidanges !== null && body?.doneVidanges !== '';
+    const clampVal = (v) => Math.max(0, Math.min(999999, Math.trunc(Number(v) || 0)));
+    const planned = hasPlanned ? clampVal(body.plannedFullpmwo) : null;
+    const done = hasDone ? clampVal(body.doneVidanges) : null;
     const note = String(body?.note || '').trim().slice(0, 300);
     const currentYm = ymdToday().slice(0, 7);
 
     if (!YM.test(month)) return json({ error: 'Mois invalide (YYYY-MM attendu).' }, { status: 400 });
     if (month > currentYm) return json({ error: 'Impossible de saisir un mois futur.' }, { status: 400 });
     if (!VALID_ZONES.includes(zone)) return json({ error: 'Zone invalide.' }, { status: 400 });
-    if (planned === 0 && done === 0) {
-      return json({ error: 'Saisir au moins une valeur non nulle (planifiés ou effectuées).' }, { status: 400 });
+    if (!hasPlanned && !hasDone) {
+      return json({ error: 'Aucune métrique à enregistrer — saisir « Planifiés » et/ou « Effectuées ».' }, { status: 400 });
     }
 
     const now = isoNow();
@@ -226,22 +232,37 @@ export async function onRequestPost({ request, env, data }) {
     const userEmail = data?.user?.email ? String(data.user.email) : null;
 
     const existing = await env.DB.prepare(
-      'SELECT id FROM analysis_manual_entries WHERE month = ? AND zone = ?'
+      'SELECT * FROM analysis_manual_entries WHERE month = ? AND zone = ?'
     ).bind(month, zone).first();
 
     if (existing?.id) {
+      const newPlanned = hasPlanned ? planned : Number(existing.planned_fullpmwo) || 0;
+      const newDone = hasDone ? done : Number(existing.done_vidanges) || 0;
+      if (newPlanned === 0 && newDone === 0) {
+        await env.DB.prepare('DELETE FROM analysis_manual_entries WHERE id = ?').bind(String(existing.id)).run();
+        return json({ ok: true, deleted: true, id: existing.id });
+      }
       await env.DB.prepare(
-        'UPDATE analysis_manual_entries SET planned_fullpmwo = ?, done_vidanges = ?, note = ?, updated_by_email = ?, updated_at = ? WHERE id = ?'
+        `UPDATE analysis_manual_entries
+         SET planned_fullpmwo = COALESCE(?, planned_fullpmwo),
+             done_vidanges = COALESCE(?, done_vidanges),
+             note = ?, updated_by_email = ?, updated_at = ?
+         WHERE id = ?`
       ).bind(planned, done, note, userEmail, now, String(existing.id)).run();
       return json({ ok: true, updated: true, id: existing.id });
     }
 
+    const p = planned || 0;
+    const d = done || 0;
+    if (p === 0 && d === 0) {
+      return json({ error: 'Saisir au moins une valeur non nulle (planifiés ou effectuées).' }, { status: 400 });
+    }
     const id = newId();
     await env.DB.prepare(
       `INSERT INTO analysis_manual_entries
        (id, month, zone, planned_fullpmwo, done_vidanges, note, created_by_user_id, created_by_email, updated_by_email, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(id, month, zone, planned, done, note, userId, userEmail, userEmail, now, now).run();
+    ).bind(id, month, zone, p, d, note, userId, userEmail, userEmail, now, now).run();
 
     return json({ ok: true, created: true, id });
   } catch (e) {

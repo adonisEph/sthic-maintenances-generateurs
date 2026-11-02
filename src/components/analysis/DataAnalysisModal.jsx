@@ -81,20 +81,19 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
 
   const submitManual = async () => {
     if (!manualForm.month) { alert('Choisissez le mois.'); return; }
-    const planned = Number(manualForm.planned) || 0;
-    const done = Number(manualForm.done) || 0;
-    if (planned <= 0 && done <= 0) { alert('Saisir au moins une valeur non nulle.'); return; }
+    // Champ vide = inchangé sur une entrée existante ; chaque métrique se
+    // CRUD indépendamment (ex. modifier uniquement « Effectuées »).
+    const hasP = manualForm.planned !== '';
+    const hasD = manualForm.done !== '';
+    if (!hasP && !hasD) { alert('Saisir « Planifiés » et/ou « Effectuées » (champ vide = inchangé).'); return; }
     setManualBusy(true);
     try {
+      const body = { month: manualForm.month, zone: manualForm.zone, note: manualForm.note };
+      if (hasP) body.plannedFullpmwo = Number(manualForm.planned) || 0;
+      if (hasD) body.doneVidanges = Number(manualForm.done) || 0;
       await apiFetchJson('/api/analytics/vidanges-trend', {
         method: 'POST',
-        body: JSON.stringify({
-          month: manualForm.month,
-          zone: manualForm.zone,
-          plannedFullpmwo: planned,
-          doneVidanges: done,
-          note: manualForm.note
-        })
+        body: JSON.stringify(body)
       });
       setManualForm({ month: '', zone: 'BZV/POOL', planned: '', done: '', note: '' });
       setManualFormOpen(false);
@@ -106,20 +105,22 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
     }
   };
 
-  // Pré-remplit le formulaire pour éditer une saisie existante (upsert mois+zone).
+  // Ouvre le formulaire pour éditer une saisie existante — les valeurs
+  // actuelles apparaissent en placeholder ; les champs restent VIDES pour
+  // que seule la métrique saisie soit modifiée (vide = inchangé).
   const editManual = (e) => {
     setManualForm({
       month: e.month || '',
       zone: e.zone || 'BZV/POOL',
-      planned: e.planned > 0 ? String(e.planned) : '',
-      done: e.done > 0 ? String(e.done) : '',
+      planned: '',
+      done: '',
       note: e.note || ''
     });
     setManualFormOpen(true);
   };
 
-  // CRUD par campagne : ouvre le formulaire pré-rempli avec la saisie
-  // existante du mois (de préférence celle de la zone filtrée), sinon vierge.
+  // CRUD par campagne : ouvre le formulaire pour la saisie existante du
+  // mois (de préférence celle de la zone filtrée), sinon vierge.
   const editMonthManual = (m) => {
     const entries = data.manualEntries.filter((e) => e.month === m.month);
     const existing =
@@ -127,8 +128,8 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
     setManualForm({
       month: m.month,
       zone: existing?.zone || (zone !== 'ALL' ? zone : 'BZV/POOL'),
-      planned: existing?.planned > 0 ? String(existing.planned) : '',
-      done: existing?.done > 0 ? String(existing.done) : '',
+      planned: '',
+      done: '',
       note: existing?.note || ''
     });
     setManualFormOpen(true);
@@ -302,7 +303,7 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
         {isSuperAdmin && manualFormOpen && (
           <div className="px-5 py-3 bg-amber-50 border-b border-amber-200">
             <div className="text-xs font-bold text-amber-900 mb-2">
-              Saisie historique — vidanges effectuées hors application (une ligne par mois + zone ; une saisie existante est remplacée)
+              Saisie historique — données hors application (une ligne par mois + zone · champ vide = inchangé · 0 = remise à zéro · 0 partout = suppression)
             </div>
             <div className="flex items-end gap-3 flex-wrap">
               <label className="text-[11px] font-semibold text-amber-900 flex flex-col gap-1">
@@ -330,7 +331,8 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
               <label className="text-[11px] font-semibold text-amber-900 flex flex-col gap-1">
                 Planifiés FullPMWO
                 <input
-                  type="number" min="0" placeholder="0"
+                  type="number" min="0"
+                  placeholder={currentManualEntry ? `Actuel : ${currentManualEntry.planned}` : '0'}
                   value={manualForm.planned}
                   onChange={(e) => setManualForm((f) => ({ ...f, planned: e.target.value }))}
                   className="border border-amber-300 rounded-lg px-2 py-1.5 text-xs bg-white w-32"
@@ -339,7 +341,8 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
               <label className="text-[11px] font-semibold text-amber-900 flex flex-col gap-1">
                 Vidanges effectuées
                 <input
-                  type="number" min="0" placeholder="0"
+                  type="number" min="0"
+                  placeholder={currentManualEntry ? `Actuel : ${currentManualEntry.done}` : '0'}
                   value={manualForm.done}
                   onChange={(e) => setManualForm((f) => ({ ...f, done: e.target.value }))}
                   className="border border-amber-300 rounded-lg px-2 py-1.5 text-xs bg-white w-36"
