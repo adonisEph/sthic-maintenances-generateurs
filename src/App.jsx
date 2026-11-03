@@ -53,7 +53,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.19.9';
+const APP_VERSION = '6.19.10';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -816,6 +816,54 @@ const GeneratorMaintenanceApp = () => {
       window.clearInterval(id);
     };
   }, [interventionsPollQuery, sites]);
+
+  // --- Synchro inter-utilisateurs (KPI dashboard, tuiles, badges) ---
+  // Chaque écriture serveur (vidange technicien, MAJ NH, imports, fiches…)
+  // bump `last_updated_at` → /api/meta/version. Quand la version change,
+  // on recharge les jeux de données qui alimentent les compteurs — sinon
+  // l'écran d'un autre rôle restait figé sur les données du login.
+  const dataVersionRef = useRef('');
+  useEffect(() => {
+    if (!authUser?.email) return;
+    let disposed = false;
+    let inFlight = false;
+
+    const tick = async () => {
+      if (disposed || inFlight) return;
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      inFlight = true;
+      try {
+        const data = await apiFetchJson('/api/meta/version', { method: 'GET' });
+        if (disposed) return;
+        const v = String(data?.version || '');
+        if (!v) return;
+        if (v === dataVersionRef.current) return;
+        const isFirst = !dataVersionRef.current;
+        dataVersionRef.current = v;
+        if (isFirst) return; // état initial déjà frais (chargé au login/action)
+        await Promise.allSettled([loadData(), loadFicheHistory(), loadInterventions()]);
+        try { await loadNhQuarantineCount?.(); } catch { /* ignore */ }
+        bumpInterventionsUiRev();
+      } catch {
+        // erreur transitoire → re-tenté au prochain tick
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    tick();
+    const id = window.setInterval(tick, 60 * 1000);
+    const onVis = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') tick();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      disposed = true;
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUser?.email]);
 
 
   const apiFetchJson = async (path, init = {}) => {
@@ -1861,7 +1909,8 @@ const GeneratorMaintenanceApp = () => {
       });
       setSites(enriched);
     } catch (error) {
-      setSites([]);
+      // Erreur transitoire (réseau/poll de fond) : on conserve l'état
+      // courant plutôt que de vider le dashboard — re-tenté au prochain cycle.
     }
   };
 
@@ -2248,7 +2297,7 @@ const GeneratorMaintenanceApp = () => {
       const data = await apiFetchJson('/api/fiche-history', { method: 'GET' });
       setFicheHistory(Array.isArray(data?.fiches) ? data.fiches : []);
     } catch (error) {
-      setFicheHistory([]);
+      // Erreur transitoire : conserver la liste courante (stale > vide).
     } finally {
       setFicheHistoryBusy(false);
     }
