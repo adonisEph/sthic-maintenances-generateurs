@@ -55,7 +55,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.21.2';
+const APP_VERSION = '6.21.3';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -6174,6 +6174,11 @@ useEffect(() => {
         setGeCurativesImportStep('Préparation…');
         setGeCurativesImportProgress((p) => Math.max(p, 40));
 
+        // Export « Preventative Maintenance WO » (vidanges) : marqueur =
+        // présence des colonnes DG Service / DG Service Done.
+        const hasDgCols = (Array.isArray(jsonRows) ? jsonRows : [])
+          .some((r) => r['DG Service'] !== undefined || r['DG Service Done'] !== undefined);
+
         const items = (Array.isArray(jsonRows) ? jsonRows : [])
           .map((r) => {
             const siteRef = String(
@@ -6181,15 +6186,18 @@ useEffect(() => {
             ).trim();
             const eventDate = parseExcelDateToYmd(pickCol(r, ['Actual WO Date', 'ActualWODate', 'Closed', 'WO Date', 'Date', 'Work Date', 'Completed Date', 'Actual Date']));
             const woNumber = String(pickCol(r, ['Number', 'WO Number', 'N°', 'No', 'Ticket', 'Work Order']) || '').trim();
-            const description = String(pickCol(r, ['Description', 'Tx. Exécut.', 'Work Description', 'Summary']) || '').trim();
+            const description = String(pickCol(r, ['Description', 'Short description', 'Tx. Exécut.', 'Work Description', 'Summary']) || '').trim();
             const runRaw = pickCol(r, ['Generator Run Hours', 'Run Hours', 'GeneratorRunHours', 'N. Heures', 'N.Heures', 'NH']);
             const runHours = runRaw == null || String(runRaw).trim() === '' ? null : Number(String(runRaw).replace(',', '.').replace(/ | /g, ''));
+            const lifecycle = /\b(DEPOSE|POSE)\b|REMPLACEMENT|CHANGEMENT/i.test(description);
+            const kind = /VIDANGE/i.test(description) || (hasDgCols && !lifecycle) ? 'vidange' : undefined;
             return {
               siteId: siteRef,
               eventDate,
               woNumber,
-              description,
-              runHours: Number.isFinite(runHours) ? runHours : null
+              description: description || (kind === 'vidange' ? 'VIDANGE' : ''),
+              runHours: Number.isFinite(runHours) ? runHours : null,
+              kind
             };
           })
           .filter((r) => r.siteId || r.eventDate || r.description || r.woNumber);

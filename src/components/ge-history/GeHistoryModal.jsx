@@ -406,6 +406,12 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
         return '';
       };
 
+      // Colonnes-marqueur de l'export « Preventative Maintenance WO » :
+      // leur présence signifie que le fichier est l'export vidanges → les
+      // lignes sont des vidanges même si la Description ne dit pas
+      // « VIDANGE » (sauf mots de cycle de vie : POSE/DEPOSE/remplacement).
+      const hasDgCols = rows.some((r) => r['DG Service'] !== undefined || r['DG Service Done'] !== undefined);
+
       const parsed = rows.map((r, idx) => {
         const siteRef = String(pick(r, ['Site', 'SITE', 'Site ID', 'ID Site', 'id_site', 'name_site', 'Location', 'Asset']) || '').trim();
         const eventDate = toYmd(pick(r, ['Actual WO Date', 'ActualWODate', 'Closed', 'WO Date', 'Date', 'Completed Date']));
@@ -414,7 +420,9 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
         const runRaw = pick(r, ['Generator Run Hours', 'Run Hours', 'GeneratorRunHours', 'N. Heures', 'N.Heures', 'NH']);
         const runHours = runRaw == null || String(runRaw).trim() === '' ? null : Number(String(runRaw).replace(',', '.').replace(/[  ]/g, ''));
         const state = String(pick(r, ['State', 'État', 'Status']) || '').trim().toUpperCase();
-        return { siteRef, eventDate, woNumber, description, runHours: Number.isFinite(runHours) ? runHours : null, state, _row: idx + 2 };
+        const lifecycle = /\b(DEPOSE|POSE)\b|REMPLACEMENT|CHANGEMENT/i.test(description);
+        const kind = /VIDANGE/i.test(description) || (hasDgCols && !lifecycle) ? 'vidange' : undefined;
+        return { siteRef, eventDate, woNumber, description, runHours: Number.isFinite(runHours) ? runHours : null, state, kind, _row: idx + 2 };
       });
 
       const hasSiteCol = parsed.some((r) => r.siteRef);
@@ -431,7 +439,14 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
         if (hasSiteCol && !matchesSite(r)) { offSite += 1; continue; }
         if (/CANCEL|VOID|SUPPRIM|REJET/.test(r.state)) { cancelled += 1; continue; }
         if (!r.eventDate) { notDone += 1; continue; }
-        items.push({ siteId: site.id, eventDate: r.eventDate, woNumber: r.woNumber, description: r.description, runHours: r.runHours });
+        items.push({
+          siteId: site.id,
+          eventDate: r.eventDate,
+          woNumber: r.woNumber,
+          description: r.description || (r.kind === 'vidange' ? 'VIDANGE' : ''),
+          runHours: r.runHours,
+          kind: r.kind
+        });
       }
 
       if (!items.length) {
