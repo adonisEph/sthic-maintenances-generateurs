@@ -25,7 +25,9 @@ async function loadSite(env, id) {
 }
 
 // POST : ouvre un nouveau déploiement GE (clôt l'actif s'il existe).
-// Body : { groupe, kva, serie, installedAt?, note?, updateSite? }
+// Avec removedAt → crée un déploiement ARCHIVÉ (GE passé) sans toucher
+// ni le déploiement actif ni la signalétique du site.
+// Body : { groupe, kva, serie, installedAt?, removedAt?, note?, updateSite? }
 export async function onRequestPost({ request, env, data, params }) {
   try {
     await ensureAdminUser(env);
@@ -37,13 +39,38 @@ export async function onRequestPost({ request, env, data, params }) {
     if (!canWrite(data, site)) return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const body = await readJson(request);
-    const installedAt = normalizeDate(body.installedAt ?? body.installed_at ?? body.eventDate) || ymdToday();
+    const installedRaw = body.installedAt ?? body.installed_at ?? body.eventDate;
+    const removedRaw = body.removedAt ?? body.removed_at;
+    const installedProvided = normalizeDate(installedRaw);
+    const removedAt = normalizeDate(removedRaw);
+    if (installedRaw && !installedProvided) return json({ error: 'Date de pose invalide.' }, { status: 400 });
+    if (removedRaw && !removedAt) return json({ error: 'Date de dépose invalide.' }, { status: 400 });
+
+    const now = isoNow();
+
+    // Branche « GE passé » : fiche archivée, aucun effet de bord.
+    if (removedAt) {
+      if (!installedProvided) return json({ error: 'Date de pose requise pour un GE passé.' }, { status: 400 });
+      if (installedProvided > removedAt) return json({ error: 'La pose doit précéder la dépose.' }, { status: 400 });
+      const id = newId();
+      await env.DB.prepare(
+        `INSERT INTO ge_deployments (id, site_id, groupe, kva, serie, installed_at, removed_at, source, note, created_by_email, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'manual', ?, ?, ?, ?)`
+      ).bind(
+        id, siteId,
+        String(body.groupe ?? '').trim(), String(body.kva ?? '').trim(), String(body.serie ?? '').trim(),
+        installedProvided, removedAt, String(body.note ?? '').trim(),
+        String(data?.user?.email || ''), now, now
+      ).run();
+      await touchLastUpdatedAt(env);
+      return json({ ok: true, openedDeployment: id, closedDeployment: null, installedAt: installedProvided, removedAt, archived: true });
+    }
+
+    const installedAt = installedProvided || ymdToday();
     const groupe = String(body.groupe ?? site.generateur ?? '').trim();
     const kva = String(body.kva ?? site.capacite ?? '').trim();
     const serie = String(body.serie ?? '').trim();
     const note = String(body.note ?? '').trim();
-
-    const now = isoNow();
     const active = await env.DB.prepare(
       'SELECT * FROM ge_deployments WHERE site_id = ? AND removed_at IS NULL ORDER BY created_at DESC LIMIT 1'
     ).bind(siteId).first();

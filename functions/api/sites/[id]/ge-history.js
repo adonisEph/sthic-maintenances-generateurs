@@ -81,6 +81,29 @@ export async function onRequestGet({ env, data, params }) {
           virtual: true
         }];
 
+    // Tous les déploiements sont archivés (GE passés saisis manuellement) :
+    // on conserve une fiche virtuelle « GE actif » déduite du site, sinon les
+    // vidanges/travaux actuels n'auraient plus de fiche où tomber. Sa fenêtre
+    // démarre à la dernière dépose connue.
+    if (!deployments.some((d) => !d.removed_at)) {
+      const lastRemoved = deployments
+        .map((d) => String(d.removed_at || '').slice(0, 10))
+        .filter(Boolean)
+        .sort()
+        .pop() || null;
+      deployments.push({
+        id: null,
+        site_id: siteId,
+        groupe: site.generateur || '',
+        kva: site.capacite || '',
+        serie: '',
+        installed_at: lastRemoved,
+        removed_at: null,
+        source: 'derived',
+        virtual: true
+      });
+    }
+
     const fiches = (
       await env.DB.prepare(
         `SELECT id, ticket_number, date_completed, nh_now, created_at
@@ -146,6 +169,15 @@ export async function onRequestGet({ env, data, params }) {
         .filter((r) => inWindow(r.reading_date, 'releve', dep, deployments))
         .map((r) => r.nh_value);
 
+      // Fiche pré-app : aucun relevé compteur dans l'app → la colonne de
+      // gauche est dérivée des N.Heures saisis sur les interventions.
+      const readingsDerived = !siteReadings.length;
+      const effectiveReadings = readingsDerived
+        ? journal
+            .map((j) => (j.runHours === null || j.runHours === undefined ? null : Number(j.runHours)))
+            .filter((n) => Number.isFinite(n))
+        : siteReadings;
+
       return {
         id: dep.id,
         index: i + 1,
@@ -158,7 +190,8 @@ export async function onRequestGet({ env, data, params }) {
         removedAt: dep.removed_at || null,
         source: dep.source || '',
         journal,
-        readings: siteReadings
+        readings: effectiveReadings,
+        readingsDerived: readingsDerived && effectiveReadings.length > 0
       };
     });
 

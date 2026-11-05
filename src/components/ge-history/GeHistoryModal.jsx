@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { X, RefreshCw, AlertTriangle, Printer, Pencil, Trash2, PlusCircle, Wrench, Check, History, Upload } from 'lucide-react';
+import { X, RefreshCw, AlertTriangle, Printer, Pencil, Trash2, PlusCircle, Wrench, Check, History, Upload, Archive } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { formatDate } from '../../utils/calculations';
 
@@ -37,6 +37,8 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
   const [editForm, setEditForm] = useState({ eventDate: '', woNumber: '', description: '', runHours: '' });
   const [showReplace, setShowReplace] = useState(false);
   const [replaceForm, setReplaceForm] = useState({ groupe: '', kva: '', serie: '', installedAt: '', note: '' });
+  const [showPast, setShowPast] = useState(false);
+  const [pastForm, setPastForm] = useState({ groupe: '', kva: '', serie: '', installedAt: '', removedAt: '', note: '' });
   const [editDep, setEditDep] = useState(false);
   const [depForm, setDepForm] = useState({ groupe: '', kva: '', serie: '', installedAt: '', removedAt: '', note: '' });
   const [importBusy, setImportBusy] = useState(false);
@@ -219,6 +221,38 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
       onDataChanged?.();
     } catch (e) {
       alert(e?.message || 'Erreur remplacement.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitPast = async () => {
+    if (!pastForm.installedAt || !pastForm.removedAt) {
+      alert('Dates de pose et de dépose requises.');
+      return;
+    }
+    if (pastForm.installedAt > pastForm.removedAt) {
+      alert('La date de pose doit précéder la date de dépose.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await apiFetchJson(`/api/sites/${encodeURIComponent(site.id)}/ge-deployments`, {
+        method: 'POST',
+        body: JSON.stringify({
+          groupe: pastForm.groupe,
+          kva: pastForm.kva,
+          serie: pastForm.serie,
+          installedAt: pastForm.installedAt,
+          removedAt: pastForm.removedAt,
+          note: pastForm.note
+        })
+      });
+      setShowPast(false);
+      setPastForm({ groupe: '', kva: '', serie: '', installedAt: '', removedAt: '', note: '' });
+      await load();
+    } catch (e) {
+      alert(e?.message || 'Erreur enregistrement.');
     } finally {
       setBusy(false);
     }
@@ -522,6 +556,13 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
                       <PlusCircle size={14} /> Ajouter un travail
                     </button>
                     <button
+                      className={`${btnCls} bg-violet-100 text-violet-800 hover:bg-violet-200 inline-flex items-center gap-1`}
+                      onClick={() => setShowPast((v) => !v)}
+                      title="Déclarer un ancien GE de ce site — crée une fiche archivée, le GE actif n'est pas touché"
+                    >
+                      <Archive size={14} /> GE passé
+                    </button>
+                    <button
                       className={`${btnCls} bg-amber-100 text-amber-800 hover:bg-amber-200 inline-flex items-center gap-1`}
                       onClick={() => {
                         setReplaceForm({
@@ -570,6 +611,24 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
               <div className="mt-2 flex gap-2 justify-end">
                 <button className={`${btnCls} bg-gray-200 text-gray-700 hover:bg-gray-300`} onClick={() => setShowReplace(false)}>Annuler</button>
                 <button className={`${btnCls} bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50`} disabled={busy} onClick={submitReplace}>Confirmer le remplacement</button>
+              </div>
+            </div>
+          )}
+
+          {showPast && (
+            <div className="mx-4 mt-3 bg-violet-50 border border-violet-300 rounded-lg p-3">
+              <div className="text-xs font-bold text-violet-800 mb-2">Ajouter un ancien GE — crée une fiche archivée, le GE actif n'est pas touché</div>
+              <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+                <input className={inputCls} placeholder="Groupe (ex. ELCOS)" value={pastForm.groupe} onChange={(e) => setPastForm({ ...pastForm, groupe: e.target.value })} />
+                <input className={inputCls} placeholder="P. KVA" value={pastForm.kva} onChange={(e) => setPastForm({ ...pastForm, kva: e.target.value })} />
+                <input className={inputCls} placeholder="Série" value={pastForm.serie} onChange={(e) => setPastForm({ ...pastForm, serie: e.target.value })} />
+                <input className={inputCls} type="date" title="Date de pose" value={pastForm.installedAt} onChange={(e) => setPastForm({ ...pastForm, installedAt: e.target.value })} />
+                <input className={inputCls} type="date" title="Date de dépose" value={pastForm.removedAt} onChange={(e) => setPastForm({ ...pastForm, removedAt: e.target.value })} />
+                <input className={inputCls} placeholder="Note (optionnel)" value={pastForm.note} onChange={(e) => setPastForm({ ...pastForm, note: e.target.value })} />
+              </div>
+              <div className="mt-2 flex gap-2 justify-end">
+                <button className={`${btnCls} bg-gray-200 text-gray-700 hover:bg-gray-300`} onClick={() => setShowPast(false)}>Annuler</button>
+                <button className={`${btnCls} bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50`} disabled={busy} onClick={submitPast}>Créer la fiche archivée</button>
               </div>
             </div>
           )}
@@ -684,7 +743,7 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
           {dep && (
             <div className="px-4 py-2 border-t border-gray-200 text-[11px] text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
               <span>{dep.journal.length} travaux</span>
-              <span>{dep.readings.length} relevés de compteur</span>
+              <span>{dep.readings.length} relevés de compteur{dep.readingsDerived ? ' (déduits des interventions)' : ''}</span>
               <span>Fiche recomposée à la demande — aucune copie stockée</span>
             </div>
           )}
