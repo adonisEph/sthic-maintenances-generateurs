@@ -634,8 +634,14 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
                 <input className={inputCls} placeholder="Groupe (ex. PRAMAC)" value={depForm.groupe} onChange={(e) => setDepForm({ ...depForm, groupe: e.target.value })} />
                 <input className={inputCls} placeholder="P. KVA (ex. 45 KVA)" value={depForm.kva} onChange={(e) => setDepForm({ ...depForm, kva: e.target.value })} />
                 <input className={inputCls} placeholder="Série" value={depForm.serie} onChange={(e) => setDepForm({ ...depForm, serie: e.target.value })} />
-                <input className={inputCls} type="date" title="Date de pose" value={depForm.installedAt} onChange={(e) => setDepForm({ ...depForm, installedAt: e.target.value })} />
-                <input className={inputCls} type="date" title="Date de dépose" value={depForm.removedAt} onChange={(e) => setDepForm({ ...depForm, removedAt: e.target.value })} />
+                <div>
+                  <div className="text-[10px] font-semibold text-indigo-700 mb-0.5">Posé le</div>
+                  <input className={inputCls} type="date" value={depForm.installedAt} onChange={(e) => setDepForm({ ...depForm, installedAt: e.target.value })} />
+                </div>
+                <div>
+                  <div className="text-[10px] font-semibold text-indigo-700 mb-0.5">Déposé le</div>
+                  <input className={inputCls} type="date" value={depForm.removedAt} onChange={(e) => setDepForm({ ...depForm, removedAt: e.target.value })} />
+                </div>
               </div>
               <div className="mt-2 flex gap-2 justify-end">
                 <button className={`${btnCls} bg-gray-200 text-gray-700 hover:bg-gray-300`} onClick={() => setEditDep(false)}>Annuler</button>
@@ -651,7 +657,10 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
                 <input className={inputCls} placeholder="Groupe nouveau GE" value={replaceForm.groupe} onChange={(e) => setReplaceForm({ ...replaceForm, groupe: e.target.value })} />
                 <input className={inputCls} placeholder="P. KVA" value={replaceForm.kva} onChange={(e) => setReplaceForm({ ...replaceForm, kva: e.target.value })} />
                 <input className={inputCls} placeholder="Série" value={replaceForm.serie} onChange={(e) => setReplaceForm({ ...replaceForm, serie: e.target.value })} />
-                <input className={inputCls} type="date" title="Date de pose du nouveau GE" value={replaceForm.installedAt} onChange={(e) => setReplaceForm({ ...replaceForm, installedAt: e.target.value })} />
+                <div>
+                  <div className="text-[10px] font-semibold text-amber-800 mb-0.5">Posé le</div>
+                  <input className={inputCls} type="date" value={replaceForm.installedAt} onChange={(e) => setReplaceForm({ ...replaceForm, installedAt: e.target.value })} />
+                </div>
                 <input className={inputCls} placeholder="Note (optionnel)" value={replaceForm.note} onChange={(e) => setReplaceForm({ ...replaceForm, note: e.target.value })} />
               </div>
               <div className="mt-2 flex gap-2 justify-end">
@@ -668,8 +677,14 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
                 <input className={inputCls} placeholder="Groupe (ex. ELCOS)" value={pastForm.groupe} onChange={(e) => setPastForm({ ...pastForm, groupe: e.target.value })} />
                 <input className={inputCls} placeholder="P. KVA" value={pastForm.kva} onChange={(e) => setPastForm({ ...pastForm, kva: e.target.value })} />
                 <input className={inputCls} placeholder="Série" value={pastForm.serie} onChange={(e) => setPastForm({ ...pastForm, serie: e.target.value })} />
-                <input className={inputCls} type="date" title="Date de pose" value={pastForm.installedAt} onChange={(e) => setPastForm({ ...pastForm, installedAt: e.target.value })} />
-                <input className={inputCls} type="date" title="Date de dépose" value={pastForm.removedAt} onChange={(e) => setPastForm({ ...pastForm, removedAt: e.target.value })} />
+                <div>
+                  <div className="text-[10px] font-semibold text-violet-700 mb-0.5">Posé le</div>
+                  <input className={inputCls} type="date" value={pastForm.installedAt} onChange={(e) => setPastForm({ ...pastForm, installedAt: e.target.value })} />
+                </div>
+                <div>
+                  <div className="text-[10px] font-semibold text-violet-700 mb-0.5">Déposé le</div>
+                  <input className={inputCls} type="date" value={pastForm.removedAt} onChange={(e) => setPastForm({ ...pastForm, removedAt: e.target.value })} />
+                </div>
                 <input className={inputCls} placeholder="Note (optionnel)" value={pastForm.note} onChange={(e) => setPastForm({ ...pastForm, note: e.target.value })} />
               </div>
               <div className="mt-2 flex gap-2 justify-end">
