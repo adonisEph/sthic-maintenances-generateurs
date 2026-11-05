@@ -23,9 +23,13 @@ function normalizeDate(v) {
 function normalizeKind(v, description) {
   const k = String(v || '').trim().toLowerCase();
   if (VALID_KINDS.has(k)) return k;
-  const d = String(description || '').toUpperCase();
-  if (/\bDEPOSE\b/.test(d)) return 'depose';
-  if (/\bPOSE\b/.test(d) || isGeReplacement(d)) return 'pose';
+  const d = String(description || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  // POSE/DEPOSE n'ouvrent/ferment une fiche que dans un contexte GE —
+  // « Pose panneau de signalisation », « Pose armoire »… ne sont PAS des
+  // déploiements de générateur.
+  const geWord = /\b(GE|GENERATEUR|ELECTROGENE|GROUPE\s+ELECTRO|GENSET)\b/;
+  if (/\bDEPOSE\b/.test(d) && geWord.test(d)) return 'depose';
+  if ((/\bPOSE\b/.test(d) && geWord.test(d)) || isGeReplacement(d)) return 'pose';
   if (/VIDANGE/.test(d)) return 'vidange';
   return 'curatif';
 }
@@ -114,8 +118,6 @@ async function upsertEvent(env, site, ev) {
     return { skipped: true, reason: `non lié GE: ${description.slice(0, 60)}` };
   }
 
-  const lifecycle = await applyLifecycle(env, site, kind, eventDate, ev);
-
   let existing = null;
   if (wo) {
     existing = await env.DB.prepare(
@@ -132,8 +134,12 @@ async function upsertEvent(env, site, ev) {
     await env.DB.prepare(
       `UPDATE ge_history_events SET run_hours = ?, description = ?, kind = ?, source = ?, updated_at = ? WHERE id = ?`
     ).bind(Number.isFinite(nh) ? nh : null, description, kind, source, now, existing.id).run();
-    return { updated: true, id: existing.id, ...lifecycle };
+    return { updated: true, id: existing.id };
   }
+
+  // Cycle de vie UNIQUEMENT à l'insertion — sinon chaque ré-import
+  // rejouerait pose/dépose et créerait des déploiements en double.
+  const lifecycle = await applyLifecycle(env, site, kind, eventDate, ev);
 
   const id = newId();
   await env.DB.prepare(
