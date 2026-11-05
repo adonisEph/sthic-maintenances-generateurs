@@ -41,6 +41,7 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
   const [pastForm, setPastForm] = useState({ groupe: '', kva: '', serie: '', installedAt: '', removedAt: '', note: '' });
   const [editDep, setEditDep] = useState(false);
   const [depForm, setDepForm] = useState({ groupe: '', kva: '', serie: '', installedAt: '', removedAt: '', note: '' });
+  const [syncSite, setSyncSite] = useState(true);
   const [importBusy, setImportBusy] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -312,23 +313,42 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
   };
 
   const submitDepPatch = async () => {
-    if (!dep?.id) return;
+    if (!dep) return;
     setBusy(true);
     try {
-      await apiFetchJson(`/api/sites/${encodeURIComponent(site.id)}/ge-deployments`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          deploymentId: dep.id,
-          groupe: depForm.groupe,
-          kva: depForm.kva,
-          serie: depForm.serie,
-          installedAt: depForm.installedAt || undefined,
-          removedAt: depForm.removedAt || undefined,
-          note: depForm.note
-        })
-      });
+      if (dep.virtual) {
+        // Fiche virtuelle : on matérialise un vrai déploiement actif —
+        // signalétique propre à la fiche, pose laissée vide si inconnue,
+        // report optionnel sur la fiche site.
+        await apiFetchJson(`/api/sites/${encodeURIComponent(site.id)}/ge-deployments`, {
+          method: 'POST',
+          body: JSON.stringify({
+            groupe: depForm.groupe,
+            kva: depForm.kva,
+            serie: depForm.serie,
+            installedAt: depForm.installedAt || undefined,
+            allowNullInstalled: !depForm.installedAt,
+            updateSite: syncSite,
+            note: depForm.note
+          })
+        });
+      } else {
+        await apiFetchJson(`/api/sites/${encodeURIComponent(site.id)}/ge-deployments`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            deploymentId: dep.id,
+            groupe: depForm.groupe,
+            kva: depForm.kva,
+            serie: depForm.serie,
+            installedAt: depForm.installedAt || undefined,
+            removedAt: depForm.removedAt || undefined,
+            note: depForm.note
+          })
+        });
+      }
       setEditDep(false);
       await load();
+      if (dep.virtual && syncSite) onDataChanged?.();
     } catch (e) {
       alert(e?.message || 'Erreur correction.');
     } finally {
@@ -553,17 +573,26 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
                     Signalétique déduite du site
                   </span>
                 )}
+                {dep.siteMismatch && (
+                  <span
+                    className="text-[10px] text-orange-700 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded"
+                    title={`La fiche site indique « ${[siteInfo.generateur, siteInfo.capacite].filter(Boolean).join(' ') || 'autre GE'} » — corrigez via le crayon si besoin`}
+                  >
+                    Site ≠ fiche
+                  </span>
+                )}
                 {canManage && (
                   <span className="ml-auto flex items-center gap-1.5">
-                    {!dep.virtual && dep.id && (
+                    {(dep.id || dep.virtual) && (
                       <button
                         className="p-1.5 rounded-md text-gray-400 hover:text-indigo-600 hover:bg-indigo-50"
-                        title="Corriger la signalétique / les dates"
+                        title={dep.virtual ? 'Déclarer la signalétique de ce GE (matérialise la fiche)' : 'Corriger la signalétique / les dates'}
                         onClick={() => {
                           setDepForm({
                             groupe: dep.groupe, kva: dep.kva, serie: dep.serie,
                             installedAt: dep.installedAt || '', removedAt: dep.removedAt || '', note: ''
                           });
+                          setSyncSite(true);
                           setEditDep(true);
                         }}
                       >
@@ -629,20 +658,30 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
 
           {editDep && dep && (
             <div className="mx-4 mt-3 bg-indigo-50 border border-indigo-200 rounded-lg p-3">
-              <div className="text-xs font-bold text-indigo-800 mb-2">Corriger la signalétique du déploiement</div>
+              <div className="text-xs font-bold text-indigo-800 mb-2">
+                {dep.virtual ? 'Déclarer la signalétique de ce GE — matérialise la fiche' : 'Corriger la signalétique du déploiement'}
+              </div>
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                 <input className={inputCls} placeholder="Groupe (ex. PRAMAC)" value={depForm.groupe} onChange={(e) => setDepForm({ ...depForm, groupe: e.target.value })} />
                 <input className={inputCls} placeholder="P. KVA (ex. 45 KVA)" value={depForm.kva} onChange={(e) => setDepForm({ ...depForm, kva: e.target.value })} />
                 <input className={inputCls} placeholder="Série" value={depForm.serie} onChange={(e) => setDepForm({ ...depForm, serie: e.target.value })} />
                 <div>
-                  <div className="text-[10px] font-semibold text-indigo-700 mb-0.5">Posé le</div>
+                  <div className="text-[10px] font-semibold text-indigo-700 mb-0.5">Posé le{dep.virtual ? ' (optionnel)' : ''}</div>
                   <input className={inputCls} type="date" value={depForm.installedAt} onChange={(e) => setDepForm({ ...depForm, installedAt: e.target.value })} />
                 </div>
-                <div>
-                  <div className="text-[10px] font-semibold text-indigo-700 mb-0.5">Déposé le</div>
-                  <input className={inputCls} type="date" value={depForm.removedAt} onChange={(e) => setDepForm({ ...depForm, removedAt: e.target.value })} />
-                </div>
+                {!dep.virtual && (
+                  <div>
+                    <div className="text-[10px] font-semibold text-indigo-700 mb-0.5">Déposé le</div>
+                    <input className={inputCls} type="date" value={depForm.removedAt} onChange={(e) => setDepForm({ ...depForm, removedAt: e.target.value })} />
+                  </div>
+                )}
               </div>
+              {dep.virtual && (
+                <label className="mt-2 flex items-center gap-2 text-xs text-indigo-800 cursor-pointer select-none">
+                  <input type="checkbox" checked={syncSite} onChange={(e) => setSyncSite(e.target.checked)} className="rounded" />
+                  Reporter aussi cette signalétique sur la fiche du site
+                </label>
+              )}
               <div className="mt-2 flex gap-2 justify-end">
                 <button className={`${btnCls} bg-gray-200 text-gray-700 hover:bg-gray-300`} onClick={() => setEditDep(false)}>Annuler</button>
                 <button className={`${btnCls} bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50`} disabled={busy} onClick={submitDepPatch}>Enregistrer</button>

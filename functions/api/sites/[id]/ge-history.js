@@ -178,6 +178,15 @@ export async function onRequestGet({ env, data, params }) {
             .filter((n) => Number.isFinite(n))
         : siteReadings;
 
+      // Écart de signalétique entre la fiche active et la fiche site —
+      // signalé à l'affichage plutôt que silencieux.
+      const normSig = (v) => String(v || '').toUpperCase().normalize('NFD')
+        .replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+      const siteMismatch = !dep.virtual && !dep.removed_at && (
+        normSig(groupe) !== normSig(site.generateur) ||
+        normSig(kva) !== normSig(site.capacite)
+      );
+
       return {
         id: dep.id,
         index: i + 1,
@@ -186,6 +195,7 @@ export async function onRequestGet({ env, data, params }) {
         groupe,
         kva,
         serie: dep.serie || '',
+        siteMismatch,
         installedAt: dep.installed_at || null,
         removedAt: dep.removed_at || null,
         source: dep.source || '',

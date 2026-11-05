@@ -66,7 +66,9 @@ export async function onRequestPost({ request, env, data, params }) {
       return json({ ok: true, openedDeployment: id, closedDeployment: null, installedAt: installedProvided, removedAt, archived: true });
     }
 
-    const installedAt = installedProvided || ymdToday();
+    // allowNullInstalled : matérialisation d'une fiche virtuelle — on ne
+    // fabrique pas une fausse date « aujourd'hui » quand la pose est inconnue.
+    const installedAt = installedProvided || (body.allowNullInstalled ? null : ymdToday());
     const groupe = String(body.groupe ?? site.generateur ?? '').trim();
     const kva = String(body.kva ?? site.capacite ?? '').trim();
     const serie = String(body.serie ?? '').trim();
@@ -78,7 +80,7 @@ export async function onRequestPost({ request, env, data, params }) {
     let closedId = null;
     if (active) {
       await env.DB.prepare('UPDATE ge_deployments SET removed_at = ?, updated_at = ? WHERE id = ?')
-        .bind(installedAt, now, active.id).run();
+        .bind(installedAt || now.slice(0, 10), now, active.id).run();
       closedId = active.id;
     }
 
