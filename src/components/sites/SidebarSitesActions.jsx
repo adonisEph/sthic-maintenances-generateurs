@@ -23,7 +23,12 @@ const SidebarSitesActions = ({
   onImportConsoleRmsChange,
   sitesCount,
   exportBusy,
-  onExportExcel
+  onExportExcel,
+  canImportGeCuratives,
+  geCurativesImportBusy,
+  geCurativesImportStep,
+  geCurativesImportProgress,
+  onImportGeCurativesChange
 }) => {
   return (
     <>
@@ -139,6 +144,42 @@ const SidebarSitesActions = ({
                 <div
                   className="h-2 bg-sky-500 rounded"
                   style={{ width: `${Math.max(0, Math.min(100, Number(consoleRmsImportProgress) || 0))}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {canImportGeCuratives && (
+        <div className="flex flex-col gap-2 mt-2">
+          <label
+            onClick={onCloseSidebar}
+            className={`w-full px-3 py-2 rounded-lg flex items-center gap-2 text-base font-semibold transition-colors focus-within:ring-2 focus-within:ring-blue-500/70 focus-within:ring-offset-2 focus-within:ring-offset-slate-950 ${
+              geCurativesImportBusy ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-800/80 cursor-pointer'
+            }`}
+          >
+            <Upload size={18} />
+            {geCurativesImportBusy ? 'Import curatifs en cours…' : 'Import NOC curatifs'}
+
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={onImportGeCurativesChange}
+              className="hidden"
+              disabled={geCurativesImportBusy}
+            />
+          </label>
+
+          {geCurativesImportBusy && (
+            <div className="w-full">
+              <div className="text-[11px] text-gray-600 mb-1">
+                {geCurativesImportStep || 'Import curatifs…'} ({geCurativesImportProgress}%)
+              </div>
+              <div className="w-full h-2 bg-gray-200 rounded">
+                <div
+                  className="h-2 bg-amber-500 rounded"
+                  style={{ width: `${Math.max(0, Math.min(100, Number(geCurativesImportProgress) || 0))}%` }}
                 />
               </div>
             </div>

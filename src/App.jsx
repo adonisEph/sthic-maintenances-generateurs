@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { AlertCircle, AlertTriangle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users, Menu, ChevronLeft, Trash2, RotateCcw, Bell, Share2, Package } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users, Menu, ChevronLeft, Trash2, RotateCcw, Bell, Share2, Package, History } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -16,6 +16,7 @@ import SidebarSitesActions from './components/sites/SidebarSitesActions';
 import TechnicianNhSiteUpdateModal from './components/sites/TechnicianNhSiteUpdateModal';
 import NhQuarantineCenterModal from './components/sites/NhQuarantineCenterModal';
 import DataAnalysisModal from './components/analysis/DataAnalysisModal';
+import GeHistoryModal from './components/ge-history/GeHistoryModal';
 import DashboardHeader from './components/dashboard/DashboardHeader';
 import DashboardKpiGrid from './components/dashboard/DashboardKpiGrid';
 import DashboardDetailsModal from './components/dashboard/DashboardDetailsModal';
@@ -184,6 +185,10 @@ const GeneratorMaintenanceApp = () => {
   const [consoleRmsImportBusy, setConsoleRmsImportBusy] = useState(false);
   const [consoleRmsImportProgress, setConsoleRmsImportProgress] = useState(0);
   const [consoleRmsImportStep, setConsoleRmsImportStep] = useState('');
+  const [geCurativesImportBusy, setGeCurativesImportBusy] = useState(false);
+  const [geCurativesImportProgress, setGeCurativesImportProgress] = useState(0);
+  const [geCurativesImportStep, setGeCurativesImportStep] = useState('');
+  const [geHistorySite, setGeHistorySite] = useState(null);
   const [vidangesImportBusy, setVidangesImportBusy] = useState(false);
   const [vidangesImportProgress, setVidangesImportProgress] = useState(0);
   const [vidangesImportStep, setVidangesImportStep] = useState('');
@@ -6097,6 +6102,140 @@ useEffect(() => {
     e.target.value = '';
   };
 
+  // Import NOC curatifs : travaux hors vidanges (extractions service NOC client).
+  // Colonnes attendues : Site/ID Site + Actual WO Date + Number + Description
+  // + Generator Run Hours → alimente le journal Historique GE des sites.
+  const handleImportGeCuratives = (e) => {
+    const file = e?.target?.files?.[0];
+    if (!file) return;
+    if (!(isAdmin || isAnyManager)) {
+      alert('Accès interdit.');
+      e.target.value = '';
+      return;
+    }
+
+    const ok = window.confirm(
+      `Confirmer l'import NOC curatifs ?\n\n` +
+      `Les travaux (remplacements, réparations, pose/dépose…) seront insérés dans les fiches Historique GE des sites concernés.\n` +
+      `Colonnes recherchées : Site (ID Site / Location / Asset) + Actual WO Date + Number + Description + Generator Run Hours.\n\n` +
+      `Fichier: ${file?.name || ''}`
+    );
+    if (!ok) {
+      e.target.value = '';
+      return;
+    }
+
+    const parseExcelDateToYmd = (value) => {
+      if (value == null || String(value).trim() === '') return '';
+      if (typeof value === 'number') {
+        try {
+          const d = XLSX.SSF.parse_date_code(value);
+          if (!d || !d.y || !d.m || !d.d) return '';
+          return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
+        } catch {
+          return '';
+        }
+      }
+      const raw = String(value).trim();
+      if (!raw) return '';
+      if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+      const m1 = raw.match(/^(\d{2})[\/\.\-](\d{2})[\/\.\-](\d{4})/);
+      if (m1) return `${m1[3]}-${m1[2]}-${m1[1]}`;
+      const m2 = raw.match(/^(\d{2})[\/\.\-](\d{2})[\/\.\-](\d{2})$/);
+      if (m2) return `20${m2[3]}-${m2[2]}-${m2[1]}`;
+      return '';
+    };
+
+    const pickCol = (row, names) => {
+      for (const n of names) {
+        if (row[n] !== undefined && row[n] !== null && String(row[n]).trim() !== '') return row[n];
+      }
+      return undefined;
+    };
+
+    const reader = new FileReader();
+    const op = startOperation('Import NOC curatifs…', file?.name || '');
+    setGeCurativesImportBusy(true);
+    setGeCurativesImportProgress(5);
+    setGeCurativesImportStep('Lecture du fichier…');
+
+    reader.onload = async (event) => {
+      try {
+        setGeCurativesImportStep('Analyse Excel…');
+        setGeCurativesImportProgress((p) => Math.max(p, 20));
+
+        const data = new Uint8Array(event.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonRows = XLSX.utils.sheet_to_json(sheet);
+
+        setGeCurativesImportStep('Préparation…');
+        setGeCurativesImportProgress((p) => Math.max(p, 40));
+
+        const items = (Array.isArray(jsonRows) ? jsonRows : [])
+          .map((r) => {
+            const siteRef = String(
+              pickCol(r, ['ID Site', 'Id Site', 'idSite', 'Site ID', 'Site', 'Site Name', 'Location', 'Asset Location', 'Asset', 'Customer Site', 'name_site', 'id_site']) || ''
+            ).trim();
+            const eventDate = parseExcelDateToYmd(pickCol(r, ['Actual WO Date', 'ActualWODate', 'WO Date', 'Date', 'Work Date', 'Completed Date', 'Actual Date']));
+            const woNumber = String(pickCol(r, ['Number', 'WO Number', 'N°', 'No', 'Ticket', 'Work Order']) || '').trim();
+            const description = String(pickCol(r, ['Description', 'Tx. Exécut.', 'Work Description', 'Summary']) || '').trim();
+            const runRaw = pickCol(r, ['Generator Run Hours', 'Run Hours', 'GeneratorRunHours', 'N. Heures', 'N.Heures', 'NH']);
+            const runHours = runRaw == null || String(runRaw).trim() === '' ? null : Number(String(runRaw).replace(',', '.').replace(/ | /g, ''));
+            return {
+              siteId: siteRef,
+              eventDate,
+              woNumber,
+              description,
+              runHours: Number.isFinite(runHours) ? runHours : null
+            };
+          })
+          .filter((r) => r.siteId || r.eventDate || r.description || r.woNumber);
+
+        if (!items.length) {
+          op.dismiss();
+          alert('Aucune ligne exploitable trouvée.\n\nColonnes attendues : Site (ID Site / Location / Asset), Actual WO Date, Number, Description, Generator Run Hours.');
+          return;
+        }
+
+        setGeCurativesImportStep('Envoi serveur…');
+        setGeCurativesImportProgress((p) => Math.max(p, 60));
+        op.update({ detail: `${items.length} travaux à insérer…` });
+
+        const res = await apiFetchJson('/api/ge-history/events', {
+          method: 'POST',
+          body: JSON.stringify({ filename: file?.name || null, items })
+        });
+
+        setGeCurativesImportProgress(100);
+        op.dismiss();
+
+        const errs = Array.isArray(res?.errors) ? res.errors : [];
+        alert(
+          `✅ Import NOC curatifs terminé.\n\n` +
+          `Insérés: ${res?.inserted || 0}\n` +
+          `Mis à jour: ${res?.updated || 0}\n` +
+          `Ignorés: ${res?.skipped || 0}\n` +
+          `Fiches GE ouvertes (POSE): ${res?.lifecycle?.opened || 0}\n` +
+          `Fiches GE archivées (DEPOSE): ${res?.lifecycle?.closed || 0}` +
+          (errs.length ? `\n\nDétails:\n${errs.slice(0, 12).map((x) => `• ${x}`).join('\n')}${errs.length > 12 ? `\n… +${errs.length - 12} autre(s)` : ''}` : '')
+        );
+      } catch (err) {
+        op.dismiss();
+        alert(err?.message || 'Erreur lors de l’import NOC curatifs.');
+      } finally {
+        setGeCurativesImportBusy(false);
+        setTimeout(() => {
+          setGeCurativesImportStep('');
+          setGeCurativesImportProgress(0);
+        }, 500);
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
+  };
+
   // Import VIDANGES DONE : déclare en masse les vidanges effectuées
   // (colonnes : ID Site, NH1 DV, Date DV). Sémantique identique à
   // "Effectuer une vidange" par site : baseline + état réel préservé +
@@ -8409,6 +8548,17 @@ return (
         />
       )}
 
+      {/* Historique GE — fiche suivie maintenance par générateur */}
+      {geHistorySite && (
+        <GeHistoryModal
+          site={geHistorySite}
+          onClose={() => setGeHistorySite(null)}
+          apiFetchJson={apiFetchJson}
+          canManage={isAdmin || isAnyManager}
+          onDataChanged={() => { try { loadData(); } catch { /* ignore */ } }}
+        />
+      )}
+
       {/* Analyse des données — croisements PM × Vidanges */}
       {dataAnalysisOpen && (
         <DataAnalysisModal
@@ -8499,6 +8649,11 @@ return (
             consoleRmsImportStep={consoleRmsImportStep}
             consoleRmsImportProgress={consoleRmsImportProgress}
             onImportConsoleRmsChange={handleImportConsoleRms}
+            canImportGeCuratives={Boolean(isAdmin || isAnyManager)}
+            geCurativesImportBusy={geCurativesImportBusy}
+            geCurativesImportStep={geCurativesImportStep}
+            geCurativesImportProgress={geCurativesImportProgress}
+            onImportGeCurativesChange={handleImportGeCuratives}
           />
         )}
 
@@ -10833,6 +10988,15 @@ return (
                           )}
                         </div>
                         )}
+
+                        <button
+                          onClick={() => setGeHistorySite(site)}
+                          className="mt-2 w-full bg-indigo-50 text-indigo-700 px-3 py-2 rounded-lg hover:bg-indigo-100 font-semibold text-sm flex items-center justify-center gap-2 border border-indigo-200 transition-colors"
+                          title="Fiche suivie maintenance G.E. — journal des travaux du générateur"
+                        >
+                          <History size={16} />
+                          Historique GE
+                        </button>
                       </div>
                     </div>
                   );
