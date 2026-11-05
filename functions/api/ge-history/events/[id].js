@@ -94,7 +94,7 @@ export async function onRequestPatch({ request, env, data, params }) {
   }
 }
 
-export async function onRequestDelete({ env, data, params }) {
+export async function onRequestDelete({ request, env, data, params }) {
   try {
     await ensureAdminUser(env);
     if (!requireAuth(data) && !agentAuthorized(request, env)) {
