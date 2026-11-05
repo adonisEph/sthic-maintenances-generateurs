@@ -14,11 +14,22 @@ function vidangeLabel(groupe, kva) {
   return `VIDANGE DU GE ${[g, kvaLabel].filter(Boolean).join(' ')}`.trim();
 }
 
-function inWindow(dateStr, dep) {
+function inWindow(dateStr, kind, dep, allDeps) {
   const s = String(dateStr || '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
-  if (dep.installed_at && s < String(dep.installed_at).slice(0, 10)) return false;
-  if (dep.removed_at && s >= String(dep.removed_at).slice(0, 10)) return false;
+  const inst = String(dep.installed_at || '').slice(0, 10) || null;
+  const rem = String(dep.removed_at || '').slice(0, 10) || null;
+  if (inst && s < inst) return false;
+  if (rem && s > rem) return false;
+  // Une dépose datée du jour de pose = fin de la fiche PRÉCÉDENTE.
+  if (inst && s === inst && kind === 'depose') return false;
+  // Une pose datée du jour de dépose = ouverture de la fiche SUIVANTE.
+  if (rem && s === rem && kind === 'pose') return false;
+  // Jour de bascule : les lignes ordinaires restent sur la fiche qui se ferme.
+  if (
+    inst && s === inst && kind !== 'pose' && kind !== 'depose' &&
+    (allDeps || []).some((d2) => d2 !== dep && String(d2.removed_at || '').slice(0, 10) === s)
+  ) return false;
   return true;
 }
 
@@ -97,7 +108,7 @@ export async function onRequestGet({ env, data, params }) {
       const journal = [];
 
       for (const f of fiches) {
-        if (!inWindow(f.date_completed, dep)) continue;
+        if (!inWindow(f.date_completed, 'vidange', dep, deployments)) continue;
         journal.push({
           kind: 'vidange',
           date: String(f.date_completed).slice(0, 10),
@@ -112,7 +123,7 @@ export async function onRequestGet({ env, data, params }) {
       }
 
       for (const e of events) {
-        if (!inWindow(e.event_date, dep)) continue;
+        if (!inWindow(e.event_date, e.kind || 'curatif', dep, deployments)) continue;
         journal.push({
           kind: e.kind || 'curatif',
           date: String(e.event_date).slice(0, 10),
@@ -132,7 +143,7 @@ export async function onRequestGet({ env, data, params }) {
       });
 
       const siteReadings = readings
-        .filter((r) => inWindow(r.reading_date, dep))
+        .filter((r) => inWindow(r.reading_date, 'releve', dep, deployments))
         .map((r) => r.nh_value);
 
       return {
