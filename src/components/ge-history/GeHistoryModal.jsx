@@ -69,14 +69,13 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
 
   const maxRows = dep ? Math.max(dep.journal.length, dep.readings.length) : 0;
 
-  const printFiche = () => {
-    if (!dep) return;
-    const period = dep.installedAt
-      ? `Posé le ${formatDate(dep.installedAt)}${dep.removedAt ? ` · Déposé le ${formatDate(dep.removedAt)}` : ' · En service'}`
+  const ficheSectionHtml = (d) => {
+    const period = d.installedAt
+      ? `Posé le ${formatDate(d.installedAt)}${d.removedAt ? ` · Déposé le ${formatDate(d.removedAt)}` : ' · En service'}`
       : 'Période complète';
-    const rows = Array.from({ length: maxRows }, (_, i) => {
-      const r = dep.readings[i];
-      const j = dep.journal[i];
+    const rows = Array.from({ length: Math.max(d.journal.length, d.readings.length) }, (_, i) => {
+      const r = d.readings[i];
+      const j = d.journal[i];
       return `<tr>
         <td class="nh">${r !== undefined ? esc(fmtNH(r)) : ''}</td>
         <td>${j ? esc(fmtDay(j.date)) : ''}</td>
@@ -86,11 +85,32 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
       </tr>`;
     }).join('');
 
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Fiche suivie maintenance G.E. — ${esc(siteInfo.nameSite)}</title>
+    return `<section class="fiche">
+<h1>FICHE SUIVIE MAINTENANCE G.E.</h1>
+<div class="meta">${esc(period)} — générée le ${esc(new Date().toLocaleString('fr-FR'))}</div>
+<table class="hd"><tr>
+  <td><div class="lbl">Site</div>${esc(siteInfo.nameSite)}</td>
+  <td><div class="lbl">ID</div>${esc(siteInfo.idSite || '-')}</td>
+  <td><div class="lbl">Zone</div>${esc(siteInfo.zone || '-')}</td>
+  <td><div class="lbl">Groupe</div>${esc(d.groupe || '-')}</td>
+  <td><div class="lbl">P. KVA</div>${esc(d.kva || '-')}</td>
+  <td><div class="lbl">Série</div>${esc(d.serie || '-')}</td>
+  <td><div class="lbl">Statut</div>${d.active ? 'ACTIF' : 'ARCHIVÉ'}</td>
+</tr></table>
+<table class="j"><thead><tr><th>N. Heures</th><th>Date</th><th>N°</th><th>Tx. Exécut.</th><th>N. Heures</th></tr></thead>
+<tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:#777">Aucun travail enregistré</td></tr>'}</tbody></table>
+<div class="foot">Journal recomposé à la demande · ${d.journal.length} travaux · ${d.readings.length} relevés de compteur${d.readingsDerived ? ' (déduits des interventions)' : ''}</div>
+</section>`;
+  };
+
+  const printHtml = (title, bodyHtml) => {
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
 <style>
   body{font-family:Arial,sans-serif;color:#111;padding:16px}
   h1{font-size:16px;margin:0 0 2px}
   .meta{color:#555;font-size:11px;margin-bottom:10px}
+  section.fiche{page-break-after:always}
+  section.fiche:last-of-type{page-break-after:auto}
   table.hd{border-collapse:collapse;margin-bottom:10px;width:100%}
   table.hd td{border:1px solid #333;padding:4px 8px;font-size:11px}
   table.hd .lbl{background:#eef;font-weight:bold;font-size:9px;text-transform:uppercase;letter-spacing:.4px}
@@ -100,22 +120,7 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
   td.nh{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   td.tx{min-width:220px}
   .foot{margin-top:10px;font-size:9.5px;color:#555}
-</style></head><body>
-<h1>FICHE SUIVIE MAINTENANCE G.E.</h1>
-<div class="meta">${esc(period)} — générée le ${esc(new Date().toLocaleString('fr-FR'))}</div>
-<table class="hd"><tr>
-  <td><div class="lbl">Site</div>${esc(siteInfo.nameSite)}</td>
-  <td><div class="lbl">ID</div>${esc(siteInfo.idSite || '-')}</td>
-  <td><div class="lbl">Zone</div>${esc(siteInfo.zone || '-')}</td>
-  <td><div class="lbl">Groupe</div>${esc(dep.groupe || '-')}</td>
-  <td><div class="lbl">P. KVA</div>${esc(dep.kva || '-')}</td>
-  <td><div class="lbl">Série</div>${esc(dep.serie || '-')}</td>
-  <td><div class="lbl">Statut</div>${dep.active ? 'ACTIF' : 'ARCHIVÉ'}</td>
-</tr></table>
-<table class="j"><thead><tr><th>N. Heures</th><th>Date</th><th>N°</th><th>Tx. Exécut.</th><th>N. Heures</th></tr></thead>
-<tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:#777">Aucun travail enregistré</td></tr>'}</tbody></table>
-<div class="foot">Journal recomposé à la demande · ${dep.journal.length} travaux · ${dep.readings.length} relevés de compteur</div>
-</body></html>`;
+</style></head><body>${bodyHtml}</body></html>`;
 
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
@@ -133,6 +138,24 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
       try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch { /* ignore */ }
       setTimeout(() => { try { document.body.removeChild(iframe); } catch { /* ignore */ } }, 2000);
     };
+  };
+
+  const printFiche = () => {
+    if (!dep) return;
+    printHtml(`Fiche suivie maintenance G.E. — ${siteInfo.nameSite}`, ficheSectionHtml(dep));
+  };
+
+  // Imprime TOUTES les fiches du site (archivées + active), dans l'ordre
+  // chronologique (GE #1 → GE actif), chaque fiche sur sa propre page.
+  const printAllFiches = () => {
+    const list = [...deployments].sort((a, b) => (a.index || 0) - (b.index || 0));
+    if (!list.length) return;
+    printHtml(
+      `Historique GE — ${siteInfo.nameSite}`,
+      `<h1>HISTORIQUE DES G.E. — ${esc(siteInfo.nameSite || '')}</h1>` +
+      `<div class="meta">${list.length} fiche(s) — ${esc(siteInfo.idSite || '')} · ${esc(siteInfo.zone || '')} · généré le ${esc(new Date().toLocaleString('fr-FR'))}</div>` +
+      list.map(ficheSectionHtml).join('')
+    );
   };
 
   const submitAdd = async () => {
@@ -449,6 +472,14 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
             title="Imprimer la fiche affichée"
           >
             <Printer size={15} /> Imprimer la fiche
+          </button>
+          <button
+            onClick={printAllFiches}
+            disabled={!deployments.length || loading}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 disabled:opacity-50 text-sm font-semibold"
+            title="Imprimer toutes les fiches du site (archivées + active), une par page"
+          >
+            <Printer size={15} /> Imprimer tout
           </button>
           <button onClick={load} disabled={loading} className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-50" title="Rafraîchir">
             <RefreshCw size={17} className={loading ? 'animate-spin' : ''} />
