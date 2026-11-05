@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { X, RefreshCw, AlertTriangle, Printer, Pencil, Trash2, PlusCircle, Wrench, Check, History } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { X, RefreshCw, AlertTriangle, Printer, Pencil, Trash2, PlusCircle, Wrench, Check, History, Upload } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { formatDate } from '../../utils/calculations';
 
 const fmtNH = (v) => {
@@ -38,6 +39,8 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
   const [replaceForm, setReplaceForm] = useState({ groupe: '', kva: '', serie: '', installedAt: '', note: '' });
   const [editDep, setEditDep] = useState(false);
   const [depForm, setDepForm] = useState({ groupe: '', kva: '', serie: '', installedAt: '', removedAt: '', note: '' });
+  const [importBusy, setImportBusy] = useState(false);
+  const fileInputRef = useRef(null);
 
   const load = async () => {
     setLoading(true);
@@ -246,6 +249,117 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
     }
   };
 
+  // Agent d'import NOC — se réveille au lancement, applique le job sur cette
+  // fiche, puis s'éteint. Filtrage strict sur le site courant quand une
+  // colonne Site est présente ; sinon tout le fichier est appliqué ici.
+  const handleNocFile = async (e) => {
+    const file = e?.target?.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    const siteKey = String(siteInfo.idSite || site.idSite || '').trim().toUpperCase();
+    const siteName = String(siteInfo.nameSite || site.nameSite || '').trim().toUpperCase();
+    const norm = (v) => String(v || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+
+    const ok = window.confirm(
+      `Import NOC sur la fiche de « ${siteInfo.nameSite || site.nameSite} » (${siteKey || 'sans ID'}) ?\n\n` +
+      `• Colonne « Site » présente → seules les lignes de ce site sont importées\n` +
+      `• Pas de colonne « Site » → tout le fichier est appliqué à cette fiche\n\n` +
+      `Fichier : ${file.name}`
+    );
+    if (!ok) return;
+
+    setImportBusy(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws);
+      if (!rows.length) { alert('Fichier vide ou illisible.'); return; }
+
+      const pick = (r, names) => {
+        for (const n of names) {
+          if (r[n] !== undefined && r[n] !== null && String(r[n]).trim() !== '') return r[n];
+        }
+        return undefined;
+      };
+      const toYmd = (v) => {
+        if (v == null || v === '') return '';
+        if (typeof v === 'number') {
+          const d = XLSX.SSF.parse_date_code(v);
+          return d ? `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}` : '';
+        }
+        const s = String(v).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
+        if (m) {
+          const yy = m[3].length === 2 ? `20${m[3]}` : m[3];
+          return `${yy}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+        }
+        return '';
+      };
+
+      const parsed = rows.map((r, idx) => {
+        const siteRef = String(pick(r, ['Site', 'SITE', 'Site ID', 'ID Site', 'id_site', 'name_site', 'Location', 'Asset']) || '').trim();
+        const eventDate = toYmd(pick(r, ['Actual WO Date', 'ActualWODate', 'WO Date', 'Closed', 'Date', 'Completed Date']));
+        const woNumber = String(pick(r, ['Number', 'WO Number', 'N°', 'No', 'Ticket', 'Work Order']) || '').trim();
+        const description = String(pick(r, ['Description', 'Short description', 'Tx. Exécut.', 'Work Description', 'Summary']) || '').trim();
+        const runRaw = pick(r, ['Generator Run Hours', 'Run Hours', 'GeneratorRunHours', 'N. Heures', 'N.Heures', 'NH']);
+        const runHours = runRaw == null || String(runRaw).trim() === '' ? null : Number(String(runRaw).replace(',', '.').replace(/[  ]/g, ''));
+        const state = String(pick(r, ['State', 'État', 'Status']) || '').trim().toUpperCase();
+        return { siteRef, eventDate, woNumber, description, runHours: Number.isFinite(runHours) ? runHours : null, state, _row: idx + 2 };
+      });
+
+      const hasSiteCol = parsed.some((r) => r.siteRef);
+      const matchesSite = (r) => {
+        const s = norm(r.siteRef);
+        if (!s) return false;
+        return (siteKey && s === siteKey) || (siteName && (norm(siteName) === s || s.includes(norm(siteName))));
+      };
+
+      let offSite = 0, cancelled = 0, notDone = 0;
+      const items = [];
+      for (const r of parsed) {
+        if (!r.eventDate && !r.description && !r.woNumber) continue;
+        if (hasSiteCol && !matchesSite(r)) { offSite += 1; continue; }
+        if (/CANCEL|VOID|SUPPRIM|REJET/.test(r.state)) { cancelled += 1; continue; }
+        if (!r.eventDate) { notDone += 1; continue; }
+        items.push({ siteId: site.id, eventDate: r.eventDate, woNumber: r.woNumber, description: r.description, runHours: r.runHours });
+      }
+
+      if (!items.length) {
+        alert(`Aucune ligne exploitable pour « ${siteInfo.nameSite || site.nameSite} ».\n\n` +
+          (hasSiteCol ? `${offSite} ligne(s) d'autres sites écartée(s).\n` : 'Aucune colonne Site détectée.\n') +
+          `${notDone} ligne(s) sans date de réalisation.\n${cancelled} ligne(s) annulée(s).`);
+        return;
+      }
+
+      const res = await apiFetchJson('/api/ge-history/events', {
+        method: 'POST',
+        body: JSON.stringify({ filename: file.name, items })
+      });
+
+      await load();
+      if (Number(res?.lifecycle?.opened || 0) + Number(res?.lifecycle?.closed || 0) > 0) onDataChanged?.();
+
+      const errs = Array.isArray(res?.errors) ? res.errors : [];
+      alert(
+        `✅ Import NOC terminé — fiche « ${siteInfo.nameSite || site.nameSite} ».\n\n` +
+        `Insérés: ${res?.inserted || 0} · Mis à jour: ${res?.updated || 0} · Ignorés serveur: ${res?.skipped || 0}\n` +
+        (hasSiteCol ? `Lignes d'autres sites écartées: ${offSite}\n` : '') +
+        (notDone ? `Sans date de réalisation: ${notDone}\n` : '') +
+        (cancelled ? `Annulées: ${cancelled}\n` : '') +
+        (Number(res?.lifecycle?.opened || 0) ? `POSE détectée → nouvelle fiche GE ouverte\n` : '') +
+        (Number(res?.lifecycle?.closed || 0) ? `DEPOSE détectée → fiche archivée\n` : '') +
+        (errs.length ? `\nDétails:\n${errs.slice(0, 10).map((x) => `• ${x}`).join('\n')}` : '')
+      );
+    } catch (err) {
+      alert(err?.message || 'Erreur lors de l’import NOC.');
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
   const inputCls = 'w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300';
   const btnCls = 'px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors';
 
@@ -346,6 +460,21 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
                         <Pencil size={14} />
                       </button>
                     )}
+                    <button
+                      className={`${btnCls} bg-emerald-100 text-emerald-800 hover:bg-emerald-200 inline-flex items-center gap-1 disabled:opacity-50`}
+                      disabled={importBusy}
+                      onClick={() => fileInputRef.current?.click()}
+                      title="Importer les travaux depuis une extraction NOC (filtrée sur ce site)"
+                    >
+                      <Upload size={14} /> {importBusy ? 'Import…' : 'Import NOC'}
+                    </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      className="hidden"
+                      onChange={handleNocFile}
+                    />
                     <button
                       className={`${btnCls} bg-sky-100 text-sky-700 hover:bg-sky-200 inline-flex items-center gap-1`}
                       onClick={() => setShowAdd((v) => !v)}

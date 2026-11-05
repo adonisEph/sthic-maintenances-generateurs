@@ -17,6 +17,7 @@ import TechnicianNhSiteUpdateModal from './components/sites/TechnicianNhSiteUpda
 import NhQuarantineCenterModal from './components/sites/NhQuarantineCenterModal';
 import DataAnalysisModal from './components/analysis/DataAnalysisModal';
 import GeHistoryModal from './components/ge-history/GeHistoryModal';
+import GeSitePickerModal from './components/ge-history/GeSitePickerModal';
 import DashboardHeader from './components/dashboard/DashboardHeader';
 import DashboardKpiGrid from './components/dashboard/DashboardKpiGrid';
 import DashboardDetailsModal from './components/dashboard/DashboardDetailsModal';
@@ -189,6 +190,7 @@ const GeneratorMaintenanceApp = () => {
   const [geCurativesImportProgress, setGeCurativesImportProgress] = useState(0);
   const [geCurativesImportStep, setGeCurativesImportStep] = useState('');
   const [geHistorySite, setGeHistorySite] = useState(null);
+  const [gePickerOpen, setGePickerOpen] = useState(false);
   const [vidangesImportBusy, setVidangesImportBusy] = useState(false);
   const [vidangesImportProgress, setVidangesImportProgress] = useState(0);
   const [vidangesImportStep, setVidangesImportStep] = useState('');
@@ -8548,6 +8550,18 @@ return (
         />
       )}
 
+      {/* Fiche GE — sélecteur de site */}
+      {gePickerOpen && (
+        <GeSitePickerModal
+          sites={isTechnician || managerZoneLock ? filteredSites : sites}
+          onClose={() => setGePickerOpen(false)}
+          onSelect={(s) => {
+            setGePickerOpen(false);
+            setGeHistorySite(s);
+          }}
+        />
+      )}
+
       {/* Historique GE — fiche suivie maintenance par générateur */}
       {geHistorySite && (
         <GeHistoryModal
@@ -8656,6 +8670,19 @@ return (
             onImportGeCurativesChange={handleImportGeCuratives}
           />
         )}
+
+          {!isWarehouse && (
+            <button
+              onClick={() => {
+                setSidebarOpen(false);
+                setGePickerOpen(true);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
+            >
+              <History size={18} />
+              Fiche GE d'un site
+            </button>
+          )}
 
           {(isAdmin || isAnyManager) && (
             <button

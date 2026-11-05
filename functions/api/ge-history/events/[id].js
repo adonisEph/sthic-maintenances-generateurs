@@ -24,7 +24,15 @@ async function loadEventWithSite(env, id) {
   return { ev, site };
 }
 
-function canWrite(data, site) {
+function agentAuthorized(request, env) {
+  const expected = String(env.GE_AGENT_API_KEY || '').trim();
+  if (!expected) return false;
+  const got = String(request.headers.get('X-Api-Key') || request.headers.get('x-api-key') || '').trim();
+  return got === expected;
+}
+
+function canWrite(data, site, isAgent) {
+  if (isAgent) return true;
   const role = String(data?.user?.role || '');
   if (role === 'admin' || role === 'manager_bzv_pool') return true;
   if (role === 'manager') return String(site?.zone || 'BZV/POOL') === userZone(data);
@@ -34,12 +42,14 @@ function canWrite(data, site) {
 export async function onRequestPatch({ request, env, data, params }) {
   try {
     await ensureAdminUser(env);
-    if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
+    if (!requireAuth(data) && !agentAuthorized(request, env)) {
+      return json({ error: 'Non authentifié.' }, { status: 401 });
+    }
 
     const id = String(params?.id || '').trim();
     const { ev, site } = await loadEventWithSite(env, id);
     if (!ev) return json({ error: 'Événement introuvable.' }, { status: 404 });
-    if (!canWrite(data, site)) return json({ error: 'Accès interdit.' }, { status: 403 });
+    if (!canWrite(data, site, agentAuthorized(request, env))) return json({ error: 'Accès interdit.' }, { status: 403 });
 
     const body = await readJson(request);
     const updates = {};
@@ -87,12 +97,14 @@ export async function onRequestPatch({ request, env, data, params }) {
 export async function onRequestDelete({ env, data, params }) {
   try {
     await ensureAdminUser(env);
-    if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
+    if (!requireAuth(data) && !agentAuthorized(request, env)) {
+      return json({ error: 'Non authentifié.' }, { status: 401 });
+    }
 
     const id = String(params?.id || '').trim();
     const { ev, site } = await loadEventWithSite(env, id);
     if (!ev) return json({ error: 'Événement introuvable.' }, { status: 404 });
-    if (!canWrite(data, site)) return json({ error: 'Accès interdit.' }, { status: 403 });
+    if (!canWrite(data, site, agentAuthorized(request, env))) return json({ error: 'Accès interdit.' }, { status: 403 });
 
     await env.DB.prepare('DELETE FROM ge_history_events WHERE id = ?').bind(id).run();
     await touchLastUpdatedAt(env);
