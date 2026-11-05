@@ -55,7 +55,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.21.3';
+const APP_VERSION = '6.21.4';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -6174,11 +6174,6 @@ useEffect(() => {
         setGeCurativesImportStep('Préparation…');
         setGeCurativesImportProgress((p) => Math.max(p, 40));
 
-        // Export « Preventative Maintenance WO » (vidanges) : marqueur =
-        // présence des colonnes DG Service / DG Service Done.
-        const hasDgCols = (Array.isArray(jsonRows) ? jsonRows : [])
-          .some((r) => r['DG Service'] !== undefined || r['DG Service Done'] !== undefined);
-
         const items = (Array.isArray(jsonRows) ? jsonRows : [])
           .map((r) => {
             const siteRef = String(
@@ -6189,8 +6184,14 @@ useEffect(() => {
             const description = String(pickCol(r, ['Description', 'Short description', 'Tx. Exécut.', 'Work Description', 'Summary']) || '').trim();
             const runRaw = pickCol(r, ['Generator Run Hours', 'Run Hours', 'GeneratorRunHours', 'N. Heures', 'N.Heures', 'NH']);
             const runHours = runRaw == null || String(runRaw).trim() === '' ? null : Number(String(runRaw).replace(',', '.').replace(/ | /g, ''));
-            const lifecycle = /\b(DEPOSE|POSE)\b|REMPLACEMENT|CHANGEMENT/i.test(description);
-            const kind = /VIDANGE/i.test(description) || (hasDgCols && !lifecycle) ? 'vidange' : undefined;
+            // « Short description » porte les types (FullPMWO, DG Service).
+            // FullPMWO + DG Service*/Done = Yes/True → vidange, sinon
+            // FullPMWO simple (pas une vidange).
+            const shortDesc = String(pickCol(r, ['Short description', 'Short Description', 'Short desc', 'Shortdesc']) || '').trim();
+            const dgYes = (v) => /^(yes|true|oui|1)$/i.test(String(v ?? '').trim());
+            const isDg = dgYes(r['DG Service']) || dgYes(r['DG Service Done']) || /\bDG\s*SERVICE\b/i.test(shortDesc);
+            const lifecycle = /\b(DEPOSE|POSE)\b|REMPLACEMENT|CHANGEMENT/i.test(`${description} ${shortDesc}`);
+            const kind = !lifecycle && (/VIDANGE/i.test(`${description} ${shortDesc}`) || isDg) ? 'vidange' : undefined;
             return {
               siteId: siteRef,
               eventDate,

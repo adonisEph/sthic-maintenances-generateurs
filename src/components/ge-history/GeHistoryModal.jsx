@@ -406,12 +406,6 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
         return '';
       };
 
-      // Colonnes-marqueur de l'export « Preventative Maintenance WO » :
-      // leur présence signifie que le fichier est l'export vidanges → les
-      // lignes sont des vidanges même si la Description ne dit pas
-      // « VIDANGE » (sauf mots de cycle de vie : POSE/DEPOSE/remplacement).
-      const hasDgCols = rows.some((r) => r['DG Service'] !== undefined || r['DG Service Done'] !== undefined);
-
       const parsed = rows.map((r, idx) => {
         const siteRef = String(pick(r, ['Site', 'SITE', 'Site ID', 'ID Site', 'id_site', 'name_site', 'Location', 'Asset']) || '').trim();
         const eventDate = toYmd(pick(r, ['Actual WO Date', 'ActualWODate', 'Closed', 'WO Date', 'Date', 'Completed Date']));
@@ -420,8 +414,15 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
         const runRaw = pick(r, ['Generator Run Hours', 'Run Hours', 'GeneratorRunHours', 'N. Heures', 'N.Heures', 'NH']);
         const runHours = runRaw == null || String(runRaw).trim() === '' ? null : Number(String(runRaw).replace(',', '.').replace(/[  ]/g, ''));
         const state = String(pick(r, ['State', 'État', 'Status']) || '').trim().toUpperCase();
-        const lifecycle = /\b(DEPOSE|POSE)\b|REMPLACEMENT|CHANGEMENT/i.test(description);
-        const kind = /VIDANGE/i.test(description) || (hasDgCols && !lifecycle) ? 'vidange' : undefined;
+        // Détection vidange par ligne : « Short description » porte les
+        // types (FullPMWO, DG Service…). Un FullPMWO n'est une vidange
+        // que si DG Service ou DG Service Done vaut Yes/True — sinon
+        // c'est un FullPMWO simple (pas une vidange).
+        const shortDesc = String(pick(r, ['Short description', 'Short Description', 'Short desc', 'Shortdesc']) || '').trim();
+        const dgYes = (v) => /^(yes|true|oui|1)$/i.test(String(v ?? '').trim());
+        const isDg = dgYes(r['DG Service']) || dgYes(r['DG Service Done']) || /\bDG\s*SERVICE\b/i.test(shortDesc);
+        const lifecycle = /\b(DEPOSE|POSE)\b|REMPLACEMENT|CHANGEMENT/i.test(`${description} ${shortDesc}`);
+        const kind = !lifecycle && (/VIDANGE/i.test(`${description} ${shortDesc}`) || isDg) ? 'vidange' : undefined;
         return { siteRef, eventDate, woNumber, description, runHours: Number.isFinite(runHours) ? runHours : null, state, kind, _row: idx + 2 };
       });
 
