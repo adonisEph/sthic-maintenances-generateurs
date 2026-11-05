@@ -365,7 +365,7 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
 
       const parsed = rows.map((r, idx) => {
         const siteRef = String(pick(r, ['Site', 'SITE', 'Site ID', 'ID Site', 'id_site', 'name_site', 'Location', 'Asset']) || '').trim();
-        const eventDate = toYmd(pick(r, ['Actual WO Date', 'ActualWODate', 'WO Date', 'Closed', 'Date', 'Completed Date']));
+        const eventDate = toYmd(pick(r, ['Actual WO Date', 'ActualWODate', 'Closed', 'WO Date', 'Date', 'Completed Date']));
         const woNumber = String(pick(r, ['Number', 'WO Number', 'N°', 'No', 'Ticket', 'Work Order']) || '').trim();
         const description = String(pick(r, ['Description', 'Short description', 'Tx. Exécut.', 'Work Description', 'Summary']) || '').trim();
         const runRaw = pick(r, ['Generator Run Hours', 'Run Hours', 'GeneratorRunHours', 'N. Heures', 'N.Heures', 'NH']);

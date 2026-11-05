@@ -55,7 +55,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.20.6';
+const APP_VERSION = '6.20.7';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -6119,7 +6119,7 @@ useEffect(() => {
     const ok = window.confirm(
       `Confirmer l'import NOC curatifs ?\n\n` +
       `Les travaux (remplacements, réparations, pose/dépose…) seront insérés dans les fiches Historique GE des sites concernés.\n` +
-      `Colonnes recherchées : Site (ID Site / Location / Asset) + Actual WO Date + Number + Description + Generator Run Hours.\n\n` +
+      `Colonnes recherchées : Site (ID Site / Location / Asset) + Actual WO Date (sinon Closed) + Number + Description + Generator Run Hours.\n\n` +
       `Fichier: ${file?.name || ''}`
     );
     if (!ok) {
@@ -6179,7 +6179,7 @@ useEffect(() => {
             const siteRef = String(
               pickCol(r, ['ID Site', 'Id Site', 'idSite', 'Site ID', 'Site', 'Site Name', 'Location', 'Asset Location', 'Asset', 'Customer Site', 'name_site', 'id_site']) || ''
             ).trim();
-            const eventDate = parseExcelDateToYmd(pickCol(r, ['Actual WO Date', 'ActualWODate', 'WO Date', 'Date', 'Work Date', 'Completed Date', 'Actual Date']));
+            const eventDate = parseExcelDateToYmd(pickCol(r, ['Actual WO Date', 'ActualWODate', 'Closed', 'WO Date', 'Date', 'Work Date', 'Completed Date', 'Actual Date']));
             const woNumber = String(pickCol(r, ['Number', 'WO Number', 'N°', 'No', 'Ticket', 'Work Order']) || '').trim();
             const description = String(pickCol(r, ['Description', 'Tx. Exécut.', 'Work Description', 'Summary']) || '').trim();
             const runRaw = pickCol(r, ['Generator Run Hours', 'Run Hours', 'GeneratorRunHours', 'N. Heures', 'N.Heures', 'NH']);
@@ -6196,7 +6196,7 @@ useEffect(() => {
 
         if (!items.length) {
           op.dismiss();
-          alert('Aucune ligne exploitable trouvée.\n\nColonnes attendues : Site (ID Site / Location / Asset), Actual WO Date, Number, Description, Generator Run Hours.');
+          alert('Aucune ligne exploitable trouvée.\n\nColonnes attendues : Site (ID Site / Location / Asset), Actual WO Date (ou Closed), Number, Description, Generator Run Hours.');
           return;
         }
 
