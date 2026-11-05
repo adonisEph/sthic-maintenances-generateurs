@@ -1,7 +1,7 @@
 import { ensureAdminUser } from '../../_utils/db.js';
 import { json, requireAuth, readJson, isoNow, newId, isSuperAdmin, userZone } from '../../_utils/http.js';
 import { touchLastUpdatedAt } from '../../_utils/meta.js';
-import { isGeRelatedWork, isGeReplacement } from '../../_utils/geWorkFilter.js';
+import { isGeRelatedWork, isGeReplacement, parseReplacementGe } from '../../_utils/geWorkFilter.js';
 
 const VALID_KINDS = new Set(['curatif', 'pose', 'depose', 'vidange']);
 
@@ -70,6 +70,9 @@ async function applyLifecycle(env, site, kind, eventDate, ev) {
       await env.DB.prepare('UPDATE ge_deployments SET removed_at = ?, updated_at = ? WHERE id = ?')
         .bind(eventDate, now, active.id).run();
     }
+    // Signalétique du nouveau GE : champs explicites > texte de la
+    // description (« … par GE Elcos 30kva ») > champs du site.
+    const parsed = parseReplacementGe(ev.description);
     const id = newId();
     await env.DB.prepare(
       `INSERT INTO ge_deployments (id, site_id, groupe, kva, serie, installed_at, removed_at, source, note, created_by_email, created_at, updated_at)
@@ -77,8 +80,8 @@ async function applyLifecycle(env, site, kind, eventDate, ev) {
     ).bind(
       id,
       site.id,
-      String(ev.groupe || site.generateur || ''),
-      String(ev.kva || site.capacite || ''),
+      String(ev.groupe || parsed.groupe || site.generateur || ''),
+      String(ev.kva || parsed.kva || site.capacite || ''),
       String(ev.serie || ''),
       eventDate,
       String(ev.note || ''),

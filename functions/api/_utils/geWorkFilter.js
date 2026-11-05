@@ -53,3 +53,22 @@ export function isGeReplacement(description) {
   const t = normText(description);
   return /\b(REMPLACEMENT|RPLCEMENT|RPLCMENT|REMPLT|RPL|CHANGEMENT)\s+(DU\s+|DE\s+|D[EU']\s*)?GE\b/.test(t);
 }
+
+// Extrait la signalétique du NOUVEAU GE depuis une description de
+// remplacement : « Remplacement GE GL 20Kva par GE Elcos 30kva »
+// → { groupe: 'Elcos', kva: '30 KVA' }. Vide si non identifiable.
+export function parseReplacementGe(description) {
+  const d = String(description || '');
+  const m = d.match(/(?:\bpar\s+(?:un|le|la)?\s*|\bavec\s+(?:un|le|la)?\s*|→|->)\s*(.+)$/i);
+  if (!m) return { groupe: '', kva: '' };
+  const tail = m[1].replace(/[.,;].*$/, '').trim();
+  const kvaM = tail.match(/(\d+)\s*kva/i);
+  const kva = kvaM ? `${kvaM[1]} KVA` : '';
+  const groupe = tail
+    .replace(/\bG\.?E\.?\b/gi, '')
+    .replace(/groupe\s+electrogene|electrogene|generateur|generatrice/gi, '')
+    .replace(/\d+\s*kva/ig, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return { groupe: groupe.slice(0, 40), kva };
+}
