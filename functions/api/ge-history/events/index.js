@@ -41,6 +41,20 @@ async function applyLifecycle(env, site, kind, eventDate, ev) {
   const active = await env.DB.prepare(
     'SELECT * FROM ge_deployments WHERE site_id = ? AND removed_at IS NULL ORDER BY created_at DESC LIMIT 1'
   ).bind(site.id).first();
+  const maxRemoved = (
+    await env.DB.prepare(
+      'SELECT MAX(removed_at) AS m FROM ge_deployments WHERE site_id = ? AND removed_at IS NOT NULL'
+    ).bind(site.id).first()
+  )?.m || null;
+
+  // Garde-fou backfill : une pose/dépose datée dans le passé (fenêtre d'un
+  // GE archivé) est une simple ligne de journal — elle ne doit JAMAIS
+  // refermer la fiche active ni rouvrir un déploiement historique, sinon un
+  // import NOC de l'historique détruirait le fenêtrage du site.
+  const inActiveEra = active
+    ? (!active.installed_at || eventDate >= String(active.installed_at).slice(0, 10))
+    : (!maxRemoved || eventDate > String(maxRemoved).slice(0, 10));
+  if (!inActiveEra) return {};
 
   const now = isoNow();
   if (kind === 'depose') {
