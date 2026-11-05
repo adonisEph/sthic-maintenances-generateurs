@@ -195,8 +195,31 @@ export async function onRequestGet({ env, data, params }) {
       };
     });
 
+    // Orphelins : lignes dont la date ne tombe dans AUCUNE fenêtre de
+    // déploiement (typiquement un import pré-app avant création des fiches
+    // archivées). On les remonte pour que la modale puisse les signaler —
+    // sinon elles seraient stockées mais invisibles.
+    const orphanEvents = events
+      .filter((e) => !deployments.some((d) => inWindow(e.event_date, e.kind || 'curatif', d, deployments)))
+      .map((e) => ({
+        kind: e.kind || 'curatif',
+        date: String(e.event_date || '').slice(0, 10),
+        wo: digitsOnly(e.wo_number) || String(e.wo_number || ''),
+        description: e.description || ''
+      }));
+    const orphanFiches = fiches
+      .filter((f) => !deployments.some((d) => inWindow(f.date_completed, 'vidange', d, deployments)))
+      .map((f) => ({
+        kind: 'vidange',
+        date: String(f.date_completed || '').slice(0, 10),
+        wo: digitsOnly(f.ticket_number),
+        description: 'Vidange app'
+      }));
+    const orphans = [...orphanEvents, ...orphanFiches].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
     return json({
       ok: true,
+      orphans,
       site: {
         id: site.id,
         zone: site.zone || 'BZV/POOL',

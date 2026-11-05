@@ -495,6 +495,21 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
           </div>
         )}
 
+        {Array.isArray(data?.orphans) && data.orphans.length > 0 && (
+          <div className="mx-4 sm:mx-6 mt-3 bg-amber-50 border border-amber-300 text-amber-900 text-sm rounded-lg px-3 py-2">
+            <div className="flex items-center gap-2 font-semibold">
+              <AlertTriangle size={15} className="shrink-0" />
+              {data.orphans.length} ligne(s) hors de toute fiche — dates non couvertes par un déploiement
+            </div>
+            <div className="text-xs mt-1 text-amber-800">
+              Créez un « GE passé » couvrant ces dates (ou corrigez les fenêtres des fiches) pour les afficher
+              {canManage ? '' : ' — rapprochez-vous d\'un manager'} :
+              {' '}{data.orphans.slice(0, 4).map((o) => `${fmtDay(o.date)} ${String(o.description || '').slice(0, 40)}`).join(' · ')}
+              {data.orphans.length > 4 ? ' …' : ''}
+            </div>
+          </div>
+        )}
+
         <div className="px-4 sm:px-6 pt-3 flex items-end gap-2 flex-wrap">
           {deployments.map((d, i) => {
             const label = d.active ? `GE actif — ${[d.groupe, d.kva].filter(Boolean).join(' ') || 'GE'}` : `GE #${d.index} archivé — ${[d.groupe, d.kva].filter(Boolean).join(' ') || 'GE'}`;
