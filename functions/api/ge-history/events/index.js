@@ -1,6 +1,7 @@
 import { ensureAdminUser } from '../../_utils/db.js';
 import { json, requireAuth, readJson, isoNow, newId, isSuperAdmin, userZone } from '../../_utils/http.js';
 import { touchLastUpdatedAt } from '../../_utils/meta.js';
+import { isGeRelatedWork, isGeReplacement } from '../../_utils/geWorkFilter.js';
 
 const VALID_KINDS = new Set(['curatif', 'pose', 'depose', 'vidange']);
 
@@ -23,8 +24,8 @@ function normalizeKind(v, description) {
   const k = String(v || '').trim().toLowerCase();
   if (VALID_KINDS.has(k)) return k;
   const d = String(description || '').toUpperCase();
-  if (/\bPOSE\b/.test(d)) return 'pose';
-  if (/\bDEPOSE\b|\bDEP\b/.test(d)) return 'depose';
+  if (/\bDEPOSE\b/.test(d)) return 'depose';
+  if (/\bPOSE\b/.test(d) || isGeReplacement(d)) return 'pose';
   if (/VIDANGE/.test(d)) return 'vidange';
   return 'curatif';
 }
@@ -88,6 +89,13 @@ async function upsertEvent(env, site, ev) {
   const kind = normalizeKind(ev.kind, description);
   const source = String(ev.source || 'noc');
   const now = isoNow();
+
+  // Filtre de pertinence : les curatifs non liés au générateur (télécom,
+  // tenants, IT…) n'entrent pas dans la fiche. Les saisies manuelles
+  // (source='manual') sont volontaires → jamais filtrées.
+  if (kind === 'curatif' && source !== 'manual' && !isGeRelatedWork(description)) {
+    return { skipped: true, reason: `non lié GE: ${description.slice(0, 60)}` };
+  }
 
   const lifecycle = await applyLifecycle(env, site, kind, eventDate, ev);
 
