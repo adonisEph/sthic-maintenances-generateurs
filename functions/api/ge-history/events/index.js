@@ -131,6 +131,62 @@ async function upsertEvent(env, site, ev) {
   return { inserted: true, id, ...lifecycle };
 }
 
+// DELETE /api/ge-history/events — purge des lignes importées d'un site.
+// Body : { siteId, source?: 'noc'|'agent'|'all', from?: YYYY-MM-DD, to?: YYYY-MM-DD }
+// Défaut : source noc+agent uniquement — les saisies manuelles sont conservées.
+export async function onRequestDelete({ request, env, data }) {
+  try {
+    await ensureAdminUser(env);
+
+    const isAgent = agentAuthorized(request, env);
+    if (!isAgent) {
+      if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
+      const role = String(data?.user?.role || '');
+      if (role !== 'admin' && role !== 'manager' && role !== 'manager_bzv_pool') {
+        return json({ error: 'Accès interdit.' }, { status: 403 });
+      }
+    }
+
+    const body = await readJson(request);
+    const siteRef = String(body?.siteId || body?.idSite || body?.site || '').trim();
+    if (!siteRef) return json({ error: 'siteId requis.' }, { status: 400 });
+
+    const site = await env.DB.prepare('SELECT * FROM sites WHERE id = ? OR id_site = ?').bind(siteRef, siteRef).first();
+    if (!site) return json({ error: 'Site introuvable.' }, { status: 404 });
+
+    if (!isAgent && !isSuperAdmin(data) && String(data?.user?.role || '') !== 'manager_bzv_pool') {
+      if (String(site.zone || 'BZV/POOL') !== userZone(data)) {
+        return json({ error: 'Accès interdit.' }, { status: 403 });
+      }
+    }
+
+    const src = String(body?.source || '').trim().toLowerCase();
+    const from = normalizeDate(body.from ?? '');
+    const to = normalizeDate(body.to ?? '');
+
+    const conds = ['site_id = ?'];
+    const binds = [site.id];
+    if (src === 'all') {
+      // toutes sources — réservé aux cas explicites
+    } else if (src === 'noc' || src === 'agent') {
+      conds.push('source = ?');
+      binds.push(src);
+    } else {
+      conds.push("source <> 'manual'");
+    }
+    if (from) { conds.push('event_date >= ?'); binds.push(from); }
+    if (to) { conds.push('event_date <= ?'); binds.push(to); }
+
+    const res = await env.DB.prepare(`DELETE FROM ge_history_events WHERE ${conds.join(' AND ')}`)
+      .bind(...binds).run();
+
+    await touchLastUpdatedAt(env);
+    return json({ ok: true, deleted: Number(res?.meta?.changes || 0) });
+  } catch (e) {
+    return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
+  }
+}
+
 export async function onRequestPost({ request, env, data }) {
   try {
     await ensureAdminUser(env);

@@ -224,6 +224,36 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
     }
   };
 
+  const importedCount = dep ? dep.journal.filter((r) => r.eventId && r.source && r.source !== 'manual').length : 0;
+
+  const purgeImported = async () => {
+    if (!dep || !importedCount) return;
+    const ok = window.confirm(
+      `Purger ${importedCount} ligne(s) importée(s) (NOC/agent) de cette fiche ?\n\n` +
+      `• Fenêtre : ${dep.installedAt ? formatDate(dep.installedAt) : 'début'} → ${dep.removedAt ? formatDate(dep.removedAt) : "aujourd'hui"}\n` +
+      `• Les vidanges de l'app et les saisies manuelles sont CONSERVÉES\n\n` +
+      `Action irréversible.`
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const res = await apiFetchJson('/api/ge-history/events', {
+        method: 'DELETE',
+        body: JSON.stringify({
+          siteId: site.id,
+          from: dep.installedAt || undefined,
+          to: dep.removedAt || undefined
+        })
+      });
+      await load();
+      alert(`✅ ${res?.deleted || 0} ligne(s) importée(s) supprimée(s).`);
+    } catch (e) {
+      alert(e?.message || 'Erreur purge.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const submitDepPatch = async () => {
     if (!dep?.id) return;
     setBusy(true);
@@ -468,6 +498,16 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
                     >
                       <Upload size={14} /> {importBusy ? 'Import…' : 'Import NOC'}
                     </button>
+                    {importedCount > 0 && (
+                      <button
+                        className={`${btnCls} bg-red-100 text-red-700 hover:bg-red-200 inline-flex items-center gap-1 disabled:opacity-50`}
+                        disabled={busy}
+                        onClick={purgeImported}
+                        title={`Supprimer les ${importedCount} ligne(s) importée(s) (NOC/agent) de cette fiche — conserve vidanges et saisies manuelles`}
+                      >
+                        <Trash2 size={14} /> Purger NOC
+                      </button>
+                    )}
                     <input
                       ref={fileInputRef}
                       type="file"
