@@ -8639,7 +8639,7 @@ return (
           />
         )}
         <div
-          className={`bg-stone-900 bg-gradient-to-b from-amber-950 via-stone-900 to-stone-950 text-white border-stone-800/60 border-r-4 border-r-amber-500/30 flex flex-col p-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:pt-20 gap-1 fixed md:sticky top-0 left-0 h-[100svh] md:h-screen overflow-y-auto z-50 md:z-auto transform transition-transform md:translate-x-0 md:transition-[width,padding,transform] ${
+          className={`bg-indigo-950 bg-gradient-to-b from-indigo-950 via-indigo-900 to-indigo-950 text-white border-indigo-900/60 border-r-4 border-r-sky-400/30 flex flex-col p-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:pt-20 gap-1 fixed md:sticky top-0 left-0 h-[100svh] md:h-screen overflow-y-auto z-50 md:z-auto transform transition-transform md:translate-x-0 md:transition-[width,padding,transform] ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           } ${
             sidebarDockedOpen ? 'md:w-64 md:p-4' : 'md:w-0 md:p-0 md:border-r-0 md:overflow-hidden'
