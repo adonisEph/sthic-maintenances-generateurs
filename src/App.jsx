@@ -55,7 +55,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.22.3';
+const APP_VERSION = '6.22.4';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -6596,12 +6596,21 @@ useEffect(() => {
           }));
       });
 
-    const doneByPlannedDate = ficheHistory
-      .filter((f) => f && f.status === 'Effectuée' && f.plannedDate && String(f.plannedDate).slice(0, 7) === yyyymm)
+    // Toutes les vidanges réalisées (filtres zone/tech appliqués une fois).
+    const doneAll = ficheHistory
+      .filter((f) => f && f.status === 'Effectuée')
       .filter((f) => !zoneActive || String(f?.zone || '').trim() === zoneActive)
       .filter((f) => techFilter === 'all' || normTechName(f.technician) === normTechName(techFilter));
 
-    const plannedByFiches = doneByPlannedDate
+    // « Effectuées du mois » = par date de réalisation (dateCompleted),
+    // pas par date planifiée — une vidange faite hors planification
+    // (planned_date 'N/A') compte quand même dans le mois où elle a eu lieu.
+    const doneInMonth = doneAll.filter(
+      (f) => String(f.dateCompleted || f.plannedDate || '').slice(0, 7) === yyyymm
+    );
+
+    const plannedByFiches = doneAll
+      .filter((f) => f.plannedDate && String(f.plannedDate).slice(0, 7) === yyyymm)
       .map((f) => ({
         key: `${f.siteId}|${f.epvType || ''}|${f.plannedDate}`,
         siteId: f.siteId,
@@ -6624,13 +6633,15 @@ useEffect(() => {
       ? plannedEvents
       : plannedEvents.filter((ev) => normTechName(ev?.technician) === normTechName(techFilter));
 
-    const contractOk = doneByPlannedDate.filter((f) => f.isWithinContract === true);
-    const contractOver = doneByPlannedDate.filter((f) => f.isWithinContract === false);
+    const contractOk = doneInMonth.filter((f) => f.isWithinContract === true);
+    const contractOver = doneInMonth.filter((f) => f.isWithinContract === false);
 
-    const completedKeys = new Set(doneByPlannedDate.map((f) => `${f.siteId}|${f.epvType || ''}|${f.plannedDate}`));
+    // Toute fiche réalisée solde son échéance planifiée, même si la réalisation
+    // a eu lieu un autre mois (le "restant" du mois planifié est juste).
+    const completedKeys = new Set(doneAll.map((f) => `${f.siteId}|${f.epvType || ''}|${f.plannedDate}`));
     const remainingEvents = plannedEventsFiltered.filter((ev) => !completedKeys.has(String(ev.key)));
 
-    return { plannedEvents: plannedEventsFiltered, remainingEvents, doneByPlannedDate, contractOk, contractOver };
+    return { plannedEvents: plannedEventsFiltered, remainingEvents, doneByPlannedDate: doneInMonth, contractOk, contractOver };
   };
 
   const handleExportDashboardSummaryExcel = async () => {
