@@ -1,7 +1,7 @@
 import { ensureAdminUser } from '../../_utils/db.js';
 import { json, requireAuth, readJson, isoNow, newId, isSuperAdmin, userZone } from '../../_utils/http.js';
 import { touchLastUpdatedAt } from '../../_utils/meta.js';
-import { isGeRelatedWork, isGeReplacement, parseReplacementGe } from '../../_utils/geWorkFilter.js';
+import { isGeRelatedWork, isGeReplacement, parseReplacementGe, parseReplacedGe } from '../../_utils/geWorkFilter.js';
 
 const VALID_KINDS = new Set(['curatif', 'pose', 'depose', 'vidange']);
 
@@ -96,6 +96,81 @@ async function applyLifecycle(env, site, kind, eventDate, ev) {
     return { openedDeployment: id };
   }
   return {};
+}
+
+// Reconstruit les déploiements ARCHIVÉS manquants à partir des bornes
+// pose/dépose présentes dans ge_history_events. Idempotent : ne crée un
+// déploiement que là où AUCUNE fenêtre existante ne couvre l'intervalle
+// déduit — les saisies manuelles et le GE actif ne sont jamais touchés.
+// C'est ce qui permet à un import pré-app de déduire les anciens GE
+// sans coquilles créées à la main.
+async function reconcileGeDeployments(env, site) {
+  const deps = (
+    await env.DB.prepare('SELECT * FROM ge_deployments WHERE site_id = ?').bind(site.id).all()
+  ).results || [];
+  const lc = (
+    await env.DB.prepare(
+      "SELECT event_date, kind, description FROM ge_history_events WHERE site_id = ? AND kind IN ('pose','depose') ORDER BY event_date, created_at, id"
+    ).bind(site.id).all()
+  ).results || [];
+  if (!lc.length) return 0;
+
+  // Marche chronologique : pose ouvre un intervalle, depose le ferme.
+  const targets = [];
+  let cur = null;
+  for (const e of lc) {
+    const d = String(e.event_date || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+    if (e.kind === 'pose') {
+      if (cur) { cur.end = d; targets.push(cur); }
+      const g = parseReplacementGe(e.description);
+      cur = { start: d, end: null, groupe: g.groupe, kva: g.kva };
+    } else {
+      if (!cur) {
+        const g = parseReplacedGe(e.description);
+        cur = { start: null, end: d, groupe: g.groupe, kva: g.kva };
+      } else {
+        cur.end = d;
+      }
+      targets.push(cur);
+      cur = null;
+    }
+  }
+  if (cur) targets.push(cur);
+  if (!targets.length) return 0;
+
+  // Fenêtre amont : lignes antérieures à la 1re borne → déploiement
+  // « GE précédent » [null → première transition], signalétique de
+  // l'ancien GE extraite du 1er remplacement si disponible.
+  const firstEv = (await env.DB.prepare('SELECT MIN(event_date) AS m FROM ge_history_events WHERE site_id = ?').bind(site.id).first())?.m;
+  const earliest = String(firstEv || '').slice(0, 10);
+  if (targets[0].start && earliest && earliest < targets[0].start) {
+    const firstPose = lc.find((e) => e.kind === 'pose');
+    const g = firstPose ? parseReplacedGe(firstPose.description) : { groupe: '', kva: '' };
+    targets.unshift({ start: null, end: targets[0].start, groupe: g.groupe, kva: g.kva });
+  }
+
+  let created = 0;
+  const now = isoNow();
+  for (const t of targets) {
+    const ts = t.start || '0000-00-00';
+    const te = t.end || '9999-99-99';
+    if (ts >= te) continue; // intervalle dégénéré (pose et dépose même jour)
+    const covered = deps.some((dep) => {
+      const ds = String(dep.installed_at || '').slice(0, 10) || '0000-00-00';
+      const de = String(dep.removed_at || '').slice(0, 10) || '9999-99-99';
+      return ds < te && de > ts; // chevauchement intérieur (adjacent ≠ couvert)
+    });
+    if (covered) continue;
+    const id = newId();
+    await env.DB.prepare(
+      `INSERT INTO ge_deployments (id, site_id, groupe, kva, serie, installed_at, removed_at, source, note, created_by_email, created_at, updated_at)
+       VALUES (?, ?, ?, ?, '', ?, ?, 'noc-auto', ?, '', ?, ?)`
+    ).bind(id, site.id, t.groupe || '', t.kva || '', t.start, t.end, 'Déduit des bornes pose/dépose NOC', now, now).run();
+    created += 1;
+    deps.push({ installed_at: t.start, removed_at: t.end }); // couvre les intervalles suivants
+  }
+  return created;
 }
 
 async function upsertEvent(env, site, ev) {
@@ -236,6 +311,14 @@ export async function onRequestPost({ request, env, data }) {
 
     if (!items.length) return json({ error: 'Aucun événement fourni.' }, { status: 400 });
 
+    // Traitement chrono : le rejeu pose/dépose devient déterministe même
+    // si le fichier NOC n'est pas trié par date.
+    items.sort((a, b) => {
+      const da = normalizeDate(a.eventDate ?? a.event_date ?? a.actualWoDate ?? a.date) || '9999';
+      const db = normalizeDate(b.eventDate ?? b.event_date ?? b.actualWoDate ?? b.date) || '9999';
+      return da < db ? -1 : da > db ? 1 : 0;
+    });
+
     const siteCache = new Map();
     const resolveSite = async (ref) => {
       const key = String(ref || '').trim();
@@ -249,6 +332,7 @@ export async function onRequestPost({ request, env, data }) {
     let inserted = 0, updated = 0, skipped = 0;
     const errors = [];
     const lifecycle = { opened: 0, closed: 0 };
+    const touchedSites = new Map();
 
     for (let i = 0; i < items.length; i++) {
       const ev = items[i] || {};
@@ -269,13 +353,21 @@ export async function onRequestPost({ request, env, data }) {
       if (res.inserted) inserted += 1;
       else if (res.updated) updated += 1;
       else skipped += 1;
+      if (!res.skipped) touchedSites.set(site.id, site);
       if (res.openedDeployment) lifecycle.opened += 1;
       if (res.closedDeployment) lifecycle.closed += 1;
       if (res.reason) errors.push(`#${i + 1}: ${res.reason}`);
     }
 
+    // Rejeu des bornes pose/dépose → fiches archivées déduites là où
+    // aucune fenêtre ne couvre encore l'intervalle (idempotent).
+    let autoDeployments = 0;
+    for (const site of touchedSites.values()) {
+      try { autoDeployments += await reconcileGeDeployments(env, site); } catch { /* non bloquant */ }
+    }
+
     await touchLastUpdatedAt(env);
-    return json({ ok: true, inserted, updated, skipped, lifecycle, errors });
+    return json({ ok: true, inserted, updated, skipped, lifecycle, autoDeployments, errors });
   } catch (e) {
     return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
   }

@@ -55,7 +55,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.21.5';
+const APP_VERSION = '6.22.0';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -6228,7 +6228,8 @@ useEffect(() => {
           `Mis à jour: ${res?.updated || 0}\n` +
           `Ignorés: ${res?.skipped || 0}\n` +
           `Fiches GE ouvertes (POSE): ${res?.lifecycle?.opened || 0}\n` +
-          `Fiches GE archivées (DEPOSE): ${res?.lifecycle?.closed || 0}` +
+          `Fiches GE archivées (DEPOSE): ${res?.lifecycle?.closed || 0}\n` +
+          `Fiches GE déduites automatiquement: ${res?.autoDeployments || 0}` +
           (errs.length ? `\n\nDétails:\n${errs.slice(0, 12).map((x) => `• ${x}`).join('\n')}${errs.length > 12 ? `\n… +${errs.length - 12} autre(s)` : ''}` : '')
         );
       } catch (err) {

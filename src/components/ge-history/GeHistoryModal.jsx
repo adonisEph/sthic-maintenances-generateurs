@@ -474,6 +474,7 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
         (cancelled ? `Annulées: ${cancelled}\n` : '') +
         (Number(res?.lifecycle?.opened || 0) ? `POSE détectée → nouvelle fiche GE ouverte\n` : '') +
         (Number(res?.lifecycle?.closed || 0) ? `DEPOSE détectée → fiche archivée\n` : '') +
+        (Number(res?.autoDeployments || 0) ? `${res.autoDeployments} fiche(s) GE déduite(s) automatiquement\n` : '') +
         (errs.length ? `\nDétails:\n${errs.slice(0, 10).map((x) => `• ${x}`).join('\n')}` : '')
       );
     } catch (err) {

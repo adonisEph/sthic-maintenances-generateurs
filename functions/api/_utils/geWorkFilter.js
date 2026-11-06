@@ -72,3 +72,18 @@ export function parseReplacementGe(description) {
     .trim();
   return { groupe: groupe.slice(0, 40), kva };
 }
+
+// Extrait la signalétique de l'ANCIEN GE (partie avant « par »/« → ») :
+// « Remplacement GE GL 20Kva par GE Elcos 30kva » → { groupe: 'GL', kva: '20 KVA' }.
+// Sert à renseigner la fiche du GE remplacé quand rien d'autre ne la décrit.
+export function parseReplacedGe(description) {
+  const d = String(description || '');
+  const m = d.match(/(.*?)(?:\bpar\b|\bavec\b|→|->)/i);
+  if (!m) return { groupe: '', kva: '' };
+  const head = m[1];
+  const kvaM = head.match(/(\d+)\s*kva/i);
+  const kva = kvaM ? `${kvaM[1]} KVA` : '';
+  const gm = head.match(/\bGE\s+([A-Za-z][\w\- ]*?)\s*(?:\d+\s*kva|$)/i);
+  const groupe = gm ? String(gm[1]).replace(/\d+\s*kva/ig, '').trim() : '';
+  return { groupe: groupe.slice(0, 40), kva };
+}
