@@ -77,7 +77,7 @@ const PresenceModal = ({
     <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-2 sm:p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-[95vw] h-[95vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 px-6 py-4 border-b bg-gradient-to-r from-indigo-700 via-sky-700 to-teal-700 text-white">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 px-6 py-4 border-b bg-gradient-to-r from-amber-600 via-orange-700 to-amber-800 text-white">
           <div className="flex items-center gap-3">
             <div className="bg-white/20 rounded-lg p-2">
               <Activity size={24} />

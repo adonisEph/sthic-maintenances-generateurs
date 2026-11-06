@@ -55,7 +55,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.22.6';
+const APP_VERSION = '6.22.7';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -8634,12 +8634,12 @@ return (
       <div className="flex min-h-[100svh] md:min-h-screen">
         {sidebarOpen && (
           <div
-            className="fixed inset-0 bg-indigo-900/35 z-40 md:hidden"
+            className="fixed inset-0 bg-stone-900/40 z-40 md:hidden"
             onClick={() => setSidebarOpen(false)}
           />
         )}
         <div
-          className={`bg-indigo-950 bg-gradient-to-b from-indigo-950 via-indigo-900 to-indigo-950 text-white border-indigo-900/60 border-r-4 border-r-sky-400/30 flex flex-col p-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:pt-20 gap-1 fixed md:sticky top-0 left-0 h-[100svh] md:h-screen overflow-y-auto z-50 md:z-auto transform transition-transform md:translate-x-0 md:transition-[width,padding,transform] ${
+          className={`bg-orange-700 bg-gradient-to-b from-amber-700 via-orange-700 to-amber-900 text-white border-orange-900/50 border-r-4 border-r-amber-400/50 flex flex-col p-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:pt-20 gap-1 fixed md:sticky top-0 left-0 h-[100svh] md:h-screen overflow-y-auto z-50 md:z-auto transform transition-transform md:translate-x-0 md:transition-[width,padding,transform] ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           } ${
             sidebarDockedOpen ? 'md:w-64 md:p-4' : 'md:w-0 md:p-0 md:border-r-0 md:overflow-hidden'
@@ -9652,7 +9652,7 @@ return (
         {showWarehouseProcess && (
           <div className="fixed inset-0 bg-indigo-900/35 flex items-center justify-center z-50 p-0 sm:p-4">
             <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:h-auto sm:max-w-6xl sm:max-h-[92vh] sm:rounded-xl">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gradient-to-r from-indigo-600 via-sky-600 to-teal-600 text-white">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gradient-to-r from-amber-500 via-orange-600 to-amber-700 text-white">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <Activity size={24} />
                   Fiches process (magasin)
@@ -9875,7 +9875,7 @@ return (
         {!isWarehouse && showWarehouseReturns && (
           <div className="fixed inset-0 bg-indigo-900/35 flex items-center justify-center z-50 p-0 sm:p-4">
             <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:h-auto sm:max-w-6xl sm:max-h-[92vh] sm:rounded-xl">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gradient-to-r from-indigo-600 via-sky-600 to-teal-600 text-white">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gradient-to-r from-amber-500 via-orange-600 to-amber-700 text-white">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <Activity size={24} />
                   Retour Magasinier

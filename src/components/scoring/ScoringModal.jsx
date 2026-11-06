@@ -30,7 +30,7 @@ const ScoringModal = ({
   return (
     <div className="fixed inset-0 bg-indigo-900/35 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl max-w-6xl w-full max-h-[92vh] overflow-hidden flex flex-col">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gradient-to-r from-indigo-600 via-sky-600 to-teal-600 text-white">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gradient-to-r from-amber-500 via-orange-600 to-amber-700 text-white">
           <h2 className="text-xl font-bold flex items-center gap-2">
             <TrendingUp size={22} />
             Scoring
