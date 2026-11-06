@@ -70,51 +70,33 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
 
   const maxRows = dep ? Math.max(dep.journal.length, dep.readings.length) : 0;
 
-  const KIND_PRINT = {
-    vidange: { label: 'Vidange', cls: 'b-vidange' },
-    curatif: { label: 'Curatif', cls: 'b-curatif' },
-    pose: { label: 'Pose GE', cls: 'b-pose' },
-    depose: { label: 'Dépose GE', cls: 'b-depose' }
-  };
-
-  const ficheSectionHtml = (d) => {
-    const period = d.installedAt
-      ? `Posé le ${formatDate(d.installedAt)}${d.removedAt ? ` → Déposé le ${formatDate(d.removedAt)}` : ' → En service'}`
-      : 'Période complète';
+  const ficheSectionHtml = (d, num) => {
     const rows = Array.from({ length: Math.max(d.journal.length, d.readings.length) }, (_, i) => {
       const r = d.readings[i];
       const j = d.journal[i];
-      const kp = j ? (KIND_PRINT[j.kind] || KIND_PRINT.curatif) : null;
       return `<tr class="${j && j.kind === 'pose' ? 'kpose' : j && j.kind === 'depose' ? 'kdepose' : ''}">
         <td class="nh mono">${r !== undefined ? esc(fmtNH(r)) : ''}</td>
         <td class="mono">${j ? esc(fmtDay(j.date)) : ''}</td>
-        <td class="mono">${j ? esc(j.wo || '') : ''}</td>
-        <td class="tx">${j ? `<span class="badge ${kp.cls}">${kp.label}</span>${esc(j.description)}` : ''}</td>
+        <td class="mono">${j ? esc((j.wo || '').replace(/^\s*wo[-\s]*/i, '').trim()) : ''}</td>
+        <td class="tx">${j ? esc(j.description) : ''}</td>
         <td class="nh mono">${j && j.runHours !== null && j.runHours !== undefined ? esc(fmtNH(j.runHours)) : ''}</td>
       </tr>`;
     }).join('');
 
-    const cell = (k, v, cls) => `<div class="cell"><div class="k">${k}</div><div class="v ${cls || ''}">${esc(v)}</div></div>`;
     return `<section class="fiche">
-<div class="top">
-  <img class="logo" src="/Logo_sthic.png" alt="STHIC"/>
-  <div>
+<div class="hdr">
+  <div class="hl">
+    <img class="logo" src="/Logo_sthic.png" alt="STHIC"/>
     <div class="doc">FICHE SUIVIE MAINTENANCE G.E.</div>
-    <div class="sub">${esc(period)} · générée le ${esc(new Date().toLocaleDateString('fr-FR'))}</div>
+  </div>
+  <div class="hr">
+    <div class="hlabels"><div>CLIENT</div><div>SITE</div><div>GROUPE</div><div>P. KVA</div></div>
+    <div class="hvals"><div>HTC</div><div>${esc(siteInfo.nameSite || '-')}</div><div>${esc(d.groupe || '-')}</div><div>${esc(String(d.kva || '-').replace(/kva/i, '').trim() || '-')}</div></div>
   </div>
 </div>
-<div class="meta">
-  ${cell('CLIENT', 'HTC')}
-  ${cell('SITE', siteInfo.nameSite || '-')}
-  ${cell('ID SITE', siteInfo.idSite || '-')}
-  ${cell('GROUPE', d.groupe || '-')}
-  ${cell('P. KVA', d.kva || '-')}
-  ${cell('SÉRIE', d.serie || '-')}
-  ${cell('STATUT', d.active ? 'ACTIF' : 'ARCHIVÉ', d.active ? 'st-on' : 'st-off')}
-</div>
+<div class="band"><div class="n">${num != null ? num : ''}</div><div class="sp"></div><div class="fmt">FMT</div><div class="fit">FIT</div></div>
 <table class="j"><thead><tr><th class="nh">N. Heures</th><th>Date</th><th>N°</th><th>Tx. Exécut.</th><th class="nh">N. Heures</th></tr></thead>
 <tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:14px">Aucun travail enregistré</td></tr>'}</tbody></table>
-<div class="foot">Journal recomposé à la demande · ${d.journal.length} travaux · ${d.readings.length} relevés de compteur${d.readingsDerived ? ' (déduits des interventions)' : ''}</div>
 </section>`;
   };
 
@@ -125,29 +107,36 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
   body{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;padding:18px;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   section.fiche{page-break-after:always}
   section.fiche:last-of-type{page-break-after:auto}
-  .top{display:flex;align-items:center;gap:16px;border-bottom:3px solid #312e81;padding-bottom:10px;margin-bottom:12px}
-  .logo{height:54px}
-  .doc{font-size:20px;font-weight:800;letter-spacing:.5px;color:#1e1b4b}
-  .sub{font-size:10.5px;color:#64748b;margin-top:3px}
-  .meta{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:14px}
-  .cell{border:1px solid #e2e8f0;border-radius:8px;padding:6px 9px;background:#f8fafc}
-  .k{font-size:7.5px;font-weight:700;letter-spacing:.9px;color:#6366f1;text-transform:uppercase}
-  .v{font-size:11.5px;font-weight:700;color:#0f172a;margin-top:2px}
-  .st-on{color:#047857}.st-off{color:#64748b}
-  table.j{width:100%;border-collapse:collapse}
-  .j th{font-size:8.5px;text-transform:uppercase;letter-spacing:.9px;color:#4338ca;text-align:left;padding:7px 8px;border-bottom:2px solid #6366f1}
-  .j th.nh,.j td.nh{text-align:right}
-  .j td{padding:6px 8px;font-size:10.5px;vertical-align:top;border:none}
+  section.fiche+section.fiche{border-top:2px solid #475569;margin-top:16px;padding-top:12px}
+  .hdr{display:grid;grid-template-columns:30% 1fr;border:1.5px solid #475569}
+  .hl{padding:2px 8px;border-right:1.5px solid #475569;display:flex;flex-direction:column;justify-content:center;gap:0}
+  .logo{width:100%;height:auto;display:block}
+  .doc{font-size:7.5px;font-weight:800;letter-spacing:.1px;color:#1e1b4b;white-space:nowrap;margin:-19px 0 11px 14%;line-height:1}
+  .hr{display:grid;grid-template-rows:1fr 1fr}
+  .hlabels,.hvals{display:grid;grid-template-columns:4.5fr 1.7fr 1.1fr .9fr}
+  .hlabels div{font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#1e293b;padding:4px;display:flex;align-items:center;justify-content:center;text-align:center;border-bottom:1.5px solid #475569}
+  .hvals div{padding:4px;font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center;text-align:center;color:#0f172a}
+  .hlabels div+div,.hvals div+div{border-left:1px solid #94a3b8}
+  .band{display:grid;grid-template-columns:10% 1fr;border:1.5px solid #475569;border-top:none}
+  .band .n{padding:5px 8px;font-size:11px;font-weight:800;text-align:center;border-right:1px solid #94a3b8;border-bottom:1px solid #94a3b8}
+  .band .sp{border-bottom:1px solid #94a3b8}
+  .band .fmt{background:#e2e8f0;font-weight:800;font-size:10.5px;text-align:center;padding:5px 8px;border-right:1px solid #94a3b8}
+  .band .fit{text-align:center;font-weight:700;font-size:10.5px;padding:5px 8px}
+  .sub{font-size:9.5px;color:#64748b;margin:8px 0 10px}
+  table.j{width:100%;border-collapse:collapse;table-layout:fixed;border-left:1px solid #cbd5e1;border-right:1px solid #cbd5e1}
+  .j th{font-size:9px;text-transform:uppercase;letter-spacing:.7px;color:#1e293b;background:#eef2f7;text-align:left;padding:5px 8px;border-bottom:1.5px solid #475569}
+  .j td{padding:5px 8px;font-size:10.5px;vertical-align:top;border:none}
+  .j td.tx{overflow-wrap:break-word;word-wrap:break-word;hyphens:auto;line-height:1.35}
+  .j th+th,.j td+td{border-left:1px solid #cbd5e1}
+  .j td.nh,.j td:nth-child(2),.j td:nth-child(3){text-align:center}
+  .j th:nth-child(1),.j td:nth-child(1){width:10%}
+  .j th:nth-child(2),.j td:nth-child(2){width:9%}
+  .j th:nth-child(3),.j td:nth-child(3){width:9%}
+  .j th:nth-child(5),.j td:nth-child(5){width:10%}
   .j tbody tr:nth-child(even){background:#f6f7fd}
   .j tr.kpose{background:#fef3c7 !important}
   .j tr.kdepose{background:#e5e7eb !important}
   .mono{font-family:Consolas,Menlo,monospace;font-size:10px;font-variant-numeric:tabular-nums;white-space:nowrap}
-  .badge{display:inline-block;padding:1px 7px;border-radius:999px;font-size:7.5px;font-weight:700;letter-spacing:.4px;margin-right:6px;vertical-align:1px}
-  .b-vidange{background:#dbeafe;color:#1d4ed8}
-  .b-curatif{background:#e2e8f0;color:#475569}
-  .b-pose{background:#fde68a;color:#92400e}
-  .b-depose{background:#d1d5db;color:#374151}
-  .foot{margin-top:12px;font-size:8.5px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:7px}
 </style></head><body>${bodyHtml}</body></html>`;
 
     const iframe = document.createElement('iframe');
@@ -170,7 +159,7 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
 
   const printFiche = () => {
     if (!dep) return;
-    printHtml(`Fiche suivie maintenance G.E. — ${siteInfo.nameSite}`, ficheSectionHtml(dep));
+    printHtml(`Fiche suivie maintenance G.E. — ${siteInfo.nameSite}`, ficheSectionHtml(dep, (dep.index || 0) + 1));
   };
 
   // Imprime TOUTES les fiches du site (archivées + active), dans l'ordre
@@ -180,10 +169,7 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
     if (!list.length) return;
     printHtml(
       `Historique GE — ${siteInfo.nameSite}`,
-      `<div class="top"><img class="logo" src="/Logo_sthic.png" alt="STHIC"/><div>` +
-      `<div class="doc">HISTORIQUE DES G.E. — ${esc(siteInfo.nameSite || '')}</div>` +
-      `<div class="sub">${list.length} fiche(s) · ${esc(siteInfo.idSite || '')} · ${esc(siteInfo.zone || '')} · généré le ${esc(new Date().toLocaleDateString('fr-FR'))}</div></div></div>` +
-      list.map(ficheSectionHtml).join('')
+      list.map((d, i) => ficheSectionHtml(d, i + 1)).join('')
     );
   };
 
