@@ -55,7 +55,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.22.5';
+const APP_VERSION = '6.22.6';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -8327,7 +8327,7 @@ useEffect(() => {
 
   if (authChecking) {
     return (
-      <div className="min-h-screen bg-gray-50 p-4 flex items-center justify-center">
+      <div className="min-h-screen bg-paper p-4 flex items-center justify-center">
         <div className="bg-white w-full max-w-md rounded-xl shadow-lg p-6">
           <div className="flex flex-col items-center text-center gap-3">
             <div className="bg-indigo-600 text-white rounded-2xl p-4">
@@ -8360,7 +8360,7 @@ useEffect(() => {
 
   if (!authUser) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 relative overflow-hidden">
+      <div className="min-h-screen bg-paper flex items-center justify-center p-4 relative overflow-hidden">
         {renderPwaUpdateBadge()}
         {renderPwaUpdateBanner()}
         <div
@@ -8475,7 +8475,7 @@ useEffect(() => {
   }
 
 return (
-    <div className="min-h-[100svh] bg-gray-50 md:min-h-screen">
+    <div className="min-h-[100svh] bg-paper md:min-h-screen">
       {renderPwaUpdateBadge()}
       {renderPwaUpdateBanner()}
 
