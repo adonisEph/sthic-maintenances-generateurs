@@ -56,6 +56,10 @@ export async function onRequestGet({ request, env, data }) {
     const url = new URL(request.url);
     const from = url.searchParams.get('from');
     const to = url.searchParams.get('to');
+    // Mode allégé pour les compteurs dashboard : toutes les fiches de la zone
+    // (sans LIMIT), colonnes réduites — imports VIDANGES DONE inclus, pour
+    // tous les rôles. La fiche complète reste sur le flux standard.
+    const slim = url.searchParams.get('slim') === '1';
 
     let where = '1=1';
     const binds = [];
@@ -84,7 +88,10 @@ export async function onRequestGet({ request, env, data }) {
     // appliqué en JS après requête (impossible à normaliser en SQL).
     // Compat pré-migration 0031 : si la colonne technician_user_id est absente,
     // on retombe sur le scan des noms (le filtre JS fait foi).
-    if (role === 'technician') {
+    if (role === 'technician' && slim) {
+      where += ' AND s.zone = ?';
+      binds.push(String(userZone(data) || 'BZV/POOL'));
+    } else if (role === 'technician') {
       try {
         await env.DB.prepare('SELECT technician_user_id FROM fiche_history LIMIT 0').all();
         techUserIdCol = true;
@@ -109,8 +116,19 @@ export async function onRequestGet({ request, env, data }) {
       binds.push(String(userZone(data) || 'BZV/POOL'));
     }
 
-    const stmt = env.DB.prepare(
-      `SELECT fh.*, s.zone as site_zone,
+    const stmt = slim
+      ? env.DB.prepare(
+          `SELECT fh.id, fh.ticket_number, fh.site_id, fh.site_name, fh.technician, fh.technician_user_id,
+                  fh.date_generated, fh.status, fh.planned_date, fh.epv_type, fh.created_by, fh.date_completed,
+                  fh.interval_hours, fh.contract_seuil, fh.is_within_contract, fh.nh1_dv, fh.date_dv, fh.nh_now,
+                  fh.intervention_id, fh.created_at, fh.updated_at, s.zone as site_zone
+           FROM fiche_history fh
+           LEFT JOIN sites s ON s.id = fh.site_id
+           WHERE ${where}
+           ORDER BY fh.date_generated DESC`
+        )
+      : env.DB.prepare(
+          `SELECT fh.*, s.zone as site_zone,
               COALESCE(i1.id, i2.id) as resolved_intervention_id,
               COALESCE(i1.status, i2.status) as intervention_status,
               COALESCE(i1.sent_at, i2.sent_at) as intervention_sent_at
@@ -131,7 +149,7 @@ export async function onRequestGet({ request, env, data }) {
 
     // Technicien : resserrage JS (id exact OU nom normalisé égalité/contient),
     // puis borne à 500 APRÈS filtrage pour ne jamais perdre ses propres fiches.
-    if (role === 'technician') {
+    if (role === 'technician' && !slim) {
       const myName = await effectiveTechnicianName(env, data);
       const uid = String(data.user.id || '');
       rows = rows

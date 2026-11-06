@@ -55,7 +55,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.22.4';
+const APP_VERSION = '6.22.5';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -217,6 +217,7 @@ const GeneratorMaintenanceApp = () => {
   const [signatureTypedName, setSignatureTypedName] = useState('');
   const [signatureDrawnPng, setSignatureDrawnPng] = useState('');
   const [ficheHistory, setFicheHistory] = useState([]);
+  const [kpiFiches, setKpiFiches] = useState([]);
   const [ficheHistoryBusy, setFicheHistoryBusy] = useState(false);
   const [authUser, setAuthUser] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
@@ -980,6 +981,7 @@ const GeneratorMaintenanceApp = () => {
     setAuthUser(null);
     setSites([]);
     setFicheHistory([]);
+    setKpiFiches([]);
     setInterventions([]);
     setPmAssignments([]);
     lastActivityRef.current = 0;
@@ -1009,6 +1011,7 @@ const GeneratorMaintenanceApp = () => {
     setAuthUser(null);
     setSites([]);
     setFicheHistory([]);
+    setKpiFiches([]);
     setInterventions([]);
     setPmAssignments([]);
     lastActivityRef.current = 0;
@@ -2303,6 +2306,11 @@ const GeneratorMaintenanceApp = () => {
     try {
       const data = await apiFetchJson('/api/fiche-history', { method: 'GET' });
       setFicheHistory(Array.isArray(data?.fiches) ? data.fiches : []);
+      // Flux KPI sans limite (zone-borné) — imports VIDANGES DONE compris.
+      try {
+        const kpiData = await apiFetchJson('/api/fiche-history?slim=1', { method: 'GET' });
+        setKpiFiches(Array.isArray(kpiData?.fiches) ? kpiData.fiches : []);
+      } catch { /* fallback sur ficheHistory */ }
     } catch (error) {
       // Erreur transitoire : conserver la liste courante (stale > vide).
     } finally {
@@ -4303,6 +4311,7 @@ useEffect(() => {
 
       setSites([]);
       setFicheHistory([]);
+      setKpiFiches([]);
       setInterventions([]);
       setTicketNumber(1201);
       setFilterTechnician('all');
@@ -4353,6 +4362,7 @@ useEffect(() => {
       console.error('Erreur lors de la suppression:', error);
       setSites([]);
       setFicheHistory([]);
+      setKpiFiches([]);
       setTicketNumber(1201);
       setShowResetConfirm(false);
       alert('✅ Données réinitialisées avec succès !');
@@ -6597,7 +6607,9 @@ useEffect(() => {
       });
 
     // Toutes les vidanges réalisées (filtres zone/tech appliqués une fois).
-    const doneAll = ficheHistory
+    // Source : flux KPI complet (sans limite 500) — ficheHistory en secours.
+    const fichesSource = kpiFiches.length ? kpiFiches : ficheHistory;
+    const doneAll = fichesSource
       .filter((f) => f && f.status === 'Effectuée')
       .filter((f) => !zoneActive || String(f?.zone || '').trim() === zoneActive)
       .filter((f) => techFilter === 'all' || normTechName(f.technician) === normTechName(techFilter));
