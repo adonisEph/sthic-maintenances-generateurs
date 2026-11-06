@@ -125,6 +125,13 @@ export async function onRequestGet({ env, data, params }) {
       ).bind(siteId).all()
     ).results || [];
 
+    // Dates des vidanges déjà couvertes par l'app (fiche_history) — une
+    // ligne NOC « vidange » au même jour est un doublon : on la masque à
+    // l'affichage (conservée en base, réapparaît si la fiche app part).
+    const appVidangeDates = new Set(
+      fiches.map((f) => String(f.date_completed || '').slice(0, 10))
+    );
+
     const out = deployments.map((dep, i) => {
       const groupe = dep.groupe || site.generateur || '';
       const kva = dep.kva || site.capacite || '';
@@ -147,6 +154,8 @@ export async function onRequestGet({ env, data, params }) {
 
       for (const e of events) {
         if (!inWindow(e.event_date, e.kind || 'curatif', dep, deployments)) continue;
+        const eDate = String(e.event_date || '').slice(0, 10);
+        if ((e.kind || 'curatif') === 'vidange' && appVidangeDates.has(eDate)) continue;
         journal.push({
           kind: e.kind || 'curatif',
           date: String(e.event_date).slice(0, 10),
