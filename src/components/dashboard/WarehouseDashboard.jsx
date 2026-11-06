@@ -28,7 +28,7 @@ const CONSUMABLE_LABELS = {
 const CONSUMABLE_COLORS = {
   air_filter: { bg: 'bg-sky-50', border: 'border-sky-200', text: 'text-sky-800', icon: 'text-sky-600', bar: 'bg-sky-500' },
   coolant_5l: { bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-800', icon: 'text-teal-600', bar: 'bg-teal-500' },
-  ventilation_belt: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-800', icon: 'text-purple-600', bar: 'bg-purple-500' }
+  ventilation_belt: { bg: 'bg-stone-50', border: 'border-stone-300', text: 'text-stone-800', icon: 'text-stone-600', bar: 'bg-stone-500' }
 };
 
 const WarehouseDashboard = ({
@@ -164,7 +164,7 @@ const WarehouseDashboard = ({
           <button
             type="button"
             onClick={onOpenStockConsumables}
-            className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 font-semibold text-sm flex items-center justify-center gap-2"
+            className="bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 font-semibold text-sm flex items-center justify-center gap-2"
           >
             <Package size={16} />
             Stocks consommables
@@ -358,7 +358,7 @@ const WarehouseDashboard = ({
                           {r.coolantOk > 0 ? <span className="text-teal-700 font-bold">{r.coolantOk}</span> : <span className="text-gray-300">-</span>}
                         </td>
                         <td className="px-3 py-2 border-b text-center">
-                          {r.beltOk > 0 ? <span className="text-purple-700 font-bold">{r.beltOk}</span> : <span className="text-gray-300">-</span>}
+                          {r.beltOk > 0 ? <span className="text-stone-700 font-bold">{r.beltOk}</span> : <span className="text-gray-300">-</span>}
                         </td>
                       </tr>
                     ))

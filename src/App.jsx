@@ -55,7 +55,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.22.7';
+const APP_VERSION = '6.22.8';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -8639,7 +8639,7 @@ return (
           />
         )}
         <div
-          className={`bg-orange-700 bg-gradient-to-b from-amber-700 via-orange-700 to-amber-900 text-white border-orange-900/50 border-r-4 border-r-amber-400/50 flex flex-col p-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:pt-20 gap-1 fixed md:sticky top-0 left-0 h-[100svh] md:h-screen overflow-y-auto z-50 md:z-auto transform transition-transform md:translate-x-0 md:transition-[width,padding,transform] ${
+          className={`bg-stone-900 bg-gradient-to-b from-amber-950 via-stone-900 to-stone-950 text-white border-stone-800/60 border-r-4 border-r-amber-500/30 flex flex-col p-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:pt-20 gap-1 fixed md:sticky top-0 left-0 h-[100svh] md:h-screen overflow-y-auto z-50 md:z-auto transform transition-transform md:translate-x-0 md:transition-[width,padding,transform] ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           } ${
             sidebarDockedOpen ? 'md:w-64 md:p-4' : 'md:w-0 md:p-0 md:border-r-0 md:overflow-hidden'
