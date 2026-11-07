@@ -55,7 +55,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.22.9';
+const APP_VERSION = '6.23.0';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -8634,7 +8634,7 @@ return (
       <div className="flex min-h-[100svh] md:min-h-screen">
         {sidebarOpen && (
           <div
-            className="fixed inset-0 bg-stone-900/40 z-40 md:hidden"
+            className="fixed inset-0 bg-indigo-900/35 z-40 md:hidden"
             onClick={() => setSidebarOpen(false)}
           />
         )}
@@ -9652,7 +9652,7 @@ return (
         {showWarehouseProcess && (
           <div className="fixed inset-0 bg-indigo-900/35 flex items-center justify-center z-50 p-0 sm:p-4">
             <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:h-auto sm:max-w-6xl sm:max-h-[92vh] sm:rounded-xl">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gradient-to-r from-amber-500 via-orange-600 to-amber-700 text-white">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gradient-to-r from-indigo-600 via-sky-600 to-indigo-800 text-white">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <Activity size={24} />
                   Fiches process (magasin)
@@ -9875,7 +9875,7 @@ return (
         {!isWarehouse && showWarehouseReturns && (
           <div className="fixed inset-0 bg-indigo-900/35 flex items-center justify-center z-50 p-0 sm:p-4">
             <div className="bg-white shadow-xl w-full overflow-hidden flex flex-col h-[100svh] max-w-none max-h-[100svh] rounded-none sm:h-auto sm:max-w-6xl sm:max-h-[92vh] sm:rounded-xl">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gradient-to-r from-amber-500 via-orange-600 to-amber-700 text-white">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-4 border-b bg-gradient-to-r from-indigo-600 via-sky-600 to-indigo-800 text-white">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                   <Activity size={24} />
                   Retour Magasinier

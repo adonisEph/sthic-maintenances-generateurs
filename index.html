@@ -2,9 +2,9 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%23D97706'/%3E%3Cpath%20d='M12%2036%2022%2036%2028%2024%2036%2044%2044%2028%2052%2028'%20fill='none'%20stroke='%23FFFFFF'%20stroke-width='5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Ccircle%20cx='52'%20cy='28'%20r='4'%20fill='%23FFFFFF'/%3E%3C/svg%3E" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%231E3A5F'/%3E%3Cpath%20d='M12%2036%2022%2036%2028%2024%2036%2044%2044%2028%2052%2028'%20fill='none'%20stroke='%23FFFFFF'%20stroke-width='5'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3Ccircle%20cx='52'%20cy='28'%20r='4'%20fill='%23FFFFFF'/%3E%3C/svg%3E" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#D97706" />
+  <meta name="theme-color" content="#1E3A5F" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -15,30 +15,27 @@
   <title>Gestion Maintenance &amp; Vidanges</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
-    // Thème « Marine » (mazalafirm.com) — variante ORANGE/BLANC :
-    // orange Mazala #D97706/#F59E0B = identité unique, fond blanc chaud.
-    // indigo/sky/blue = échelle orange complète ; gray/slate = tons chauds
-    // (stone) ; teal -> vert émeraude (statut "effectuées") ; rose = hors délai.
+    // Thème « Marine » (mazalafirm.com) — BLEU DE NUIT + BLANC :
+    // primaire nuit #1E3A5F, marine clair #2B5285, papier bleuté #F4F7FA.
+    // indigo = nuit ; sky/blue/cyan/purple/violet/fuchsia/pink = famille
+    // marine ; teal/lime/green -> emeraude (statut "effectuées") ;
+    // yellow -> orange ; amber/orange = accent esthetique Mazala ;
+    // rose/red = hors délai ; gray/slate = neutres par défaut.
     tailwind.config = {
       theme: {
         extend: {
           colors: {
-            paper: '#FAF8F5',
-            indigo: { 50:'#FFF8F0',100:'#FEEBD7',200:'#FBD9AE',300:'#F5BE7A',400:'#EE9B45',500:'#F59E0B',600:'#D97706',700:'#B45309',800:'#92400E',900:'#7C2D12',950:'#431407' },
-            sky:    { 50:'#FFF8F0',100:'#FEEBD7',200:'#FBD9AE',300:'#F5BE7A',400:'#EE9B45',500:'#F59E0B',600:'#D97706',700:'#B45309',800:'#92400E',900:'#7C2D12',950:'#431407' },
-            blue:   { 50:'#FFF8F0',100:'#FEEBD7',200:'#FBD9AE',300:'#F5BE7A',400:'#EE9B45',500:'#F59E0B',600:'#D97706',700:'#B45309',800:'#92400E',900:'#7C2D12',950:'#431407' },
-            gray:    { 50:'#FAFAF9',100:'#F5F5F4',200:'#E7E5E4',300:'#D6D3D1',400:'#A8A29E',500:'#78716C',600:'#57534E',700:'#44403C',800:'#292524',900:'#1C1917',950:'#0C0A09' },
-            slate:   { 50:'#FAFAF9',100:'#F5F5F4',200:'#E7E5E4',300:'#D6D3D1',400:'#A8A29E',500:'#78716C',600:'#57534E',700:'#44403C',800:'#292524',900:'#1C1917',950:'#0C0A09' },
-            neutral: { 50:'#FAFAF9',100:'#F5F5F4',200:'#E7E5E4',300:'#D6D3D1',400:'#A8A29E',500:'#78716C',600:'#57534E',700:'#44403C',800:'#292524',900:'#1C1917',950:'#0C0A09' },
-            zinc:    { 50:'#FAFAF9',100:'#F5F5F4',200:'#E7E5E4',300:'#D6D3D1',400:'#A8A29E',500:'#78716C',600:'#57534E',700:'#44403C',800:'#292524',900:'#1C1917',950:'#0C0A09' },
+            paper: '#F4F7FA',
+            indigo:  { 50:'#EEF3F9',100:'#D9E4F1',200:'#B4C9E2',300:'#87A6D0',400:'#4C6C92',500:'#2B5285',600:'#1E3A5F',700:'#17304E',800:'#122740',900:'#0D1F33',950:'#081627' },
+            sky:     { 50:'#EFF6FC',100:'#DEEDF8',200:'#C0DBF0',300:'#90C0E4',400:'#5B82BB',500:'#3B66A0',600:'#2B5285',700:'#1E3A5F',800:'#17304E',900:'#12263E',950:'#0C1B2D' },
+            blue:    { 50:'#EFF6FC',100:'#DEEDF8',200:'#C0DBF0',300:'#90C0E4',400:'#5B82BB',500:'#3B66A0',600:'#2B5285',700:'#1E3A5F',800:'#17304E',900:'#12263E',950:'#0C1B2D' },
+            cyan:    { 50:'#EFF6FC',100:'#DEEDF8',200:'#C0DBF0',300:'#90C0E4',400:'#5B82BB',500:'#3B66A0',600:'#2B5285',700:'#1E3A5F',800:'#17304E',900:'#12263E',950:'#0C1B2D' },
+            purple:  { 50:'#EEF3F9',100:'#D9E4F1',200:'#B4C9E2',300:'#87A6D0',400:'#4C6C92',500:'#2B5285',600:'#1E3A5F',700:'#17304E',800:'#122740',900:'#0D1F33',950:'#081627' },
+            violet:  { 50:'#EEF3F9',100:'#D9E4F1',200:'#B4C9E2',300:'#87A6D0',400:'#4C6C92',500:'#2B5285',600:'#1E3A5F',700:'#17304E',800:'#122740',900:'#0D1F33',950:'#081627' },
+            fuchsia: { 50:'#EEF3F9',100:'#D9E4F1',200:'#B4C9E2',300:'#87A6D0',400:'#4C6C92',500:'#2B5285',600:'#1E3A5F',700:'#17304E',800:'#122740',900:'#0D1F33',950:'#081627' },
+            pink:    { 50:'#EEF3F9',100:'#D9E4F1',200:'#B4C9E2',300:'#87A6D0',400:'#4C6C92',500:'#2B5285',600:'#1E3A5F',700:'#17304E',800:'#122740',900:'#0D1F33',950:'#081627' },
             teal:    { 50:'#ECFDF5',100:'#D1FAE5',200:'#A7F3D0',300:'#6EE7B7',400:'#34D399',500:'#10B981',600:'#059669',700:'#047857',800:'#065F46',900:'#064E3B',950:'#022C22' },
-            // Toute teinte non-orange residuelle converge vers l'echelle orange
-            purple:  { 50:'#FFF8F0',100:'#FEEBD7',200:'#FBD9AE',300:'#F5BE7A',400:'#EE9B45',500:'#F59E0B',600:'#D97706',700:'#B45309',800:'#92400E',900:'#7C2D12',950:'#431407' },
-            violet:  { 50:'#FFF8F0',100:'#FEEBD7',200:'#FBD9AE',300:'#F5BE7A',400:'#EE9B45',500:'#F59E0B',600:'#D97706',700:'#B45309',800:'#92400E',900:'#7C2D12',950:'#431407' },
-            fuchsia: { 50:'#FFF8F0',100:'#FEEBD7',200:'#FBD9AE',300:'#F5BE7A',400:'#EE9B45',500:'#F59E0B',600:'#D97706',700:'#B45309',800:'#92400E',900:'#7C2D12',950:'#431407' },
-            pink:    { 50:'#FFF8F0',100:'#FEEBD7',200:'#FBD9AE',300:'#F5BE7A',400:'#EE9B45',500:'#F59E0B',600:'#D97706',700:'#B45309',800:'#92400E',900:'#7C2D12',950:'#431407' },
-            cyan:    { 50:'#FFF8F0',100:'#FEEBD7',200:'#FBD9AE',300:'#F5BE7A',400:'#EE9B45',500:'#F59E0B',600:'#D97706',700:'#B45309',800:'#92400E',900:'#7C2D12',950:'#431407' },
-            lime:    { 50:'#FFF8F0',100:'#FEEBD7',200:'#FBD9AE',300:'#F5BE7A',400:'#EE9B45',500:'#F59E0B',600:'#D97706',700:'#B45309',800:'#92400E',900:'#7C2D12',950:'#431407' },
+            lime:    { 50:'#ECFDF5',100:'#D1FAE5',200:'#A7F3D0',300:'#6EE7B7',400:'#34D399',500:'#10B981',600:'#059669',700:'#047857',800:'#065F46',900:'#064E3B',950:'#022C22' },
             yellow:  { 50:'#FFF8F0',100:'#FEEBD7',200:'#FBD9AE',300:'#F5BE7A',400:'#EE9B45',500:'#F59E0B',600:'#D97706',700:'#B45309',800:'#92400E',900:'#7C2D12',950:'#431407' }
           }
         }

@@ -96,7 +96,7 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
 </div>
 <div class="band"><div class="n">${num != null ? num : ''}</div><div class="sp"></div><div class="fmt">FMT</div><div class="fit">FIT</div></div>
 <table class="j"><thead><tr><th class="nh">N. Heures</th><th>Date</th><th>N°</th><th>Tx. Exécut.</th><th class="nh">N. Heures</th></tr></thead>
-<tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:#A8A29E;padding:14px">Aucun travail enregistré</td></tr>'}</tbody></table>
+<tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:14px">Aucun travail enregistré</td></tr>'}</tbody></table>
 </section>`;
   };
 
@@ -104,38 +104,38 @@ const GeHistoryModal = ({ site, onClose, apiFetchJson, canManage, onDataChanged 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title>
 <style>
   *{box-sizing:border-box}
-  body{font-family:'Segoe UI',Arial,sans-serif;color:#1C1917;padding:18px;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;padding:18px;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   section.fiche{page-break-after:always}
   section.fiche:last-of-type{page-break-after:auto}
-  section.fiche+section.fiche{border-top:2px solid #57534E;margin-top:16px;padding-top:12px}
-  .hdr{display:grid;grid-template-columns:30% 1fr;border:1.5px solid #57534E}
-  .hl{padding:2px 8px;border-right:1.5px solid #57534E;display:flex;flex-direction:column;justify-content:center;gap:0}
+  section.fiche+section.fiche{border-top:2px solid #475569;margin-top:16px;padding-top:12px}
+  .hdr{display:grid;grid-template-columns:30% 1fr;border:1.5px solid #475569}
+  .hl{padding:2px 8px;border-right:1.5px solid #475569;display:flex;flex-direction:column;justify-content:center;gap:0}
   .logo{width:100%;height:auto;display:block}
-  .doc{font-size:7.5px;font-weight:800;letter-spacing:.1px;color:#7C2D12;white-space:nowrap;margin:-19px 0 11px 14%;line-height:1}
+  .doc{font-size:7.5px;font-weight:800;letter-spacing:.1px;color:#1e1b4b;white-space:nowrap;margin:-19px 0 11px 14%;line-height:1}
   .hr{display:grid;grid-template-rows:1fr 1fr}
   .hlabels,.hvals{display:grid;grid-template-columns:4.5fr 1.7fr 1.1fr .9fr}
-  .hlabels div{font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#292524;padding:4px;display:flex;align-items:center;justify-content:center;text-align:center;border-bottom:1.5px solid #57534E}
-  .hvals div{padding:4px;font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center;text-align:center;color:#1C1917}
-  .hlabels div+div,.hvals div+div{border-left:1px solid #A8A29E}
-  .band{display:grid;grid-template-columns:10% 1fr;border:1.5px solid #57534E;border-top:none}
-  .band .n{padding:5px 8px;font-size:11px;font-weight:800;text-align:center;border-right:1px solid #A8A29E;border-bottom:1px solid #A8A29E}
-  .band .sp{border-bottom:1px solid #A8A29E}
-  .band .fmt{background:#E7E5E4;font-weight:800;font-size:10.5px;text-align:center;padding:5px 8px;border-right:1px solid #A8A29E}
+  .hlabels div{font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#1e293b;padding:4px;display:flex;align-items:center;justify-content:center;text-align:center;border-bottom:1.5px solid #475569}
+  .hvals div{padding:4px;font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center;text-align:center;color:#0f172a}
+  .hlabels div+div,.hvals div+div{border-left:1px solid #94a3b8}
+  .band{display:grid;grid-template-columns:10% 1fr;border:1.5px solid #475569;border-top:none}
+  .band .n{padding:5px 8px;font-size:11px;font-weight:800;text-align:center;border-right:1px solid #94a3b8;border-bottom:1px solid #94a3b8}
+  .band .sp{border-bottom:1px solid #94a3b8}
+  .band .fmt{background:#e5e7eb;font-weight:800;font-size:10.5px;text-align:center;padding:5px 8px;border-right:1px solid #94a3b8}
   .band .fit{text-align:center;font-weight:700;font-size:10.5px;padding:5px 8px}
-  .sub{font-size:9.5px;color:#78716C;margin:8px 0 10px}
-  table.j{width:100%;border-collapse:collapse;table-layout:fixed;border-left:1px solid #D6D3D1;border-right:1px solid #D6D3D1}
-  .j th{font-size:9px;text-transform:uppercase;letter-spacing:.7px;color:#292524;background:#F5F5F4;text-align:left;padding:5px 8px;border-bottom:1.5px solid #57534E}
+  .sub{font-size:9.5px;color:#64748b;margin:8px 0 10px}
+  table.j{width:100%;border-collapse:collapse;table-layout:fixed;border-left:1px solid #cbd5e1;border-right:1px solid #cbd5e1}
+  .j th{font-size:9px;text-transform:uppercase;letter-spacing:.7px;color:#1e293b;background:#eef2f7;text-align:left;padding:5px 8px;border-bottom:1.5px solid #475569}
   .j td{padding:5px 8px;font-size:10.5px;vertical-align:top;border:none}
   .j td.tx{overflow-wrap:break-word;word-wrap:break-word;hyphens:auto;line-height:1.35}
-  .j th+th,.j td+td{border-left:1px solid #D6D3D1}
+  .j th+th,.j td+td{border-left:1px solid #cbd5e1}
   .j td.nh,.j td:nth-child(2),.j td:nth-child(3){text-align:center}
   .j th:nth-child(1),.j td:nth-child(1){width:10%}
   .j th:nth-child(2),.j td:nth-child(2){width:9%}
   .j th:nth-child(3),.j td:nth-child(3){width:9%}
   .j th:nth-child(5),.j td:nth-child(5){width:10%}
-  .j tbody tr:nth-child(even){background:#FDF8F0}
+  .j tbody tr:nth-child(even){background:#f6f7fd}
   .j tr.kpose{background:#fef3c7 !important}
-  .j tr.kdepose{background:#E7E5E4 !important}
+  .j tr.kdepose{background:#e5e7eb !important}
   .mono{font-family:Consolas,Menlo,monospace;font-size:10px;font-variant-numeric:tabular-nums;white-space:nowrap}
 </style></head><body>${bodyHtml}</body></html>`;
 

@@ -193,7 +193,7 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
         <td class="num"><b>${m.done}</b><div class="sub">${esc(dSub)}</div></td>
         <td class="num">${cov}</td>
         <td>
-          <div class="bar-row"><div class="bar" style="width:${pW}%;background:#F59E0B"></div><span>${m.planned}</span></div>
+          <div class="bar-row"><div class="bar" style="width:${pW}%;background:#2B5285"></div><span>${m.planned}</span></div>
           <div class="bar-row"><div class="bar" style="width:${dW}%;background:${m.depassement ? '#f59e0b' : '#10b981'}"></div><span>${m.done}</span></div>
         </td>
       </tr>`;
@@ -203,30 +203,30 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
       <title>Analyse — Tendance des vidanges / Campagnes</title>
       <style>
         * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; color: #1C1917; margin: 0; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; color: #111827; margin: 0; }
         h1 { font-size: 17px; margin: 0 0 2px; }
-        .meta { font-size: 11px; color: #78716C; margin-bottom: 12px; }
+        .meta { font-size: 11px; color: #6b7280; margin-bottom: 12px; }
         .chips { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
-        .chip { border: 1px solid #D6D3D1; border-radius: 8px; padding: 6px 10px; min-width: 125px; }
-        .chip .l { font-size: 8px; font-weight: 700; color: #78716C; text-transform: uppercase; }
+        .chip { border: 1px solid #d1d5db; border-radius: 8px; padding: 6px 10px; min-width: 125px; }
+        .chip .l { font-size: 8px; font-weight: 700; color: #6b7280; text-transform: uppercase; }
         .chip .v { font-size: 15px; font-weight: 800; }
         table { width: 100%; border-collapse: collapse; font-size: 11px; }
-        th { background: #F5F5F4; text-transform: uppercase; font-size: 9px; letter-spacing: .05em; color: #57534E; text-align: left; }
-        th, td { border: 1px solid #E7E5E4; padding: 5px 7px; }
+        th { background: #f3f4f6; text-transform: uppercase; font-size: 9px; letter-spacing: .05em; color: #4b5563; text-align: left; }
+        th, td { border: 1px solid #e5e7eb; padding: 5px 7px; }
         .num { text-align: right; }
-        .sub { font-size: 9px; color: #A8A29E; font-weight: 400; }
+        .sub { font-size: 9px; color: #9ca3af; font-weight: 400; }
         .cap { text-transform: capitalize; font-weight: 600; }
         .dep { background: #fde68a; color: #92400e; font-size: 8px; font-weight: 800; padding: 1px 5px; border-radius: 4px; }
         .dep-row { background: #fffbeb; }
         .bar-row { display: flex; align-items: center; gap: 4px; margin: 1px 0; }
         .bar { height: 6px; border-radius: 3px; }
-        .bar-row span { font-size: 9px; color: #57534E; }
+        .bar-row span { font-size: 9px; color: #4b5563; }
         h3 { font-size: 12px; margin: 16px 0 6px; }
-        .foot { font-size: 9px; color: #78716C; margin-top: 10px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+        .foot { font-size: 9px; color: #6b7280; margin-top: 10px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
         .lg { display: inline-flex; align-items: center; gap: 4px; }
         .lg i { display: inline-block; width: 10px; height: 6px; border-radius: 2px; }
-        .lg.dim { color: #A8A29E; }
-        .gen { font-size: 9px; color: #A8A29E; margin-top: 4px; }
+        .lg.dim { color: #9ca3af; }
+        .gen { font-size: 9px; color: #9ca3af; margin-top: 4px; }
         @media print { * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
       </style></head><body>
       <h1>Tendance des vidanges / Campagnes</h1>
@@ -248,7 +248,7 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
         <tbody>${rowsHtml}</tbody>
       </table>
       <div class="foot">
-        <span class="lg"><i style="background:#F59E0B"></i>Planifiés</span>
+        <span class="lg"><i style="background:#2B5285"></i>Planifiés</span>
         <span class="lg"><i style="background:#10b981"></i>Effectuées</span>
         <span class="lg">Dépassement = effectuées &gt; planifiées</span>
         <span class="lg dim">Planifiés = tickets applicatifs (+ saisies historiques avant févr. 2026) · Effectuées = fiches applicatives + saisies historiques · survol = décomposition</span>
@@ -582,7 +582,7 @@ const DataAnalysisModal = ({ open, onClose, apiFetchJson, isSuperAdmin, userZone
                 <div className="overflow-auto" style={{ maxHeight: '54vh' }}>
                 <table className="w-full text-sm border-collapse">
                   <thead className="sticky top-0 z-10">
-                    <tr className="bg-gray-100 text-left text-[11px] uppercase tracking-wide text-gray-600 shadow-[0_1px_0_0_#E7E5E4]">
+                    <tr className="bg-gray-100 text-left text-[11px] uppercase tracking-wide text-gray-600 shadow-[0_1px_0_0_#e5e7eb]">
                       <th className="px-3 py-2 whitespace-nowrap w-36">Campagne</th>
                       <th className="px-3 py-2 text-right whitespace-nowrap">Planifiés<br /><span className="normal-case font-normal">(ticket FullPMWO)</span></th>
                       <th className="px-3 py-2 text-right whitespace-nowrap">Effectuées<br /><span className="normal-case font-normal">(fiches + historique)</span></th>
