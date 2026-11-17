@@ -19,9 +19,15 @@ export async function onRequestPost({ request, env, data }) {
     const inLines = Array.isArray(body?.lines) ? body.lines : [];
     if (!inLines.length || inLines.length > 50) return json({ error: 'Ajoute 1 à 50 lignes.' }, { status: 400 });
 
-    const siteName = String(body?.siteName || '').trim();
+    // Mode « Inventaire initial » : stock déjà sur place, sans site d'origine —
+    // siteName libre/facultatif et le déclarant = le magasinier par défaut.
+    const initial = body?.initial === true;
+    const siteName = initial
+      ? (String(body?.siteName || '').trim() || 'Inventaire initial')
+      : String(body?.siteName || '').trim();
     if (!siteName) return json({ error: 'Site de récupération requis.' }, { status: 400 });
-    const returnerName = String(body?.returnerName || '').trim();
+    const returnerName = String(body?.returnerName || '').trim()
+      || (initial ? String(data.user.technicianName || data.user.email || 'Magasinier') : '');
     if (!returnerName) return json({ error: 'Nom de la personne qui ramène le matériel requis.' }, { status: 400 });
 
     const signatureName = String(body?.signatureName || '').trim();
@@ -79,7 +85,7 @@ export async function onRequestPost({ request, env, data }) {
       String(body?.movementDate || '').trim() || ymdToday(),
       String(body?.siteId || '').trim(), siteName,
       String(body?.reason || '').trim(),
-      returnerName, String(body?.returnerRole || '').trim() || 'technician',
+      returnerName, String(body?.returnerRole || '').trim() || (initial ? 'warehouse' : 'technician'),
       signatureName, signatureImage && signatureImage.startsWith('data:image') ? signatureImage.slice(0, 60000) : '',
       String(data.user.id), now, now
     ).run();

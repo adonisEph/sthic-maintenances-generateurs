@@ -279,6 +279,8 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   const recBlankLine = { mode: 'existing', itemId: '', qty: 1, condition: 'fonctionnel', newName: '', newLocation: 'entrepot' };
   const [recLines, setRecLines] = useState([recBlankLine]);
   const [recSite, setRecSite] = useState('');
+  const [recInitial, setRecInitial] = useState(false);
+  const [recOrigin, setRecOrigin] = useState('');
   const [recReturner, setRecReturner] = useState('');
   const [recReturnerRole, setRecReturnerRole] = useState('technician');
   const [recDate, setRecDate] = useState('');
@@ -449,16 +451,17 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   const submitRecovery = async () => {
     const lines = recLines.filter((l) => (l.mode === 'new' ? l.newName.trim() : l.itemId) && Number(l.qty) >= 1);
     if (!lines.length) return alert('Ajoute au moins une ligne valide.');
-    if (!recSite) return alert('Site de récupération requis.');
-    if (!recReturner.trim()) return alert('Indique qui ramène le matériel.');
+    if (!recInitial && !recSite) return alert('Site de récupération requis.');
+    if (!recInitial && !recReturner.trim()) return alert('Indique qui ramène le matériel.');
     const site = sitesBzv.find((s) => String(s.id) === String(recSite));
     setBusy(true);
     try {
       const res = await apiFetchJson('/api/htc/recoveries', {
         method: 'POST',
         body: JSON.stringify({
-          siteId: site?.id || '', siteName: site ? siteLabel(site) : recSite,
-          returnerName: recReturner.trim(), returnerRole: recReturnerRole,
+          initial: recInitial,
+          siteId: site?.id || '', siteName: recInitial ? (recOrigin.trim() || 'Inventaire initial') : (site ? siteLabel(site) : recSite),
+          returnerName: recReturner.trim(), returnerRole: recInitial ? 'warehouse' : recReturnerRole,
           movementDate: recDate || undefined, reason: recReason,
           signatureName: recSigName, signatureImage: recSigImg,
           lines: lines.map((l) => (l.mode === 'new'
@@ -467,7 +470,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
         })
       });
       setRecOpen(false);
-      setRecLines([{ ...recBlankLine }]); setRecSite(''); setRecReturner(''); setRecDate(''); setRecReason(''); setRecSigImg(''); setRecSigName('');
+      setRecLines([{ ...recBlankLine }]); setRecSite(''); setRecInitial(false); setRecOrigin(''); setRecReturner(''); setRecDate(''); setRecReason(''); setRecSigImg(''); setRecSigName('');
       await Promise.all([loadMovements(), loadItems(), loadStats()]);
       if (res?.movement && window.confirm(`Bon de récupération ${res.movement.number} créé. Imprimer ?`)) printBon(res.movement);
     } catch (e) { alert(e.message || 'Erreur.'); }
@@ -1010,13 +1013,21 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
             <div className="font-bold text-base mb-1">Bon de récupération — matériel ramené d'un site</div>
             <div className="text-xs text-gray-500 mb-3">Matériel n'ayant jamais transité par le stock STHIC. La condition détermine l'entrée en stock.</div>
             <RecoveryLinesEditor items={items.filter((i) => i.active)} lines={recLines} setLines={setRecLines} disabled={busy} inputCls={inputCls} />
-            <div className="grid sm:grid-cols-2 gap-2 mt-3">
+            <label className="flex items-center gap-2 text-sm mt-3 font-semibold text-gray-700">
+              <input type="checkbox" checked={recInitial} onChange={(e) => setRecInitial(e.target.checked)} />
+              Inventaire initial — stock déjà sur place, sans site d'origine
+            </label>
+            <div className="grid sm:grid-cols-2 gap-2 mt-2">
               <div>
-                <label className={labelCls}>Site de récupération *</label>
-                <select className={inputCls} value={recSite} onChange={(e) => setRecSite(e.target.value)}>
-                  <option value="">— Choisir un site —</option>
-                  {sitesBzv.map((s) => <option key={s.id} value={s.id}>{siteLabel(s)}</option>)}
-                </select>
+                <label className={labelCls}>{recInitial ? 'Provenance (optionnel)' : 'Site de récupération *'}</label>
+                {recInitial ? (
+                  <input className={inputCls} placeholder="Inventaire initial" value={recOrigin} onChange={(e) => setRecOrigin(e.target.value)} />
+                ) : (
+                  <select className={inputCls} value={recSite} onChange={(e) => setRecSite(e.target.value)}>
+                    <option value="">— Choisir un site —</option>
+                    {sitesBzv.map((s) => <option key={s.id} value={s.id}>{siteLabel(s)}</option>)}
+                  </select>
+                )}
               </div>
               <div>
                 <label className={labelCls}>Date de récupération</label>
@@ -1025,17 +1036,19 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
             </div>
             <div className="grid sm:grid-cols-2 gap-2 mt-2">
               <div>
-                <label className={labelCls}>Ramené par *</label>
-                <input className={inputCls} placeholder="Nom de la personne qui ramène" value={recReturner} onChange={(e) => setRecReturner(e.target.value)} />
+                <label className={labelCls}>{recInitial ? 'Constaté par (vous par défaut)' : 'Ramené par *'}</label>
+                <input className={inputCls} placeholder={recInitial ? 'Nom du magasinier' : 'Nom de la personne qui ramène'} value={recReturner} onChange={(e) => setRecReturner(e.target.value)} />
               </div>
-              <div>
-                <label className={labelCls}>Fonction</label>
-                <select className={inputCls} value={recReturnerRole} onChange={(e) => setRecReturnerRole(e.target.value)}>
-                  <option value="technician">Technicien</option>
-                  <option value="field_supervisor">Field Supervisor</option>
-                  <option value="htc_supervisor">Superviseur Zonal HTC</option>
-                </select>
-              </div>
+              {!recInitial && (
+                <div>
+                  <label className={labelCls}>Fonction</label>
+                  <select className={inputCls} value={recReturnerRole} onChange={(e) => setRecReturnerRole(e.target.value)}>
+                    <option value="technician">Technicien</option>
+                    <option value="field_supervisor">Field Supervisor</option>
+                    <option value="htc_supervisor">Superviseur Zonal HTC</option>
+                  </select>
+                </div>
+              )}
             </div>
             <div className="mt-2">
               <label className={labelCls}>Motif / contexte</label>
