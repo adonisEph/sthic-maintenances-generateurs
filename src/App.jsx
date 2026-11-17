@@ -57,7 +57,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.24.1';
+const APP_VERSION = '6.24.2';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -9069,19 +9069,17 @@ return (
           )}
 
           {menuSectionHtc && menuOpenHtc && (<>
-            {(isWarehouse || isAdmin) && (
-              <button
-                onClick={() => {
-                  setSidebarOpen(false);
-                  setWarehouseSection('htc'); setHtcInitialTab('stock');
-                  setShowHtcWarehouse(true);
-                }}
-                className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
-              >
-                <Boxes size={18} />
-                <span className="flex-1">Stock matériel HTC</span>
-              </button>
-            )}
+            <button
+              onClick={() => {
+                setSidebarOpen(false);
+                setWarehouseSection('htc'); setHtcInitialTab('stock');
+                setShowHtcWarehouse(true);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
+            >
+              <Boxes size={18} />
+              <span className="flex-1">Stock matériel HTC</span>
+            </button>
 
             <button
               onClick={() => {

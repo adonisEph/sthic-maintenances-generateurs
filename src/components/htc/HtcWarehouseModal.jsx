@@ -250,7 +250,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
     finally { setBusy(false); }
   }, [loadItems, loadRequests, loadMovements, loadStats]);
 
-  useEffect(() => { if (open) { setTab(isManager ? initialTab : 'demandes'); refresh(); } }, [open]); // eslint-disable-line
+  useEffect(() => { if (open) { setTab(isManager ? initialTab : (['stock', 'demandes'].includes(initialTab) ? initialTab : 'demandes')); refresh(); } }, [open]); // eslint-disable-line
   useEffect(() => { if (open && isManager) loadMovements().catch(() => {}); }, [mvType, mvLoc, mvFrom, mvTo]); // eslint-disable-line
 
   const itemsByLoc = useMemo(() => ({
@@ -292,6 +292,23 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       alert('Demande envoyée au magasinier.');
     } catch (e) { alert(e.message || 'Erreur.'); }
     finally { setBusy(false); }
+  };
+
+  // FS/tech : « Demander » depuis le stock → pré-remplit la demande avec l'article choisi.
+  const requestItem = (it) => {
+    setFormLines((prev) => {
+      const base = (formOpen ? prev : [{ itemId: '', qty: 1 }]).filter((l) => l.itemId);
+      if (base.some((l) => String(l.itemId) === String(it.id))) return base.length ? base : [{ itemId: '', qty: 1 }];
+      return [...base, { itemId: it.id, qty: 1 }];
+    });
+    setFormOpen(true);
+    setTab('demandes');
+  };
+
+  // Magasinier : raccourci « Entrée » depuis une carte stock → BE pré-rempli.
+  const entryItem = (it) => {
+    setEntryLines([{ itemId: it.id, qty: 1 }]);
+    setEntryOpen(true);
   };
 
   const cancelRequest = async (r) => {
@@ -390,7 +407,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   if (!open) return null;
 
   const tabs = [
-    ...(isManager ? [{ id: 'stock', label: 'Stock', icon: Boxes }] : []),
+    { id: 'stock', label: 'Stock', icon: Boxes },
     { id: 'demandes', label: `Demandes${isManager && pendingCount ? ` (${pendingCount})` : ''}`, icon: ClipboardList },
     ...(isManager ? [
       { id: 'bons', label: 'Bons', icon: FileText },
@@ -437,9 +454,10 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
         <div className="flex-1 overflow-y-auto p-4">
 
           {/* ============ STOCK / TABLEAU DE BORD HTC ============ */}
-          {tab === 'stock' && isManager && (
+          {tab === 'stock' && (
             <div>
-              {/* Dashboard personnalisé Magasin & Stocks HTC */}
+              {/* Dashboard personnalisé — réservé au magasinier */}
+              {isManager && (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 mb-4">
                 <button onClick={() => setTab('demandes')}
                   className="border border-amber-300 bg-amber-50 rounded-xl p-3 text-left hover:bg-amber-100 transition-colors">
@@ -468,7 +486,8 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                   <div className={`text-[10px] ${dash.ruptures ? 'text-rose-500' : 'text-emerald-600'}`}>article(s) à 0</div>
                 </div>
               </div>
-              {stats && (
+              )}
+              {isManager && stats && (
                 <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-gray-500 mb-4 px-1">
                   <span className="font-semibold text-gray-600">Bons ce mois :</span>
                   <span><b className="text-emerald-700">{stats.monthMovements?.entry ?? 0}</b> entrée(s)</span>
@@ -488,12 +507,16 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                     <span className="text-xs opacity-75">({itemsByLoc[loc].length})</span>
                   </button>
                 ))}
-                <button onClick={() => setEntryOpen(true)} className={`${btnPrimary} ml-auto`}>
-                  <Plus size={15} /> Bon d'entrée
-                </button>
+                {isManager && (
+                  <button onClick={() => setEntryOpen(true)} className={`${btnPrimary} ml-auto`}>
+                    <Plus size={15} /> Bon d'entrée
+                  </button>
+                )}
               </div>
               {itemsByLoc[stockLoc].length === 0 ? (
-                <div className="text-center text-gray-400 py-12 text-sm">Aucun article dans ce lieu — ajoutez-en via l'onglet Articles.</div>
+                <div className="text-center text-gray-400 py-12 text-sm">
+                  {isManager ? "Aucun article dans ce lieu — ajoutez-en via l'onglet Articles." : 'Aucun article disponible dans ce lieu.'}
+                </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {itemsByLoc[stockLoc].map((it) => (
@@ -505,6 +528,19 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                       <div className="text-[11px] text-gray-500 mt-0.5">{it.category !== 'other' ? it.category : ''}{it.notes ? ` · ${it.notes}` : ''}</div>
                       <div className={`text-2xl font-extrabold mt-2 ${it.stock <= 0 ? 'text-rose-600' : 'text-indigo-700'}`}>
                         {it.stock ?? 0} <span className="text-xs font-semibold text-gray-400">{it.unit}(s)</span>
+                      </div>
+                      <div className="flex gap-2 mt-2.5">
+                        {isManager ? (
+                          <button onClick={() => entryItem(it)}
+                            className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 inline-flex items-center gap-1">
+                            <Plus size={12} /> Entrée
+                          </button>
+                        ) : (
+                          <button onClick={() => requestItem(it)}
+                            className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 inline-flex items-center gap-1">
+                            <ClipboardList size={12} /> Demander
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
