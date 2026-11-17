@@ -78,14 +78,15 @@ function printBon(mv) {
     : (mv.signatureName ? `<div class="signame">${esc(mv.signatureName)}</div>` : '—');
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(mv.number)}</title>
 <style>
+  @page{size:A4;margin:9mm}
   *{box-sizing:border-box}
-  body{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;padding:22px;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .top{display:flex;align-items:center;gap:14px;border-bottom:2.5px solid #1e3a5f;padding-bottom:10px}
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;padding:0;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .sheet{break-inside:avoid-page;page-break-inside:avoid}
+  .top{display:flex;align-items:flex-end;gap:12px;border-bottom:2.5px solid #1e3a5f;padding-bottom:4px}
   .top img{height:104px;width:auto}
-  .top .t{flex:1}
   .top .t .doc{font-size:19px;font-weight:800;color:#1e3a5f;letter-spacing:.3px}
   .top .t .sub{font-size:10.5px;color:#64748b;margin-top:2px}
-  .num{text-align:right}
+  .num{text-align:left;margin-left:10px}
   .num .n{font-size:16px;font-weight:800;color:#b45309;font-family:Consolas,monospace}
   .num .d{font-size:10.5px;color:#64748b}
   .meta{display:grid;grid-template-columns:repeat(4,1fr);border:1.2px solid #475569;margin-top:14px}
@@ -104,8 +105,13 @@ function printBon(mv) {
   .sign{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:26px}
   .sign .b{border-top:1.2px solid #475569;padding-top:6px;font-size:9.5px;color:#475569;text-align:center;min-height:70px}
   .sign .b .signame{font-family:'Segoe Script','Brush Script MT',cursive;font-size:15px;color:#0f172a;margin-bottom:4px}
-  .foot{margin-top:18px;font-size:8.5px;color:#94a3b8;text-align:center}
-</style></head><body>
+  .foot{margin-top:14px;font-size:8.5px;color:#94a3b8;text-align:center}
+  tr{break-inside:avoid;page-break-inside:avoid}
+  .meta,.sign,.foot{break-inside:avoid;page-break-inside:avoid}
+  .cut{margin-top:4mm;padding-top:1.5mm;border-top:1.6px dashed #94a3b8;display:flex;align-items:center;justify-content:space-between;color:#94a3b8;break-inside:avoid}
+  .cut .cis{font-size:15px;letter-spacing:2px}
+  .cut .lbl{font-size:8px;letter-spacing:.8px;text-transform:uppercase}
+</style></head><body><div class="sheet">
   <div class="top">
     <img src="${location.origin}/Logo_sthic.png" alt="STHIC"/>
     <div class="t"><div class="doc">${esc(typeLabel)} — MATÉRIEL HTC</div><div class="sub">STHIC · Magasin &amp; Stocks HTC</div></div>
@@ -125,7 +131,8 @@ function printBon(mv) {
     <div class="b"><div class="signame">${esc(mv.createdByName || '')}</div>Signature du magasinier</div>
   </div>
   <div class="foot">Document généré le ${esc(new Date().toLocaleDateString('fr-FR'))} · STHIC — Gestion Maintenance &amp; Vidanges</div>
-</body></html>`;
+  <div class="cut"><span class="cis">&#9986;</span><span class="lbl">Zone de découpe</span><span class="cis">&#9986;</span></div>
+</div></body></html>`;
   const iframe = document.createElement('iframe');
   iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
   document.body.appendChild(iframe);

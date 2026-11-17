@@ -57,7 +57,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.29.1';
+const APP_VERSION = '6.29.2';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -10844,7 +10844,7 @@ return (
 
         {(
           <div className="mt-4 mb-6 max-w-7xl mx-auto px-2 sm:px-4 md:px-6 w-full">
-            {(!filterUrgency || filterUrgency.length === 0) && !filterPmDate && urgentSites.length > 0 && (
+            {(!filterUrgency || filterUrgency.length === 0) && !filterPmDate && !(isWarehouse && warehouseSection === 'htc') && urgentSites.length > 0 && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-3 sm:p-4 mb-4">
                 <div className="flex items-center gap-2 font-bold text-red-900 mb-3 text-sm sm:text-base">
                   <AlertCircle size={18} className="flex-shrink-0" />
@@ -10933,7 +10933,7 @@ return (
                 </div>
               </div>
             )}
-            {isWarehouse && (
+            {isWarehouse && warehouseSection !== 'htc' && (
               <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 border border-gray-200">
                 <div className="font-bold text-gray-900">Référentiel sites</div>
                 <div className="text-sm text-gray-600 mt-1">
@@ -10941,7 +10941,7 @@ return (
                 </div>
               </div>
             )}
-            {filteredSites.length === 0 ? (
+            {(isWarehouse && warehouseSection === 'htc') ? null : filteredSites.length === 0 ? (
               <div className="bg-white rounded-lg shadow-md p-6 text-center text-gray-500">
                 {isWarehouse ? 'Aucun site disponible pour votre zone.' : 'Aucun site trouvé. Ajoutez un site ou importez votre Excel.'}
               </div>
