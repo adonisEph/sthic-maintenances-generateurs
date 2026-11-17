@@ -498,7 +498,9 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       if (!line) return null;
       const cells = (line.includes('\t') ? line.split('\t') : line.split(';')).map((c) => c.trim());
       // Ligne d'en-tête ignorée où qu'elle soit (Désignation|Lieu|Quantité…)
-      if (/design|article|nom|name/i.test(cells[0] || '') && (/lieu|loc|stock|place/i.test(cells[1] || '') || /quant|qty|qte/i.test(cells[2] || ''))) return null;
+      // Test sur texte normalisé : « Désignation » → « designation » (l'accent cassait le match).
+      const h0 = norm(cells[0]); const h1 = norm(cells[1]); const h2 = norm(cells[2]);
+      if (/^(design|article|nom|name|libelle|materiel|item|ref|reference)\b/.test(h0) && (/lieu|location|emplacement|^loc$|^site$|^zone$/.test(h1) || /quant|qty|qte|nombre/.test(h2))) return null;
       const [name = '', locRaw = '', qtyRaw = '', condRaw = '', notesRaw = ''] = cells;
       const locN = norm(locRaw);
       let location = LOC[locN];
