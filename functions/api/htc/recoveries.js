@@ -78,14 +78,15 @@ export async function onRequestPost({ request, env, data }) {
 
     await env.DB.prepare(
       `INSERT INTO htc_movements (id, number, type, location, movement_date, site_id, site_name, reason,
-        requester_name, requester_role, signature_name, signature_image, status, created_by, created_at, updated_at)
-       VALUES (?, ?, 'recovery', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?, ?)`
+        requester_name, requester_role, agent_name, provenance, signature_name, signature_image, status, created_by, created_at, updated_at)
+       VALUES (?, ?, 'recovery', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?, ?)`
     ).bind(
       movId, number, mainLoc,
       String(body?.movementDate || '').trim() || ymdToday(),
       String(body?.siteId || '').trim(), siteName,
       String(body?.reason || '').trim(),
       returnerName, String(body?.returnerRole || '').trim() || (initial ? 'warehouse' : 'technician'),
+      returnerName, siteName,
       signatureName, signatureImage && signatureImage.startsWith('data:image') ? signatureImage.slice(0, 60000) : '',
       String(data.user.id), now, now
     ).run();

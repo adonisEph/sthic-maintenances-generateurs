@@ -37,15 +37,29 @@ const fmtDate = (v) => {
 
 function printBon(mv) {
   const typeLabel = TYPE_BON[mv.type] || 'BON';
-  const rows = (mv.lines || []).map((l, i) => `
-    <tr>
-      <td class="n">${i + 1}</td>
-      <td>${esc(l.itemName)}</td>
-      <td class="c">${esc(LOCATION_LABEL[l.location] || l.location || '—')}</td>
-      <td class="c">${l.qty}</td>
-      ${mv.type === 'exit' ? `<td class="c">${l.qtyReturned || 0}</td>` : ''}
-      ${mv.type === 'recovery' ? `<td class="c">${esc(CONDITION_LABEL[l.condition] || 'Fonctionnel')}</td>` : ''}
-    </tr>`).join('');
+  // Colonnes normalisées par type de bon (cahier des charges) :
+  //   BE : Date, Désignation, Quantité, Client/Fournisseur, N°SMR, Bénéficiaire
+  //   BS : Date, Désignation, Quantité, Demandeur, N°SWO, Destination
+  //   BR : Date, Désignation, Quantité, Agent, N°BS, Provenance
+  //   RC : Date, Désignation, Quantité, Condition, Site, Ramené par
+  const senderLabel = mv.senderType === 'htc' ? 'Client HTC' : mv.senderType === 'supplier' ? 'Fournisseur' : '';
+  const senderFull = [senderLabel, mv.requesterName].filter(Boolean).join(' · ') || '—';
+  const HEADS = {
+    entry: ['Date', 'Désignation', 'Quantité', 'Client / Fournisseur', 'N° SMR', 'Bénéficiaire'],
+    exit: ['Date', 'Désignation', 'Quantité', 'Demandeur', 'N° SWO', 'Destination'],
+    return: ['Date', 'Désignation', 'Quantité', 'Agent', 'N° BS', 'Provenance'],
+    recovery: ['Date', 'Désignation', 'Quantité', 'Condition', 'Site', 'Ramené par']
+  };
+  const heads = HEADS[mv.type] || ['Date', 'Désignation', 'Quantité', 'Lieu', '', ''];
+  const cells = (l) => {
+    const base = `<td class="c">${esc(fmtDate(mv.movementDate))}</td><td>${esc(l.itemName)}</td><td class="c">${l.qty}</td>`;
+    if (mv.type === 'entry') return `${base}<td>${esc(senderFull)}</td><td class="c">${esc(mv.smrNumber || '—')}</td><td>${esc(mv.beneficiary || '—')}</td>`;
+    if (mv.type === 'exit') return `${base}<td>${esc(mv.requesterName || '—')}</td><td class="c">${esc(mv.swoNumber || '—')}</td><td>${esc(mv.siteName || '—')}</td>`;
+    if (mv.type === 'return') return `${base}<td>${esc(mv.agentName || mv.requesterName || '—')}</td><td class="c">${esc(mv.returnOfNumber || '—')}</td><td>${esc(mv.provenance || mv.siteName || '—')}</td>`;
+    if (mv.type === 'recovery') return `${base}<td class="c">${esc(CONDITION_LABEL[l.condition] || 'Fonctionnel')}</td><td>${esc(mv.siteName || '—')}</td><td>${esc(mv.agentName || mv.requesterName || '—')}</td>`;
+    return `${base}<td class="c">${esc(LOCATION_LABEL[l.location] || l.location || '—')}</td><td colspan="2"></td>`;
+  };
+  const rows = (mv.lines || []).map((l) => `<tr>${cells(l)}</tr>`).join('');
   const sig = mv.signatureImage
     ? `<img src="${mv.signatureImage}" alt="signature" style="max-height:52px;max-width:180px"/>`
     : (mv.signatureName ? `<div class="signame">${esc(mv.signatureName)}</div>` : '—');
@@ -85,18 +99,18 @@ function printBon(mv) {
   </div>
   <div class="meta">
     <div><div class="l">Lieu</div><div class="v">${esc(LOCATION_LABEL[mv.location] || mv.location)}</div></div>
-    <div><div class="l">${mv.type === 'recovery' ? 'Ramené par' : 'Demandeur'}</div><div class="v">${esc(mv.requesterName || '—')}</div></div>
+    <div><div class="l">${mv.type === 'entry' ? 'Expéditeur' : mv.type === 'return' ? 'Agent' : mv.type === 'recovery' ? 'Ramené par' : 'Demandeur'}</div><div class="v">${esc(mv.type === 'entry' ? senderFull : (mv.agentName || mv.requesterName || '—'))}</div></div>
     <div><div class="l">Fonction</div><div class="v">${esc(REQUESTER_ROLE_LABEL[mv.requesterRole] || mv.requesterRole || '—')}</div></div>
-    <div><div class="l">${mv.type === 'recovery' ? 'Site de récupération' : 'Destination'}</div><div class="v">${esc(mv.siteName || '—')}</div></div>
+    <div><div class="l">${mv.type === 'entry' ? 'Bénéficiaire' : mv.type === 'recovery' ? 'Site de récupération' : mv.type === 'return' ? 'Provenance' : 'Destination'}</div><div class="v">${esc(mv.type === 'entry' ? (mv.beneficiary || '—') : (mv.provenance || mv.siteName || '—'))}</div></div>
   </div>
   <table>
-    <thead><tr><th class="n">#</th><th>Désignation</th><th>Lieu</th><th>Qté</th>${mv.type === 'exit' ? '<th>Retourné</th>' : ''}${mv.type === 'recovery' ? '<th>Condition</th>' : ''}</tr></thead>
+    <thead><tr>${heads.map((h) => `<th>${h}</th>`).join('')}</tr></thead>
     <tbody>${rows}</tbody>
   </table>
   ${mv.reason ? `<div class="reason"><b>Motif :</b> ${esc(mv.reason)}</div>` : ''}
   ${mv.returnOfNumber ? `<div class="reason"><b>Retour de :</b> ${esc(mv.returnOfNumber)}</div>` : ''}
   <div class="sign">
-    <div class="b">${sig}Signature ${mv.type === 'recovery' ? 'de qui ramène' : 'du demandeur'}</div>
+    <div class="b">${sig}Signature ${mv.type === 'recovery' ? 'de qui ramène' : mv.type === 'return' ? 'de l\u2019agent' : mv.type === 'entry' ? 'du réceptionnaire' : 'du demandeur'}</div>
     <div class="b"><div class="signame">${esc(mv.createdByName || '')}</div>Signature du magasinier</div>
   </div>
   <div class="foot">Document généré le ${esc(new Date().toLocaleDateString('fr-FR'))} · STHIC — Gestion Maintenance &amp; Vidanges</div>
@@ -305,6 +319,15 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   const [retDate, setRetDate] = useState('');
   const [retSigImg, setRetSigImg] = useState('');
   const [retSigName, setRetSigName] = useState('');
+  const [retAgent, setRetAgent] = useState('');
+  const [retProvenance, setRetProvenance] = useState('');
+
+  // Métadonnées administratives des bons (SMR / SWO / bénéficiaire…)
+  const [entrySenderType, setEntrySenderType] = useState('htc');
+  const [entrySmr, setEntrySmr] = useState('');
+  const [entryBeneficiary, setEntryBeneficiary] = useState('STHIC');
+  const [formSwo, setFormSwo] = useState('');
+  const [procSwo, setProcSwo] = useState('');
 
   // Articles
   const [itemForm, setItemForm] = useState({ id: '', name: '', category: 'other', location: 'entrepot', unit: 'pièce', notes: '', initialQty: '' });
@@ -377,11 +400,11 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
         body: JSON.stringify({
           lines: lines.map((l) => ({ itemId: l.itemId, qty: Number(l.qty) })),
           siteId: site?.id || '', siteName: site ? siteLabel(site) : '',
-          reason: formReason, notes: formNotes,
+          reason: formReason, notes: formNotes, swoNumber: formSwo,
           ...(onBehalf && isManager ? { onBehalf: { role: behalfRole, name: behalfName } } : {})
         })
       });
-      setFormOpen(false); setFormLines([{ itemId: '', qty: 1 }]); setFormSite(''); setFormReason(''); setFormNotes('');
+      setFormOpen(false); setFormLines([{ itemId: '', qty: 1 }]); setFormSite(''); setFormReason(''); setFormNotes(''); setFormSwo('');
       setOnBehalf(false); setBehalfName('');
       await loadRequests();
       alert('Demande envoyée au magasinier.');
@@ -426,7 +449,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       } else {
         const res = await apiFetchJson(`/api/htc/requests/${procReq.request.id}/process`, {
           method: 'POST',
-          body: JSON.stringify({ action: 'issue', movementDate: procDate || undefined, signatureName: procSigName, signatureImage: procSigImg, force })
+          body: JSON.stringify({ action: 'issue', movementDate: procDate || undefined, signatureName: procSigName, signatureImage: procSigImg, swoNumber: procSwo, force })
         });
         if (res?.movement) printBon(res.movement);
       }
@@ -450,9 +473,14 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
     try {
       const res = await apiFetchJson('/api/htc/movements', {
         method: 'POST',
-        body: JSON.stringify({ lines: lines.map((l) => ({ itemId: l.itemId, qty: Number(l.qty) })), movementDate: entryDate || undefined, reason: entryReason, supplierName: entrySupplier })
+        body: JSON.stringify({
+          lines: lines.map((l) => ({ itemId: l.itemId, qty: Number(l.qty) })),
+          movementDate: entryDate || undefined, reason: entryReason,
+          senderType: entrySenderType, supplierName: entrySupplier,
+          smrNumber: entrySmr, beneficiary: entryBeneficiary
+        })
       });
-      setEntryOpen(false); setEntryLines([{ itemId: '', qty: 1 }]); setEntryDate(''); setEntryReason(''); setEntrySupplier('');
+      setEntryOpen(false); setEntryLines([{ itemId: '', qty: 1 }]); setEntryDate(''); setEntryReason(''); setEntrySupplier(''); setEntrySmr(''); setEntryBeneficiary('STHIC'); setEntrySenderType('htc');
       await Promise.all([loadMovements(), loadItems(), loadStats()]);
       if (res?.movement && window.confirm(`Bon ${res.movement.number} créé. Imprimer ?`)) printBon(res.movement);
     } catch (e) { alert(e.message || 'Erreur.'); }
@@ -578,9 +606,9 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
     try {
       const res = await apiFetchJson(`/api/htc/movements/${retMv.id}/return`, {
         method: 'POST',
-        body: JSON.stringify({ lines, movementDate: retDate || undefined, signatureName: retSigName, signatureImage: retSigImg })
+        body: JSON.stringify({ lines, movementDate: retDate || undefined, signatureName: retSigName, signatureImage: retSigImg, agentName: retAgent, provenance: retProvenance })
       });
-      setRetMv(null); setRetLines({}); setRetSigImg(''); setRetSigName(''); setRetDate('');
+      setRetMv(null); setRetLines({}); setRetSigImg(''); setRetSigName(''); setRetDate(''); setRetAgent(''); setRetProvenance('');
       await Promise.all([loadMovements(), loadItems(), loadStats()]);
       if (res?.movement && window.confirm(`Bon de retour ${res.movement.number} créé. Imprimer ?`)) printBon(res.movement);
     } catch (e) { alert(e.message || 'Erreur.'); }
@@ -846,6 +874,10 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                       <label className={labelCls}>Motif de la demande</label>
                       <input className={inputCls} placeholder="Ex. remplacement batterie défectueuse" value={formReason} onChange={(e) => setFormReason(e.target.value)} />
                     </div>
+                    <div>
+                      <label className={labelCls}>N° SWO (optionnel)</label>
+                      <input className={inputCls} placeholder="Ordre de travail / SWO" value={formSwo} onChange={(e) => setFormSwo(e.target.value)} />
+                    </div>
                   </div>
                   <div className="mt-2">
                     <label className={labelCls}>Notes (optionnel)</label>
@@ -877,12 +909,13 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                         {r.lines.map((l) => `${l.qty}× ${l.itemName}`).join(' · ')}
                       </div>
                       {r.reason ? <div className="text-xs text-gray-500 mt-1">Motif : {r.reason}</div> : null}
+                      {r.swoNumber ? <div className="text-xs text-gray-500 mt-0.5">N° SWO : <b className="font-mono">{r.swoNumber}</b></div> : null}
                       {r.rejectReason ? <div className="text-xs text-rose-600 mt-1">Refus : {r.rejectReason}</div> : null}
                       {r.status === 'pending' && (
                         <div className="flex flex-wrap gap-2 mt-2.5">
                           {isManager ? (
                             <>
-                              <button onClick={() => { setProcReq({ mode: 'issue', request: r }); setProcDate(''); setProcSigImg(''); setProcSigName(''); }}
+                              <button onClick={() => { setProcReq({ mode: 'issue', request: r }); setProcDate(''); setProcSigImg(''); setProcSigName(''); setProcSwo(r.swoNumber || ''); }}
                                 className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-emerald-700 inline-flex items-center gap-1">
                                 <Check size={13} /> Valider → bon de sortie
                               </button>
@@ -954,12 +987,22 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                         {mv.lines.map((l) => `${l.qty}× ${l.itemName}${l.qtyReturned ? ` (ret. ${l.qtyReturned})` : ''}${mv.type === 'recovery' ? ` [${CONDITION_LABEL[l.condition] || 'Fonctionnel'}]` : ''}`).join(' · ')}
                       </div>
                       {mv.returnOfNumber ? <div className="text-[11px] text-gray-400 mt-0.5">Retour de {mv.returnOfNumber}</div> : null}
+                      {(mv.smrNumber || mv.swoNumber || mv.agentName || mv.provenance || mv.beneficiary) && (
+                        <div className="text-[11px] text-gray-500 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                          {mv.type === 'entry' && mv.senderType ? <span>Expéditeur : <b>{mv.senderType === 'htc' ? 'Client HTC' : 'Fournisseur'}</b></span> : null}
+                          {mv.smrNumber ? <span>N° SMR : <b className="font-mono">{mv.smrNumber}</b></span> : null}
+                          {mv.swoNumber ? <span>N° SWO : <b className="font-mono">{mv.swoNumber}</b></span> : null}
+                          {mv.beneficiary ? <span>Bénéficiaire : <b>{mv.beneficiary}</b></span> : null}
+                          {mv.agentName && mv.type !== 'entry' ? <span>Agent : <b>{mv.agentName}</b></span> : null}
+                          {mv.provenance ? <span>Provenance : <b>{mv.provenance}</b></span> : null}
+                        </div>
+                      )}
                       <div className="flex flex-wrap gap-2 mt-2">
                         <button onClick={() => printBon(mv)} className="text-xs border border-gray-300 px-2.5 py-1.5 rounded-lg font-semibold hover:bg-gray-50 inline-flex items-center gap-1">
                           <Printer size={12} /> Imprimer
                         </button>
                         {mv.type === 'exit' && (mv.status === 'issued' || mv.status === 'partial_return') && (
-                          <button onClick={() => { setRetMv(mv); setRetLines({}); setRetDate(''); setRetSigImg(''); setRetSigName(''); }}
+                          <button onClick={() => { setRetMv(mv); setRetLines({}); setRetDate(''); setRetSigImg(''); setRetSigName(''); setRetAgent(mv.requesterName || ''); setRetProvenance(mv.siteName || ''); }}
                             className="text-xs bg-indigo-600 text-white px-2.5 py-1.5 rounded-lg font-semibold hover:bg-indigo-700 inline-flex items-center gap-1">
                             <RotateCcw size={12} /> Retour
                           </button>
@@ -1064,6 +1107,8 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
               <>
                 <label className="text-xs font-semibold text-gray-600">Date de sortie</label>
                 <input type="date" className={`${inputCls} mb-3`} value={procDate} onChange={(e) => setProcDate(e.target.value)} />
+                <label className={labelCls}>N° SWO (ordre de travail)</label>
+                <input className={`${inputCls} mb-3`} placeholder="Ex. SWO-2026-045" value={procSwo} onChange={(e) => setProcSwo(e.target.value)} />
                 <label className="text-xs font-semibold text-gray-600">Signature du demandeur</label>
                 <SignBlock sigImg={procSigImg} setSigImg={setProcSigImg} sigName={procSigName} setSigName={setProcSigName} />
               </>
@@ -1106,7 +1151,17 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                 </div>
               );
             })}
-            <label className="text-xs font-semibold text-gray-600 block mt-3">Date de retour</label>
+            <div className="grid sm:grid-cols-2 gap-2 mt-3 mb-3">
+              <div>
+                <label className={labelCls}>Agent (qui retourne)</label>
+                <input className={inputCls} value={retAgent} onChange={(e) => setRetAgent(e.target.value)} />
+              </div>
+              <div>
+                <label className={labelCls}>Provenance (Site / Client)</label>
+                <input className={inputCls} value={retProvenance} onChange={(e) => setRetProvenance(e.target.value)} />
+              </div>
+            </div>
+            <label className="text-xs font-semibold text-gray-600 block">Date de retour</label>
             <input type="date" className={`${inputCls} mb-3`} value={retDate} onChange={(e) => setRetDate(e.target.value)} />
             <label className="text-xs font-semibold text-gray-600 block">Signature</label>
             <SignBlock sigImg={retSigImg} setSigImg={setRetSigImg} sigName={retSigName} setSigName={setRetSigName} />
@@ -1286,12 +1341,27 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
             <LinesEditor items={items.filter((i) => i.active)} lines={entryLines} setLines={setEntryLines} disabled={busy} />
             <div className="grid sm:grid-cols-2 gap-2 mt-3">
               <div>
-                <label className={labelCls}>Date d'entrée</label>
-                <input type="date" className={inputCls} value={entryDate} onChange={(e) => setEntryDate(e.target.value)} />
+                <label className={labelCls}>Expéditeur *</label>
+                <select className={inputCls} value={entrySenderType} onChange={(e) => setEntrySenderType(e.target.value)}>
+                  <option value="htc">Client HTC</option>
+                  <option value="supplier">Fournisseur divers</option>
+                </select>
               </div>
               <div>
-                <label className={labelCls}>Fournisseur / source</label>
-                <input className={inputCls} placeholder="Ex. livraison HTC" value={entrySupplier} onChange={(e) => setEntrySupplier(e.target.value)} />
+                <label className={labelCls}>Nom de l'expéditeur</label>
+                <input className={inputCls} placeholder={entrySenderType === 'htc' ? 'Ex. HTC Congo — warehouse' : 'Ex. Nom du fournisseur'} value={entrySupplier} onChange={(e) => setEntrySupplier(e.target.value)} />
+              </div>
+              <div>
+                <label className={labelCls}>N° SMR (bon de sortie de l'expéditeur)</label>
+                <input className={inputCls} placeholder="Ex. SMR-2026-078" value={entrySmr} onChange={(e) => setEntrySmr(e.target.value)} />
+              </div>
+              <div>
+                <label className={labelCls}>Bénéficiaire</label>
+                <input className={inputCls} value={entryBeneficiary} onChange={(e) => setEntryBeneficiary(e.target.value)} />
+              </div>
+              <div>
+                <label className={labelCls}>Date d'entrée</label>
+                <input type="date" className={inputCls} value={entryDate} onChange={(e) => setEntryDate(e.target.value)} />
               </div>
             </div>
             <div className="mt-2">

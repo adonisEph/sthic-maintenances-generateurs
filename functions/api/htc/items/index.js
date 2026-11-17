@@ -61,8 +61,8 @@ export async function onRequestPost({ request, env, data }) {
       entryNumber = await allocHtcNumber(env, 'entry');
       await env.DB.prepare(
         `INSERT INTO htc_movements (id, number, type, location, movement_date, site_id, site_name, reason,
-          requester_name, requester_role, signature_name, signature_image, status, created_by, created_at, updated_at)
-         VALUES (?, ?, 'entry', ?, ?, '', '', ?, ?, 'warehouse', '', '', 'issued', ?, ?, ?)`
+          requester_name, requester_role, beneficiary, signature_name, signature_image, status, created_by, created_at, updated_at)
+         VALUES (?, ?, 'entry', ?, ?, '', '', ?, ?, 'warehouse', 'STHIC', '', '', 'issued', ?, ?, ?)`
       ).bind(
         movId, entryNumber, location,
         String(body?.movementDate || '').trim() || ymdToday(),

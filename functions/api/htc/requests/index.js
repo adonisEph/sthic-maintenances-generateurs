@@ -88,14 +88,15 @@ export async function onRequestPost({ request, env, data }) {
 
     await env.DB.prepare(
       `INSERT INTO htc_requests (id, request_number, status, requested_by_user_id, requester_name, requester_role,
-        site_id, site_name, reason, notes, zone, created_by, created_at, updated_at)
-       VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        site_id, site_name, reason, notes, swo_number, zone, created_by, created_at, updated_at)
+       VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       id, number,
       onBehalf ? null : String(data.user.id),
       requesterName, requesterRole,
       String(body?.siteId || '').trim(), String(body?.siteName || '').trim(),
       String(body?.reason || '').trim(), String(body?.notes || '').trim(),
+      String(body?.swoNumber || '').trim(),
       HTC_ZONE, String(data.user.id), now, now
     ).run();
 

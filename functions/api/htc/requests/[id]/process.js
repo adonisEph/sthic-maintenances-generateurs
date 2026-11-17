@@ -63,18 +63,20 @@ export async function onRequestPost({ request, env, data, params }) {
     const number = await allocHtcNumber(env, 'exit');
     const mainLoc = String(lines[0].location || 'entrepot');
 
+    const swoNumber = String(body?.swoNumber || req.swo_number || '').trim();
+
     await env.DB.prepare(
       `INSERT INTO htc_movements (id, number, type, location, movement_date, site_id, site_name, reason,
-        requester_name, requester_role, requested_by_user_id, request_id, signature_name, signature_image,
+        requester_name, requester_role, requested_by_user_id, request_id, swo_number, signature_name, signature_image,
         status, created_by, created_at, updated_at)
-       VALUES (?, ?, 'exit', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?, ?)`
+       VALUES (?, ?, 'exit', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?, ?)`
     ).bind(
       movId, number, mainLoc, movementDate,
       String(req.site_id || ''), String(req.site_name || ''),
       String(req.reason || ''),
       String(req.requester_name || ''), String(req.requester_role || ''),
       req.requested_by_user_id ? String(req.requested_by_user_id) : null,
-      id,
+      id, swoNumber,
       signatureName, signatureImage && signatureImage.startsWith('data:image') ? signatureImage.slice(0, 60000) : '',
       String(data.user.id), now, now
     ).run();

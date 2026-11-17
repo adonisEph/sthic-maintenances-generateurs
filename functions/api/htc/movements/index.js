@@ -85,10 +85,13 @@ export async function onRequestPost({ request, env, data }) {
     const number = await allocHtcNumber(env, 'entry');
     const mainLoc = String(clean[0].item.location || 'entrepot');
 
+    const senderType = ['htc', 'supplier'].includes(String(body?.senderType || '')) ? String(body.senderType) : '';
+
     await env.DB.prepare(
       `INSERT INTO htc_movements (id, number, type, location, movement_date, site_id, site_name, reason,
-        requester_name, requester_role, signature_name, signature_image, status, created_by, created_at, updated_at)
-       VALUES (?, ?, 'entry', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?, ?)`
+        requester_name, requester_role, sender_type, smr_number, beneficiary,
+        signature_name, signature_image, status, created_by, created_at, updated_at)
+       VALUES (?, ?, 'entry', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?, ?)`
     ).bind(
       movId, number, mainLoc,
       String(body?.movementDate || '').trim() || ymdToday(),
@@ -96,6 +99,9 @@ export async function onRequestPost({ request, env, data }) {
       String(body?.reason || '').trim(),
       String(body?.supplierName || data.user.technicianName || data.user.email || '').trim(),
       String(body?.requesterRole || 'warehouse'),
+      senderType,
+      String(body?.smrNumber || '').trim(),
+      String(body?.beneficiary || '').trim(),
       signatureName, signatureImage && signatureImage.startsWith('data:image') ? signatureImage.slice(0, 60000) : '',
       String(data.user.id), now, now
     ).run();

@@ -76,12 +76,15 @@ export async function onRequestPost({ request, env, data }) {
       const number = await allocHtcNumber(env, type);
       await env.DB.prepare(
         `INSERT INTO htc_movements (id, number, type, location, movement_date, site_id, site_name, reason,
-          requester_name, requester_role, signature_name, signature_image, status, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?, ?)`
+          requester_name, requester_role, beneficiary, agent_name, provenance, signature_name, signature_image, status, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?, ?)`
       ).bind(
         movId, number, type, String(lines[0].item.location || 'entrepot'), dateStr,
         '', type === 'recovery' ? 'Inventaire initial' : '',
         reason, magasinier, 'warehouse',
+        type === 'entry' ? 'STHIC' : '',
+        type === 'recovery' ? magasinier : '',
+        type === 'recovery' ? 'Inventaire initial' : '',
         signatureName, signatureImage && signatureImage.startsWith('data:image') ? signatureImage.slice(0, 60000) : '',
         String(data.user.id), now, now
       ).run();

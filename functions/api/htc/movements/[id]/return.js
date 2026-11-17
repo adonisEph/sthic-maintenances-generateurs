@@ -51,8 +51,9 @@ export async function onRequestPost({ request, env, data, params }) {
     await env.DB.prepare(
       `INSERT INTO htc_movements (id, number, type, location, movement_date, site_id, site_name, reason,
         requester_name, requester_role, requested_by_user_id, return_of_movement_id,
+        agent_name, provenance,
         signature_name, signature_image, status, created_by, created_at, updated_at)
-       VALUES (?, ?, 'return', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?, ?)`
+       VALUES (?, ?, 'return', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?, ?)`
     ).bind(
       movId, number, String(exit.location || 'entrepot'),
       String(body?.movementDate || '').trim() || ymdToday(),
@@ -62,6 +63,8 @@ export async function onRequestPost({ request, env, data, params }) {
       String(exit.requester_role || ''),
       exit.requested_by_user_id ? String(exit.requested_by_user_id) : null,
       exitId,
+      String(body?.agentName || body?.returnerName || exit.requester_name || '').trim(),
+      String(body?.provenance || exit.site_name || '').trim(),
       signatureName, signatureImage && signatureImage.startsWith('data:image') ? signatureImage.slice(0, 60000) : '',
       String(data.user.id), now, now
     ).run();
