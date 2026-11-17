@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import SignaturePad from './SignaturePad';
 import { toastAlert as alert } from '../../utils/feedback';
+import * as XLSX from 'xlsx';
 
 const LOCATION_LABEL = { entrepot: 'Entrepôt', magasin: 'Magasin (Buffer)' };
 const TYPE_LABEL = { exit: 'Sortie', entry: 'Entrée', return: 'Retour', recovery: 'Récupération' };
@@ -505,6 +506,28 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       return { name, location, qty: Number.isFinite(qty) ? qty : 0, condition: condition || 'fonctionnel', notes, err };
     }).filter(Boolean);
   }, [importText]);
+
+  // Fichier .xlsx/.xls/.csv → converti en lignes « ; » pour le même parseur.
+  const handleImportFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+      const text = rows
+        .map((r) => (Array.isArray(r) ? r : []).map((c) => String(c ?? '').trim()).join(';'))
+        .filter((l) => l.replace(/;/g, '').trim())
+        .join('\n');
+      if (!text) return alert('Fichier vide ou illisible.');
+      setImportText(text);
+      setImportResult(null);
+    } catch {
+      alert('Impossible de lire ce fichier (formats acceptés : .xlsx, .xls, .csv).');
+    }
+  };
 
   const submitImport = async () => {
     const rows = parsedImport.filter((r) => !r.err && r.qty > 0);
@@ -1149,6 +1172,14 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
               </div>
             ) : (
               <>
+                <div className="flex items-center gap-3 mb-3">
+                  <label className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-semibold text-sm inline-flex items-center gap-2 cursor-pointer">
+                    <Upload size={15} /> Choisir un fichier
+                    <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImportFile} />
+                  </label>
+                  <span className="text-[11px] text-gray-400">.xlsx · .xls · .csv — 1ʳᵉ feuille utilisée</span>
+                </div>
+                <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">…ou collez le tableau ci-dessous</div>
                 <textarea
                   className={`${inputCls} font-mono text-xs h-40`}
                   placeholder={'Batterie Leoch 12V 100AH;entrepot;6\nRedresseur Eltek;entrepot;2\nRadiateur 30 KVA Yanmar;magasin;1;defectueux;remplacé CBBZ0090'}
