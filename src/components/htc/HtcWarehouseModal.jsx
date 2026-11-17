@@ -169,6 +169,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   const [requests, setRequests] = useState([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [movements, setMovements] = useState([]);
+  const [stats, setStats] = useState(null);
   const [busy, setBusy] = useState(false);
   const [stockLoc, setStockLoc] = useState('entrepot');
 
@@ -236,12 +237,18 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
     setMovements(d.movements || []);
   }, [apiFetchJson, isManager, mvType, mvLoc, mvQ, mvFrom, mvTo]);
 
+  const loadStats = useCallback(async () => {
+    if (!isManager) return;
+    const d = await apiFetchJson('/api/htc/stats');
+    setStats(d.stats || null);
+  }, [apiFetchJson, isManager]);
+
   const refresh = useCallback(async () => {
     setBusy(true);
-    try { await Promise.all([loadItems(), loadRequests(), loadMovements()]); }
+    try { await Promise.all([loadItems(), loadRequests(), loadMovements(), loadStats()]); }
     catch (e) { alert(e.message || 'Erreur de chargement.'); }
     finally { setBusy(false); }
-  }, [loadItems, loadRequests, loadMovements]);
+  }, [loadItems, loadRequests, loadMovements, loadStats]);
 
   useEffect(() => { if (open) { setTab(isManager ? initialTab : 'demandes'); refresh(); } }, [open]); // eslint-disable-line
   useEffect(() => { if (open && isManager) loadMovements().catch(() => {}); }, [mvType, mvLoc, mvFrom, mvTo]); // eslint-disable-line
@@ -251,7 +258,18 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
     magasin: items.filter((i) => i.active && i.location === 'magasin')
   }), [items]);
 
+  // Totaux du tableau de bord HTC (calculés depuis le stock temps réel des articles).
+  const dash = useMemo(() => ({
+    stockEntrepot: itemsByLoc.entrepot.reduce((s, i) => s + (Number(i.stock) || 0), 0),
+    stockMagasin: itemsByLoc.magasin.reduce((s, i) => s + (Number(i.stock) || 0), 0),
+    articles: items.filter((i) => i.active).length,
+    ruptures: items.filter((i) => i.active && Number(i.stock) <= 0).length
+  }), [items, itemsByLoc]);
+
   const sitesBzv = useMemo(() => (sites || []), [sites]);
+
+  // Libellé clair d'un site : « CBBZ0090 — Ngamakosso Border ».
+  const siteLabel = (s) => [s?.idSite, s?.nameSite].filter(Boolean).join(' — ') || s?.name || s?.site_name || s?.idSite || s?.id || '';
 
   const submitRequest = async () => {
     const lines = formLines.filter((l) => l.itemId && Number(l.qty) >= 1);
@@ -263,7 +281,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
         method: 'POST',
         body: JSON.stringify({
           lines: lines.map((l) => ({ itemId: l.itemId, qty: Number(l.qty) })),
-          siteId: site?.id || '', siteName: site?.name || site?.site_name || '',
+          siteId: site?.id || '', siteName: site ? siteLabel(site) : '',
           reason: formReason, notes: formNotes,
           ...(onBehalf && isManager ? { onBehalf: { role: behalfRole, name: behalfName } } : {})
         })
@@ -301,7 +319,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
         if (res?.movement) printBon(res.movement);
       }
       setProcReq(null); setProcReason(''); setProcSigImg(''); setProcSigName(''); setProcDate('');
-      await Promise.all([loadRequests(), loadMovements(), loadItems()]);
+      await Promise.all([loadRequests(), loadMovements(), loadItems(), loadStats()]);
     } catch (e) {
       if (e?.data?.shortage && !force) {
         const msg = (e.data.shortages || []).map((s) => `• ${s.itemName} : demandé ${s.requested}, dispo ${s.available}`).join('\n');
@@ -323,7 +341,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
         body: JSON.stringify({ lines: lines.map((l) => ({ itemId: l.itemId, qty: Number(l.qty) })), movementDate: entryDate || undefined, reason: entryReason, supplierName: entrySupplier })
       });
       setEntryOpen(false); setEntryLines([{ itemId: '', qty: 1 }]); setEntryDate(''); setEntryReason(''); setEntrySupplier('');
-      await Promise.all([loadMovements(), loadItems()]);
+      await Promise.all([loadMovements(), loadItems(), loadStats()]);
       if (res?.movement && window.confirm(`Bon ${res.movement.number} créé. Imprimer ?`)) printBon(res.movement);
     } catch (e) { alert(e.message || 'Erreur.'); }
     finally { setBusy(false); }
@@ -340,7 +358,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
         body: JSON.stringify({ lines, movementDate: retDate || undefined, signatureName: retSigName, signatureImage: retSigImg })
       });
       setRetMv(null); setRetLines({}); setRetSigImg(''); setRetSigName(''); setRetDate('');
-      await Promise.all([loadMovements(), loadItems()]);
+      await Promise.all([loadMovements(), loadItems(), loadStats()]);
       if (res?.movement && window.confirm(`Bon de retour ${res.movement.number} créé. Imprimer ?`)) printBon(res.movement);
     } catch (e) { alert(e.message || 'Erreur.'); }
     finally { setBusy(false); }
@@ -364,7 +382,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   const cancelMovement = async (mv) => {
     if (!window.confirm(`Annuler le bon ${mv.number} ?`)) return;
     setBusy(true);
-    try { await apiFetchJson(`/api/htc/movements/${mv.id}`, { method: 'PATCH', body: JSON.stringify({ action: 'cancel' }) }); await Promise.all([loadMovements(), loadItems(), loadRequests()]); }
+    try { await apiFetchJson(`/api/htc/movements/${mv.id}`, { method: 'PATCH', body: JSON.stringify({ action: 'cancel' }) }); await Promise.all([loadMovements(), loadItems(), loadRequests(), loadStats()]); }
     catch (e) { alert(e.message || 'Erreur.'); }
     finally { setBusy(false); }
   };
@@ -381,6 +399,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   ];
 
   const inputCls = 'border border-gray-300 rounded-lg px-3 py-2 text-sm w-full';
+  const labelCls = 'block text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-1';
   const btnPrimary = 'bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-semibold text-sm disabled:opacity-60 inline-flex items-center gap-2';
   const btnGhost = 'border border-gray-300 px-3 py-2 rounded-lg hover:bg-gray-50 font-semibold text-sm disabled:opacity-60 inline-flex items-center gap-2';
 
@@ -417,9 +436,47 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
 
         <div className="flex-1 overflow-y-auto p-4">
 
-          {/* ============ STOCK ============ */}
+          {/* ============ STOCK / TABLEAU DE BORD HTC ============ */}
           {tab === 'stock' && isManager && (
             <div>
+              {/* Dashboard personnalisé Magasin & Stocks HTC */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 mb-4">
+                <button onClick={() => setTab('demandes')}
+                  className="border border-amber-300 bg-amber-50 rounded-xl p-3 text-left hover:bg-amber-100 transition-colors">
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-amber-700">Demandes en attente</div>
+                  <div className="text-2xl font-extrabold text-amber-800 mt-1">{stats ? stats.pendingRequests : pendingCount}</div>
+                  <div className="text-[10px] text-amber-600">à traiter →</div>
+                </button>
+                <div className="border border-indigo-200 bg-indigo-50/60 rounded-xl p-3">
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-indigo-700">Matériel dehors</div>
+                  <div className="text-2xl font-extrabold text-indigo-800 mt-1">{stats?.materialOutUnits ?? '—'}</div>
+                  <div className="text-[10px] text-indigo-500">{stats?.openExitVouchers ?? 0} bon(s) de sortie ouvert(s)</div>
+                </div>
+                <div className="border border-gray-200 bg-white rounded-xl p-3">
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Stock Entrepôt</div>
+                  <div className="text-2xl font-extrabold text-indigo-800 mt-1">{dash.stockEntrepot}</div>
+                  <div className="text-[10px] text-gray-400">pièce(s) · {itemsByLoc.entrepot.length} article(s)</div>
+                </div>
+                <div className="border border-gray-200 bg-white rounded-xl p-3">
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Stock Magasin</div>
+                  <div className="text-2xl font-extrabold text-indigo-800 mt-1">{dash.stockMagasin}</div>
+                  <div className="text-[10px] text-gray-400">buffer · {itemsByLoc.magasin.length} article(s)</div>
+                </div>
+                <div className={`border rounded-xl p-3 ${dash.ruptures ? 'border-rose-300 bg-rose-50' : 'border-emerald-200 bg-emerald-50/50'}`}>
+                  <div className={`text-[10px] font-bold uppercase tracking-wide ${dash.ruptures ? 'text-rose-700' : 'text-emerald-700'}`}>Ruptures</div>
+                  <div className={`text-2xl font-extrabold mt-1 ${dash.ruptures ? 'text-rose-700' : 'text-emerald-700'}`}>{dash.ruptures}</div>
+                  <div className={`text-[10px] ${dash.ruptures ? 'text-rose-500' : 'text-emerald-600'}`}>article(s) à 0</div>
+                </div>
+              </div>
+              {stats && (
+                <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-gray-500 mb-4 px-1">
+                  <span className="font-semibold text-gray-600">Bons ce mois :</span>
+                  <span><b className="text-emerald-700">{stats.monthMovements?.entry ?? 0}</b> entrée(s)</span>
+                  <span><b className="text-orange-700">{stats.monthMovements?.exit ?? 0}</b> sortie(s)</span>
+                  <span><b className="text-indigo-700">{stats.monthMovements?.return ?? 0}</b> retour(s)</span>
+                  <span className="ml-auto">{dash.articles} article(s) au catalogue</span>
+                </div>
+              )}
               <div className="flex gap-2 mb-4">
                 {['entrepot', 'magasin'].map((loc) => (
                   <button key={loc} onClick={() => setStockLoc(loc)}
@@ -477,23 +534,45 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                   )}
                   {onBehalf && isManager && (
                     <div className="grid sm:grid-cols-2 gap-2 mb-3">
-                      <select className={inputCls} value={behalfRole} onChange={(e) => setBehalfRole(e.target.value)}>
-                        <option value="htc_supervisor">Superviseur Zonal HTC</option>
-                        <option value="field_supervisor">Field Supervisor</option>
-                        <option value="technician">Technicien</option>
-                      </select>
-                      <input className={inputCls} placeholder="Nom complet du demandeur *" value={behalfName} onChange={(e) => setBehalfName(e.target.value)} />
+                      <div>
+                        <label className={labelCls}>Fonction du demandeur</label>
+                        <select className={inputCls} value={behalfRole} onChange={(e) => setBehalfRole(e.target.value)}>
+                          <option value="htc_supervisor">Superviseur Zonal HTC</option>
+                          <option value="field_supervisor">Field Supervisor</option>
+                          <option value="technician">Technicien</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className={labelCls}>Nom complet du demandeur *</label>
+                        <input className={inputCls} placeholder="Nom et prénom" value={behalfName} onChange={(e) => setBehalfName(e.target.value)} />
+                      </div>
                     </div>
                   )}
-                  <LinesEditor items={items.filter((i) => i.active)} lines={formLines} setLines={setFormLines} disabled={busy} />
-                  <div className="grid sm:grid-cols-2 gap-2 mt-3">
-                    <select className={inputCls} value={formSite} onChange={(e) => setFormSite(e.target.value)}>
-                      <option value="">— Site de destination (optionnel) —</option>
-                      {sitesBzv.map((s) => <option key={s.id} value={s.id}>{s.name || s.site_name || s.id}</option>)}
-                    </select>
-                    <input className={inputCls} placeholder="Motif de la demande" value={formReason} onChange={(e) => setFormReason(e.target.value)} />
+                  <div className="mt-1">
+                    <div className="grid grid-cols-[1fr_5.5rem_2rem] gap-2 mb-1 px-0.5">
+                      <span className={labelCls}>Article</span>
+                      <span className={`${labelCls} text-center`}>Quantité</span>
+                      <span></span>
+                    </div>
+                    <LinesEditor items={items.filter((i) => i.active)} lines={formLines} setLines={setFormLines} disabled={busy} />
                   </div>
-                  <input className={`${inputCls} mt-2`} placeholder="Notes (optionnel)" value={formNotes} onChange={(e) => setFormNotes(e.target.value)} />
+                  <div className="grid sm:grid-cols-2 gap-2 mt-3">
+                    <div>
+                      <label className={labelCls}>Site de destination</label>
+                      <select className={inputCls} value={formSite} onChange={(e) => setFormSite(e.target.value)}>
+                        <option value="">— Choisir un site (optionnel) —</option>
+                        {sitesBzv.map((s) => <option key={s.id} value={s.id}>{siteLabel(s)}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelCls}>Motif de la demande</label>
+                      <input className={inputCls} placeholder="Ex. remplacement batterie défectueuse" value={formReason} onChange={(e) => setFormReason(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <label className={labelCls}>Notes (optionnel)</label>
+                    <input className={inputCls} placeholder="Précisions complémentaires…" value={formNotes} onChange={(e) => setFormNotes(e.target.value)} />
+                  </div>
                   <div className="flex gap-2 mt-3 justify-end">
                     <button className={btnGhost} onClick={() => setFormOpen(false)}>Annuler</button>
                     <button className={btnPrimary} onClick={submitRequest} disabled={busy || (onBehalf && !behalfName.trim())}>Envoyer</button>
@@ -696,7 +775,10 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                 <SignBlock sigImg={procSigImg} setSigImg={setProcSigImg} sigName={procSigName} setSigName={setProcSigName} />
               </>
             ) : (
-              <input className={inputCls} placeholder="Motif du refus *" value={procReason} onChange={(e) => setProcReason(e.target.value)} />
+              <div>
+                <label className={labelCls}>Motif du refus *</label>
+                <input className={inputCls} placeholder="Ex. stock indisponible, demande hors périmètre…" value={procReason} onChange={(e) => setProcReason(e.target.value)} />
+              </div>
             )}
             <div className="flex gap-2 mt-4 justify-end">
               <button className={btnGhost} onClick={() => setProcReq(null)}>Fermer</button>
@@ -750,12 +832,26 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto">
             <div className="font-bold text-base mb-3">Bon d'entrée — réception matériel</div>
+            <div className="grid grid-cols-[1fr_5.5rem_2rem] gap-2 mb-1 px-0.5">
+              <span className={labelCls}>Article</span>
+              <span className={`${labelCls} text-center`}>Quantité</span>
+              <span></span>
+            </div>
             <LinesEditor items={items.filter((i) => i.active)} lines={entryLines} setLines={setEntryLines} disabled={busy} />
             <div className="grid sm:grid-cols-2 gap-2 mt-3">
-              <input type="date" className={inputCls} value={entryDate} onChange={(e) => setEntryDate(e.target.value)} />
-              <input className={inputCls} placeholder="Fournisseur / source" value={entrySupplier} onChange={(e) => setEntrySupplier(e.target.value)} />
+              <div>
+                <label className={labelCls}>Date d'entrée</label>
+                <input type="date" className={inputCls} value={entryDate} onChange={(e) => setEntryDate(e.target.value)} />
+              </div>
+              <div>
+                <label className={labelCls}>Fournisseur / source</label>
+                <input className={inputCls} placeholder="Ex. livraison HTC" value={entrySupplier} onChange={(e) => setEntrySupplier(e.target.value)} />
+              </div>
             </div>
-            <input className={`${inputCls} mt-2`} placeholder="Motif / référence (BL, livraison HTC…)" value={entryReason} onChange={(e) => setEntryReason(e.target.value)} />
+            <div className="mt-2">
+              <label className={labelCls}>Motif / référence</label>
+              <input className={inputCls} placeholder="BL, livraison HTC…" value={entryReason} onChange={(e) => setEntryReason(e.target.value)} />
+            </div>
             <div className="flex gap-2 mt-3 justify-end">
               <button className={btnGhost} onClick={() => setEntryOpen(false)}>Fermer</button>
               <button className={btnPrimary} disabled={busy} onClick={submitEntry}>Émettre le bon d'entrée</button>

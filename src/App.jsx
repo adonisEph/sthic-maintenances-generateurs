@@ -30,6 +30,7 @@ import InterventionsModal from './components/interventions/InterventionsModal';
 import HistoryModal from './components/history/HistoryModal';
 import AirFilterHistoryModal from './components/AirFilterHistoryModal';
 import HtcWarehouseModal from './components/htc/HtcWarehouseModal';
+import HtcDashboard from './components/htc/HtcDashboard';
 import UploadBannerModal from './components/fiche/UploadBannerModal';
 import FicheModal from './components/fiche/FicheModal';
 import SuperAdminFicheChoiceModal from './components/fiche/SuperAdminFicheChoiceModal';
@@ -56,7 +57,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.24.0';
+const APP_VERSION = '6.24.1';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -229,6 +230,7 @@ const GeneratorMaintenanceApp = () => {
   const [menuOpenHtc, setMenuOpenHtc] = useState(true);
   const [showHtcWarehouse, setShowHtcWarehouse] = useState(false);
   const [htcInitialTab, setHtcInitialTab] = useState('stock');
+  const [warehouseSection, setWarehouseSection] = useState('vidanges'); // dashboard magasinier : 'vidanges' | 'htc'
   const [finalizeBusy, setFinalizeBusy] = useState(false);
   const [hideProcessButtonsOverride, setHideProcessButtonsOverride] = useState(false);
   const [signatureTypedName, setSignatureTypedName] = useState('');
@@ -9071,7 +9073,7 @@ return (
               <button
                 onClick={() => {
                   setSidebarOpen(false);
-                  setHtcInitialTab('stock');
+                  setWarehouseSection('htc'); setHtcInitialTab('stock');
                   setShowHtcWarehouse(true);
                 }}
                 className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
@@ -9084,7 +9086,7 @@ return (
             <button
               onClick={() => {
                 setSidebarOpen(false);
-                setHtcInitialTab('demandes');
+                setWarehouseSection('htc'); setHtcInitialTab('demandes');
                 setShowHtcWarehouse(true);
               }}
               className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
@@ -9097,7 +9099,7 @@ return (
               <button
                 onClick={() => {
                   setSidebarOpen(false);
-                  setHtcInitialTab('bons');
+                  setWarehouseSection('htc'); setHtcInitialTab('bons');
                   setShowHtcWarehouse(true);
                 }}
                 className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
@@ -9111,7 +9113,7 @@ return (
               <button
                 onClick={() => {
                   setSidebarOpen(false);
-                  setHtcInitialTab('articles');
+                  setWarehouseSection('htc'); setHtcInitialTab('articles');
                   setShowHtcWarehouse(true);
                 }}
                 className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
@@ -9270,6 +9272,24 @@ return (
             <div className="max-w-7xl mx-auto">
               {isWarehouse ? (
                 <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 md:mb-6">
+                  <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden mb-4">
+                    <button
+                      onClick={() => setWarehouseSection('vidanges')}
+                      className={`px-3.5 py-1.5 text-xs font-bold ${warehouseSection === 'vidanges' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                      Interventions &amp; Vidanges
+                    </button>
+                    <button
+                      onClick={() => setWarehouseSection('htc')}
+                      className={`px-3.5 py-1.5 text-xs font-bold border-l border-gray-200 ${warehouseSection === 'htc' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                      Magasin &amp; Stocks HTC
+                    </button>
+                  </div>
+                  {warehouseSection === 'htc' ? (
+                    <HtcDashboard
+                      apiFetchJson={apiFetchJson}
+                      onOpenModule={(tab) => { setHtcInitialTab(tab); setShowHtcWarehouse(true); }}
+                    />
+                  ) : (
                   <WarehouseDashboard
                     ficheHistory={ficheHistory}
                     stockSummary={stockSummary}
@@ -9292,6 +9312,7 @@ return (
                       try { await loadStockMovements(); } catch { /* ignore */ }
                     }}
                   />
+                  )}
                 </div>
               ) : (
                 <>
