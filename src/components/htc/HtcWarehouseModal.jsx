@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   X, Package, ClipboardList, FileText, Boxes, Plus, Trash2, Check, Ban,
-  Printer, RotateCcw, RefreshCw, AlertTriangle, Search, Warehouse, Store
+  Printer, RotateCcw, RefreshCw, AlertTriangle, Search, Warehouse, Store, Upload
 } from 'lucide-react';
 import SignaturePad from './SignaturePad';
 import { toastAlert as alert } from '../../utils/feedback';
@@ -288,6 +288,13 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   const [recSigImg, setRecSigImg] = useState('');
   const [recSigName, setRecSigName] = useState('');
 
+  // Import en masse (inventaire initial)
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importDate, setImportDate] = useState('');
+  const [importReason, setImportReason] = useState('');
+  const [importResult, setImportResult] = useState(null);
+
   // Retour
   const [retMv, setRetMv] = useState(null);
   const [retLines, setRetLines] = useState({});
@@ -477,6 +484,48 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
     finally { setBusy(false); }
   };
 
+  // Parse « Désignation ; Lieu ; Quantité ; Condition ; Notes » (TAB ou point-virgule)
+  const parsedImport = useMemo(() => {
+    const norm = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const LOC = { entrepot: 'entrepot', e: 'entrepot', warehouse: 'entrepot', magasin: 'magasin', m: 'magasin', buffer: 'magasin', 'buffer stock': 'magasin', 'magasin buffer': 'magasin' };
+    const COND = { '': 'fonctionnel', fonctionnel: 'fonctionnel', f: 'fonctionnel', ok: 'fonctionnel', defectueux: 'defectueux', def: 'defectueux', 'a reparer': 'a_reparer', reparation: 'a_reparer', rep: 'a_reparer', hs: 'hs', 'hors service': 'hs', ko: 'hs' };
+    return String(importText || '').split(/\r?\n/).map((raw, i) => {
+      const line = raw.trim();
+      if (!line) return null;
+      const cells = (line.includes('\t') ? line.split('\t') : line.split(';')).map((c) => c.trim());
+      if (i === 0 && /design|article|nom|name/i.test(cells[0] || '')) return null;
+      const [name = '', locRaw = '', qtyRaw = '', condRaw = '', notes = ''] = cells;
+      const location = LOC[norm(locRaw)];
+      const qty = Math.floor(Number(qtyRaw));
+      const condition = COND[norm(condRaw)];
+      const err = !name ? 'Désignation vide'
+        : !location ? `Lieu inconnu (« ${locRaw} »)`
+        : !Number.isFinite(qty) || qty < 0 ? `Quantité invalide (« ${qtyRaw} »)`
+        : !condition ? `Condition inconnue (« ${condRaw} »)` : '';
+      return { name, location, qty: Number.isFinite(qty) ? qty : 0, condition: condition || 'fonctionnel', notes, err };
+    }).filter(Boolean);
+  }, [importText]);
+
+  const submitImport = async () => {
+    const rows = parsedImport.filter((r) => !r.err && r.qty > 0);
+    if (!rows.length) return alert('Aucune ligne valide à importer.');
+    setBusy(true);
+    try {
+      const res = await apiFetchJson('/api/htc/import', {
+        method: 'POST',
+        body: JSON.stringify({
+          rows: rows.map((r) => ({ name: r.name, location: r.location, qty: r.qty, condition: r.condition, notes: r.notes })),
+          movementDate: importDate || undefined,
+          reason: importReason || undefined
+        })
+      });
+      setImportResult(res);
+      setImportText('');
+      await Promise.all([loadMovements(), loadItems(), loadStats()]);
+    } catch (e) { alert(e.message || 'Erreur.'); }
+    finally { setBusy(false); }
+  };
+
   const submitReturn = async () => {
     if (!retMv) return;
     const lines = Object.entries(retLines).filter(([, q]) => Number(q) >= 1).map(([lineId, q]) => ({ lineId, qty: Number(q) }));
@@ -622,7 +671,10 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                   </button>
                 ))}
                 {isManager && (
-                  <div className="ml-auto flex gap-2">
+                  <div className="ml-auto flex flex-wrap gap-2">
+                    <button onClick={() => { setImportOpen(true); setImportResult(null); }} className="border border-indigo-300 text-indigo-700 px-3 py-2 rounded-lg hover:bg-indigo-50 font-semibold text-sm disabled:opacity-60 inline-flex items-center gap-2">
+                      <Upload size={15} /> Import inventaire
+                    </button>
                     <button onClick={() => setRecOpen(true)} className="bg-sky-700 text-white px-4 py-2 rounded-lg hover:bg-sky-800 font-semibold text-sm disabled:opacity-60 inline-flex items-center gap-2">
                       <RotateCcw size={15} /> Bon de récupération
                     </button>
@@ -1065,6 +1117,87 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                 Émettre le bon de récupération
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ====== Dialog import inventaire initial ====== */}
+      {importOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-5 max-h-[90vh] overflow-y-auto">
+            <div className="font-bold text-base mb-1">Import inventaire initial</div>
+            <div className="text-xs text-gray-500 mb-3">
+              Collez votre tableau depuis Excel — une ligne par article, colonnes séparées par TAB ou « ; » :<br />
+              <code className="bg-gray-100 px-1.5 py-0.5 rounded">Désignation ; Lieu ; Quantité ; Condition ; Notes</code>
+              <span className="block mt-1">
+                Lieu : <b>entrepot</b> | <b>magasin</b> · Condition : fonctionnel | defectueux | a_reparer | hs (défaut : fonctionnel)
+              </span>
+            </div>
+            {importResult ? (
+              <div className="border border-emerald-300 bg-emerald-50 rounded-xl p-4">
+                <div className="font-bold text-sm text-emerald-900 mb-2">Import terminé ✓</div>
+                <div className="text-xs text-emerald-800 space-y-1">
+                  <div>Articles créés au catalogue : <b>{importResult.itemsCreated}</b> · existants mis à jour : <b>{importResult.itemsMatched}</b></div>
+                  {importResult.entry && <div>Bon d'entrée : <b className="font-mono">{importResult.entry.number}</b> ({importResult.entry.lines.length} ligne(s))</div>}
+                  {importResult.recovery && <div>Bon de récupération : <b className="font-mono">{importResult.recovery.number}</b> ({importResult.recovery.lines.length} ligne(s))</div>}
+                </div>
+                <div className="flex gap-2 mt-3 justify-end">
+                  {importResult.entry && <button className={btnGhost} onClick={() => printBon(importResult.entry)}>Imprimer le BE</button>}
+                  {importResult.recovery && <button className={btnGhost} onClick={() => printBon(importResult.recovery)}>Imprimer le RC</button>}
+                  <button className={btnPrimary} onClick={() => { setImportOpen(false); setImportResult(null); }}>Fermer</button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <textarea
+                  className={`${inputCls} font-mono text-xs h-40`}
+                  placeholder={'Batterie Leoch 12V 100AH;entrepot;6\nRedresseur Eltek;entrepot;2\nRadiateur 30 KVA Yanmar;magasin;1;defectueux;remplacé CBBZ0090'}
+                  value={importText}
+                  onChange={(e) => setImportText(e.target.value)}
+                />
+                {parsedImport.length > 0 && (
+                  <div className="mt-3 border border-gray-200 rounded-lg overflow-hidden max-h-52 overflow-y-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr className="text-left text-gray-500">
+                          <th className="px-2 py-1.5">Désignation</th><th className="px-2 py-1.5">Lieu</th>
+                          <th className="px-2 py-1.5">Qté</th><th className="px-2 py-1.5">Condition</th><th className="px-2 py-1.5">Statut</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {parsedImport.map((r, i) => (
+                          <tr key={i} className={r.err ? 'bg-rose-50 text-rose-700' : 'text-gray-700'}>
+                            <td className="px-2 py-1">{r.name || '—'}</td>
+                            <td className="px-2 py-1">{LOCATION_LABEL[r.location] || '—'}</td>
+                            <td className="px-2 py-1">{r.qty}</td>
+                            <td className="px-2 py-1">{CONDITION_LABEL[r.condition]}</td>
+                            <td className="px-2 py-1">{r.err || '✓'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <div className="grid sm:grid-cols-2 gap-2 mt-3">
+                  <div>
+                    <label className={labelCls}>Date d'inventaire</label>
+                    <input type="date" className={inputCls} value={importDate} onChange={(e) => setImportDate(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Motif</label>
+                    <input className={inputCls} placeholder="Inventaire initial — migration" value={importReason} onChange={(e) => setImportReason(e.target.value)} />
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-4 justify-end">
+                  <button className={btnGhost} onClick={() => { setImportOpen(false); setImportText(''); }}>Fermer</button>
+                  <button className={btnPrimary}
+                    disabled={busy || !parsedImport.length || parsedImport.some((r) => r.err) || !parsedImport.some((r) => r.qty > 0)}
+                    onClick={submitImport}>
+                    Importer ({parsedImport.filter((r) => !r.err && r.qty > 0).length} ligne(s))
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
