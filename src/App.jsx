@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { AlertCircle, AlertTriangle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users, Menu, ChevronLeft, Trash2, RotateCcw, Bell, Share2, Package, History } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Plus, Upload, Download, Calendar, Activity, CheckCircle, X, Edit, Filter, TrendingUp, Users, Menu, ChevronLeft, ChevronDown, ChevronRight, Trash2, RotateCcw, Bell, Share2, Package, History, Boxes, ClipboardList, FileText } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -29,6 +29,7 @@ import ResetConfirmModal from './components/reset/ResetConfirmModal';
 import InterventionsModal from './components/interventions/InterventionsModal';
 import HistoryModal from './components/history/HistoryModal';
 import AirFilterHistoryModal from './components/AirFilterHistoryModal';
+import HtcWarehouseModal from './components/htc/HtcWarehouseModal';
 import UploadBannerModal from './components/fiche/UploadBannerModal';
 import FicheModal from './components/fiche/FicheModal';
 import SuperAdminFicheChoiceModal from './components/fiche/SuperAdminFicheChoiceModal';
@@ -55,7 +56,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.23.0';
+const APP_VERSION = '6.24.0';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -94,6 +95,18 @@ const MenuSectionTitle = ({ children }) => (
   <div className="mt-3 mb-1 px-3 pt-3 text-[11px] font-bold uppercase tracking-wider text-sky-300/70 border-t border-white/10">
     {children}
   </div>
+);
+
+// En-tête de section pliable/dépliable du menu vertical.
+const MenuSectionCollapsible = ({ title, open, onToggle }) => (
+  <button
+    type="button"
+    onClick={onToggle}
+    className="mt-3 mb-1 px-3 pt-3 w-full flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-sky-300/70 border-t border-white/10 hover:text-sky-200 transition-colors text-left"
+  >
+    {open ? <ChevronDown size={13} className="flex-shrink-0" /> : <ChevronRight size={13} className="flex-shrink-0" />}
+    <span>{title}</span>
+  </button>
 );
 
 const GeneratorMaintenanceApp = () => {
@@ -212,6 +225,10 @@ const GeneratorMaintenanceApp = () => {
   const [ficheOpenSource, setFicheOpenSource] = useState('');
   const [ficheFlowMode, setFicheFlowMode] = useState('');
   const [warehouseReturnsOpenMode, setWarehouseReturnsOpenMode] = useState('readonly');
+  const [menuOpenVidanges, setMenuOpenVidanges] = useState(true);
+  const [menuOpenHtc, setMenuOpenHtc] = useState(true);
+  const [showHtcWarehouse, setShowHtcWarehouse] = useState(false);
+  const [htcInitialTab, setHtcInitialTab] = useState('stock');
   const [finalizeBusy, setFinalizeBusy] = useState(false);
   const [hideProcessButtonsOverride, setHideProcessButtonsOverride] = useState(false);
   const [signatureTypedName, setSignatureTypedName] = useState('');
@@ -394,6 +411,7 @@ const GeneratorMaintenanceApp = () => {
   const menuSectionInterventions = !isWarehouse || canUseInterventions;
   const menuSectionPm = canUsePm;
   const menuSectionWarehouse = isAdmin || isWarehouse || (canManagerVidangeActions && !isManagerBzvPool);
+  const menuSectionHtc = isWarehouse || isAdmin || isFieldSupervisor || isTechnician;
   const menuSectionAdmin = isAdmin || !DISABLE_PRESENCE_FEATURE;
 
   const zonalWarehousePresent = useMemo(() => {
@@ -8763,8 +8781,15 @@ return (
             </button>
           )}
 
-          {menuSectionInterventions && <MenuSectionTitle>Interventions &amp; vidanges</MenuSectionTitle>}
+          {menuSectionInterventions && (
+            <MenuSectionCollapsible
+              title="Interventions & vidanges"
+              open={menuOpenVidanges}
+              onToggle={() => setMenuOpenVidanges(!menuOpenVidanges)}
+            />
+          )}
 
+          {menuSectionInterventions && menuOpenVidanges && (<>
           {!isWarehouse && (!isTechnician ? (
             <button
               onClick={async () => {
@@ -8858,42 +8883,6 @@ return (
             </button>
 
           )}
-
-          {menuSectionPm && <MenuSectionTitle>Maintenance planifiée</MenuSectionTitle>}
-
-          {canUsePm && (
-            <button
-              onClick={async () => {
-                setSidebarOpen(false);
-                try {
-                  await refreshUsers();
-                } catch {
-                  // ignore
-                }
-                setShowAddForm(false);
-                setShowUpdateForm(false);
-                setShowEditForm(false);
-                setShowResetConfirm(false);
-                setShowDeleteConfirm(false);
-                setShowCalendar(false);
-                setShowHistory(false);
-                setShowFicheModal(false);
-                setShowBannerUpload(false);
-                setShowDayDetailsModal(false);
-                setShowInterventions(false);
-
-                setShowPm(true);
-                const m = pmMonth || new Date().toISOString().slice(0, 7);
-                await refreshPmAll(m);
-              }}
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
-            >
-              <TrendingUp size={18} />
-              Maintenances (PM)
-            </button>
-          )}
-
-          {menuSectionWarehouse && <MenuSectionTitle>Magasin &amp; stocks</MenuSectionTitle>}
 
           {isAdmin && (
             <button
@@ -9033,6 +9022,105 @@ return (
               <span className="flex-1">Historique consommables GE</span>
             </button>
           )}
+          </>)}
+
+          {menuSectionPm && <MenuSectionTitle>Maintenance planifiée</MenuSectionTitle>}
+
+          {canUsePm && (
+            <button
+              onClick={async () => {
+                setSidebarOpen(false);
+                try {
+                  await refreshUsers();
+                } catch {
+                  // ignore
+                }
+                setShowAddForm(false);
+                setShowUpdateForm(false);
+                setShowEditForm(false);
+                setShowResetConfirm(false);
+                setShowDeleteConfirm(false);
+                setShowCalendar(false);
+                setShowHistory(false);
+                setShowFicheModal(false);
+                setShowBannerUpload(false);
+                setShowDayDetailsModal(false);
+                setShowInterventions(false);
+
+                setShowPm(true);
+                const m = pmMonth || new Date().toISOString().slice(0, 7);
+                await refreshPmAll(m);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
+            >
+              <TrendingUp size={18} />
+              Maintenances (PM)
+            </button>
+          )}
+
+          {menuSectionHtc && (
+            <MenuSectionCollapsible
+              title="Magasin & Stocks HTC"
+              open={menuOpenHtc}
+              onToggle={() => setMenuOpenHtc(!menuOpenHtc)}
+            />
+          )}
+
+          {menuSectionHtc && menuOpenHtc && (<>
+            {(isWarehouse || isAdmin) && (
+              <button
+                onClick={() => {
+                  setSidebarOpen(false);
+                  setHtcInitialTab('stock');
+                  setShowHtcWarehouse(true);
+                }}
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
+              >
+                <Boxes size={18} />
+                <span className="flex-1">Stock matériel HTC</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                setSidebarOpen(false);
+                setHtcInitialTab('demandes');
+                setShowHtcWarehouse(true);
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
+            >
+              <ClipboardList size={18} />
+              <span className="flex-1">Demandes matériel HTC</span>
+            </button>
+
+            {(isWarehouse || isAdmin) && (
+              <button
+                onClick={() => {
+                  setSidebarOpen(false);
+                  setHtcInitialTab('bons');
+                  setShowHtcWarehouse(true);
+                }}
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
+              >
+                <FileText size={18} />
+                <span className="flex-1">Bons entrée / sortie / retour</span>
+              </button>
+            )}
+
+            {(isWarehouse || isAdmin) && (
+              <button
+                onClick={() => {
+                  setSidebarOpen(false);
+                  setHtcInitialTab('articles');
+                  setShowHtcWarehouse(true);
+                }}
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-950 flex items-center gap-2 text-base font-semibold"
+              >
+                <Package size={18} />
+                <span className="flex-1">Articles HTC</span>
+              </button>
+            )}
+          </>)}
 
           {menuSectionAdmin && <MenuSectionTitle>Administration</MenuSectionTitle>}
 
@@ -10359,6 +10447,15 @@ return (
           onCreateMovement={handleCreateStockMovement}
           onDeleteMovement={handleDeleteStockMovement}
           formatDate={formatDate}
+        />
+
+        <HtcWarehouseModal
+          open={showHtcWarehouse}
+          onClose={() => setShowHtcWarehouse(false)}
+          apiFetchJson={apiFetchJson}
+          isManager={isWarehouse || isAdmin}
+          sites={sites.filter((s) => String(s?.zone || 'BZV/POOL').trim().toUpperCase() === 'BZV/POOL')}
+          initialTab={htcInitialTab}
         />
 
         <DeleteSiteConfirmModal
