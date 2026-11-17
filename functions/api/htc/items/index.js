@@ -1,6 +1,6 @@
 import { ensureAdminUser, newId, isoNow } from '../../_utils/db.js';
-import { json, requireAuth, readJson } from '../../_utils/http.js';
-import { isHtcManager, canHtcRequest, htcZoneOk, htcStockMap, mapItem } from '../_utils.js';
+import { json, requireAuth, readJson, ymdToday } from '../../_utils/http.js';
+import { isHtcManager, canHtcRequest, htcZoneOk, htcStockMap, mapItem, allocHtcNumber } from '../_utils.js';
 
 export async function onRequestGet({ env, data, request }) {
   try {
@@ -53,8 +53,30 @@ export async function onRequestPost({ request, env, data }) {
       data.user.id, now, now
     ).run();
 
+    // Quantité initiale optionnelle → bon d'entrée automatique (inventaire initial ligne par ligne).
+    const initialQty = Math.floor(Number(body?.initialQty));
+    let entryNumber = '';
+    if (Number.isFinite(initialQty) && initialQty > 0 && initialQty <= 100000) {
+      const movId = newId();
+      entryNumber = await allocHtcNumber(env, 'entry');
+      await env.DB.prepare(
+        `INSERT INTO htc_movements (id, number, type, location, movement_date, site_id, site_name, reason,
+          requester_name, requester_role, signature_name, signature_image, status, created_by, created_at, updated_at)
+         VALUES (?, ?, 'entry', ?, ?, '', '', ?, ?, 'warehouse', '', '', 'issued', ?, ?, ?)`
+      ).bind(
+        movId, entryNumber, location,
+        String(body?.movementDate || '').trim() || ymdToday(),
+        String(body?.initialReason || 'Inventaire initial — création article').trim(),
+        String(data.user.technicianName || data.user.email || '').trim(),
+        String(data.user.id), now, now
+      ).run();
+      await env.DB.prepare(
+        'INSERT INTO htc_movement_lines (id, movement_id, item_id, item_name, location, qty, qty_returned, item_condition) VALUES (?, ?, ?, ?, ?, ?, 0, ?)'
+      ).bind(newId(), movId, id, name, location, initialQty, 'fonctionnel').run();
+    }
+
     const row = await env.DB.prepare('SELECT * FROM htc_items WHERE id = ?').bind(id).first();
-    return json({ ok: true, item: mapItem(row, {}) }, { status: 201 });
+    return json({ ok: true, item: mapItem(row, {}), entryNumber }, { status: 201 });
   } catch (e) {
     return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
   }

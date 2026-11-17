@@ -307,7 +307,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   const [retSigName, setRetSigName] = useState('');
 
   // Articles
-  const [itemForm, setItemForm] = useState({ id: '', name: '', category: 'other', location: 'entrepot', unit: 'pièce', notes: '' });
+  const [itemForm, setItemForm] = useState({ id: '', name: '', category: 'other', location: 'entrepot', unit: 'pièce', notes: '', initialQty: '' });
 
   const loadItems = useCallback(async () => {
     const d = await apiFetchJson('/api/htc/items?all=1');
@@ -594,9 +594,10 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       if (itemForm.id) {
         await apiFetchJson(`/api/htc/items/${itemForm.id}`, { method: 'PATCH', body: JSON.stringify(itemForm) });
       } else {
-        await apiFetchJson('/api/htc/items', { method: 'POST', body: JSON.stringify(itemForm) });
+        const res = await apiFetchJson('/api/htc/items', { method: 'POST', body: JSON.stringify(itemForm) });
+        if (res?.entryNumber) alert(`Article créé — bon d'entrée ${res.entryNumber} émis (${itemForm.initialQty} u. en stock).`);
       }
-      setItemForm({ id: '', name: '', category: 'other', location: 'entrepot', unit: 'pièce', notes: '' });
+      setItemForm({ id: '', name: '', category: 'other', location: 'entrepot', unit: 'pièce', notes: '', initialQty: '' });
       await loadItems();
     } catch (e) { alert(e.message || 'Erreur.'); }
     finally { setBusy(false); }
@@ -628,7 +629,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
 
   return (
     <div className="fixed inset-0 bg-indigo-900/35 flex items-center justify-center z-50 p-0 sm:p-4">
-      <div className="bg-white w-full h-full sm:h-auto sm:max-h-[94vh] sm:max-w-5xl sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="bg-white w-full h-full sm:h-auto sm:max-h-[96vh] sm:max-w-6xl lg:max-w-7xl 2xl:max-w-[92rem] sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden">
         {/* En-tête */}
         <div className="flex items-center gap-3 px-5 py-4 border-b bg-gradient-to-r from-indigo-600 via-sky-600 to-indigo-800 text-white">
           <Warehouse size={20} />
@@ -735,7 +736,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                   {items.filter((i) => i.active && Number(i.stockSite) > 0).length === 0 ? (
                     <div className="text-center text-gray-400 py-12 text-sm">Aucun retour site enregistré.</div>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3">
                       {items.filter((i) => i.active && Number(i.stockSite) > 0).map((it) => (
                         <div key={it.id} className="border border-stone-300 bg-stone-50 rounded-xl p-3.5">
                           <div className="font-semibold text-sm text-gray-800 leading-snug">{it.name}</div>
@@ -753,7 +754,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                   {isManager ? "Aucun article dans ce lieu — ajoutez-en via l'onglet Articles." : 'Aucun article disponible dans ce lieu.'}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3">
                   {itemsByLoc[stockLoc].map((it) => (
                     <div key={it.id} className={`border rounded-xl p-3.5 ${it.stock <= 0 ? 'border-rose-300 bg-rose-50/40' : 'border-gray-200 bg-white'}`}>
                       <div className="flex items-start justify-between gap-2">
@@ -977,7 +978,13 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
           {tab === 'articles' && isManager && (
             <div>
               <div className="border border-indigo-200 bg-indigo-50/40 rounded-xl p-4 mb-4">
-                <div className="font-bold text-sm text-indigo-900 mb-3">{itemForm.id ? 'Modifier l’article' : 'Nouvel article'}</div>
+                <div className="font-bold text-sm text-indigo-900 mb-1">{itemForm.id ? 'Modifier l’article' : 'Nouvel article'}</div>
+                {!itemForm.id && (
+                  <div className="text-[11px] text-indigo-700/80 mb-2">
+                    Inventaire initial : renseignez <b>Quantité initiale</b> → un <b>Bon d'entrée</b> est émis automatiquement.
+                    Plusieurs articles d'un coup → bouton <b>« Import inventaire »</b> (onglet Stock).
+                  </div>
+                )}
                 <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
                   <input className={`${inputCls} sm:col-span-2`} placeholder="Désignation *" value={itemForm.name} onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })} />
                   <select className={inputCls} value={itemForm.location} onChange={(e) => setItemForm({ ...itemForm, location: e.target.value })}>
@@ -996,8 +1003,16 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                   <input className={inputCls} placeholder="Unité (pièce…)" value={itemForm.unit} onChange={(e) => setItemForm({ ...itemForm, unit: e.target.value })} />
                   <input className={`${inputCls} sm:col-span-3`} placeholder="Notes (marque, référence…)" value={itemForm.notes} onChange={(e) => setItemForm({ ...itemForm, notes: e.target.value })} />
                 </div>
+                {!itemForm.id && (
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-2">
+                    <div>
+                      <label className={labelCls}>Quantité initiale (optionnel)</label>
+                      <input type="number" min="0" className={inputCls} placeholder="0" value={itemForm.initialQty} onChange={(e) => setItemForm({ ...itemForm, initialQty: e.target.value })} />
+                    </div>
+                  </div>
+                )}
                 <div className="flex gap-2 mt-3 justify-end">
-                  {itemForm.id && <button className={btnGhost} onClick={() => setItemForm({ id: '', name: '', category: 'other', location: 'entrepot', unit: 'pièce', notes: '' })}>Annuler</button>}
+                  {itemForm.id && <button className={btnGhost} onClick={() => setItemForm({ id: '', name: '', category: 'other', location: 'entrepot', unit: 'pièce', notes: '', initialQty: '' })}>Annuler</button>}
                   <button className={btnPrimary} onClick={saveItem} disabled={busy}>{itemForm.id ? 'Enregistrer' : 'Ajouter'}</button>
                 </div>
               </div>
@@ -1035,7 +1050,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       {/* ====== Dialog traitement demande (valider/refuser) ====== */}
       {procReq && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-4 sm:p-5 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-4 sm:p-5 max-h-[92vh] overflow-y-auto">
             <div className="font-bold text-base mb-2">
               {procReq.mode === 'issue' ? `Valider → Bon de sortie` : `Refuser la demande`}
             </div>
@@ -1071,7 +1086,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       {/* ====== Dialog retour ====== */}
       {retMv && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-4 sm:p-5 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-4 sm:p-5 max-h-[92vh] overflow-y-auto">
             <div className="font-bold text-base mb-1">Retour matériel — {retMv.number}</div>
             <div className="text-xs text-gray-500 mb-3">Quantités retournées par ligne :</div>
             {retMv.lines.map((l) => {
@@ -1105,7 +1120,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       {/* ====== Dialog bon de récupération (retour terrain, jamais passé par le stock) ====== */}
       {recOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl p-4 sm:p-5 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl p-4 sm:p-5 max-h-[92vh] overflow-y-auto">
             <div className="font-bold text-base mb-1">Bon de récupération — matériel ramené d'un site</div>
             <div className="text-xs text-gray-500 mb-3">Matériel n'ayant jamais transité par le stock STHIC. La condition détermine l'entrée en stock.</div>
             <RecoveryLinesEditor items={items.filter((i) => i.active)} lines={recLines} setLines={setRecLines} disabled={busy} inputCls={inputCls} />
@@ -1168,7 +1183,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       {/* ====== Dialog import inventaire initial ====== */}
       {importOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-4 sm:p-5 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl p-4 sm:p-5 max-h-[92vh] overflow-y-auto">
             <div className="font-bold text-base mb-1">Import inventaire initial</div>
             <div className="text-xs text-gray-500 mb-3">
               Collez votre tableau depuis Excel — une ligne par article, colonnes séparées par TAB ou « ; » :<br />
@@ -1209,7 +1224,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                   onChange={(e) => setImportText(e.target.value)}
                 />
                 {parsedImport.length > 0 && (
-                  <div className="mt-3 border border-gray-200 rounded-lg overflow-auto max-h-52">
+                  <div className="mt-3 border border-gray-200 rounded-lg overflow-auto max-h-80">
                     <table className="w-full text-xs">
                       <thead className="bg-gray-50 sticky top-0">
                         <tr className="text-left text-gray-500">
@@ -1258,7 +1273,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       {/* ====== Dialog bon d'entrée ====== */}
       {entryOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-4 sm:p-5 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-4 sm:p-5 max-h-[92vh] overflow-y-auto">
             <div className="font-bold text-base mb-3">Bon d'entrée — réception matériel</div>
             <div className="hidden sm:grid grid-cols-[1fr_5.5rem_2rem] gap-2 mb-1 px-0.5">
               <span className={labelCls}>Article</span>
