@@ -639,6 +639,22 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
     finally { setBusy(false); }
   };
 
+  // Réinitialisation TOTALE du module (tests / remise à blanc) — magasinier uniquement.
+  const resetModule = async () => {
+    if (!window.confirm('Réinitialiser TOUT le module HTC ?\n\nArticles, demandes et tous les bons seront définitivement supprimés.')) return;
+    const word = window.prompt('Tapez REINITIALISER pour confirmer la suppression totale :');
+    if (String(word || '').trim().toUpperCase() !== 'REINITIALISER') return alert('Annulé — rien n\'a été supprimé.');
+    setBusy(true);
+    try {
+      const res = await apiFetchJson('/api/htc/reset', { method: 'POST', body: JSON.stringify({ confirm: 'REINITIALISER' }) });
+      const d = res?.deleted || {};
+      alert(`Module réinitialisé.\nArticles : ${d.items ?? 0} · Demandes : ${d.requests ?? 0} · Bons : ${d.movements ?? 0}`);
+      setTab('stock');
+      await Promise.all([loadMovements(), loadItems(), loadRequests(), loadStats()]);
+    } catch (e) { alert(e.message || 'Erreur.'); }
+    finally { setBusy(false); }
+  };
+
   if (!open) return null;
 
   const tabs = [
@@ -1015,6 +1031,21 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* Zone dangereuse — réinitialisation complète (magasinier uniquement) */}
+              {isManager && (
+                <div className="mt-6 border border-rose-200 bg-rose-50/50 rounded-xl p-4">
+                  <div className="text-xs font-bold uppercase tracking-wide text-rose-700 mb-1">Zone dangereuse</div>
+                  <div className="text-xs text-rose-600/90 mb-3">
+                    Efface TOUT le module : articles, demandes, bons (entrées, sorties, retours, récupérations)
+                    et remet la numérotation à zéro. Réservé à la remise à blanc pour tests.
+                  </div>
+                  <button onClick={resetModule} disabled={busy}
+                    className="text-xs bg-rose-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-rose-700 disabled:opacity-60 inline-flex items-center gap-2">
+                    <Trash2 size={14} /> Tout réinitialiser
+                  </button>
                 </div>
               )}
             </div>
