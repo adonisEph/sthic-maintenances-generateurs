@@ -26,6 +26,9 @@ const STATUS_CLS = {
 const REQUESTER_ROLE_LABEL = {
   field_supervisor: 'Field Supervisor', technician: 'Technicien',
   htc_supervisor: 'Superviseur Zonal HTC', htc_logistician: 'Logisticien HTC',
+  resp_ingenierie: 'Responsable Ingénierie', service_ingenierie: 'Service Ingénierie',
+  resp_projets: 'Responsable Projets', directeur_operations: 'Directeur des Opérations',
+  directeur_performance: 'Directeur Performance',
   supplier_agent: 'Agent fournisseur', manager: 'Manager', warehouse: 'Magasinier', admin: 'Admin'
 };
 
@@ -78,7 +81,7 @@ function printBon(mv) {
   *{box-sizing:border-box}
   body{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;padding:22px;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .top{display:flex;align-items:center;gap:14px;border-bottom:2.5px solid #1e3a5f;padding-bottom:10px}
-  .top img{height:68px;width:auto}
+  .top img{height:104px;width:auto}
   .top .t{flex:1}
   .top .t .doc{font-size:19px;font-weight:800;color:#1e3a5f;letter-spacing:.3px}
   .top .t .sub{font-size:10.5px;color:#64748b;margin-top:2px}
@@ -1392,6 +1395,11 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                 <select className={inputCls} value={entrySenderRole} onChange={(e) => setEntrySenderRole(e.target.value)}>
                   <option value="htc_logistician">Logisticien HTC</option>
                   <option value="htc_supervisor">Superviseur Zonal HTC</option>
+                  <option value="resp_ingenierie">Responsable Ingénierie</option>
+                  <option value="service_ingenierie">Service Ingénierie</option>
+                  <option value="resp_projets">Responsable Projets</option>
+                  <option value="directeur_operations">Directeur des Opérations</option>
+                  <option value="directeur_performance">Directeur Performance</option>
                   <option value="field_supervisor">Field Supervisor</option>
                   <option value="technician">Technicien</option>
                   <option value="supplier_agent">Agent fournisseur</option>
