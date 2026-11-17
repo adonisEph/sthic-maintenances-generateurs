@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Warehouse, Store, ClipboardList, FileText, Boxes, RefreshCw, AlertTriangle, ArrowRight, PackageCheck, PackageMinus, PackagePlus } from 'lucide-react';
+import { Warehouse, Store, ClipboardList, FileText, Boxes, RefreshCw, AlertTriangle, ArrowRight, PackageCheck, PackageMinus, PackagePlus, RotateCcw } from 'lucide-react';
 import { toastAlert as alert } from '../../utils/feedback';
 
 const LOCATION_LABEL = { entrepot: 'Entrepôt', magasin: 'Magasin (Buffer)' };
@@ -12,11 +12,12 @@ const STATUS_CLS = {
   returned: 'bg-emerald-100 text-emerald-900 border-emerald-200',
   cancelled: 'bg-gray-100 text-gray-500 border-gray-200'
 };
-const TYPE_LABEL = { exit: 'Sortie', entry: 'Entrée', return: 'Retour' };
+const TYPE_LABEL = { exit: 'Sortie', entry: 'Entrée', return: 'Retour', recovery: 'Récupération' };
 const TYPE_CLS = {
   exit: 'bg-orange-100 text-orange-900 border-orange-200',
   entry: 'bg-emerald-100 text-emerald-900 border-emerald-200',
-  return: 'bg-indigo-100 text-indigo-900 border-indigo-200'
+  return: 'bg-indigo-100 text-indigo-900 border-indigo-200',
+  recovery: 'bg-sky-100 text-sky-900 border-sky-200'
 };
 const fmtDate = (v) => {
   if (!v) return '—';
@@ -96,6 +97,8 @@ const HtcDashboard = ({ apiFetchJson, onOpenModule }) => {
           <span className="inline-flex items-center gap-1"><PackagePlus size={13} className="text-emerald-600" /><b className="text-emerald-700">{stats.monthMovements?.entry ?? 0}</b> entrée(s)</span>
           <span className="inline-flex items-center gap-1"><PackageMinus size={13} className="text-orange-600" /><b className="text-orange-700">{stats.monthMovements?.exit ?? 0}</b> sortie(s)</span>
           <span className="inline-flex items-center gap-1"><PackageCheck size={13} className="text-indigo-600" /><b className="text-indigo-700">{stats.monthMovements?.return ?? 0}</b> retour(s)</span>
+          <span className="inline-flex items-center gap-1"><RotateCcw size={13} className="text-sky-600" /><b className="text-sky-700">{stats.monthMovements?.recovery ?? 0}</b> récupération(s)</span>
+          <span className="text-stone-500">Retour site : <b>{stats?.siteReturnUnits ?? 0}</b> u. non fonctionnelle(s)</span>
         </div>
       )}
 

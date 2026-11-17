@@ -7,8 +7,9 @@ import SignaturePad from './SignaturePad';
 import { toastAlert as alert } from '../../utils/feedback';
 
 const LOCATION_LABEL = { entrepot: 'Entrepôt', magasin: 'Magasin (Buffer)' };
-const TYPE_LABEL = { exit: 'Sortie', entry: 'Entrée', return: 'Retour' };
-const TYPE_BON = { exit: 'BON DE SORTIE', entry: "BON D'ENTRÉE", return: 'BON DE RETOUR' };
+const TYPE_LABEL = { exit: 'Sortie', entry: 'Entrée', return: 'Retour', recovery: 'Récupération' };
+const TYPE_BON = { exit: 'BON DE SORTIE', entry: "BON D'ENTRÉE", return: 'BON DE RETOUR', recovery: 'BON DE RÉCUPÉRATION' };
+const CONDITION_LABEL = { fonctionnel: 'Fonctionnel', defectueux: 'Défectueux', a_reparer: 'À réparer', hs: 'HS' };
 const STATUS_LABEL = {
   pending: 'En attente', issued: 'Traitée', rejected: 'Refusée', cancelled: 'Annulée',
   partial_return: 'Retour partiel', returned: 'Retournée'
@@ -42,6 +43,7 @@ function printBon(mv) {
       <td class="c">${esc(LOCATION_LABEL[l.location] || l.location || '—')}</td>
       <td class="c">${l.qty}</td>
       ${mv.type === 'exit' ? `<td class="c">${l.qtyReturned || 0}</td>` : ''}
+      ${mv.type === 'recovery' ? `<td class="c">${esc(CONDITION_LABEL[l.condition] || 'Fonctionnel')}</td>` : ''}
     </tr>`).join('');
   const sig = mv.signatureImage
     ? `<img src="${mv.signatureImage}" alt="signature" style="max-height:52px;max-width:180px"/>`
@@ -82,18 +84,18 @@ function printBon(mv) {
   </div>
   <div class="meta">
     <div><div class="l">Lieu</div><div class="v">${esc(LOCATION_LABEL[mv.location] || mv.location)}</div></div>
-    <div><div class="l">Demandeur</div><div class="v">${esc(mv.requesterName || '—')}</div></div>
+    <div><div class="l">${mv.type === 'recovery' ? 'Ramené par' : 'Demandeur'}</div><div class="v">${esc(mv.requesterName || '—')}</div></div>
     <div><div class="l">Fonction</div><div class="v">${esc(REQUESTER_ROLE_LABEL[mv.requesterRole] || mv.requesterRole || '—')}</div></div>
-    <div><div class="l">Destination</div><div class="v">${esc(mv.siteName || '—')}</div></div>
+    <div><div class="l">${mv.type === 'recovery' ? 'Site de récupération' : 'Destination'}</div><div class="v">${esc(mv.siteName || '—')}</div></div>
   </div>
   <table>
-    <thead><tr><th class="n">#</th><th>Désignation</th><th>Lieu</th><th>Qté</th>${mv.type === 'exit' ? '<th>Retourné</th>' : ''}</tr></thead>
+    <thead><tr><th class="n">#</th><th>Désignation</th><th>Lieu</th><th>Qté</th>${mv.type === 'exit' ? '<th>Retourné</th>' : ''}${mv.type === 'recovery' ? '<th>Condition</th>' : ''}</tr></thead>
     <tbody>${rows}</tbody>
   </table>
   ${mv.reason ? `<div class="reason"><b>Motif :</b> ${esc(mv.reason)}</div>` : ''}
   ${mv.returnOfNumber ? `<div class="reason"><b>Retour de :</b> ${esc(mv.returnOfNumber)}</div>` : ''}
   <div class="sign">
-    <div class="b">${sig}Signature du demandeur</div>
+    <div class="b">${sig}Signature ${mv.type === 'recovery' ? 'de qui ramène' : 'du demandeur'}</div>
     <div class="b"><div class="signame">${esc(mv.createdByName || '')}</div>Signature du magasinier</div>
   </div>
   <div class="foot">Document généré le ${esc(new Date().toLocaleDateString('fr-FR'))} · STHIC — Gestion Maintenance &amp; Vidanges</div>
@@ -143,6 +145,74 @@ const LinesEditor = ({ items, lines, setLines, disabled }) => {
       <button type="button" onClick={addLine} disabled={disabled}
         className="text-sm text-indigo-700 font-semibold hover:underline inline-flex items-center gap-1 disabled:opacity-40">
         <Plus size={14} /> Ajouter un article
+      </button>
+    </div>
+  );
+};
+
+// ---------- Lignes bon de récupération (article existant OU à la volée + condition) ----------
+const RecoveryLinesEditor = ({ items, lines, setLines, disabled, inputCls }) => {
+  const blank = { mode: 'existing', itemId: '', qty: 1, condition: 'fonctionnel', newName: '', newLocation: 'entrepot' };
+  const addLine = () => setLines([...lines, { ...blank }]);
+  const setLine = (i, patch) => setLines(lines.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  const rmLine = (i) => setLines(lines.filter((_, idx) => idx !== i));
+  const sub = 'block text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-0.5';
+  return (
+    <div className="space-y-2">
+      {lines.map((l, i) => (
+        <div key={i} className="border border-gray-200 rounded-lg p-2.5 bg-gray-50/60">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="inline-flex rounded-md border border-gray-300 overflow-hidden text-[11px] font-semibold">
+              <button type="button" disabled={disabled} onClick={() => setLine(i, { mode: 'existing' })}
+                className={`px-2.5 py-1 ${l.mode !== 'new' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500'}`}>Article existant</button>
+              <button type="button" disabled={disabled} onClick={() => setLine(i, { mode: 'new' })}
+                className={`px-2.5 py-1 ${l.mode === 'new' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500'}`}>Nouvel article</button>
+            </div>
+            <button type="button" onClick={() => rmLine(i)} disabled={disabled || lines.length <= 1}
+              className="ml-auto p-1.5 text-gray-400 hover:text-rose-600 disabled:opacity-40">
+              <Trash2 size={15} />
+            </button>
+          </div>
+          {l.mode === 'new' ? (
+            <div className="grid sm:grid-cols-[1fr_9.5rem] gap-2 mb-2">
+              <div>
+                <label className={sub}>Désignation *</label>
+                <input className={inputCls} placeholder="Ex. Radiateur 30 KVA Yanmar" value={l.newName} disabled={disabled} onChange={(e) => setLine(i, { newName: e.target.value })} />
+              </div>
+              <div>
+                <label className={sub}>Lieu</label>
+                <select className={inputCls} value={l.newLocation} disabled={disabled} onChange={(e) => setLine(i, { newLocation: e.target.value })}>
+                  <option value="entrepot">Entrepôt</option>
+                  <option value="magasin">Magasin (Buffer)</option>
+                </select>
+              </div>
+            </div>
+          ) : (
+            <div className="mb-2">
+              <label className={sub}>Article</label>
+              <select className={inputCls} value={l.itemId} disabled={disabled} onChange={(e) => setLine(i, { itemId: e.target.value })}>
+                <option value="">— Choisir un article —</option>
+                {items.map((it) => <option key={it.id} value={it.id}>{it.name} · {LOCATION_LABEL[it.location] || it.location}</option>)}
+              </select>
+            </div>
+          )}
+          <div className="grid grid-cols-[6rem_1fr] gap-2">
+            <div>
+              <label className={sub}>Quantité</label>
+              <input type="number" min="1" max="10000" className={`${inputCls} text-center`} value={l.qty} disabled={disabled} onChange={(e) => setLine(i, { qty: e.target.value })} />
+            </div>
+            <div>
+              <label className={sub}>Condition</label>
+              <select className={inputCls} value={l.condition} disabled={disabled} onChange={(e) => setLine(i, { condition: e.target.value })}>
+                {Object.entries(CONDITION_LABEL).map(([v, lab]) => <option key={v} value={v}>{lab}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+      ))}
+      <button type="button" onClick={addLine} disabled={disabled}
+        className="text-sm text-indigo-700 font-semibold hover:underline inline-flex items-center gap-1 disabled:opacity-40">
+        <Plus size={14} /> Ajouter une ligne
       </button>
     </div>
   );
@@ -203,6 +273,18 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   const [procReason, setProcReason] = useState('');
   const [procSigImg, setProcSigImg] = useState('');
   const [procSigName, setProcSigName] = useState('');
+
+  // Récupération terrain (matériel ramené d'un site, jamais passé par le stock STHIC)
+  const [recOpen, setRecOpen] = useState(false);
+  const recBlankLine = { mode: 'existing', itemId: '', qty: 1, condition: 'fonctionnel', newName: '', newLocation: 'entrepot' };
+  const [recLines, setRecLines] = useState([recBlankLine]);
+  const [recSite, setRecSite] = useState('');
+  const [recReturner, setRecReturner] = useState('');
+  const [recReturnerRole, setRecReturnerRole] = useState('technician');
+  const [recDate, setRecDate] = useState('');
+  const [recReason, setRecReason] = useState('');
+  const [recSigImg, setRecSigImg] = useState('');
+  const [recSigName, setRecSigName] = useState('');
 
   // Retour
   const [retMv, setRetMv] = useState(null);
@@ -364,6 +446,34 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
     finally { setBusy(false); }
   };
 
+  const submitRecovery = async () => {
+    const lines = recLines.filter((l) => (l.mode === 'new' ? l.newName.trim() : l.itemId) && Number(l.qty) >= 1);
+    if (!lines.length) return alert('Ajoute au moins une ligne valide.');
+    if (!recSite) return alert('Site de récupération requis.');
+    if (!recReturner.trim()) return alert('Indique qui ramène le matériel.');
+    const site = sitesBzv.find((s) => String(s.id) === String(recSite));
+    setBusy(true);
+    try {
+      const res = await apiFetchJson('/api/htc/recoveries', {
+        method: 'POST',
+        body: JSON.stringify({
+          siteId: site?.id || '', siteName: site ? siteLabel(site) : recSite,
+          returnerName: recReturner.trim(), returnerRole: recReturnerRole,
+          movementDate: recDate || undefined, reason: recReason,
+          signatureName: recSigName, signatureImage: recSigImg,
+          lines: lines.map((l) => (l.mode === 'new'
+            ? { newItem: { name: l.newName.trim(), location: l.newLocation }, qty: Number(l.qty), condition: l.condition }
+            : { itemId: l.itemId, qty: Number(l.qty), condition: l.condition }))
+        })
+      });
+      setRecOpen(false);
+      setRecLines([{ ...recBlankLine }]); setRecSite(''); setRecReturner(''); setRecDate(''); setRecReason(''); setRecSigImg(''); setRecSigName('');
+      await Promise.all([loadMovements(), loadItems(), loadStats()]);
+      if (res?.movement && window.confirm(`Bon de récupération ${res.movement.number} créé. Imprimer ?`)) printBon(res.movement);
+    } catch (e) { alert(e.message || 'Erreur.'); }
+    finally { setBusy(false); }
+  };
+
   const submitReturn = async () => {
     if (!retMv) return;
     const lines = Object.entries(retLines).filter(([, q]) => Number(q) >= 1).map(([lineId, q]) => ({ lineId, qty: Number(q) }));
@@ -493,27 +603,53 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                   <span><b className="text-emerald-700">{stats.monthMovements?.entry ?? 0}</b> entrée(s)</span>
                   <span><b className="text-orange-700">{stats.monthMovements?.exit ?? 0}</b> sortie(s)</span>
                   <span><b className="text-indigo-700">{stats.monthMovements?.return ?? 0}</b> retour(s)</span>
+                  <span><b className="text-sky-700">{stats.monthMovements?.recovery ?? 0}</b> récupération(s)</span>
                   <span className="ml-auto">{dash.articles} article(s) au catalogue</span>
                 </div>
               )}
-              <div className="flex gap-2 mb-4">
-                {['entrepot', 'magasin'].map((loc) => (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {[['entrepot', Warehouse], ['magasin', Store], ['retour', RotateCcw]].map(([loc, Icon]) => (
                   <button key={loc} onClick={() => setStockLoc(loc)}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold border ${
                       stockLoc === loc ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
                     }`}>
-                    {loc === 'entrepot' ? <Warehouse size={15} /> : <Store size={15} />}
-                    {LOCATION_LABEL[loc]}
-                    <span className="text-xs opacity-75">({itemsByLoc[loc].length})</span>
+                    <Icon size={15} />
+                    {loc === 'retour' ? 'Retour Site' : LOCATION_LABEL[loc]}
+                    <span className="text-xs opacity-75">({loc === 'retour' ? items.filter((i) => i.active && Number(i.stockSite) > 0).length : itemsByLoc[loc].length})</span>
                   </button>
                 ))}
                 {isManager && (
-                  <button onClick={() => setEntryOpen(true)} className={`${btnPrimary} ml-auto`}>
-                    <Plus size={15} /> Bon d'entrée
-                  </button>
+                  <div className="ml-auto flex gap-2">
+                    <button onClick={() => setRecOpen(true)} className="bg-sky-700 text-white px-4 py-2 rounded-lg hover:bg-sky-800 font-semibold text-sm disabled:opacity-60 inline-flex items-center gap-2">
+                      <RotateCcw size={15} /> Bon de récupération
+                    </button>
+                    <button onClick={() => setEntryOpen(true)} className={btnPrimary}>
+                      <Plus size={15} /> Bon d'entrée
+                    </button>
+                  </div>
                 )}
               </div>
-              {itemsByLoc[stockLoc].length === 0 ? (
+
+              {stockLoc === 'retour' ? (
+                <div>
+                  <div className="text-xs text-gray-500 mb-3">Matériel non fonctionnel ramené des sites (défectueux / à réparer / HS) — documenté hors stock disponible.</div>
+                  {items.filter((i) => i.active && Number(i.stockSite) > 0).length === 0 ? (
+                    <div className="text-center text-gray-400 py-12 text-sm">Aucun retour site enregistré.</div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {items.filter((i) => i.active && Number(i.stockSite) > 0).map((it) => (
+                        <div key={it.id} className="border border-stone-300 bg-stone-50 rounded-xl p-3.5">
+                          <div className="font-semibold text-sm text-gray-800 leading-snug">{it.name}</div>
+                          <div className="text-[11px] text-gray-500 mt-0.5">{LOCATION_LABEL[it.location] || it.location}{it.notes ? ` · ${it.notes}` : ''}</div>
+                          <div className="text-2xl font-extrabold mt-2 text-stone-600">
+                            {it.stockSite} <span className="text-xs font-semibold text-gray-400">{it.unit}(s)</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : itemsByLoc[stockLoc].length === 0 ? (
                 <div className="text-center text-gray-400 py-12 text-sm">
                   {isManager ? "Aucun article dans ce lieu — ajoutez-en via l'onglet Articles." : 'Aucun article disponible dans ce lieu.'}
                 </div>
@@ -529,6 +665,9 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                       <div className={`text-2xl font-extrabold mt-2 ${it.stock <= 0 ? 'text-rose-600' : 'text-indigo-700'}`}>
                         {it.stock ?? 0} <span className="text-xs font-semibold text-gray-400">{it.unit}(s)</span>
                       </div>
+                      {Number(it.stockSite) > 0 && (
+                        <div className="text-[10px] font-semibold text-stone-500 mt-0.5">Retour site : {it.stockSite} non fonctionnel(s)</div>
+                      )}
                       <div className="flex gap-2 mt-2.5">
                         {isManager ? (
                           <button onClick={() => entryItem(it)}
@@ -668,7 +807,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
             <div>
               <div className="flex flex-wrap gap-2 mb-3 items-center">
                 <div className="flex border border-gray-300 rounded-lg overflow-hidden">
-                  {[['all', 'Tous'], ['exit', 'Sorties'], ['entry', 'Entrées'], ['return', 'Retours']].map(([v, l]) => (
+                  {[['all', 'Tous'], ['exit', 'Sorties'], ['entry', 'Entrées'], ['return', 'Retours'], ['recovery', 'Récup.']].map(([v, l]) => (
                     <button key={v} onClick={() => setMvType(v)}
                       className={`px-3 py-1.5 text-xs font-semibold ${mvType === v ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
                       {l}
@@ -700,6 +839,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                           mv.type === 'exit' ? 'bg-orange-100 text-orange-900 border-orange-200'
                           : mv.type === 'entry' ? 'bg-emerald-100 text-emerald-900 border-emerald-200'
+                          : mv.type === 'recovery' ? 'bg-sky-100 text-sky-900 border-sky-200'
                           : 'bg-indigo-100 text-indigo-900 border-indigo-200'}`}>
                           {TYPE_LABEL[mv.type]}
                         </span>
@@ -708,7 +848,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                       </div>
                       <div className="text-xs text-gray-600 mt-1.5">
                         {mv.requesterName ? <><b>{mv.requesterName}</b>{mv.siteName ? ` → ${mv.siteName}` : ''} · </> : null}
-                        {mv.lines.map((l) => `${l.qty}× ${l.itemName}${l.qtyReturned ? ` (ret. ${l.qtyReturned})` : ''}`).join(' · ')}
+                        {mv.lines.map((l) => `${l.qty}× ${l.itemName}${l.qtyReturned ? ` (ret. ${l.qtyReturned})` : ''}${mv.type === 'recovery' ? ` [${CONDITION_LABEL[l.condition] || 'Fonctionnel'}]` : ''}`).join(' · ')}
                       </div>
                       {mv.returnOfNumber ? <div className="text-[11px] text-gray-400 mt-0.5">Retour de {mv.returnOfNumber}</div> : null}
                       <div className="flex gap-2 mt-2">
@@ -857,6 +997,59 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
               <button className={btnGhost} onClick={() => setRetMv(null)}>Fermer</button>
               <button className={btnPrimary} disabled={busy || (!retSigImg && !retSigName.trim()) || !Object.values(retLines).some((q) => Number(q) >= 1)} onClick={submitReturn}>
                 Émettre le bon de retour
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ====== Dialog bon de récupération (retour terrain, jamais passé par le stock) ====== */}
+      {recOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl p-5 max-h-[90vh] overflow-y-auto">
+            <div className="font-bold text-base mb-1">Bon de récupération — matériel ramené d'un site</div>
+            <div className="text-xs text-gray-500 mb-3">Matériel n'ayant jamais transité par le stock STHIC. La condition détermine l'entrée en stock.</div>
+            <RecoveryLinesEditor items={items.filter((i) => i.active)} lines={recLines} setLines={setRecLines} disabled={busy} inputCls={inputCls} />
+            <div className="grid sm:grid-cols-2 gap-2 mt-3">
+              <div>
+                <label className={labelCls}>Site de récupération *</label>
+                <select className={inputCls} value={recSite} onChange={(e) => setRecSite(e.target.value)}>
+                  <option value="">— Choisir un site —</option>
+                  {sitesBzv.map((s) => <option key={s.id} value={s.id}>{siteLabel(s)}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Date de récupération</label>
+                <input type="date" className={inputCls} value={recDate} onChange={(e) => setRecDate(e.target.value)} />
+              </div>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-2 mt-2">
+              <div>
+                <label className={labelCls}>Ramené par *</label>
+                <input className={inputCls} placeholder="Nom de la personne qui ramène" value={recReturner} onChange={(e) => setRecReturner(e.target.value)} />
+              </div>
+              <div>
+                <label className={labelCls}>Fonction</label>
+                <select className={inputCls} value={recReturnerRole} onChange={(e) => setRecReturnerRole(e.target.value)}>
+                  <option value="technician">Technicien</option>
+                  <option value="field_supervisor">Field Supervisor</option>
+                  <option value="htc_supervisor">Superviseur Zonal HTC</option>
+                </select>
+              </div>
+            </div>
+            <div className="mt-2">
+              <label className={labelCls}>Motif / contexte</label>
+              <input className={inputCls} placeholder="Ex. radiateur défectueux remplacé sur site" value={recReason} onChange={(e) => setRecReason(e.target.value)} />
+            </div>
+            <div className="mt-3">
+              <label className={labelCls}>Signature *</label>
+              <SignBlock sigImg={recSigImg} setSigImg={setRecSigImg} sigName={recSigName} setSigName={setRecSigName} />
+            </div>
+            <div className="flex gap-2 mt-4 justify-end">
+              <button className={btnGhost} onClick={() => setRecOpen(false)}>Fermer</button>
+              <button className="bg-sky-700 text-white px-4 py-2 rounded-lg hover:bg-sky-800 font-semibold text-sm disabled:opacity-60"
+                disabled={busy || (!recSigImg && !recSigName.trim())} onClick={submitRecovery}>
+                Émettre le bon de récupération
               </button>
             </div>
           </div>

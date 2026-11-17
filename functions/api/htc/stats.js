@@ -31,8 +31,16 @@ export async function onRequestGet({ env, data }) {
       `SELECT m.type AS t, COUNT(*) AS n FROM htc_movements m
        WHERE m.status != 'cancelled' AND m.movement_date >= ? GROUP BY m.type`
     ).bind(monthStart).all();
-    const month = { entry: 0, exit: 0, return: 0 };
+    const month = { entry: 0, exit: 0, return: 0, recovery: 0 };
     for (const r of monthRes?.results || []) month[r.t] = Number(r.n || 0);
+
+    // Matériel non-fonctionnel documenté en stock « Retour Site ».
+    const site = await env.DB.prepare(
+      `SELECT COALESCE(SUM(l.qty), 0) AS units
+       FROM htc_movement_lines l
+       JOIN htc_movements m ON m.id = l.movement_id
+       WHERE m.type = 'recovery' AND m.status != 'cancelled' AND l.item_condition != 'fonctionnel'`
+    ).first();
 
     return json({
       ok: true,
@@ -40,6 +48,7 @@ export async function onRequestGet({ env, data }) {
         pendingRequests: Number(pend?.n || 0),
         materialOutUnits: Number(out?.units || 0),
         openExitVouchers: Number(out?.vouchers || 0),
+        siteReturnUnits: Number(site?.units || 0),
         monthMovements: month
       }
     });

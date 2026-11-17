@@ -19,7 +19,7 @@ export async function onRequestGet({ env, data, request }) {
 
     const clauses = ['1=1'];
     const binds = [];
-    if (['exit', 'entry', 'return'].includes(type)) { clauses.push('m.type = ?'); binds.push(type); }
+    if (['exit', 'entry', 'return', 'recovery'].includes(type)) { clauses.push('m.type = ?'); binds.push(type); }
     if (['entrepot', 'magasin'].includes(location)) { clauses.push('m.location = ?'); binds.push(location); }
     if (from) { clauses.push('m.movement_date >= ?'); binds.push(from); }
     if (to) { clauses.push('m.movement_date <= ?'); binds.push(to); }

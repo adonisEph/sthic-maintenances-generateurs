@@ -2,7 +2,9 @@ import { userZone } from '../_utils/http.js';
 
 export const HTC_ZONE = 'BZV/POOL';
 
-const NUM_PREFIX = { exit: 'BS', entry: 'BE', return: 'BR', request: 'DM' };
+const NUM_PREFIX = { exit: 'BS', entry: 'BE', return: 'BR', recovery: 'RC', request: 'DM' };
+
+export const HTC_CONDITIONS = ['fonctionnel', 'defectueux', 'a_reparer', 'hs'];
 
 export function isHtcManager(data) {
   const r = String(data?.user?.role || '');
@@ -52,15 +54,18 @@ export async function allocHtcNumber(env, kind) {
   throw new Error('Impossible d\'allouer un numéro de bon (conflit). Réessaie.');
 }
 
-// Stock calculé par article : Σ entrées + Σ retours − Σ sorties (bons non annulés).
-// Renvoie { [itemId]: qty } pour le lieu donné (lieu stocké par ligne).
+// Stock calculé par article (bons non annulés) :
+//   stock     = Σ entrées + Σ retours BS + Σ récupérations « fonctionnel » − Σ sorties
+//   stockSite = Σ récupérations non-fonctionnelles (défectueux / à réparer / HS)
+// Renvoie { [itemId]: { stock, stockSite } } pour le lieu donné (lieu stocké par ligne).
 export async function htcStockMap(env, location = null) {
   const locClause = location ? 'AND l.location = ?' : '';
   const stmt = `
     SELECT l.item_id AS item_id,
-           SUM(CASE WHEN m.type = 'entry' THEN l.qty
-                    WHEN m.type = 'return' THEN l.qty
-                    WHEN m.type = 'exit' THEN -l.qty ELSE 0 END) AS stock
+           SUM(CASE WHEN m.type IN ('entry', 'return') THEN l.qty
+                    WHEN m.type = 'recovery' AND l.item_condition = 'fonctionnel' THEN l.qty
+                    WHEN m.type = 'exit' THEN -l.qty ELSE 0 END) AS stock,
+           SUM(CASE WHEN m.type = 'recovery' AND l.item_condition != 'fonctionnel' THEN l.qty ELSE 0 END) AS stock_site
     FROM htc_movement_lines l
     JOIN htc_movements m ON m.id = l.movement_id
     WHERE m.status != 'cancelled' ${locClause}
@@ -69,11 +74,14 @@ export async function htcStockMap(env, location = null) {
     ? await env.DB.prepare(stmt).bind(location).all()
     : await env.DB.prepare(stmt).all();
   const map = {};
-  for (const r of res?.results || []) map[r.item_id] = Number(r.stock || 0);
+  for (const r of res?.results || []) {
+    map[r.item_id] = { stock: Number(r.stock || 0), stockSite: Number(r.stock_site || 0) };
+  }
   return map;
 }
 
 export function mapItem(r, stockMap) {
+  const cell = stockMap ? stockMap[r.id] : null;
   return {
     id: r.id,
     name: r.name,
@@ -82,7 +90,8 @@ export function mapItem(r, stockMap) {
     unit: r.unit || 'pièce',
     notes: r.notes || '',
     active: Number(r.active) === 1,
-    stock: stockMap ? Number(stockMap[r.id] || 0) : null,
+    stock: cell ? Number(cell.stock || 0) : (stockMap ? 0 : null),
+    stockSite: cell ? Number(cell.stockSite || 0) : 0,
     createdAt: r.created_at,
     updatedAt: r.updated_at
   };
@@ -142,7 +151,8 @@ export function mapMovement(r, lines) {
       itemName: l.item_name || '',
       location: l.location || '',
       qty: Number(l.qty || 0),
-      qtyReturned: Number(l.qty_returned || 0)
+      qtyReturned: Number(l.qty_returned || 0),
+      condition: l.item_condition || 'fonctionnel'
     }))
   };
 }
