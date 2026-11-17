@@ -643,22 +643,22 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
           <button onClick={onClose} className="hover:bg-white/10 p-1.5 rounded"><X size={18} /></button>
         </div>
 
-        {/* Onglets */}
-        <div className="flex bg-gray-50 border-b border-gray-200 px-3 pt-2 gap-1.5 overflow-x-auto">
-          {tabs.map((t) => {
-            const Icon = t.icon;
-            const active = tab === t.id;
-            return (
-              <button key={t.id} onClick={() => setTab(t.id)}
-                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold whitespace-nowrap rounded-t-lg border ${
-                  active
-                    ? 'bg-white border-gray-200 border-b-white -mb-px text-indigo-700'
-                    : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-white/70'
-                }`}>
-                <Icon size={15} /> {t.label}
-              </button>
-            );
-          })}
+        {/* Onglets — segmented control (aucune superposition fragile) */}
+        <div className="bg-gray-50 border-b border-gray-200 px-3 py-2">
+          <div className="flex gap-1 bg-gray-200/70 rounded-xl p-1 w-fit max-w-full overflow-x-auto">
+            {tabs.map((t) => {
+              const Icon = t.icon;
+              const active = tab === t.id;
+              return (
+                <button key={t.id} onClick={() => setTab(t.id)}
+                  className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold whitespace-nowrap rounded-lg transition-colors ${
+                    active ? 'bg-white shadow-sm text-indigo-700' : 'text-gray-500 hover:text-gray-800'
+                  }`}>
+                  <Icon size={15} /> {t.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
@@ -1021,12 +1021,12 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
               </div>
               <div className="space-y-1.5">
                 {items.map((it) => (
-                  <div key={it.id} className={`flex items-center gap-3 border rounded-lg px-3 py-2 text-sm ${it.active ? 'border-gray-200 bg-white' : 'border-gray-200 bg-gray-50 opacity-60'}`}>
-                    <div className="flex-1">
-                      <span className="font-semibold text-gray-800">{it.name}</span>
+                  <div key={it.id} className={`flex flex-wrap items-center gap-2 sm:gap-3 border rounded-lg px-3 py-2 text-sm ${it.active ? 'border-gray-200 bg-white' : 'border-gray-200 bg-gray-50 opacity-60'}`}>
+                    <div className="flex-1 min-w-0">
+                      <span className="font-semibold text-gray-800 break-words">{it.name}</span>
                       <span className="text-xs text-gray-400 ml-2">{LOCATION_LABEL[it.location]} · {it.unit}</span>
                     </div>
-                    <span className="text-xs font-bold text-indigo-700">stock {it.stock ?? 0}</span>
+                    <span className="text-xs font-bold text-indigo-700 whitespace-nowrap">stock {it.stock ?? 0}</span>
                     <button className="text-xs border border-gray-300 px-2 py-1 rounded hover:bg-gray-50"
                       onClick={() => setItemForm({ id: it.id, name: it.name, category: it.category, location: it.location, unit: it.unit, notes: it.notes || '' })}>
                       Modifier
