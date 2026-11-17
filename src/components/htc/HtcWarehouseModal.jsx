@@ -644,13 +644,16 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
         </div>
 
         {/* Onglets */}
-        <div className="flex border-b bg-gray-50 px-3 pt-2 gap-1.5 overflow-x-auto">
+        <div className="flex bg-gray-50 border-b border-gray-200 px-3 pt-2 gap-1.5 overflow-x-auto">
           {tabs.map((t) => {
             const Icon = t.icon;
+            const active = tab === t.id;
             return (
               <button key={t.id} onClick={() => setTab(t.id)}
-                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap rounded-t-lg ${
-                  tab === t.id ? 'border-indigo-600 text-indigo-700 bg-white' : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-white/70'
+                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold whitespace-nowrap rounded-t-lg border ${
+                  active
+                    ? 'bg-white border-gray-200 border-b-white -mb-px text-indigo-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-white/70'
                 }`}>
                 <Icon size={15} /> {t.label}
               </button>
