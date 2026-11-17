@@ -1,11 +1,12 @@
 import { ensureAdminUser, newId, isoNow } from '../_utils/db.js';
-import { json, requireAuth, readJson, ymdToday } from '../_utils/http.js';
-import { isHtcManager, htcZoneOk, allocHtcNumber, mapMovement, HTC_CONDITIONS } from './_utils.js';
+import { json, requireAuth, readJson } from '../_utils/http.js';
+import { isHtcManager, htcZoneOk, HTC_CONDITIONS } from './_utils.js';
 
-// POST /api/htc/import — Inventaire initial en masse.
+// POST /api/htc/import — Import catalogue en masse.
 // rows: [{ name, location, qty, condition, category?, unit?, notes? }]
-// Crée les articles absents du catalogue (par nom+lieu), puis génère
-// 1 BE (lignes « fonctionnel ») + 1 RC (lignes non-fonctionnelles).
+// Crée les articles absents du catalogue (par nom+lieu) — N'ÉMET AUCUN BON :
+// les quantités reviennent résolues (itemId) pour pré-remplir un BE / RC
+// via le canal prévu (avec expéditeur, N°SMR, fonction, signature).
 export async function onRequestPost({ request, env, data }) {
   try {
     await ensureAdminUser(env);
@@ -21,7 +22,7 @@ export async function onRequestPost({ request, env, data }) {
     const itemsRes = await env.DB.prepare('SELECT * FROM htc_items').all();
     const byKey = new Map((itemsRes?.results || []).map((r) => [`${String(r.name).trim().toLowerCase()}|${r.location}`, r]));
 
-    const clean = [];
+    const resolved = [];
     let created = 0;
     let matched = 0;
     for (let i = 0; i < rows.length; i += 1) {
@@ -60,51 +61,10 @@ export async function onRequestPost({ request, env, data }) {
       } else {
         matched += 1;
       }
-      clean.push({ item, qty, condition });
+      resolved.push({ itemId: item.id, itemName: item.name, location, qty, condition });
     }
 
-    if (!clean.length) return json({ error: 'Aucune ligne exploitable (quantités > 0 requises).' }, { status: 400 });
-
-    const signatureName = String(body?.signatureName || '').trim();
-    const signatureImage = String(body?.signatureImage || '');
-    const dateStr = String(body?.movementDate || '').trim() || ymdToday();
-    const reason = String(body?.reason || '').trim() || 'Inventaire initial — migration';
-    const magasinier = String(data.user.technicianName || data.user.email || 'Magasinier');
-
-    const createMov = async (type, lines) => {
-      const movId = newId();
-      const number = await allocHtcNumber(env, type);
-      await env.DB.prepare(
-        `INSERT INTO htc_movements (id, number, type, location, movement_date, site_id, site_name, reason,
-          requester_name, requester_role, beneficiary, agent_name, provenance, signature_name, signature_image, status, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?, ?)`
-      ).bind(
-        movId, number, type, String(lines[0].item.location || 'entrepot'), dateStr,
-        '', type === 'recovery' ? 'Inventaire initial' : '',
-        reason, magasinier, 'warehouse',
-        type === 'entry' ? 'STHIC' : '',
-        type === 'recovery' ? magasinier : '',
-        type === 'recovery' ? 'Inventaire initial' : '',
-        signatureName, signatureImage && signatureImage.startsWith('data:image') ? signatureImage.slice(0, 60000) : '',
-        String(data.user.id), now, now
-      ).run();
-      for (const c of lines) {
-        await env.DB.prepare(
-          'INSERT INTO htc_movement_lines (id, movement_id, item_id, item_name, location, qty, qty_returned, item_condition) VALUES (?, ?, ?, ?, ?, ?, 0, ?)'
-        ).bind(newId(), movId, c.item.id, c.item.name, c.item.location, c.qty, c.condition).run();
-      }
-      const mov = await env.DB.prepare('SELECT * FROM htc_movements WHERE id = ?').bind(movId).first();
-      const ml = await env.DB.prepare('SELECT * FROM htc_movement_lines WHERE movement_id = ?').bind(movId).all();
-      return mapMovement(mov, ml?.results || []);
-    };
-
-    const funcLines = clean.filter((c) => c.condition === 'fonctionnel');
-    const siteLines = clean.filter((c) => c.condition !== 'fonctionnel');
-    const result = { itemsCreated: created, itemsMatched: matched, entry: null, recovery: null };
-    if (funcLines.length) result.entry = await createMov('entry', funcLines);
-    if (siteLines.length) result.recovery = await createMov('recovery', siteLines);
-
-    return json({ ok: true, ...result }, { status: 201 });
+    return json({ ok: true, itemsCreated: created, itemsMatched: matched, rows: resolved }, { status: 201 });
   } catch (e) {
     return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
   }

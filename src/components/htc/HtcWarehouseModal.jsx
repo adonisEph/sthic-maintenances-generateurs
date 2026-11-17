@@ -25,7 +25,8 @@ const STATUS_CLS = {
 };
 const REQUESTER_ROLE_LABEL = {
   field_supervisor: 'Field Supervisor', technician: 'Technicien',
-  htc_supervisor: 'Superviseur Zonal HTC', manager: 'Manager', warehouse: 'Magasinier', admin: 'Admin'
+  htc_supervisor: 'Superviseur Zonal HTC', htc_logistician: 'Logisticien HTC',
+  supplier_agent: 'Agent fournisseur', manager: 'Manager', warehouse: 'Magasinier', admin: 'Admin'
 };
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -52,14 +53,23 @@ function printBon(mv) {
   };
   const heads = HEADS[mv.type] || ['Date', 'Désignation', 'Quantité', 'Lieu', '', ''];
   const cells = (l) => {
-    const base = `<td class="c">${esc(fmtDate(mv.movementDate))}</td><td>${esc(l.itemName)}</td><td class="c">${l.qty}</td>`;
-    if (mv.type === 'entry') return `${base}<td>${esc(senderFull)}</td><td class="c">${esc(mv.smrNumber || '—')}</td><td>${esc(mv.beneficiary || '—')}</td>`;
-    if (mv.type === 'exit') return `${base}<td>${esc(mv.requesterName || '—')}</td><td class="c">${esc(mv.swoNumber || '—')}</td><td>${esc(mv.siteName || '—')}</td>`;
-    if (mv.type === 'return') return `${base}<td>${esc(mv.agentName || mv.requesterName || '—')}</td><td class="c">${esc(mv.returnOfNumber || '—')}</td><td>${esc(mv.provenance || mv.siteName || '—')}</td>`;
-    if (mv.type === 'recovery') return `${base}<td class="c">${esc(CONDITION_LABEL[l.condition] || 'Fonctionnel')}</td><td>${esc(mv.siteName || '—')}</td><td>${esc(mv.agentName || mv.requesterName || '—')}</td>`;
-    return `${base}<td class="c">${esc(LOCATION_LABEL[l.location] || l.location || '—')}</td><td colspan="2"></td>`;
+    const base = `<td class="c">${esc(fmtDate(mv.movementDate))}</td><td class="desig">${esc(l.itemName)}</td><td class="c">${l.qty}</td>`;
+    if (mv.type === 'entry') return `${base}<td class="c">${esc(senderFull)}</td><td class="c">${esc(mv.smrNumber || '—')}</td><td class="c">${esc(mv.beneficiary || 'Magasin STHIC')}</td>`;
+    if (mv.type === 'exit') return `${base}<td class="c">${esc(mv.requesterName || '—')}</td><td class="c">${esc(mv.swoNumber || '—')}</td><td class="c">${esc(mv.siteName || '—')}</td>`;
+    if (mv.type === 'return') return `${base}<td class="c">${esc(mv.agentName || mv.requesterName || '—')}</td><td class="c">${esc(mv.returnOfNumber || '—')}</td><td class="c">${esc(mv.provenance || mv.siteName || '—')}</td>`;
+    if (mv.type === 'recovery') return `${base}<td class="c">${esc(CONDITION_LABEL[l.condition] || 'Fonctionnel')}</td><td class="c">${esc(mv.siteName || '—')}</td><td class="c">${esc(mv.agentName || mv.requesterName || '—')}</td>`;
+    return `${base}<td class="c">${esc(LOCATION_LABEL[l.location] || l.location || '—')}</td><td class="c" colspan="2"></td>`;
   };
   const rows = (mv.lines || []).map((l) => `<tr>${cells(l)}</tr>`).join('');
+  const whoLabel = mv.type === 'entry' ? 'Expéditeur' : mv.type === 'return' ? 'Agent' : mv.type === 'recovery' ? 'Ramené par' : 'Demandeur';
+  const whoVal = mv.type === 'entry' ? senderFull : (mv.agentName || mv.requesterName || '—');
+  const destLabel = mv.type === 'recovery' ? 'Site de récupération' : mv.type === 'return' ? 'Provenance' : 'Destination';
+  const destVal = mv.provenance || mv.siteName || '—';
+  const roleVal = REQUESTER_ROLE_LABEL[mv.requesterRole] || mv.requesterRole || '—';
+  // BE : pas de carte « Lieu » — la provenance est l'expéditeur, le bénéficiaire le Magasin STHIC.
+  const metaCells = mv.type === 'entry'
+    ? [['Expéditeur', senderFull], ['Fonction', roleVal], ['Bénéficiaire', mv.beneficiary || 'Magasin STHIC']]
+    : [['Lieu', LOCATION_LABEL[mv.location] || mv.location || '—'], [whoLabel, whoVal], ['Fonction', roleVal], [destLabel, destVal]];
   const sig = mv.signatureImage
     ? `<img src="${mv.signatureImage}" alt="signature" style="max-height:52px;max-width:180px"/>`
     : (mv.signatureName ? `<div class="signame">${esc(mv.signatureName)}</div>` : '—');
@@ -68,7 +78,7 @@ function printBon(mv) {
   *{box-sizing:border-box}
   body{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;padding:22px;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .top{display:flex;align-items:center;gap:14px;border-bottom:2.5px solid #1e3a5f;padding-bottom:10px}
-  .top img{height:44px;width:auto}
+  .top img{height:68px;width:auto}
   .top .t{flex:1}
   .top .t .doc{font-size:19px;font-weight:800;color:#1e3a5f;letter-spacing:.3px}
   .top .t .sub{font-size:10.5px;color:#64748b;margin-top:2px}
@@ -81,10 +91,11 @@ function printBon(mv) {
   .meta .l{font-size:8.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#64748b}
   .meta .v{font-size:11.5px;font-weight:700;margin-top:2px}
   table{width:100%;border-collapse:collapse;margin-top:14px;border:1.2px solid #475569}
-  th{font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:#1e293b;background:#eef2f7;text-align:left;padding:6px 9px;border-bottom:1.2px solid #475569}
+  th{font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:#1e293b;background:#eef2f7;text-align:center;padding:6px 9px;border-bottom:1.2px solid #475569}
+  th.d{text-align:left}
   td{padding:6px 9px;font-size:11px;border-bottom:1px solid #e2e8f0;vertical-align:top}
-  td.n{width:26px;text-align:center;color:#64748b}
   td.c{text-align:center}
+  td.desig{text-align:justify;text-justify:inter-word}
   .reason{margin-top:12px;font-size:10.5px}
   .reason b{color:#1e293b}
   .sign{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:26px}
@@ -94,17 +105,14 @@ function printBon(mv) {
 </style></head><body>
   <div class="top">
     <img src="${location.origin}/Logo_sthic.png" alt="STHIC"/>
-    <div class="t"><div class="doc">${esc(typeLabel)} — MATÉRIEL HTC</div><div class="sub">STHIC · Magasin &amp; Stocks HTC · Zone BZV/POOL</div></div>
+    <div class="t"><div class="doc">${esc(typeLabel)} — MATÉRIEL HTC</div><div class="sub">STHIC · Magasin &amp; Stocks HTC</div></div>
     <div class="num"><div class="n">${esc(mv.number)}</div><div class="d">Date : ${esc(fmtDate(mv.movementDate))}</div></div>
   </div>
-  <div class="meta">
-    <div><div class="l">Lieu</div><div class="v">${esc(LOCATION_LABEL[mv.location] || mv.location)}</div></div>
-    <div><div class="l">${mv.type === 'entry' ? 'Expéditeur' : mv.type === 'return' ? 'Agent' : mv.type === 'recovery' ? 'Ramené par' : 'Demandeur'}</div><div class="v">${esc(mv.type === 'entry' ? senderFull : (mv.agentName || mv.requesterName || '—'))}</div></div>
-    <div><div class="l">Fonction</div><div class="v">${esc(REQUESTER_ROLE_LABEL[mv.requesterRole] || mv.requesterRole || '—')}</div></div>
-    <div><div class="l">${mv.type === 'entry' ? 'Bénéficiaire' : mv.type === 'recovery' ? 'Site de récupération' : mv.type === 'return' ? 'Provenance' : 'Destination'}</div><div class="v">${esc(mv.type === 'entry' ? (mv.beneficiary || '—') : (mv.provenance || mv.siteName || '—'))}</div></div>
+  <div class="meta" style="grid-template-columns:repeat(${metaCells.length},1fr)">
+    ${metaCells.map(([l, v]) => `<div><div class="l">${l}</div><div class="v">${esc(v)}</div></div>`).join('')}
   </div>
   <table>
-    <thead><tr>${heads.map((h) => `<th>${h}</th>`).join('')}</tr></thead>
+    <thead><tr>${heads.map((h, i) => `<th${i === 1 ? ' class="d"' : ''}>${h}</th>`).join('')}</tr></thead>
     <tbody>${rows}</tbody>
   </table>
   ${mv.reason ? `<div class="reason"><b>Motif :</b> ${esc(mv.reason)}</div>` : ''}
@@ -309,8 +317,6 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   // Import en masse (inventaire initial)
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState('');
-  const [importDate, setImportDate] = useState('');
-  const [importReason, setImportReason] = useState('');
   const [importResult, setImportResult] = useState(null);
 
   // Retour
@@ -324,13 +330,14 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
 
   // Métadonnées administratives des bons (SMR / SWO / bénéficiaire…)
   const [entrySenderType, setEntrySenderType] = useState('htc');
+  const [entrySenderRole, setEntrySenderRole] = useState('htc_logistician');
   const [entrySmr, setEntrySmr] = useState('');
-  const [entryBeneficiary, setEntryBeneficiary] = useState('STHIC');
+  const [entryBeneficiary, setEntryBeneficiary] = useState('Magasin STHIC');
   const [formSwo, setFormSwo] = useState('');
   const [procSwo, setProcSwo] = useState('');
 
   // Articles
-  const [itemForm, setItemForm] = useState({ id: '', name: '', category: 'other', location: 'entrepot', unit: 'pièce', notes: '', initialQty: '' });
+  const [itemForm, setItemForm] = useState({ id: '', name: '', category: 'other', location: 'entrepot', unit: 'pièce', notes: '' });
 
   const loadItems = useCallback(async () => {
     const d = await apiFetchJson('/api/htc/items?all=1');
@@ -476,11 +483,11 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
         body: JSON.stringify({
           lines: lines.map((l) => ({ itemId: l.itemId, qty: Number(l.qty) })),
           movementDate: entryDate || undefined, reason: entryReason,
-          senderType: entrySenderType, supplierName: entrySupplier,
+          senderType: entrySenderType, supplierName: entrySupplier, requesterRole: entrySenderRole,
           smrNumber: entrySmr, beneficiary: entryBeneficiary
         })
       });
-      setEntryOpen(false); setEntryLines([{ itemId: '', qty: 1 }]); setEntryDate(''); setEntryReason(''); setEntrySupplier(''); setEntrySmr(''); setEntryBeneficiary('STHIC'); setEntrySenderType('htc');
+      setEntryOpen(false); setEntryLines([{ itemId: '', qty: 1 }]); setEntryDate(''); setEntryReason(''); setEntrySupplier(''); setEntrySmr(''); setEntryBeneficiary('Magasin STHIC'); setEntrySenderType('htc'); setEntrySenderRole('htc_logistician');
       await Promise.all([loadMovements(), loadItems(), loadStats()]);
       if (res?.movement && window.confirm(`Bon ${res.movement.number} créé. Imprimer ?`)) printBon(res.movement);
     } catch (e) { alert(e.message || 'Erreur.'); }
@@ -586,13 +593,12 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       const res = await apiFetchJson('/api/htc/import', {
         method: 'POST',
         body: JSON.stringify({
-          rows: rows.map((r) => ({ name: r.name, location: r.location, qty: r.qty, condition: r.condition, notes: r.notes })),
-          movementDate: importDate || undefined,
-          reason: importReason || undefined
+          rows: rows.map((r) => ({ name: r.name, location: r.location, qty: r.qty, condition: r.condition, notes: r.notes }))
         })
       });
       setImportResult(res);
       setImportText('');
+      await loadItems();
       await Promise.all([loadMovements(), loadItems(), loadStats()]);
     } catch (e) { alert(e.message || 'Erreur.'); }
     finally { setBusy(false); }
@@ -622,10 +628,9 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       if (itemForm.id) {
         await apiFetchJson(`/api/htc/items/${itemForm.id}`, { method: 'PATCH', body: JSON.stringify(itemForm) });
       } else {
-        const res = await apiFetchJson('/api/htc/items', { method: 'POST', body: JSON.stringify(itemForm) });
-        if (res?.entryNumber) alert(`Article créé — bon d'entrée ${res.entryNumber} émis (${itemForm.initialQty} u. en stock).`);
+        await apiFetchJson('/api/htc/items', { method: 'POST', body: JSON.stringify(itemForm) });
       }
-      setItemForm({ id: '', name: '', category: 'other', location: 'entrepot', unit: 'pièce', notes: '', initialQty: '' });
+      setItemForm({ id: '', name: '', category: 'other', location: 'entrepot', unit: 'pièce', notes: '' });
       await loadItems();
     } catch (e) { alert(e.message || 'Erreur.'); }
     finally { setBusy(false); }
@@ -1058,8 +1063,8 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                 <div className="font-bold text-sm text-indigo-900 mb-1">{itemForm.id ? 'Modifier l’article' : 'Nouvel article'}</div>
                 {!itemForm.id && (
                   <div className="text-[11px] text-indigo-700/80 mb-2">
-                    Inventaire initial : renseignez <b>Quantité initiale</b> → un <b>Bon d'entrée</b> est émis automatiquement.
-                    Plusieurs articles d'un coup → bouton <b>« Import inventaire »</b> (onglet Stock).
+                    La création déclare la <b>référence au catalogue</b>. Les quantités s'enregistrent ensuite par
+                    <b> Bon d'entrée</b> (onglet Stock) ou <b>Bon de récupération</b>, avec leurs métadonnées.
                   </div>
                 )}
                 <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
@@ -1080,16 +1085,8 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                   <input className={inputCls} placeholder="Unité (pièce…)" value={itemForm.unit} onChange={(e) => setItemForm({ ...itemForm, unit: e.target.value })} />
                   <input className={`${inputCls} sm:col-span-3`} placeholder="Notes (marque, référence…)" value={itemForm.notes} onChange={(e) => setItemForm({ ...itemForm, notes: e.target.value })} />
                 </div>
-                {!itemForm.id && (
-                  <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-2">
-                    <div>
-                      <label className={labelCls}>Quantité initiale (optionnel)</label>
-                      <input type="number" min="0" className={inputCls} placeholder="0" value={itemForm.initialQty} onChange={(e) => setItemForm({ ...itemForm, initialQty: e.target.value })} />
-                    </div>
-                  </div>
-                )}
                 <div className="flex gap-2 mt-3 justify-end">
-                  {itemForm.id && <button className={btnGhost} onClick={() => setItemForm({ id: '', name: '', category: 'other', location: 'entrepot', unit: 'pièce', notes: '', initialQty: '' })}>Annuler</button>}
+                  {itemForm.id && <button className={btnGhost} onClick={() => setItemForm({ id: '', name: '', category: 'other', location: 'entrepot', unit: 'pièce', notes: '' })}>Annuler</button>}
                   <button className={btnPrimary} onClick={saveItem} disabled={busy}>{itemForm.id ? 'Enregistrer' : 'Ajouter'}</button>
                 </div>
               </div>
@@ -1275,7 +1272,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl p-4 sm:p-5 max-h-[92vh] overflow-y-auto">
             <div className="font-bold text-base mb-1">Import inventaire initial</div>
             <div className="text-xs text-gray-500 mb-3">
-              Collez votre tableau depuis Excel — une ligne par article, colonnes séparées par TAB ou « ; » :<br />
+              Fichier ou collage — une ligne par article, colonnes séparées par TAB ou « ; » :<br />
               <code className="bg-gray-100 px-1.5 py-0.5 rounded">Désignation ; Lieu ; Quantité ; Condition ; Notes</code>
               <span className="block mt-1">
                 Lieu : <b>entrepot</b> | <b>magasin</b> (variantes tolérées : « Magasin Buffer Stock », « Entrepôt »…)
@@ -1284,16 +1281,30 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
             </div>
             {importResult ? (
               <div className="border border-emerald-300 bg-emerald-50 rounded-xl p-4">
-                <div className="font-bold text-sm text-emerald-900 mb-2">Import terminé ✓</div>
+                <div className="font-bold text-sm text-emerald-900 mb-2">Catalogue importé ✓</div>
                 <div className="text-xs text-emerald-800 space-y-1">
-                  <div>Articles créés au catalogue : <b>{importResult.itemsCreated}</b> · existants mis à jour : <b>{importResult.itemsMatched}</b></div>
-                  {importResult.entry && <div>Bon d'entrée : <b className="font-mono">{importResult.entry.number}</b> ({importResult.entry.lines.length} ligne(s))</div>}
-                  {importResult.recovery && <div>Bon de récupération : <b className="font-mono">{importResult.recovery.number}</b> ({importResult.recovery.lines.length} ligne(s))</div>}
+                  <div>Articles créés au catalogue : <b>{importResult.itemsCreated}</b> · déjà existants : <b>{importResult.itemsMatched}</b></div>
+                  <div>Enregistrez maintenant les quantités via le canal prévu — <b>Bon d'entrée</b> (fonctionnels) ou <b>Bon de récupération</b> (non-fonctionnels), pré-remplis depuis l'import :</div>
                 </div>
-                <div className="flex gap-2 mt-3 justify-end">
-                  {importResult.entry && <button className={btnGhost} onClick={() => printBon(importResult.entry)}>Imprimer le BE</button>}
-                  {importResult.recovery && <button className={btnGhost} onClick={() => printBon(importResult.recovery)}>Imprimer le RC</button>}
-                  <button className={btnPrimary} onClick={() => { setImportOpen(false); setImportResult(null); }}>Fermer</button>
+                <div className="flex flex-wrap gap-2 mt-3 justify-end">
+                  {importResult.rows?.some((r) => r.condition === 'fonctionnel') && (
+                    <button className={btnPrimary} onClick={() => {
+                      setEntryLines(importResult.rows.filter((r) => r.condition === 'fonctionnel').map((r) => ({ itemId: r.itemId, qty: r.qty })));
+                      setImportOpen(false); setImportResult(null); setEntryOpen(true);
+                    }}>
+                      → Bon d'entrée ({importResult.rows.filter((r) => r.condition === 'fonctionnel').length} ligne(s))
+                    </button>
+                  )}
+                  {importResult.rows?.some((r) => r.condition !== 'fonctionnel') && (
+                    <button className="bg-sky-700 text-white px-4 py-2 rounded-lg hover:bg-sky-800 font-semibold text-sm disabled:opacity-60 inline-flex items-center gap-2" onClick={() => {
+                      setRecLines(importResult.rows.filter((r) => r.condition !== 'fonctionnel')
+                        .map((r) => ({ mode: 'existing', itemId: r.itemId, qty: r.qty, condition: r.condition, newName: '', newLocation: r.location })));
+                      setRecInitial(true); setImportOpen(false); setImportResult(null); setRecOpen(true);
+                    }}>
+                      → Bon de récupération ({importResult.rows.filter((r) => r.condition !== 'fonctionnel').length} ligne(s))
+                    </button>
+                  )}
+                  <button className={btnGhost} onClick={() => { setImportOpen(false); setImportResult(null); }}>Fermer</button>
                 </div>
               </div>
             ) : (
@@ -1335,15 +1346,9 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                     </table>
                   </div>
                 )}
-                <div className="grid sm:grid-cols-2 gap-2 mt-3">
-                  <div>
-                    <label className={labelCls}>Date d'inventaire</label>
-                    <input type="date" className={inputCls} value={importDate} onChange={(e) => setImportDate(e.target.value)} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Motif</label>
-                    <input className={inputCls} placeholder="Inventaire initial — migration" value={importReason} onChange={(e) => setImportReason(e.target.value)} />
-                  </div>
+                <div className="mt-3 text-[11px] text-gray-500">
+                  L'import crée le <b>catalogue</b> (aucun bon émis). Les quantités servent ensuite à
+                  <b> pré-remplir</b> un Bon d'entrée ou un Bon de récupération.
                 </div>
                 <div className="flex gap-2 mt-4 justify-end">
                   <button className={btnGhost} onClick={() => { setImportOpen(false); setImportText(''); }}>Fermer</button>
@@ -1381,6 +1386,17 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
               <div>
                 <label className={labelCls}>Nom de l'expéditeur</label>
                 <input className={inputCls} placeholder={entrySenderType === 'htc' ? 'Ex. HTC Congo — warehouse' : 'Ex. Nom du fournisseur'} value={entrySupplier} onChange={(e) => setEntrySupplier(e.target.value)} />
+              </div>
+              <div>
+                <label className={labelCls}>Fonction du client</label>
+                <select className={inputCls} value={entrySenderRole} onChange={(e) => setEntrySenderRole(e.target.value)}>
+                  <option value="htc_logistician">Logisticien HTC</option>
+                  <option value="htc_supervisor">Superviseur Zonal HTC</option>
+                  <option value="field_supervisor">Field Supervisor</option>
+                  <option value="technician">Technicien</option>
+                  <option value="supplier_agent">Agent fournisseur</option>
+                  <option value="warehouse">Magasinier</option>
+                </select>
               </div>
               <div>
                 <label className={labelCls}>N° SMR (bon de sortie de l'expéditeur)</label>
