@@ -491,17 +491,33 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   // Parse « Désignation ; Lieu ; Quantité ; Condition ; Notes » (TAB ou point-virgule)
   const parsedImport = useMemo(() => {
     const norm = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-    const LOC = { entrepot: 'entrepot', e: 'entrepot', warehouse: 'entrepot', magasin: 'magasin', m: 'magasin', buffer: 'magasin', 'buffer stock': 'magasin', 'magasin buffer': 'magasin' };
-    const COND = { '': 'fonctionnel', fonctionnel: 'fonctionnel', f: 'fonctionnel', ok: 'fonctionnel', defectueux: 'defectueux', def: 'defectueux', 'a reparer': 'a_reparer', reparation: 'a_reparer', rep: 'a_reparer', hs: 'hs', 'hors service': 'hs', ko: 'hs' };
-    return String(importText || '').split(/\r?\n/).map((raw, i) => {
+    const LOC = { entrepot: 'entrepot', e: 'entrepot', warehouse: 'entrepot', magasin: 'magasin', m: 'magasin', buffer: 'magasin', 'buffer stock': 'magasin', 'magasin buffer': 'magasin', 'magasin buffer stock': 'magasin', 'magasin (buffer)': 'magasin' };
+    const COND = { '': 'fonctionnel', fonctionnel: 'fonctionnel', f: 'fonctionnel', ok: 'fonctionnel', defectueux: 'defectueux', def: 'defectueux', 'a reparer': 'a_reparer', a_reparer: 'a_reparer', reparer: 'a_reparer', reparation: 'a_reparer', rep: 'a_reparer', hs: 'hs', 'hors service': 'hs', ko: 'hs' };
+    return String(importText || '').split(/\r?\n/).map((raw) => {
       const line = raw.trim();
       if (!line) return null;
       const cells = (line.includes('\t') ? line.split('\t') : line.split(';')).map((c) => c.trim());
-      if (i === 0 && /design|article|nom|name/i.test(cells[0] || '')) return null;
-      const [name = '', locRaw = '', qtyRaw = '', condRaw = '', notes = ''] = cells;
-      const location = LOC[norm(locRaw)];
-      const qty = Math.floor(Number(qtyRaw));
-      const condition = COND[norm(condRaw)];
+      // Ligne d'en-tête ignorée où qu'elle soit (Désignation|Lieu|Quantité…)
+      if (/design|article|nom|name/i.test(cells[0] || '') && (/lieu|loc|stock|place/i.test(cells[1] || '') || /quant|qty|qte/i.test(cells[2] || ''))) return null;
+      const [name = '', locRaw = '', qtyRaw = '', condRaw = '', notesRaw = ''] = cells;
+      const locN = norm(locRaw);
+      let location = LOC[locN];
+      if (!location) {
+        if (/magasin|buffer|boutique|reserve/.test(locN)) location = 'magasin';
+        else if (/entrepot|warehouse|depot/.test(locN)) location = 'entrepot';
+      }
+      const qty = Math.floor(Number(String(qtyRaw).replace(/\s/g, '').replace(',', '.')));
+      const condN = norm(condRaw);
+      let condition = COND[condN];
+      if (condition === undefined) {
+        if (/fonc|^ok$|bon etat|bonne|nouv|neuf|^new$/.test(condN)) condition = 'fonctionnel';
+        else if (/def|panne|casse/.test(condN)) condition = 'defectueux';
+        else if (/rep/.test(condN)) condition = 'a_reparer';
+        else if (/hs|hors|ko|inutilisable|mort/.test(condN)) condition = 'hs';
+      }
+      // « Nouveau/Neuf » n'est pas une condition stock — info conservée dans les notes.
+      const isNew = /nouv|neuf|^new$/.test(condN);
+      const notes = isNew ? `${condRaw}${notesRaw ? ` — ${notesRaw}` : ''}` : notesRaw;
       const err = !name ? 'Désignation vide'
         : !location ? `Lieu inconnu (« ${locRaw} »)`
         : !Number.isFinite(qty) || qty < 0 ? `Quantité invalide (« ${qtyRaw} »)`
@@ -1156,7 +1172,8 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
               Collez votre tableau depuis Excel — une ligne par article, colonnes séparées par TAB ou « ; » :<br />
               <code className="bg-gray-100 px-1.5 py-0.5 rounded">Désignation ; Lieu ; Quantité ; Condition ; Notes</code>
               <span className="block mt-1">
-                Lieu : <b>entrepot</b> | <b>magasin</b> · Condition : fonctionnel | defectueux | a_reparer | hs (défaut : fonctionnel)
+                Lieu : <b>entrepot</b> | <b>magasin</b> (variantes tolérées : « Magasin Buffer Stock », « Entrepôt »…)
+                · Condition : fonctionnel | defectueux | a_reparer | hs — vide ou « Nouveau » = fonctionnel
               </span>
             </div>
             {importResult ? (
@@ -1185,7 +1202,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                 <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">…ou collez le tableau ci-dessous</div>
                 <textarea
                   className={`${inputCls} font-mono text-xs h-40`}
-                  placeholder={'Batterie Leoch 12V 100AH;entrepot;6\nRedresseur Eltek;entrepot;2\nRadiateur 30 KVA Yanmar;magasin;1;defectueux;remplacé CBBZ0090'}
+                  placeholder={'Batterie Leoch 12V 100AH;entrepot;6\nGave Switch 125A;Magasin Buffer Stock;2;Nouveau\nRadiateur 30 KVA Yanmar;magasin;1;defectueux;remplacé CBBZ0090'}
                   value={importText}
                   onChange={(e) => setImportText(e.target.value)}
                 />
