@@ -57,7 +57,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.26.1';
+const APP_VERSION = '6.26.2';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -9270,15 +9270,15 @@ return (
             <div className="max-w-7xl mx-auto">
               {isWarehouse ? (
                 <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 md:mb-6">
-                  <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden mb-4">
+                  <div className="inline-flex w-full sm:w-auto rounded-lg border border-gray-200 overflow-hidden mb-4">
                     <button
                       onClick={() => setWarehouseSection('vidanges')}
-                      className={`px-3.5 py-1.5 text-xs font-bold ${warehouseSection === 'vidanges' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                      className={`flex-1 sm:flex-none px-3.5 py-2.5 sm:py-1.5 text-xs font-bold ${warehouseSection === 'vidanges' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
                       Interventions &amp; Vidanges
                     </button>
                     <button
                       onClick={() => setWarehouseSection('htc')}
-                      className={`px-3.5 py-1.5 text-xs font-bold border-l border-gray-200 ${warehouseSection === 'htc' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                      className={`flex-1 sm:flex-none px-3.5 py-2.5 sm:py-1.5 text-xs font-bold border-l border-gray-200 ${warehouseSection === 'htc' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
                       Magasin &amp; Stocks HTC
                     </button>
                   </div>

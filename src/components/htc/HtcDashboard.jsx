@@ -83,7 +83,7 @@ const HtcDashboard = ({ apiFetchJson, onOpenModule }) => {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
         {kpi('Demandes en attente', stats?.pendingRequests ?? '—', 'à traiter', 'border-amber-300 bg-amber-50 text-amber-900', ClipboardList)}
         {kpi('Matériel dehors', stats?.materialOutUnits ?? '—', `${stats?.openExitVouchers ?? 0} bon(s) ouvert(s)`, 'border-orange-200 bg-orange-50 text-orange-900', PackageMinus)}
         {kpi('Stock Entrepôt', stockByLoc.entrepot, `${active.filter((i) => i.location === 'entrepot').length} article(s)`, 'border-indigo-200 bg-indigo-50/60 text-indigo-900', Warehouse)}

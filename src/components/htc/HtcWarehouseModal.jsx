@@ -118,9 +118,9 @@ const LinesEditor = ({ items, lines, setLines, disabled }) => {
   return (
     <div>
       {lines.map((l, i) => (
-        <div key={i} className="flex gap-2 mb-2 items-center">
+        <div key={i} className="flex flex-col sm:flex-row gap-2 mb-2 sm:items-center">
           <select
-            className="flex-1 border border-gray-300 rounded-lg px-2 py-2 text-sm bg-white disabled:opacity-60"
+            className="w-full sm:flex-1 sm:min-w-0 border border-gray-300 rounded-lg px-2 py-2 text-sm bg-white disabled:opacity-60"
             value={l.itemId}
             disabled={disabled}
             onChange={(e) => setLine(i, { itemId: e.target.value })}
@@ -132,15 +132,18 @@ const LinesEditor = ({ items, lines, setLines, disabled }) => {
               </option>
             ))}
           </select>
-          <input
-            type="number" min="1" max="10000" value={l.qty} disabled={disabled}
-            onChange={(e) => setLine(i, { qty: e.target.value })}
-            className="w-20 border border-gray-300 rounded-lg px-2 py-2 text-sm text-center"
-          />
-          <button type="button" onClick={() => rmLine(i)} disabled={disabled || lines.length <= 1}
-            className="p-2 text-gray-400 hover:text-rose-600 disabled:opacity-40">
-            <Trash2 size={16} />
-          </button>
+          <div className="flex gap-2 items-center">
+            <span className="sm:hidden text-[11px] font-bold uppercase tracking-wide text-gray-500">Qté</span>
+            <input
+              type="number" min="1" max="10000" value={l.qty} disabled={disabled}
+              onChange={(e) => setLine(i, { qty: e.target.value })}
+              className="w-20 border border-gray-300 rounded-lg px-2 py-2 text-sm text-center"
+            />
+            <button type="button" onClick={() => rmLine(i)} disabled={disabled || lines.length <= 1}
+              className="p-2 text-gray-400 hover:text-rose-600 disabled:opacity-40">
+              <Trash2 size={16} />
+            </button>
+          </div>
         </div>
       ))}
       <button type="button" onClick={addLine} disabled={disabled}
@@ -694,14 +697,14 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                   </button>
                 ))}
                 {isManager && (
-                  <div className="ml-auto flex flex-wrap gap-2">
-                    <button onClick={() => { setImportOpen(true); setImportResult(null); }} className="border border-indigo-300 text-indigo-700 px-3 py-2 rounded-lg hover:bg-indigo-50 font-semibold text-sm disabled:opacity-60 inline-flex items-center gap-2">
+                  <div className="w-full sm:w-auto sm:ml-auto flex flex-wrap gap-2">
+                    <button onClick={() => { setImportOpen(true); setImportResult(null); }} className="flex-1 sm:flex-none justify-center border border-indigo-300 text-indigo-700 px-3 py-2 rounded-lg hover:bg-indigo-50 font-semibold text-sm disabled:opacity-60 inline-flex items-center gap-2">
                       <Upload size={15} /> Import inventaire
                     </button>
-                    <button onClick={() => setRecOpen(true)} className="bg-sky-700 text-white px-4 py-2 rounded-lg hover:bg-sky-800 font-semibold text-sm disabled:opacity-60 inline-flex items-center gap-2">
+                    <button onClick={() => setRecOpen(true)} className="flex-1 sm:flex-none justify-center bg-sky-700 text-white px-4 py-2 rounded-lg hover:bg-sky-800 font-semibold text-sm disabled:opacity-60 inline-flex items-center gap-2">
                       <RotateCcw size={15} /> Bon de récupération
                     </button>
-                    <button onClick={() => setEntryOpen(true)} className={btnPrimary}>
+                    <button onClick={() => setEntryOpen(true)} className={`${btnPrimary} flex-1 sm:flex-none justify-center`}>
                       <Plus size={15} /> Bon d'entrée
                     </button>
                   </div>
@@ -769,7 +772,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
           {/* ============ DEMANDES ============ */}
           {tab === 'demandes' && (
             <div>
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                 <div className="text-sm font-semibold text-gray-700">
                   {isManager ? `Demandes (${pendingCount} en attente)` : 'Mes demandes de matériel'}
                 </div>
@@ -802,7 +805,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                     </div>
                   )}
                   <div className="mt-1">
-                    <div className="grid grid-cols-[1fr_5.5rem_2rem] gap-2 mb-1 px-0.5">
+                    <div className="hidden sm:grid grid-cols-[1fr_5.5rem_2rem] gap-2 mb-1 px-0.5">
                       <span className={labelCls}>Article</span>
                       <span className={`${labelCls} text-center`}>Quantité</span>
                       <span></span>
@@ -854,7 +857,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                       {r.reason ? <div className="text-xs text-gray-500 mt-1">Motif : {r.reason}</div> : null}
                       {r.rejectReason ? <div className="text-xs text-rose-600 mt-1">Refus : {r.rejectReason}</div> : null}
                       {r.status === 'pending' && (
-                        <div className="flex gap-2 mt-2.5">
+                        <div className="flex flex-wrap gap-2 mt-2.5">
                           {isManager ? (
                             <>
                               <button onClick={() => { setProcReq({ mode: 'issue', request: r }); setProcDate(''); setProcSigImg(''); setProcSigName(''); }}
@@ -884,7 +887,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
           {tab === 'bons' && isManager && (
             <div>
               <div className="flex flex-wrap gap-2 mb-3 items-center">
-                <div className="flex border border-gray-300 rounded-lg overflow-hidden">
+                <div className="flex border border-gray-300 rounded-lg overflow-x-auto max-w-full">
                   {[['all', 'Tous'], ['exit', 'Sorties'], ['entry', 'Entrées'], ['return', 'Retours'], ['recovery', 'Récup.']].map(([v, l]) => (
                     <button key={v} onClick={() => setMvType(v)}
                       className={`px-3 py-1.5 text-xs font-semibold ${mvType === v ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
@@ -929,7 +932,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                         {mv.lines.map((l) => `${l.qty}× ${l.itemName}${l.qtyReturned ? ` (ret. ${l.qtyReturned})` : ''}${mv.type === 'recovery' ? ` [${CONDITION_LABEL[l.condition] || 'Fonctionnel'}]` : ''}`).join(' · ')}
                       </div>
                       {mv.returnOfNumber ? <div className="text-[11px] text-gray-400 mt-0.5">Retour de {mv.returnOfNumber}</div> : null}
-                      <div className="flex gap-2 mt-2">
+                      <div className="flex flex-wrap gap-2 mt-2">
                         <button onClick={() => printBon(mv)} className="text-xs border border-gray-300 px-2.5 py-1.5 rounded-lg font-semibold hover:bg-gray-50 inline-flex items-center gap-1">
                           <Printer size={12} /> Imprimer
                         </button>
@@ -1014,7 +1017,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       {/* ====== Dialog traitement demande (valider/refuser) ====== */}
       {procReq && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-4 sm:p-5 max-h-[90vh] overflow-y-auto">
             <div className="font-bold text-base mb-2">
               {procReq.mode === 'issue' ? `Valider → Bon de sortie` : `Refuser la demande`}
             </div>
@@ -1050,7 +1053,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       {/* ====== Dialog retour ====== */}
       {retMv && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-4 sm:p-5 max-h-[90vh] overflow-y-auto">
             <div className="font-bold text-base mb-1">Retour matériel — {retMv.number}</div>
             <div className="text-xs text-gray-500 mb-3">Quantités retournées par ligne :</div>
             {retMv.lines.map((l) => {
@@ -1084,7 +1087,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       {/* ====== Dialog bon de récupération (retour terrain, jamais passé par le stock) ====== */}
       {recOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl p-5 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl p-4 sm:p-5 max-h-[90vh] overflow-y-auto">
             <div className="font-bold text-base mb-1">Bon de récupération — matériel ramené d'un site</div>
             <div className="text-xs text-gray-500 mb-3">Matériel n'ayant jamais transité par le stock STHIC. La condition détermine l'entrée en stock.</div>
             <RecoveryLinesEditor items={items.filter((i) => i.active)} lines={recLines} setLines={setRecLines} disabled={busy} inputCls={inputCls} />
@@ -1147,7 +1150,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       {/* ====== Dialog import inventaire initial ====== */}
       {importOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-5 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-4 sm:p-5 max-h-[90vh] overflow-y-auto">
             <div className="font-bold text-base mb-1">Import inventaire initial</div>
             <div className="text-xs text-gray-500 mb-3">
               Collez votre tableau depuis Excel — une ligne par article, colonnes séparées par TAB ou « ; » :<br />
@@ -1187,7 +1190,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                   onChange={(e) => setImportText(e.target.value)}
                 />
                 {parsedImport.length > 0 && (
-                  <div className="mt-3 border border-gray-200 rounded-lg overflow-hidden max-h-52 overflow-y-auto">
+                  <div className="mt-3 border border-gray-200 rounded-lg overflow-auto max-h-52">
                     <table className="w-full text-xs">
                       <thead className="bg-gray-50 sticky top-0">
                         <tr className="text-left text-gray-500">
@@ -1236,9 +1239,9 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       {/* ====== Dialog bon d'entrée ====== */}
       {entryOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-4 sm:p-5 max-h-[90vh] overflow-y-auto">
             <div className="font-bold text-base mb-3">Bon d'entrée — réception matériel</div>
-            <div className="grid grid-cols-[1fr_5.5rem_2rem] gap-2 mb-1 px-0.5">
+            <div className="hidden sm:grid grid-cols-[1fr_5.5rem_2rem] gap-2 mb-1 px-0.5">
               <span className={labelCls}>Article</span>
               <span className={`${labelCls} text-center`}>Quantité</span>
               <span></span>
