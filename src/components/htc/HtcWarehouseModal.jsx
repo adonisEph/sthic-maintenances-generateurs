@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   X, Package, ClipboardList, FileText, Boxes, Plus, Trash2, Check, Ban,
-  Printer, RotateCcw, RefreshCw, AlertTriangle, Search, Warehouse, Store, Upload
+  Printer, RotateCcw, RefreshCw, AlertTriangle, Search, Warehouse, Store, Upload, Download
 } from 'lucide-react';
 import SignaturePad from './SignaturePad';
 import { toastAlert as alert } from '../../utils/feedback';
 import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 
 const LOCATION_LABEL = { entrepot: 'Entrepôt', magasin: 'Magasin (Buffer)' };
 const TYPE_LABEL = { exit: 'Sortie', entry: 'Entrée', return: 'Retour', recovery: 'Récupération', reinstatement: 'Réintégration', client_return: 'Remise client' };
@@ -39,7 +41,44 @@ const fmtDate = (v) => {
   return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleDateString('fr-FR');
 };
 
-function printBon(mv) {
+const BON_CSS = `
+  *{box-sizing:border-box}
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;padding:0;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .sheet{break-inside:avoid-page;page-break-inside:avoid}
+  .top{display:flex;align-items:center;gap:14px;border:2.5px solid #1e3a5f;padding:8px 12px}
+  .top img{height:104px;width:auto}
+  .top .t{flex:1;text-align:center}
+  .top .t .doc{font-size:19px;font-weight:800;color:#1e3a5f;letter-spacing:.3px}
+  .top .t .sub{font-size:10.5px;color:#64748b;margin-top:2px}
+  .num{text-align:right}
+  .num .n{font-size:16px;font-weight:800;color:#b45309;font-family:Consolas,monospace}
+  .num .d{font-size:10.5px;color:#64748b}
+  .meta{display:grid;grid-template-columns:repeat(4,1fr);border:1.2px solid #475569;margin-top:14px}
+  .meta>div{padding:6px 9px;border-right:1px solid #94a3b8}
+  .meta>div:last-child{border-right:none}
+  .meta .l{font-size:8.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#64748b}
+  .meta .v{font-size:11.5px;font-weight:700;margin-top:2px}
+  table{width:100%;border-collapse:collapse;margin-top:14px;border:1.2px solid #475569}
+  th{font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:#1e293b;background:#eef2f7;text-align:center;padding:6px 9px;border-bottom:1.2px solid #475569}
+  th.d{text-align:left}
+  td{padding:6px 9px;font-size:11px;border-bottom:1px solid #e2e8f0;vertical-align:top}
+  td.c{text-align:center}
+  td.desig{text-align:justify;text-justify:inter-word}
+  .reason{margin-top:12px;font-size:10.5px}
+  .reason b{color:#1e293b}
+  .sign{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:26px}
+  .sign .b{border-top:1.2px solid #475569;padding-top:6px;font-size:9.5px;color:#475569;text-align:center;min-height:70px}
+  .sign .b .signame{font-family:'Segoe Script','Brush Script MT',cursive;font-size:15px;color:#0f172a;margin-bottom:4px}
+  .foot{margin-top:14px;font-size:8.5px;color:#94a3b8;text-align:center}
+  tr{break-inside:avoid;page-break-inside:avoid}
+  .meta,.sign,.foot{break-inside:avoid;page-break-inside:avoid}
+  .cut{margin-top:4mm;padding-top:1.5mm;border-top:1.6px dashed #94a3b8;display:flex;align-items:center;justify-content:space-between;color:#94a3b8;break-inside:avoid}
+  .cut .cis{font-size:15px;letter-spacing:2px}
+  .cut .lbl{font-size:8px;letter-spacing:.8px;text-transform:uppercase}
+`;
+
+// Corps du bon — mutualisé impression / PDF « scan » (reconstruit à la volée, rien en base).
+function bonInnerHtml(mv) {
   const typeLabel = TYPE_BON[mv.type] || 'BON';
   // Colonnes normalisées par type de bon (cahier des charges) :
   //   BE : Date, Désignation, Quantité, Client/Fournisseur, N°SMR, Bénéficiaire
@@ -83,43 +122,7 @@ function printBon(mv) {
   const sig = mv.signatureImage
     ? `<img src="${mv.signatureImage}" alt="signature" style="max-height:52px;max-width:180px"/>`
     : (mv.signatureName ? `<div class="signame">${esc(mv.signatureName)}</div>` : '—');
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(mv.number)}</title>
-<style>
-  @page{size:A4;margin:9mm}
-  *{box-sizing:border-box}
-  body{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;padding:0;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .sheet{break-inside:avoid-page;page-break-inside:avoid}
-  .top{display:flex;align-items:center;gap:14px;border:2.5px solid #1e3a5f;padding:8px 12px}
-  .top img{height:104px;width:auto}
-  .top .t{flex:1;text-align:center}
-  .top .t .doc{font-size:19px;font-weight:800;color:#1e3a5f;letter-spacing:.3px}
-  .top .t .sub{font-size:10.5px;color:#64748b;margin-top:2px}
-  .num{text-align:right}
-  .num .n{font-size:16px;font-weight:800;color:#b45309;font-family:Consolas,monospace}
-  .num .d{font-size:10.5px;color:#64748b}
-  .meta{display:grid;grid-template-columns:repeat(4,1fr);border:1.2px solid #475569;margin-top:14px}
-  .meta>div{padding:6px 9px;border-right:1px solid #94a3b8}
-  .meta>div:last-child{border-right:none}
-  .meta .l{font-size:8.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#64748b}
-  .meta .v{font-size:11.5px;font-weight:700;margin-top:2px}
-  table{width:100%;border-collapse:collapse;margin-top:14px;border:1.2px solid #475569}
-  th{font-size:9px;text-transform:uppercase;letter-spacing:.6px;color:#1e293b;background:#eef2f7;text-align:center;padding:6px 9px;border-bottom:1.2px solid #475569}
-  th.d{text-align:left}
-  td{padding:6px 9px;font-size:11px;border-bottom:1px solid #e2e8f0;vertical-align:top}
-  td.c{text-align:center}
-  td.desig{text-align:justify;text-justify:inter-word}
-  .reason{margin-top:12px;font-size:10.5px}
-  .reason b{color:#1e293b}
-  .sign{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:26px}
-  .sign .b{border-top:1.2px solid #475569;padding-top:6px;font-size:9.5px;color:#475569;text-align:center;min-height:70px}
-  .sign .b .signame{font-family:'Segoe Script','Brush Script MT',cursive;font-size:15px;color:#0f172a;margin-bottom:4px}
-  .foot{margin-top:14px;font-size:8.5px;color:#94a3b8;text-align:center}
-  tr{break-inside:avoid;page-break-inside:avoid}
-  .meta,.sign,.foot{break-inside:avoid;page-break-inside:avoid}
-  .cut{margin-top:4mm;padding-top:1.5mm;border-top:1.6px dashed #94a3b8;display:flex;align-items:center;justify-content:space-between;color:#94a3b8;break-inside:avoid}
-  .cut .cis{font-size:15px;letter-spacing:2px}
-  .cut .lbl{font-size:8px;letter-spacing:.8px;text-transform:uppercase}
-</style></head><body><div class="sheet">
+  return `
   <div class="top">
     <img src="${location.origin}/Logo_sthic.png" alt="STHIC"/>
     <div class="t"><div class="doc">${esc(typeLabel)} — MATÉRIEL HTC</div><div class="sub">STHIC · Magasin &amp; Stocks HTC</div></div>
@@ -139,8 +142,11 @@ function printBon(mv) {
     <div class="b"><div class="signame">${esc(mv.createdByName || '')}</div>Signature du magasinier</div>
   </div>
   <div class="foot">Document généré le ${esc(new Date().toLocaleDateString('fr-FR'))} · STHIC — Gestion Maintenance &amp; Vidanges</div>
-  <div class="cut"><span class="cis">&#9986;</span><span class="lbl">Zone de découpe</span><span class="cis">&#9986;</span></div>
-</div></body></html>`;
+  <div class="cut"><span class="cis">&#9986;</span><span class="lbl">Zone de découpe</span><span class="cis">&#9986;</span></div>`;
+}
+
+function printBon(mv) {
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(mv.number)}</title><style>@page{size:A4;margin:9mm}\n${BON_CSS}</style></head><body><div class="sheet">${bonInnerHtml(mv)}</div></body></html>`;
   const iframe = document.createElement('iframe');
   iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
   document.body.appendChild(iframe);
@@ -148,6 +154,32 @@ function printBon(mv) {
   iframe.contentDocument.write(html);
   iframe.contentDocument.close();
   setTimeout(() => { try { iframe.contentWindow.print(); } finally { setTimeout(() => iframe.remove(), 800); } }, 250);
+}
+
+// PDF « scan » reconstruit à la volée — rien stocké en base. La page fait la
+// hauteur exacte du document : elle s'arrête à la zone de découpe (format reçu).
+async function bonPdf(mv) {
+  const holder = document.createElement('div');
+  holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:726px;background:#ffffff';
+  holder.innerHTML = `<style>${BON_CSS}</style><div class="sheet">${bonInnerHtml(mv)}</div>`;
+  document.body.appendChild(holder);
+  try {
+    await Promise.all([...holder.querySelectorAll('img')].map((img) => (img.complete
+      ? Promise.resolve() : new Promise((res) => { img.onload = res; img.onerror = res; }))));
+    const canvas = await html2canvas(holder.querySelector('.sheet'), { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+    const wMm = 192; // 210mm − 2×9mm de marges
+    const hMm = (canvas.height / canvas.width) * wMm;
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [210, hMm + 18] });
+    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 9, 9, wMm, hMm);
+    const file = new File([pdf.output('blob')], `${mv.number}.pdf`, { type: 'application/pdf' });
+    // Smartphone : partage natif (mail/WhatsApp…) quand disponible, sinon téléchargement.
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: mv.number }); return; } catch { /* annulé → téléchargement */ }
+    }
+    pdf.save(`${mv.number}.pdf`);
+  } finally {
+    holder.remove();
+  }
 }
 
 // ---------- Lignes multi-articles (demande / entrée) ----------
@@ -1201,6 +1233,9 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                       <div className="flex flex-wrap gap-2 mt-2">
                         <button onClick={() => printBon(mv)} className="text-xs border border-gray-300 px-2.5 py-1.5 rounded-lg font-semibold hover:bg-gray-50 inline-flex items-center gap-1">
                           <Printer size={12} /> Imprimer
+                        </button>
+                        <button onClick={() => bonPdf(mv).catch(() => alert('Erreur lors de la génération du PDF.'))} className="text-xs border border-gray-300 px-2.5 py-1.5 rounded-lg font-semibold hover:bg-gray-50 inline-flex items-center gap-1">
+                          <Download size={12} /> PDF
                         </button>
                         {mv.type === 'exit' && (mv.status === 'issued' || mv.status === 'partial_return') && (
                           <button onClick={() => { setRetMv(mv); setRetLines({}); setRetDate(''); setRetSigImg(''); setRetSigName(''); setRetAgent(mv.requesterName || ''); setRetProvenance(mv.siteName || ''); }}
