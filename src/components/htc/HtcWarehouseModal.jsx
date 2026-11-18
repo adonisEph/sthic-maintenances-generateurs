@@ -352,6 +352,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState('');
   const [importResult, setImportResult] = useState(null);
+  const [importMode, setImportMode] = useState('initial'); // 'initial' | 'reception'
 
   // Retour
   const [retMv, setRetMv] = useState(null);
@@ -847,7 +848,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                 {isManager && (
                   <div className="w-full sm:w-auto sm:ml-auto flex flex-wrap gap-2">
                     <button onClick={() => { setImportOpen(true); setImportResult(null); }} className="flex-1 sm:flex-none justify-center border border-indigo-300 text-indigo-700 px-3 py-2 rounded-lg hover:bg-indigo-50 font-semibold text-sm disabled:opacity-60 inline-flex items-center gap-2">
-                      <Upload size={15} /> Import inventaire
+                      <Upload size={15} /> Import &amp; collage
                     </button>
                     <button onClick={() => setRecOpen(true)} className="flex-1 sm:flex-none justify-center bg-sky-700 text-white px-4 py-2 rounded-lg hover:bg-sky-800 font-semibold text-sm disabled:opacity-60 inline-flex items-center gap-2">
                       <RotateCcw size={15} /> Bon de récupération
@@ -1466,8 +1467,22 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       {importOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl p-4 sm:p-5 max-h-[92vh] overflow-y-auto">
-            <div className="font-bold text-base mb-1">Import inventaire initial</div>
+            <div className="font-bold text-base mb-2">Import &amp; collage d'articles</div>
+            <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden text-[11px] font-bold mb-3">
+              <button type="button" onClick={() => setImportMode('initial')}
+                className={`px-3 py-1.5 ${importMode === 'initial' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                Inventaire initial
+              </button>
+              <button type="button" onClick={() => setImportMode('reception')}
+                className={`px-3 py-1.5 border-l border-gray-200 ${importMode === 'reception' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                Réception courante
+              </button>
+            </div>
             <div className="text-xs text-gray-500 mb-3">
+              {importMode === 'initial'
+                ? 'Matériel déjà sur place avant l\'app — saisi une fois, sans site d\'origine (case « Inventaire initial » pré-cochée au Bon de récupération).'
+                : 'Ajout en masse : réception client/fournisseur (→ Bon d\'entrée) ou récupération depuis un site (→ Bon de récupération avec site à choisir).'}
+              <br />
               Fichier ou collage — une ligne par article, colonnes séparées par TAB ou « ; » :<br />
               <code className="bg-gray-100 px-1.5 py-0.5 rounded">Désignation ; Lieu ; Quantité ; Condition ; Notes</code>
               <span className="block mt-1">
@@ -1495,7 +1510,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                     <button className="bg-sky-700 text-white px-4 py-2 rounded-lg hover:bg-sky-800 font-semibold text-sm disabled:opacity-60 inline-flex items-center gap-2" onClick={() => {
                       setRecLines(importResult.rows.filter((r) => r.condition !== 'fonctionnel')
                         .map((r) => ({ mode: 'existing', itemId: r.itemId, qty: r.qty, condition: r.condition, newName: '', newLocation: r.location })));
-                      setRecInitial(true); setImportOpen(false); setImportResult(null); setRecOpen(true);
+                      setRecInitial(importMode === 'initial'); setImportOpen(false); setImportResult(null); setRecOpen(true);
                     }}>
                       → Bon de récupération ({importResult.rows.filter((r) => r.condition !== 'fonctionnel').length} ligne(s))
                     </button>
