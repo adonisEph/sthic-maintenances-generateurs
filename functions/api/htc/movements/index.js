@@ -19,7 +19,7 @@ export async function onRequestGet({ env, data, request }) {
 
     const clauses = ['1=1'];
     const binds = [];
-    if (['exit', 'entry', 'return', 'recovery'].includes(type)) { clauses.push('m.type = ?'); binds.push(type); }
+    if (['exit', 'entry', 'return', 'recovery', 'reinstatement', 'client_return'].includes(type)) { clauses.push('m.type = ?'); binds.push(type); }
     if (['entrepot', 'magasin'].includes(location)) { clauses.push('m.location = ?'); binds.push(location); }
     if (from) { clauses.push('m.movement_date >= ?'); binds.push(from); }
     if (to) { clauses.push('m.movement_date <= ?'); binds.push(to); }
@@ -63,17 +63,47 @@ export async function onRequestPost({ request, env, data }) {
     if (!lines.length || lines.length > 50) return json({ error: 'Ajoute 1 à 50 lignes.' }, { status: 400 });
 
     const ids = lines.map((l) => String(l?.itemId || '').trim()).filter(Boolean);
-    if (ids.length !== lines.length) return json({ error: 'Article manquant sur une ligne.' }, { status: 400 });
-    const ph = ids.map(() => '?').join(',');
-    const itemsRes = await env.DB.prepare(`SELECT * FROM htc_items WHERE id IN (${ph})`).bind(...ids).all();
-    const items = new Map((itemsRes?.results || []).map((r) => [r.id, r]));
+    const items = new Map();
+    if (ids.length) {
+      const ph = ids.map(() => '?').join(',');
+      const itemsRes = await env.DB.prepare(`SELECT * FROM htc_items WHERE id IN (${ph})`).bind(...ids).all();
+      for (const r of itemsRes?.results || []) items.set(r.id, r);
+    }
 
+    const now = isoNow();
     const clean = [];
     for (const l of lines) {
       const qty = Math.floor(Number(l?.qty));
       if (!Number.isFinite(qty) || qty < 1 || qty > 10000) return json({ error: 'Quantité invalide.' }, { status: 400 });
-      const it = items.get(String(l.itemId));
-      if (!it) return json({ error: 'Article introuvable.' }, { status: 400 });
+      const itemId = String(l?.itemId || '').trim();
+      if (itemId) {
+        const it = items.get(itemId);
+        if (!it) return json({ error: 'Article introuvable.' }, { status: 400 });
+        clean.push({ item: it, qty });
+        continue;
+      }
+      // Article créé à la volée : réception d'un matériel jamais catalogué.
+      // Anti-doublon : même désignation (casse ignorée) + même lieu → réutilisation.
+      const ni = l?.newItem || {};
+      const name = String(ni.name || '').trim();
+      const location = String(ni.location || '').trim();
+      if (!name) return json({ error: 'Désignation requise pour un nouvel article.' }, { status: 400 });
+      if (!['entrepot', 'magasin'].includes(location)) return json({ error: 'Lieu invalide pour un nouvel article.' }, { status: 400 });
+      let it = await env.DB.prepare('SELECT * FROM htc_items WHERE LOWER(TRIM(name)) = LOWER(?) AND location = ?').bind(name, location).first();
+      if (!it) {
+        const nid = newId();
+        await env.DB.prepare(
+          'INSERT INTO htc_items (id, name, category, location, unit, notes, active, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)'
+        ).bind(
+          nid, name,
+          String(ni.category || 'other').trim() || 'other',
+          location,
+          String(ni.unit || 'pièce').trim() || 'pièce',
+          String(ni.notes || '').trim(),
+          String(data.user.id), now, now
+        ).run();
+        it = { id: nid, name, location, unit: 'pièce' };
+      }
       clean.push({ item: it, qty });
     }
 
@@ -81,7 +111,6 @@ export async function onRequestPost({ request, env, data }) {
     const signatureImage = String(body?.signatureImage || '');
 
     const movId = newId();
-    const now = isoNow();
     const number = await allocHtcNumber(env, 'entry');
     const mainLoc = String(clean[0].item.location || 'entrepot');
 

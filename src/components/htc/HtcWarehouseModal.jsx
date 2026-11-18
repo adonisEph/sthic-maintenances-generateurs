@@ -266,6 +266,79 @@ const RecoveryLinesEditor = ({ items, lines, setLines, disabled, inputCls }) => 
   );
 };
 
+// ---------- Lignes bon d'entrée (article existant OU créé à la volée dans le bon) ----------
+const EntryLinesEditor = ({ items, lines, setLines, disabled, inputCls }) => {
+  const blank = { mode: 'existing', itemId: '', qty: 1, newName: '', newLocation: 'entrepot' };
+  const addLine = () => setLines([...lines, { ...blank }]);
+  const setLine = (i, patch) => setLines(lines.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  const rmLine = (i) => setLines(lines.filter((_, idx) => idx !== i));
+  const sub = 'block text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-0.5';
+  return (
+    <div className="space-y-2">
+      {lines.map((l, i) => (
+        <div key={i} className="border border-gray-200 rounded-lg p-2.5 bg-gray-50/60">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="inline-flex rounded-md border border-gray-300 overflow-hidden text-[11px] font-semibold">
+              <button type="button" disabled={disabled} onClick={() => setLine(i, { mode: 'existing' })}
+                className={`px-2.5 py-1 ${l.mode !== 'new' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500'}`}>Article existant</button>
+              <button type="button" disabled={disabled} onClick={() => setLine(i, { mode: 'new' })}
+                className={`px-2.5 py-1 ${l.mode === 'new' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500'}`}>Nouvel article</button>
+            </div>
+            <button type="button" onClick={() => rmLine(i)} disabled={disabled || lines.length <= 1}
+              className="ml-auto p-1.5 text-gray-400 hover:text-rose-600 disabled:opacity-40">
+              <Trash2 size={15} />
+            </button>
+          </div>
+          {l.mode === 'new' ? (
+            <div className="grid sm:grid-cols-[1fr_9.5rem_6rem] gap-2">
+              <div>
+                <label className={sub}>Désignation *</label>
+                <input className={inputCls} placeholder="Ex. Module Delta GM" value={l.newName} disabled={disabled}
+                  onChange={(e) => setLine(i, { newName: e.target.value })} />
+              </div>
+              <div>
+                <label className={sub}>Lieu</label>
+                <select className={inputCls} value={l.newLocation} disabled={disabled} onChange={(e) => setLine(i, { newLocation: e.target.value })}>
+                  <option value="entrepot">Entrepôt</option>
+                  <option value="magasin">Magasin (Buffer)</option>
+                </select>
+              </div>
+              <div>
+                <label className={sub}>Quantité</label>
+                <input type="number" min="1" max="10000" className={`${inputCls} text-center`} value={l.qty} disabled={disabled}
+                  onChange={(e) => setLine(i, { qty: e.target.value })} />
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-[1fr_6rem] gap-2">
+              <div>
+                <label className={sub}>Article</label>
+                <select className={inputCls} value={l.itemId} disabled={disabled} onChange={(e) => setLine(i, { itemId: e.target.value })}>
+                  <option value="">— Choisir un article —</option>
+                  {items.map((it) => (
+                    <option key={it.id} value={it.id}>
+                      {it.name} · {LOCATION_LABEL[it.location] || it.location}{it.stock != null ? ` · stock ${it.stock}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={sub}>Quantité</label>
+                <input type="number" min="1" max="10000" className={`${inputCls} text-center`} value={l.qty} disabled={disabled}
+                  onChange={(e) => setLine(i, { qty: e.target.value })} />
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+      <button type="button" onClick={addLine} disabled={disabled}
+        className="text-sm text-indigo-700 font-semibold hover:underline inline-flex items-center gap-1 disabled:opacity-40">
+        <Plus size={14} /> Ajouter un article
+      </button>
+    </div>
+  );
+};
+
 const SignBlock = ({ sigImg, setSigImg, sigName, setSigName }) => (
   <div>
     <SignaturePad onChange={setSigImg} />
@@ -310,7 +383,8 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
 
   // Entrée directe
   const [entryOpen, setEntryOpen] = useState(false);
-  const [entryLines, setEntryLines] = useState([{ itemId: '', qty: 1 }]);
+  const entryBlankLine = { mode: 'existing', itemId: '', qty: 1, newName: '', newLocation: 'entrepot' };
+  const [entryLines, setEntryLines] = useState([entryBlankLine]);
   const [entryDate, setEntryDate] = useState('');
   const [entryReason, setEntryReason] = useState('');
   const [entrySupplier, setEntrySupplier] = useState('');
@@ -467,7 +541,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
 
   // Magasinier : raccourci « Entrée » depuis une carte stock → BE pré-rempli.
   const entryItem = (it) => {
-    setEntryLines([{ itemId: it.id, qty: 1 }]);
+    setEntryLines([{ ...entryBlankLine, itemId: it.id }]);
     setEntryOpen(true);
   };
 
@@ -509,20 +583,22 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   };
 
   const submitEntry = async () => {
-    const lines = entryLines.filter((l) => l.itemId && Number(l.qty) >= 1);
+    const lines = entryLines.filter((l) => (l.mode === 'new' ? l.newName.trim() : l.itemId) && Number(l.qty) >= 1);
     if (!lines.length) return alert('Ajoute au moins un article.');
     setBusy(true);
     try {
       const res = await apiFetchJson('/api/htc/movements', {
         method: 'POST',
         body: JSON.stringify({
-          lines: lines.map((l) => ({ itemId: l.itemId, qty: Number(l.qty) })),
+          lines: lines.map((l) => (l.mode === 'new'
+            ? { newItem: { name: l.newName.trim(), location: l.newLocation }, qty: Number(l.qty) }
+            : { itemId: l.itemId, qty: Number(l.qty) })),
           movementDate: entryDate || undefined, reason: entryReason,
           senderType: entrySenderType, supplierName: entrySupplier, requesterRole: entrySenderRole,
           smrNumber: entrySmr, beneficiary: entryBeneficiary
         })
       });
-      setEntryOpen(false); setEntryLines([{ itemId: '', qty: 1 }]); setEntryDate(''); setEntryReason(''); setEntrySupplier(''); setEntrySmr(''); setEntryBeneficiary('Magasin STHIC'); setEntrySenderType('htc'); setEntrySenderRole('htc_logistician');
+      setEntryOpen(false); setEntryLines([{ ...entryBlankLine }]); setEntryDate(''); setEntryReason(''); setEntrySupplier(''); setEntrySmr(''); setEntryBeneficiary('Magasin STHIC'); setEntrySenderType('htc'); setEntrySenderRole('htc_logistician');
       await Promise.all([loadMovements(), loadItems(), loadStats()]);
       if (res?.movement && window.confirm(`Bon ${res.movement.number} créé. Imprimer ?`)) printBon(res.movement);
     } catch (e) { alert(e.message || 'Erreur.'); }
@@ -1500,7 +1576,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                 <div className="flex flex-wrap gap-2 mt-3 justify-end">
                   {importResult.rows?.some((r) => r.condition === 'fonctionnel') && (
                     <button className={btnPrimary} onClick={() => {
-                      setEntryLines(importResult.rows.filter((r) => r.condition === 'fonctionnel').map((r) => ({ itemId: r.itemId, qty: r.qty })));
+                      setEntryLines(importResult.rows.filter((r) => r.condition === 'fonctionnel').map((r) => ({ mode: 'existing', itemId: r.itemId, qty: r.qty, newName: '', newLocation: 'entrepot' })));
                       setImportOpen(false); setImportResult(null); setEntryOpen(true);
                     }}>
                       → Bon d'entrée ({importResult.rows.filter((r) => r.condition === 'fonctionnel').length} ligne(s))
@@ -1585,7 +1661,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
               <span className={`${labelCls} text-center`}>Quantité</span>
               <span></span>
             </div>
-            <LinesEditor items={items.filter((i) => i.active)} lines={entryLines} setLines={setEntryLines} disabled={busy} />
+            <EntryLinesEditor items={items.filter((i) => i.active)} lines={entryLines} setLines={setEntryLines} disabled={busy} inputCls={inputCls} />
             <div className="grid sm:grid-cols-2 gap-2 mt-3">
               <div>
                 <label className={labelCls}>Expéditeur *</label>
