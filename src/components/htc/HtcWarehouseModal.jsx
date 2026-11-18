@@ -159,18 +159,33 @@ function printBon(mv) {
 // PDF « scan » reconstruit à la volée — rien stocké en base. La page fait la
 // hauteur exacte du document : elle s'arrête à la zone de découpe (format reçu).
 async function bonPdf(mv) {
-  const holder = document.createElement('div');
-  holder.style.cssText = 'position:fixed;left:-10000px;top:0;width:726px;background:#ffffff';
-  holder.innerHTML = `<style>${BON_CSS}</style><div class="sheet">${bonInnerHtml(mv)}</div>`;
-  document.body.appendChild(holder);
+  // Même pipeline de rendu que l'impression : iframe hors-écran à largeur fixe,
+  // donc la mise en page est strictement identique au bon imprimé.
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:740px;height:1200px;border:0;visibility:hidden';
+  document.body.appendChild(iframe);
   try {
-    await Promise.all([...holder.querySelectorAll('img')].map((img) => (img.complete
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(
+      `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${BON_CSS}</style></head><body><div class="sheet">${bonInnerHtml(mv)}</div></body></html>`);
+    iframe.contentDocument.close();
+    const idoc = iframe.contentDocument;
+    await Promise.all([...idoc.images].map((img) => (img.complete
       ? Promise.resolve() : new Promise((res) => { img.onload = res; img.onerror = res; }))));
-    const canvas = await html2canvas(holder.querySelector('.sheet'), { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+    const sheet = idoc.querySelector('.sheet');
+    const canvas = await html2canvas(sheet, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+    // Recadrage : le canvas s'arrête juste sous la zone de découpe.
+    const sheetRect = sheet.getBoundingClientRect();
+    const cut = idoc.querySelector('.cut');
+    const cutBottom = cut ? cut.getBoundingClientRect().bottom - sheetRect.top : sheetRect.height;
+    const cropPx = Math.min(canvas.height, Math.round(cutBottom * (canvas.height / sheetRect.height)));
+    const out = document.createElement('canvas');
+    out.width = canvas.width; out.height = cropPx;
+    out.getContext('2d').drawImage(canvas, 0, 0, canvas.width, cropPx, 0, 0, canvas.width, cropPx);
     const wMm = 192; // 210mm − 2×9mm de marges
-    const hMm = (canvas.height / canvas.width) * wMm;
+    const hMm = (out.height / out.width) * wMm;
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [210, hMm + 18] });
-    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 9, 9, wMm, hMm);
+    pdf.addImage(out.toDataURL('image/png'), 'PNG', 9, 9, wMm, hMm);
     const blob = pdf.output('blob');
     // Aperçu d'abord : le PDF s'ouvre dans la visionneuse du navigateur
     // (nouvel onglet) — le partage mail/WhatsApp se fait depuis la visionneuse.
@@ -184,7 +199,7 @@ async function bonPdf(mv) {
     }
     pdf.save(`${mv.number}.pdf`);
   } finally {
-    holder.remove();
+    iframe.remove();
   }
 }
 
