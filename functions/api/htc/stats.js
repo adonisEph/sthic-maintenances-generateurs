@@ -34,12 +34,15 @@ export async function onRequestGet({ env, data }) {
     const month = { entry: 0, exit: 0, return: 0, recovery: 0 };
     for (const r of monthRes?.results || []) month[r.t] = Number(r.n || 0);
 
-    // Matériel non-fonctionnel documenté en stock « Retour Site ».
+    // Matériel non-fonctionnel documenté en stock « Retour Site » :
+    // Σ récupérations non-fonctionnelles − Σ réintégrations − Σ remises client.
     const site = await env.DB.prepare(
-      `SELECT COALESCE(SUM(l.qty), 0) AS units
+      `SELECT COALESCE(SUM(
+         CASE WHEN m.type = 'recovery' AND l.item_condition != 'fonctionnel' THEN l.qty
+              WHEN m.type IN ('reinstatement', 'client_return') THEN -l.qty ELSE 0 END), 0) AS units
        FROM htc_movement_lines l
        JOIN htc_movements m ON m.id = l.movement_id
-       WHERE m.type = 'recovery' AND m.status != 'cancelled' AND l.item_condition != 'fonctionnel'`
+       WHERE m.status != 'cancelled'`
     ).first();
 
     return json({

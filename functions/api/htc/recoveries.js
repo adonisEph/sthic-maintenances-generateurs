@@ -46,6 +46,9 @@ export async function onRequestPost({ request, env, data }) {
 
       let item = null;
       const itemId = String(l?.itemId || '').trim();
+      // Règle métier : tout matériel non fonctionnel ramené de site est
+      // stocké physiquement à l'Entrepôt (quarantaine Retour Site), quel que
+      // soit le lieu « maison » de l'article.
       if (itemId) {
         item = await env.DB.prepare('SELECT * FROM htc_items WHERE id = ?').bind(itemId).first();
         if (!item) return json({ error: 'Article introuvable.' }, { status: 400 });
@@ -69,7 +72,8 @@ export async function onRequestPost({ request, env, data }) {
         ).run();
         item = { id: nid, name, location, unit: String(ni.unit || 'pièce') };
       }
-      clean.push({ item, qty, condition });
+      const lineLoc = condition !== 'fonctionnel' ? 'entrepot' : String(item.location || 'entrepot');
+      clean.push({ item, qty, condition, lineLoc });
     }
 
     const movId = newId();
@@ -94,7 +98,7 @@ export async function onRequestPost({ request, env, data }) {
     for (const c of clean) {
       await env.DB.prepare(
         'INSERT INTO htc_movement_lines (id, movement_id, item_id, item_name, location, qty, qty_returned, item_condition) VALUES (?, ?, ?, ?, ?, ?, 0, ?)'
-      ).bind(newId(), movId, c.item.id, c.item.name, c.item.location, c.qty, c.condition).run();
+      ).bind(newId(), movId, c.item.id, c.item.name, c.lineLoc, c.qty, c.condition).run();
     }
 
     const mov = await env.DB.prepare('SELECT * FROM htc_movements WHERE id = ?').bind(movId).first();

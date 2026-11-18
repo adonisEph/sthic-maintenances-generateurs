@@ -8,8 +8,8 @@ import { toastAlert as alert } from '../../utils/feedback';
 import * as XLSX from 'xlsx';
 
 const LOCATION_LABEL = { entrepot: 'Entrepôt', magasin: 'Magasin (Buffer)' };
-const TYPE_LABEL = { exit: 'Sortie', entry: 'Entrée', return: 'Retour', recovery: 'Récupération' };
-const TYPE_BON = { exit: 'BON DE SORTIE', entry: "BON D'ENTRÉE", return: 'BON DE RETOUR', recovery: 'BON DE RÉCUPÉRATION' };
+const TYPE_LABEL = { exit: 'Sortie', entry: 'Entrée', return: 'Retour', recovery: 'Récupération', reinstatement: 'Réintégration', client_return: 'Remise client' };
+const TYPE_BON = { exit: 'BON DE SORTIE', entry: "BON D'ENTRÉE", return: 'BON DE RETOUR', recovery: 'BON DE RÉCUPÉRATION', reinstatement: 'BON DE RÉINTÉGRATION', client_return: 'BON DE REMISE CLIENT' };
 const CONDITION_LABEL = { fonctionnel: 'Fonctionnel', defectueux: 'Défectueux', a_reparer: 'À réparer', hs: 'HS' };
 const STATUS_LABEL = {
   pending: 'En attente', issued: 'Traitée', rejected: 'Refusée', cancelled: 'Annulée',
@@ -52,7 +52,9 @@ function printBon(mv) {
     entry: ['Date', 'Désignation', 'Quantité', 'Client / Fournisseur', 'N° SMR', 'Bénéficiaire'],
     exit: ['Date', 'Désignation', 'Quantité', 'Demandeur', 'N° SWO', 'Destination'],
     return: ['Date', 'Désignation', 'Quantité', 'Agent', 'N° BS', 'Provenance'],
-    recovery: ['Date', 'Désignation', 'Quantité', 'Condition', 'Site', 'Ramené par']
+    recovery: ['Date', 'Désignation', 'Quantité', 'Condition', 'Site', 'Ramené par'],
+    reinstatement: ['Date', 'Désignation', 'Quantité', 'État d’origine', 'Réparé par', 'Destination'],
+    client_return: ['Date', 'Désignation', 'Quantité', 'État', 'Remis par', 'Bénéficiaire']
   };
   const heads = HEADS[mv.type] || ['Date', 'Désignation', 'Quantité', 'Lieu', '', ''];
   const cells = (l) => {
@@ -61,18 +63,23 @@ function printBon(mv) {
     if (mv.type === 'exit') return `${base}<td class="c">${esc(mv.requesterName || '—')}</td><td class="c">${esc(mv.swoNumber || '—')}</td><td class="c">${esc(mv.siteName || '—')}</td>`;
     if (mv.type === 'return') return `${base}<td class="c">${esc(mv.agentName || mv.requesterName || '—')}</td><td class="c">${esc(mv.returnOfNumber || '—')}</td><td class="c">${esc(mv.provenance || mv.siteName || '—')}</td>`;
     if (mv.type === 'recovery') return `${base}<td class="c">${esc(CONDITION_LABEL[l.condition] || 'Fonctionnel')}</td><td class="c">${esc(mv.siteName || '—')}</td><td class="c">${esc(mv.agentName || mv.requesterName || '—')}</td>`;
+    if (mv.type === 'reinstatement') return `${base}<td class="c">${esc(CONDITION_LABEL[l.condition] || '—')}</td><td class="c">${esc(mv.agentName || '—')}</td><td class="c">Stock disponible</td>`;
+    if (mv.type === 'client_return') return `${base}<td class="c">${esc(CONDITION_LABEL[l.condition] || '—')}</td><td class="c">${esc(mv.agentName || '—')}</td><td class="c">${esc(mv.beneficiary || 'Client HTC')}</td>`;
     return `${base}<td class="c">${esc(LOCATION_LABEL[l.location] || l.location || '—')}</td><td class="c" colspan="2"></td>`;
   };
   const rows = (mv.lines || []).map((l) => `<tr>${cells(l)}</tr>`).join('');
-  const whoLabel = mv.type === 'entry' ? 'Expéditeur' : mv.type === 'return' ? 'Agent' : mv.type === 'recovery' ? 'Ramené par' : 'Demandeur';
+  const whoLabel = mv.type === 'entry' ? 'Expéditeur' : mv.type === 'return' ? 'Agent' : mv.type === 'recovery' ? 'Ramené par' : mv.type === 'reinstatement' ? 'Réparé par' : mv.type === 'client_return' ? 'Remis par' : 'Demandeur';
   const whoVal = mv.type === 'entry' ? senderFull : (mv.agentName || mv.requesterName || '—');
-  const destLabel = mv.type === 'recovery' ? 'Site de récupération' : mv.type === 'return' ? 'Provenance' : 'Destination';
-  const destVal = mv.provenance || mv.siteName || '—';
+  const destLabel = mv.type === 'recovery' ? 'Site de récupération' : mv.type === 'return' ? 'Provenance' : mv.type === 'client_return' ? 'Bénéficiaire' : 'Destination';
+  const destVal = mv.type === 'reinstatement' ? 'Stock disponible' : mv.type === 'client_return' ? (mv.beneficiary || 'Client HTC') : (mv.provenance || mv.siteName || '—');
   const roleVal = REQUESTER_ROLE_LABEL[mv.requesterRole] || mv.requesterRole || '—';
   // BE : pas de carte « Lieu » — la provenance est l'expéditeur, le bénéficiaire le Magasin STHIC.
+  // RI / RM : la quarantaine vit à l'Entrepôt — carte « Lieu » figée « Entrepôt (Retour Site) ».
   const metaCells = mv.type === 'entry'
     ? [['Expéditeur', senderFull], ['Fonction', roleVal], ['Bénéficiaire', mv.beneficiary || 'Magasin STHIC']]
-    : [['Lieu', LOCATION_LABEL[mv.location] || mv.location || '—'], [whoLabel, whoVal], ['Fonction', roleVal], [destLabel, destVal]];
+    : (mv.type === 'reinstatement' || mv.type === 'client_return')
+      ? [['Lieu', 'Entrepôt (Retour Site)'], [whoLabel, whoVal], ['Fonction', roleVal], [destLabel, destVal]]
+      : [['Lieu', LOCATION_LABEL[mv.location] || mv.location || '—'], [whoLabel, whoVal], ['Fonction', roleVal], [destLabel, destVal]];
   const sig = mv.signatureImage
     ? `<img src="${mv.signatureImage}" alt="signature" style="max-height:52px;max-width:180px"/>`
     : (mv.signatureName ? `<div class="signame">${esc(mv.signatureName)}</div>` : '—');
@@ -127,7 +134,7 @@ function printBon(mv) {
   ${mv.reason ? `<div class="reason"><b>Motif :</b> ${esc(mv.reason)}</div>` : ''}
   ${mv.returnOfNumber ? `<div class="reason"><b>Retour de :</b> ${esc(mv.returnOfNumber)}</div>` : ''}
   <div class="sign">
-    <div class="b">${sig}Signature ${mv.type === 'recovery' ? 'de qui ramène' : mv.type === 'return' ? 'de l\u2019agent' : mv.type === 'entry' ? 'du réceptionnaire' : 'du demandeur'}</div>
+    <div class="b">${sig}Signature ${mv.type === 'recovery' ? 'de qui ramène' : mv.type === 'return' ? 'de l\u2019agent' : mv.type === 'entry' ? 'du réceptionnaire' : mv.type === 'reinstatement' ? 'du réparateur' : mv.type === 'client_return' ? 'de l\u2019agent remiseur' : 'du demandeur'}</div>
     <div class="b"><div class="signame">${esc(mv.createdByName || '')}</div>Signature du magasinier</div>
   </div>
   <div class="foot">Document généré le ${esc(new Date().toLocaleDateString('fr-FR'))} · STHIC — Gestion Maintenance &amp; Vidanges</div>
@@ -217,7 +224,9 @@ const RecoveryLinesEditor = ({ items, lines, setLines, disabled, inputCls }) => 
               </div>
               <div>
                 <label className={sub}>Lieu</label>
-                <select className={inputCls} value={l.newLocation} disabled={disabled} onChange={(e) => setLine(i, { newLocation: e.target.value })}>
+                <select className={inputCls} value={l.condition !== 'fonctionnel' ? 'entrepot' : l.newLocation}
+                  disabled={disabled || l.condition !== 'fonctionnel'}
+                  onChange={(e) => setLine(i, { newLocation: e.target.value })}>
                   <option value="entrepot">Entrepôt</option>
                   <option value="magasin">Magasin (Buffer)</option>
                 </select>
@@ -242,6 +251,9 @@ const RecoveryLinesEditor = ({ items, lines, setLines, disabled, inputCls }) => 
               <select className={inputCls} value={l.condition} disabled={disabled} onChange={(e) => setLine(i, { condition: e.target.value })}>
                 {Object.entries(CONDITION_LABEL).map(([v, lab]) => <option key={v} value={v}>{lab}</option>)}
               </select>
+              {l.condition !== 'fonctionnel' && (
+                <div className="text-[10px] font-semibold text-stone-500 mt-1">→ stocké à l'Entrepôt (Retour Site)</div>
+              )}
             </div>
           </div>
         </div>
@@ -323,6 +335,18 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   const [recReason, setRecReason] = useState('');
   const [recSigImg, setRecSigImg] = useState('');
   const [recSigName, setRecSigName] = useState('');
+
+  // Transitions Retour Site : réintégration (réparé → stock) / remise client HTC
+  const [transOpen, setTransOpen] = useState(null); // { mode: 'reinstatement'|'client_return' }
+  const [transItem, setTransItem] = useState('');
+  const [transCond, setTransCond] = useState('a_reparer');
+  const [transQty, setTransQty] = useState(1);
+  const [transAgent, setTransAgent] = useState('');
+  const [transBeneficiary, setTransBeneficiary] = useState('Client HTC');
+  const [transReason, setTransReason] = useState('');
+  const [transDate, setTransDate] = useState('');
+  const [transSigImg, setTransSigImg] = useState('');
+  const [transSigName, setTransSigName] = useState('');
 
   // Import en masse (inventaire initial)
   const [importOpen, setImportOpen] = useState(false);
@@ -521,7 +545,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
           movementDate: recDate || undefined, reason: recReason,
           signatureName: recSigName, signatureImage: recSigImg,
           lines: lines.map((l) => (l.mode === 'new'
-            ? { newItem: { name: l.newName.trim(), location: l.newLocation }, qty: Number(l.qty), condition: l.condition }
+            ? { newItem: { name: l.newName.trim(), location: l.condition !== 'fonctionnel' ? 'entrepot' : l.newLocation }, qty: Number(l.qty), condition: l.condition }
             : { itemId: l.itemId, qty: Number(l.qty), condition: l.condition }))
         })
       });
@@ -529,6 +553,49 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       setRecLines([{ ...recBlankLine }]); setRecSite(''); setRecInitial(false); setRecOrigin(''); setRecReturner(''); setRecDate(''); setRecReason(''); setRecSigImg(''); setRecSigName('');
       await Promise.all([loadMovements(), loadItems(), loadStats()]);
       if (res?.movement && window.confirm(`Bon de récupération ${res.movement.number} créé. Imprimer ?`)) printBon(res.movement);
+    } catch (e) { alert(e.message || 'Erreur.'); }
+    finally { setBusy(false); }
+  };
+
+  // Ouvre le dialog de transition Retour Site (réintégration / remise client HTC).
+  const openTransition = (mode, item) => {
+    const sc = item?.siteCond || {};
+    const conds = (mode === 'reinstatement' ? ['defectueux', 'a_reparer'] : ['defectueux', 'a_reparer', 'hs'])
+      .filter((c) => Number(sc[c] || 0) > 0);
+    setTransOpen({ mode });
+    setTransItem(item?.id || '');
+    setTransCond(conds[0] || (mode === 'reinstatement' ? 'a_reparer' : 'hs'));
+    setTransQty(1); setTransAgent(''); setTransBeneficiary('Client HTC'); setTransReason(''); setTransDate('');
+    setTransSigImg(''); setTransSigName('');
+  };
+
+  const transItemObj = items.find((i) => i.id === transItem);
+  const transConds = transOpen
+    ? (transOpen.mode === 'reinstatement' ? ['defectueux', 'a_reparer'] : ['defectueux', 'a_reparer', 'hs'])
+        .filter((c) => Number(transItemObj?.siteCond?.[c] || 0) > 0)
+    : [];
+  const transRemaining = Number(transItemObj?.siteCond?.[transCond] || 0);
+
+  const submitTransition = async () => {
+    if (!transItemObj) return alert('Choisis un article.');
+    if (!transConds.includes(transCond)) return alert('Condition sans quarantaine disponible.');
+    const q = Math.floor(Number(transQty));
+    if (!Number.isFinite(q) || q < 1 || q > transRemaining) return alert(`Quantité invalide (reste ${transRemaining} en quarantaine).`);
+    if (!transAgent.trim()) return alert(transOpen.mode === 'reinstatement' ? 'Indique qui a réparé le matériel.' : 'Indique qui remet le matériel.');
+    setBusy(true);
+    try {
+      const res = await apiFetchJson('/api/htc/transitions', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: transOpen.mode, itemId: transItem, qty: q, condition: transCond,
+          agentName: transAgent.trim(), beneficiary: transBeneficiary.trim(),
+          movementDate: transDate || undefined, reason: transReason,
+          signatureName: transSigName, signatureImage: transSigImg
+        })
+      });
+      setTransOpen(null);
+      await Promise.all([loadMovements(), loadItems(), loadStats()]);
+      if (res?.movement && window.confirm(`Bon ${res.movement.number} créé. Imprimer ?`)) printBon(res.movement);
     } catch (e) { alert(e.message || 'Erreur.'); }
     finally { setBusy(false); }
   };
@@ -794,20 +861,43 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
 
               {stockLoc === 'retour' ? (
                 <div>
-                  <div className="text-xs text-gray-500 mb-3">Matériel non fonctionnel ramené des sites (défectueux / à réparer / HS) — documenté hors stock disponible.</div>
+                  <div className="text-xs text-gray-500 mb-3">
+                    Matériel non fonctionnel ramené des sites — <b>stocké à l'Entrepôt</b>, hors stock disponible.
+                    Réparé → <b>Réintégrer</b> ; non réparable → <b>Remise client HTC</b>.
+                  </div>
                   {items.filter((i) => i.active && Number(i.stockSite) > 0).length === 0 ? (
                     <div className="text-center text-gray-400 py-12 text-sm">Aucun retour site enregistré.</div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3">
-                      {items.filter((i) => i.active && Number(i.stockSite) > 0).map((it) => (
-                        <div key={it.id} className="border border-stone-300 bg-stone-50 rounded-xl p-3.5">
-                          <div className="font-semibold text-sm text-gray-800 leading-snug">{it.name}</div>
-                          <div className="text-[11px] text-gray-500 mt-0.5">{LOCATION_LABEL[it.location] || it.location}{it.notes ? ` · ${it.notes}` : ''}</div>
-                          <div className="text-2xl font-extrabold mt-2 text-stone-600">
-                            {it.stockSite} <span className="text-xs font-semibold text-gray-400">{it.unit}(s)</span>
+                      {items.filter((i) => i.active && Number(i.stockSite) > 0).map((it) => {
+                        const sc = it.siteCond || {};
+                        return (
+                          <div key={it.id} className="border border-stone-300 bg-stone-50 rounded-xl p-3.5">
+                            <div className="font-semibold text-sm text-gray-800 leading-snug">{it.name}</div>
+                            <div className="text-[11px] text-gray-500 mt-0.5">Entrepôt — quarantaine{it.notes ? ` · ${it.notes}` : ''}</div>
+                            <div className="text-2xl font-extrabold mt-2 text-stone-600">
+                              {it.stockSite} <span className="text-xs font-semibold text-gray-400">{it.unit}(s)</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5 mt-1.5">
+                              {Number(sc.defectueux) > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">Défectueux : {sc.defectueux}</span>}
+                              {Number(sc.a_reparer) > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-100 text-sky-800">À réparer : {sc.a_reparer}</span>}
+                              {Number(sc.hs) > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-800">HS : {sc.hs}</span>}
+                            </div>
+                            {isManager && (
+                              <div className="flex flex-wrap gap-2 mt-2.5">
+                                <button onClick={() => openTransition('reinstatement', it)}
+                                  className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 inline-flex items-center gap-1">
+                                  <Check size={12} /> Réintégrer
+                                </button>
+                                <button onClick={() => openTransition('client_return', it)}
+                                  className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 inline-flex items-center gap-1">
+                                  <RotateCcw size={12} /> Remise client
+                                </button>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -974,7 +1064,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
             <div>
               <div className="flex flex-wrap gap-2 mb-3 items-center">
                 <div className="flex border border-gray-300 rounded-lg overflow-x-auto max-w-full">
-                  {[['all', 'Tous'], ['exit', 'Sorties'], ['entry', 'Entrées'], ['return', 'Retours'], ['recovery', 'Récup.']].map(([v, l]) => (
+                  {[['all', 'Tous'], ['exit', 'Sorties'], ['entry', 'Entrées'], ['return', 'Retours'], ['recovery', 'Récup.'], ['reinstatement', 'Réintég.'], ['client_return', 'Remises']].map(([v, l]) => (
                     <button key={v} onClick={() => setMvType(v)}
                       className={`px-3 py-1.5 text-xs font-semibold ${mvType === v ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
                       {l}
@@ -1007,6 +1097,8 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                           mv.type === 'exit' ? 'bg-orange-100 text-orange-900 border-orange-200'
                           : mv.type === 'entry' ? 'bg-emerald-100 text-emerald-900 border-emerald-200'
                           : mv.type === 'recovery' ? 'bg-sky-100 text-sky-900 border-sky-200'
+                          : mv.type === 'reinstatement' ? 'bg-teal-100 text-teal-900 border-teal-200'
+                          : mv.type === 'client_return' ? 'bg-purple-100 text-purple-900 border-purple-200'
                           : 'bg-indigo-100 text-indigo-900 border-indigo-200'}`}>
                           {TYPE_LABEL[mv.type]}
                         </span>
@@ -1015,7 +1107,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                       </div>
                       <div className="text-xs text-gray-600 mt-1.5">
                         {mv.requesterName ? <><b>{mv.requesterName}</b>{mv.siteName ? ` → ${mv.siteName}` : ''} · </> : null}
-                        {mv.lines.map((l) => `${l.qty}× ${l.itemName}${l.qtyReturned ? ` (ret. ${l.qtyReturned})` : ''}${mv.type === 'recovery' ? ` [${CONDITION_LABEL[l.condition] || 'Fonctionnel'}]` : ''}`).join(' · ')}
+                        {mv.lines.map((l) => `${l.qty}× ${l.itemName}${l.qtyReturned ? ` (ret. ${l.qtyReturned})` : ''}${['recovery', 'reinstatement', 'client_return'].includes(mv.type) ? ` [${CONDITION_LABEL[l.condition] || 'Fonctionnel'}]` : ''}`).join(' · ')}
                       </div>
                       {mv.returnOfNumber ? <div className="text-[11px] text-gray-400 mt-0.5">Retour de {mv.returnOfNumber}</div> : null}
                       {(mv.smrNumber || mv.swoNumber || mv.agentName || mv.provenance || mv.beneficiary) && (
@@ -1270,6 +1362,100 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
               <button className="bg-sky-700 text-white px-4 py-2 rounded-lg hover:bg-sky-800 font-semibold text-sm disabled:opacity-60"
                 disabled={busy || (!recSigImg && !recSigName.trim())} onClick={submitRecovery}>
                 Émettre le bon de récupération
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ====== Dialog transition Retour Site : réintégration / remise client HTC ====== */}
+      {transOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-4 sm:p-5 max-h-[92vh] overflow-y-auto">
+            <div className="font-bold text-base mb-1">
+              {transOpen.mode === 'reinstatement' ? 'Réintégration — matériel réparé' : 'Remise au client HTC'}
+            </div>
+            <div className="text-xs text-gray-500 mb-3">
+              {transOpen.mode === 'reinstatement'
+                ? 'Le matériel réparé quitte la quarantaine de l\'Entrepôt et rejoint le stock disponible (RI-AAAA-NNNN).'
+                : 'Le matériel non réparable est remis au client HTC — il sort définitivement du stock (RM-AAAA-NNNN).'}
+            </div>
+            <div className="mb-2">
+              <label className={labelCls}>Article *</label>
+              <select className={inputCls} value={transItem} disabled={busy} onChange={(e) => {
+                setTransItem(e.target.value);
+                const it = items.find((i) => i.id === e.target.value);
+                const cs = (transOpen.mode === 'reinstatement' ? ['defectueux', 'a_reparer'] : ['defectueux', 'a_reparer', 'hs'])
+                  .filter((c) => Number(it?.siteCond?.[c] || 0) > 0);
+                setTransCond(cs[0] || '');
+                setTransQty(1);
+              }}>
+                <option value="">— Choisir un article en quarantaine —</option>
+                {items.filter((i) => i.active && Number(i.stockSite) > 0).map((it) => (
+                  <option key={it.id} value={it.id}>{it.name} · quarantaine {it.stockSite}</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-2 mb-2">
+              <div>
+                <label className={labelCls}>État d'origine *</label>
+                <select className={inputCls} value={transCond} disabled={busy || !transItemObj}
+                  onChange={(e) => { setTransCond(e.target.value); setTransQty(1); }}>
+                  {transConds.length === 0 && <option value="">— aucune quarantaine —</option>}
+                  {transConds.map((c) => (
+                    <option key={c} value={c}>{CONDITION_LABEL[c]} — reste {transItemObj?.siteCond?.[c] || 0}</option>
+                  ))}
+                </select>
+                {transOpen.mode === 'reinstatement' && (
+                  <div className="text-[10px] text-gray-400 mt-1">Le HS n'est pas réparable → Remise client.</div>
+                )}
+              </div>
+              <div>
+                <label className={labelCls}>Quantité * {transItemObj ? `(max ${transRemaining})` : ''}</label>
+                <input type="number" min="1" max={transRemaining || 1} className={`${inputCls} text-center`} value={transQty} disabled={busy || !transItemObj}
+                  onChange={(e) => setTransQty(e.target.value)} />
+              </div>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-2 mb-2">
+              <div>
+                <label className={labelCls}>{transOpen.mode === 'reinstatement' ? 'Réparé par *' : 'Remis par *'}</label>
+                <input className={inputCls} placeholder="Nom de l'agent" value={transAgent} disabled={busy} onChange={(e) => setTransAgent(e.target.value)} />
+              </div>
+              <div>
+                {transOpen.mode === 'client_return' ? (
+                  <>
+                    <label className={labelCls}>Bénéficiaire</label>
+                    <input className={inputCls} value={transBeneficiary} disabled={busy} onChange={(e) => setTransBeneficiary(e.target.value)} />
+                  </>
+                ) : (
+                  <>
+                    <label className={labelCls}>Date</label>
+                    <input type="date" className={inputCls} value={transDate} disabled={busy} onChange={(e) => setTransDate(e.target.value)} />
+                  </>
+                )}
+              </div>
+            </div>
+            {transOpen.mode === 'client_return' && (
+              <div className="mb-2">
+                <label className={labelCls}>Date</label>
+                <input type="date" className={inputCls} value={transDate} disabled={busy} onChange={(e) => setTransDate(e.target.value)} />
+              </div>
+            )}
+            <div className="mb-2">
+              <label className={labelCls}>{transOpen.mode === 'reinstatement' ? 'Motif / réparation effectuée' : 'Motif / référence HTC'}</label>
+              <input className={inputCls} placeholder={transOpen.mode === 'reinstatement' ? 'Ex. radiateur réparé au sein de l\'atelier' : 'Ex. restitution au client pour son warehouse central'} value={transReason} disabled={busy} onChange={(e) => setTransReason(e.target.value)} />
+            </div>
+            <div className="mt-3">
+              <label className={labelCls}>Signature *</label>
+              <SignBlock sigImg={transSigImg} setSigImg={setTransSigImg} sigName={transSigName} setSigName={setTransSigName} />
+            </div>
+            <div className="flex gap-2 mt-4 justify-end">
+              <button className={btnGhost} onClick={() => setTransOpen(null)}>Fermer</button>
+              <button
+                className={`${transOpen.mode === 'reinstatement' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-purple-600 hover:bg-purple-700'} text-white px-4 py-2 rounded-lg font-semibold text-sm disabled:opacity-60`}
+                disabled={busy || !transItemObj || !transCond || (!transSigImg && !transSigName.trim())}
+                onClick={submitTransition}>
+                {transOpen.mode === 'reinstatement' ? 'Émettre le bon de réintégration' : 'Émettre le bon de remise'}
               </button>
             </div>
           </div>

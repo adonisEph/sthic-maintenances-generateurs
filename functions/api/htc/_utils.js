@@ -2,7 +2,7 @@ import { userZone } from '../_utils/http.js';
 
 export const HTC_ZONE = 'BZV/POOL';
 
-const NUM_PREFIX = { exit: 'BS', entry: 'BE', return: 'BR', recovery: 'RC', request: 'DM' };
+const NUM_PREFIX = { exit: 'BS', entry: 'BE', return: 'BR', recovery: 'RC', request: 'DM', reinstatement: 'RI', client_return: 'RM' };
 
 export const HTC_CONDITIONS = ['fonctionnel', 'defectueux', 'a_reparer', 'hs'];
 
@@ -55,17 +55,25 @@ export async function allocHtcNumber(env, kind) {
 }
 
 // Stock calculé par article (bons non annulés) :
-//   stock     = Σ entrées + Σ retours BS + Σ récupérations « fonctionnel » − Σ sorties
-//   stockSite = Σ récupérations non-fonctionnelles (défectueux / à réparer / HS)
-// Renvoie { [itemId]: { stock, stockSite } } pour le lieu donné (lieu stocké par ligne).
+//   stock     = Σ entrées + Σ retours BS + Σ réintégrations + Σ récupérations « fonctionnel » − Σ sorties
+//   stockSite = Σ récupérations non-fonctionnelles − Σ réintégrations − Σ remises client HTC
+// siteCond  = même découpe par condition d'origine (defectueux / a_reparer / hs).
+// Renvoie { [itemId]: { stock, stockSite, siteCond } } pour le lieu donné (lieu stocké par ligne).
 export async function htcStockMap(env, location = null) {
   const locClause = location ? 'AND l.location = ?' : '';
   const stmt = `
     SELECT l.item_id AS item_id,
-           SUM(CASE WHEN m.type IN ('entry', 'return') THEN l.qty
+           SUM(CASE WHEN m.type IN ('entry', 'return', 'reinstatement') THEN l.qty
                     WHEN m.type = 'recovery' AND l.item_condition = 'fonctionnel' THEN l.qty
                     WHEN m.type = 'exit' THEN -l.qty ELSE 0 END) AS stock,
-           SUM(CASE WHEN m.type = 'recovery' AND l.item_condition != 'fonctionnel' THEN l.qty ELSE 0 END) AS stock_site
+           SUM(CASE WHEN m.type = 'recovery' AND l.item_condition != 'fonctionnel' THEN l.qty
+                    WHEN m.type IN ('reinstatement', 'client_return') THEN -l.qty ELSE 0 END) AS stock_site,
+           SUM(CASE WHEN m.type = 'recovery' AND l.item_condition = 'defectueux' THEN l.qty
+                    WHEN m.type IN ('reinstatement', 'client_return') AND l.item_condition = 'defectueux' THEN -l.qty ELSE 0 END) AS site_defectueux,
+           SUM(CASE WHEN m.type = 'recovery' AND l.item_condition = 'a_reparer' THEN l.qty
+                    WHEN m.type IN ('reinstatement', 'client_return') AND l.item_condition = 'a_reparer' THEN -l.qty ELSE 0 END) AS site_a_reparer,
+           SUM(CASE WHEN m.type = 'recovery' AND l.item_condition = 'hs' THEN l.qty
+                    WHEN m.type IN ('reinstatement', 'client_return') AND l.item_condition = 'hs' THEN -l.qty ELSE 0 END) AS site_hs
     FROM htc_movement_lines l
     JOIN htc_movements m ON m.id = l.movement_id
     WHERE m.status != 'cancelled' ${locClause}
@@ -75,7 +83,15 @@ export async function htcStockMap(env, location = null) {
     : await env.DB.prepare(stmt).all();
   const map = {};
   for (const r of res?.results || []) {
-    map[r.item_id] = { stock: Number(r.stock || 0), stockSite: Number(r.stock_site || 0) };
+    map[r.item_id] = {
+      stock: Number(r.stock || 0),
+      stockSite: Number(r.stock_site || 0),
+      siteCond: {
+        defectueux: Number(r.site_defectueux || 0),
+        a_reparer: Number(r.site_a_reparer || 0),
+        hs: Number(r.site_hs || 0)
+      }
+    };
   }
   return map;
 }
@@ -92,6 +108,7 @@ export function mapItem(r, stockMap) {
     active: Number(r.active) === 1,
     stock: cell ? Number(cell.stock || 0) : (stockMap ? 0 : null),
     stockSite: cell ? Number(cell.stockSite || 0) : 0,
+    siteCond: cell?.siteCond || { defectueux: 0, a_reparer: 0, hs: 0 },
     createdAt: r.created_at,
     updatedAt: r.updated_at
   };
