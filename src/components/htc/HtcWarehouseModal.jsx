@@ -167,13 +167,16 @@ async function bonPdf(mv) {
   try {
     iframe.contentDocument.open();
     iframe.contentDocument.write(
-      `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${BON_CSS}</style></head><body><div class="sheet">${bonInnerHtml(mv)}</div></body></html>`);
+      `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${BON_CSS}\n.sheet{width:740px;overflow:hidden}</style></head><body><div class="sheet">${bonInnerHtml(mv)}</div></body></html>`);
     iframe.contentDocument.close();
     const idoc = iframe.contentDocument;
     await Promise.all([...idoc.images].map((img) => (img.complete
       ? Promise.resolve() : new Promise((res) => { img.onload = res; img.onerror = res; }))));
     const sheet = idoc.querySelector('.sheet');
-    const canvas = await html2canvas(sheet, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+    const canvas = await html2canvas(sheet, {
+      scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false,
+      windowWidth: 740, width: sheet.offsetWidth,
+    });
     // Recadrage : le canvas s'arrête juste sous la zone de découpe.
     const sheetRect = sheet.getBoundingClientRect();
     const cut = idoc.querySelector('.cut');
