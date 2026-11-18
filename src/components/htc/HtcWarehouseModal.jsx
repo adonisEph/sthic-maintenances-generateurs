@@ -89,11 +89,12 @@ function printBon(mv) {
   *{box-sizing:border-box}
   body{font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;padding:0;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .sheet{break-inside:avoid-page;page-break-inside:avoid}
-  .top{display:flex;align-items:flex-end;gap:12px;border-bottom:2.5px solid #1e3a5f;padding-bottom:4px}
+  .top{display:flex;align-items:center;gap:14px;border:2.5px solid #1e3a5f;padding:8px 12px}
   .top img{height:104px;width:auto}
+  .top .t{flex:1;text-align:center}
   .top .t .doc{font-size:19px;font-weight:800;color:#1e3a5f;letter-spacing:.3px}
   .top .t .sub{font-size:10.5px;color:#64748b;margin-top:2px}
-  .num{text-align:left;margin-left:10px}
+  .num{text-align:right}
   .num .n{font-size:16px;font-weight:800;color:#b45309;font-family:Consolas,monospace}
   .num .d{font-size:10.5px;color:#64748b}
   .meta{display:grid;grid-template-columns:repeat(4,1fr);border:1.2px solid #475569;margin-top:14px}
