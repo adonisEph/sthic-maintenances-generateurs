@@ -171,8 +171,14 @@ async function bonPdf(mv) {
     const hMm = (canvas.height / canvas.width) * wMm;
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [210, hMm + 18] });
     pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 9, 9, wMm, hMm);
-    const file = new File([pdf.output('blob')], `${mv.number}.pdf`, { type: 'application/pdf' });
-    // Smartphone : partage natif (mail/WhatsApp…) quand disponible, sinon téléchargement.
+    const blob = pdf.output('blob');
+    // Aperçu d'abord : le PDF s'ouvre dans la visionneuse du navigateur
+    // (nouvel onglet) — le partage mail/WhatsApp se fait depuis la visionneuse.
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank');
+    if (win) { setTimeout(() => URL.revokeObjectURL(url), 120000); return; }
+    URL.revokeObjectURL(url);
+    const file = new File([blob], `${mv.number}.pdf`, { type: 'application/pdf' });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try { await navigator.share({ files: [file], title: mv.number }); return; } catch { /* annulé → téléchargement */ }
     }
