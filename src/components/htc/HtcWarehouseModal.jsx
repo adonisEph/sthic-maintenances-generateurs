@@ -187,8 +187,12 @@ async function bonPdf(mv) {
     out.getContext('2d').drawImage(canvas, 0, 0, canvas.width, cropPx, 0, 0, canvas.width, cropPx);
     const wMm = 192; // 210mm − 2×9mm de marges
     const hMm = (out.height / out.width) * wMm;
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [210, hMm + 18] });
-    pdf.addImage(out.toDataURL('image/png'), 'PNG', 9, 9, wMm, hMm);
+    const hPage = hMm + 18;
+    // Le bon est plus large que haut (format « moitié de page » ~210×130mm) :
+    // paysage pour les bons courts — jsPDF réordonne sinon les dimensions en
+    // portrait et l'image de 192mm déborde de la page de 131mm.
+    const pdf = new jsPDF({ orientation: hPage >= 210 ? 'portrait' : 'landscape', unit: 'mm', format: [210, hPage] });
+    pdf.addImage(out.toDataURL('image/jpeg', 0.92), 'JPEG', 9, 9, wMm, hMm);
     const blob = pdf.output('blob');
     // Aperçu d'abord : le PDF s'ouvre dans la visionneuse du navigateur
     // (nouvel onglet) — le partage mail/WhatsApp se fait depuis la visionneuse.
