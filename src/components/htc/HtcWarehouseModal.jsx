@@ -697,6 +697,8 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   }), [items, itemsByLoc]);
 
   const sitesBzv = useMemo(() => (sites || []), [sites]);
+  // Libellé clair d'un site : « CBBZ0090 — Ngamakosso Border ».
+  const siteLabel = (s) => [s?.idSite, s?.nameSite].filter(Boolean).join(' — ') || s?.name || s?.site_name || s?.idSite || s?.id || '';
   const siteOptions = useMemo(() => sitesBzv.map((s) => ({
     id: String(s.id),
     label: siteLabel(s),
@@ -710,9 +712,6 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   const agentOptionsByRole = useCallback((role) => agents
     .filter((a) => a.role === role)
     .map((a) => ({ id: a.name, label: a.name, sub: a.roleLabel })), [agents]);
-
-  // Libellé clair d'un site : « CBBZ0090 — Ngamakosso Border ».
-  const siteLabel = (s) => [s?.idSite, s?.nameSite].filter(Boolean).join(' — ') || s?.name || s?.site_name || s?.idSite || s?.id || '';
 
   const submitRequest = async () => {
     const lines = formLines.filter((l) => l.itemId && Number(l.qty) >= 1);
