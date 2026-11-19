@@ -8,9 +8,14 @@ export async function onRequestGet({ env, data, request }) {
     if (!requireAuth(data)) return json({ error: 'Non authentifié.' }, { status: 401 });
     if (!canHtcRequest(data)) return json({ error: 'Accès interdit.' }, { status: 403 });
     if (!htcZoneOk(data)) return json({ error: 'Zone non couverte.' }, { status: 403 });
-    if (!isHtcManager(data)) return json({ error: 'Réservé au magasinier.' }, { status: 403 });
 
     const url = new URL(request.url);
+    const mine = url.searchParams.get('mine') === '1';
+    const manager = isHtcManager(data);
+    // Hors magasinier : uniquement ?mine=1 → les bons à son nom (demandeur,
+    // agent, émetteur) pour consultation et export Excel.
+    if (!manager && !mine) return json({ error: 'Réservé au magasinier.' }, { status: 403 });
+
     const type = String(url.searchParams.get('type') || '').trim();
     const location = String(url.searchParams.get('location') || '').trim();
     const q = String(url.searchParams.get('q') || '').trim().toLowerCase();
@@ -19,6 +24,14 @@ export async function onRequestGet({ env, data, request }) {
 
     const clauses = ['1=1'];
     const binds = [];
+
+    if (!manager && mine) {
+      const u = await env.DB.prepare('SELECT technician_name, email FROM users WHERE id = ?')
+        .bind(String(data.user.id)).first();
+      const myName = String(u?.technician_name || data.user?.technicianName || data.user?.email || '').trim();
+      clauses.push('(m.requested_by_user_id = ? OR m.created_by = ? OR LOWER(m.requester_name) = LOWER(?) OR LOWER(m.agent_name) = LOWER(?))');
+      binds.push(String(data.user.id), String(data.user.id), myName, myName);
+    }
     if (['exit', 'entry', 'return', 'recovery', 'reinstatement', 'client_return'].includes(type)) { clauses.push('m.type = ?'); binds.push(type); }
     if (['entrepot', 'magasin'].includes(location)) { clauses.push('m.location = ?'); binds.push(location); }
     if (from) { clauses.push('m.movement_date >= ?'); binds.push(from); }

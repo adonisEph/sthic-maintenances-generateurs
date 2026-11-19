@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   X, Package, ClipboardList, FileText, Boxes, Plus, Trash2, Check, Ban,
-  Printer, RotateCcw, RefreshCw, AlertTriangle, Search, Warehouse, Store, Upload, Download
+  Printer, RotateCcw, RefreshCw, AlertTriangle, Search, Warehouse, Store, Upload, Download,
+  LayoutGrid, List, ChevronDown, FileSpreadsheet
 } from 'lucide-react';
 import SignaturePad from './SignaturePad';
 import { toastAlert as alert } from '../../utils/feedback';
@@ -400,6 +401,66 @@ const EntryLinesEditor = ({ items, lines, setLines, disabled, inputCls }) => {
   );
 };
 
+const normTxt = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+// Sélecteur filtrable (recherche par nom / id / sous-libellé) — utilisé pour
+// les sites (« CBBZ0090 — Ngamakosso Border ») et les agents de l'app.
+const ComboSelect = ({ options, value, onChange, placeholder = '— Choisir —', className = '', disabled = false }) => {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const boxRef = useRef(null);
+  const selected = options.find((o) => String(o.id) === String(value));
+  const filtered = q.trim()
+    ? options.filter((o) => normTxt(o.label).includes(normTxt(q)) || normTxt(o.sub).includes(normTxt(q)) || normTxt(o.id).includes(normTxt(q)))
+    : options;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDocDown = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDocDown);
+    document.addEventListener('touchstart', onDocDown);
+    return () => {
+      document.removeEventListener('mousedown', onDocDown);
+      document.removeEventListener('touchstart', onDocDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative" ref={boxRef}>
+      <div className="relative">
+        <input
+          className={className}
+          style={{ paddingRight: '1.75rem' }}
+          placeholder={placeholder}
+          disabled={disabled}
+          value={open ? q : (selected?.label || '')}
+          onFocus={() => { if (!disabled) { setOpen(true); setQ(''); } }}
+          onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+        />
+        <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+      </div>
+      {open && (
+        <div className="absolute z-[70] mt-1 left-0 right-0 max-h-56 overflow-auto bg-white border border-gray-200 rounded-lg shadow-xl">
+          <button type="button"
+            className="w-full text-left px-3 py-2 text-xs text-gray-400 hover:bg-gray-50"
+            onClick={() => { onChange(''); setOpen(false); }}>
+            {placeholder}
+          </button>
+          {filtered.map((o) => (
+            <button type="button" key={o.id}
+              className={`w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 ${String(o.id) === String(value) ? 'bg-indigo-50 font-semibold text-indigo-800' : 'text-gray-800'}`}
+              onClick={() => { onChange(String(o.id)); setOpen(false); }}>
+              <div className="leading-tight">{o.label}</div>
+              {o.sub ? <div className="text-[10px] text-gray-400 leading-tight">{o.sub}</div> : null}
+            </button>
+          ))}
+          {!filtered.length && <div className="px-3 py-3 text-xs text-gray-400">Aucun résultat.</div>}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const SignBlock = ({ sigImg, setSigImg, sigName, setSigName }) => (
   <div>
     <SignaturePad onChange={setSigImg} />
@@ -424,6 +485,15 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   const [stats, setStats] = useState(null);
   const [busy, setBusy] = useState(false);
   const [stockLoc, setStockLoc] = useState('entrepot');
+  const [stockView, setStockView] = useState('cards');
+  const [agents, setAgents] = useState([]);
+
+  // Export Excel
+  const [expDs, setExpDs] = useState('bons');
+  const [expType, setExpType] = useState('all');
+  const [expFrom, setExpFrom] = useState('');
+  const [expTo, setExpTo] = useState('');
+  const [expBusy, setExpBusy] = useState(false);
 
   // Filtres bons
   const [mvType, setMvType] = useState('all');
@@ -538,14 +608,79 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
     setStats(d.stats || null);
   }, [apiFetchJson, isManager]);
 
+  const loadAgents = useCallback(async () => {
+    try {
+      const d = await apiFetchJson('/api/htc/agents');
+      setAgents(d.agents || []);
+    } catch { setAgents([]); }
+  }, [apiFetchJson]);
+
+  // Export XLSX : magasinier → tout ; terrain (FS/tech) → demandes + bons à son nom.
+  const exportXlsx = async () => {
+    setExpBusy(true);
+    try {
+      const dateOk = (iso) => (!expFrom || String(iso || '').slice(0, 10) >= expFrom) && (!expTo || String(iso || '').slice(0, 10) <= expTo);
+      const wb = XLSX.utils.book_new();
+      const suffix = `_${new Date().toISOString().slice(0, 10)}`;
+
+      if (expDs === 'demandes') {
+        const d = await apiFetchJson('/api/htc/requests');
+        const reqs = (d.requests || []).filter((r) => dateOk(r.createdAt));
+        const rows = [];
+        for (const r of reqs) {
+          for (const l of (r.lines?.length ? r.lines : [null])) {
+            rows.push({
+              'N° demande': r.requestNumber, Statut: STATUS_LABEL[r.status] || r.status,
+              Demandeur: r.requesterName || '', Fonction: REQUESTER_ROLE_LABEL[r.requesterRole] || r.requesterRole || '',
+              'Site destination': r.siteName || '', Article: l?.itemName || '', 'Qté demandée': l?.qty ?? '',
+              'N° SWO': r.swoNumber || '', 'Créée le': fmtDate(r.createdAt),
+              Motif: r.reason || ''
+            });
+          }
+        }
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Demandes');
+        XLSX.writeFile(wb, `demandes_htc${suffix}.xlsx`);
+      } else {
+        const p = new URLSearchParams();
+        if (!isManager) p.set('mine', '1');
+        if (expType !== 'all') p.set('type', expType);
+        if (expFrom) p.set('from', expFrom);
+        if (expTo) p.set('to', expTo);
+        const d = await apiFetchJson(`/api/htc/movements?${p.toString()}`);
+        const rows = [];
+        for (const m of (d.movements || [])) {
+          for (const l of (m.lines?.length ? m.lines : [null])) {
+            rows.push({
+              'N° bon': m.number, Type: TYPE_LABEL[m.type] || m.type, Date: fmtDate(m.movementDate),
+              'Lieu de stockage': LOCATION_LABEL[m.location] || m.location || '',
+              Site: m.siteName || '', 'Demandeur / Agent': m.requesterName || m.agentName || '',
+              'Fonction': REQUESTER_ROLE_LABEL[m.requesterRole] || m.requesterRole || '',
+              Article: l?.itemName || '', 'Qté': l?.qty ?? '', 'Qté retournée': l?.qtyReturned ?? '',
+              'État': l?.condition ? (CONDITION_LABEL[l.condition] || l.condition) : '',
+              'N° SMR': m.smrNumber || '', 'N° SWO': m.swoNumber || '',
+              'Bénéficiaire / Destination': m.beneficiary || m.provenance || '',
+              Statut: m.status || '', 'Créé par': m.createdBy || ''
+            });
+          }
+        }
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Bons');
+        XLSX.writeFile(wb, `bons_htc${suffix}.xlsx`);
+      }
+    } catch (e) {
+      alert(e.message || 'Export impossible.');
+    } finally {
+      setExpBusy(false);
+    }
+  };
+
   const refresh = useCallback(async () => {
     setBusy(true);
-    try { await Promise.all([loadItems(), loadRequests(), loadMovements(), loadStats()]); }
+    try { await Promise.all([loadItems(), loadRequests(), loadMovements(), loadStats(), loadAgents()]); }
     catch (e) { alert(e.message || 'Erreur de chargement.'); }
     finally { setBusy(false); }
-  }, [loadItems, loadRequests, loadMovements, loadStats]);
+  }, [loadItems, loadRequests, loadMovements, loadStats, loadAgents]);
 
-  useEffect(() => { if (open) { setTab(isManager ? initialTab : (['stock', 'demandes'].includes(initialTab) ? initialTab : 'demandes')); refresh(); } }, [open]); // eslint-disable-line
+  useEffect(() => { if (open) { setTab(isManager ? initialTab : (['stock', 'demandes', 'export'].includes(initialTab) ? initialTab : 'demandes')); refresh(); } }, [open]); // eslint-disable-line
   useEffect(() => { if (open && isManager) loadMovements().catch(() => {}); }, [mvType, mvLoc, mvFrom, mvTo]); // eslint-disable-line
 
   const itemsByLoc = useMemo(() => ({
@@ -562,6 +697,19 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   }), [items, itemsByLoc]);
 
   const sitesBzv = useMemo(() => (sites || []), [sites]);
+  const siteOptions = useMemo(() => sitesBzv.map((s) => ({
+    id: String(s.id),
+    label: siteLabel(s),
+    sub: s.idSite && s.nameSite ? `ID : ${s.idSite}` : ''
+  })), [sitesBzv]);
+  const agentOptions = useMemo(() => agents.map((a) => ({
+    id: a.name,
+    label: a.name,
+    sub: a.roleLabel
+  })), [agents]);
+  const agentOptionsByRole = useCallback((role) => agents
+    .filter((a) => a.role === role)
+    .map((a) => ({ id: a.name, label: a.name, sub: a.roleLabel })), [agents]);
 
   // Libellé clair d'un site : « CBBZ0090 — Ngamakosso Border ».
   const siteLabel = (s) => [s?.idSite, s?.nameSite].filter(Boolean).join(' — ') || s?.name || s?.site_name || s?.idSite || s?.id || '';
@@ -883,7 +1031,8 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
     ...(isManager ? [
       { id: 'bons', label: 'Bons', icon: FileText },
       { id: 'articles', label: 'Articles', icon: Package }
-    ] : [])
+    ] : []),
+    { id: 'export', label: 'Export', icon: FileSpreadsheet }
   ];
 
   const inputCls = 'border border-gray-300 rounded-lg px-3 py-2 text-sm w-full';
@@ -982,6 +1131,16 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                     <span className="text-xs opacity-75">({loc === 'retour' ? items.filter((i) => i.active && Number(i.stockSite) > 0).length : itemsByLoc[loc].length})</span>
                   </button>
                 ))}
+                <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden self-center" title="Mode d'affichage">
+                  <button onClick={() => setStockView('cards')} title="Vue cartes"
+                    className={`px-2.5 py-2 ${stockView === 'cards' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                    <LayoutGrid size={15} />
+                  </button>
+                  <button onClick={() => setStockView('list')} title="Vue liste"
+                    className={`px-2.5 py-2 border-l border-gray-300 ${stockView === 'list' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                    <List size={15} />
+                  </button>
+                </div>
                 {isManager && (
                   <div className="w-full sm:w-auto sm:ml-auto flex flex-wrap gap-2">
                     <button onClick={() => { setImportOpen(true); setImportResult(null); }} className="flex-1 sm:flex-none justify-center border border-indigo-300 text-indigo-700 px-3 py-2 rounded-lg hover:bg-indigo-50 font-semibold text-sm disabled:opacity-60 inline-flex items-center gap-2">
@@ -1005,6 +1164,53 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                   </div>
                   {items.filter((i) => i.active && Number(i.stockSite) > 0).length === 0 ? (
                     <div className="text-center text-gray-400 py-12 text-sm">Aucun retour site enregistré.</div>
+                  ) : stockView === 'list' ? (
+                    <div className="border border-gray-200 rounded-xl overflow-x-auto">
+                      <table className="w-full text-xs min-w-[560px]">
+                        <thead className="bg-gray-50 text-left text-gray-500">
+                          <tr>
+                            <th className="px-3 py-2">Article</th>
+                            <th className="px-3 py-2 text-center">Quarantaine</th>
+                            <th className="px-3 py-2">Par condition</th>
+                            {isManager && <th className="px-3 py-2 text-right">Actions</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {items.filter((i) => i.active && Number(i.stockSite) > 0).map((it) => {
+                            const sc = it.siteCond || {};
+                            return (
+                              <tr key={it.id} className="border-t border-gray-100">
+                                <td className="px-3 py-2 font-semibold text-gray-800">{it.name}
+                                  <div className="text-[10px] text-gray-400 font-normal">Entrepôt — quarantaine{it.notes ? ` · ${it.notes}` : ''}</div>
+                                </td>
+                                <td className="px-3 py-2 text-center font-extrabold text-stone-600">{it.stockSite} <span className="text-[10px] font-semibold text-gray-400">{it.unit}(s)</span></td>
+                                <td className="px-3 py-2">
+                                  <span className="flex flex-wrap gap-1">
+                                    {Number(sc.defectueux) > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">Déf. {sc.defectueux}</span>}
+                                    {Number(sc.a_reparer) > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-100 text-sky-800">Répar. {sc.a_reparer}</span>}
+                                    {Number(sc.hs) > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-800">HS {sc.hs}</span>}
+                                  </span>
+                                </td>
+                                {isManager && (
+                                  <td className="px-3 py-2">
+                                    <div className="flex gap-1.5 justify-end">
+                                      <button onClick={() => openTransition('reinstatement', it)}
+                                        className="text-[11px] font-bold px-2 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 inline-flex items-center gap-1">
+                                        <Check size={11} /> Réintégrer
+                                      </button>
+                                      <button onClick={() => openTransition('client_return', it)}
+                                        className="text-[11px] font-bold px-2 py-1 rounded-lg bg-purple-600 text-white hover:bg-purple-700 inline-flex items-center gap-1">
+                                        <RotateCcw size={11} /> Remise client
+                                      </button>
+                                    </div>
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3">
                       {items.filter((i) => i.active && Number(i.stockSite) > 0).map((it) => {
@@ -1042,6 +1248,48 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
               ) : itemsByLoc[stockLoc].length === 0 ? (
                 <div className="text-center text-gray-400 py-12 text-sm">
                   {isManager ? "Aucun article dans ce lieu — ajoutez-en via l'onglet Articles." : 'Aucun article disponible dans ce lieu.'}
+                </div>
+              ) : stockView === 'list' ? (
+                <div className="border border-gray-200 rounded-xl overflow-x-auto">
+                  <table className="w-full text-xs min-w-[540px]">
+                    <thead className="bg-gray-50 text-left text-gray-500">
+                      <tr>
+                        <th className="px-3 py-2">Article</th>
+                        <th className="px-3 py-2 text-center">Stock</th>
+                        <th className="px-3 py-2">Retour site</th>
+                        <th className="px-3 py-2 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {itemsByLoc[stockLoc].map((it) => (
+                        <tr key={it.id} className={`border-t border-gray-100 ${it.stock <= 0 ? 'bg-rose-50/40' : ''}`}>
+                          <td className="px-3 py-2 font-semibold text-gray-800">
+                            <span className="inline-flex items-center gap-1.5">{it.name}{it.stock <= 0 && <AlertTriangle size={13} className="text-rose-500" />}</span>
+                            <div className="text-[10px] text-gray-400 font-normal">{it.category !== 'other' ? it.category : ''}{it.notes ? ` · ${it.notes}` : ''}</div>
+                          </td>
+                          <td className={`px-3 py-2 text-center font-extrabold ${it.stock <= 0 ? 'text-rose-600' : 'text-indigo-700'}`}>
+                            {it.stock ?? 0} <span className="text-[10px] font-semibold text-gray-400">{it.unit}(s)</span>
+                          </td>
+                          <td className="px-3 py-2 text-[10px] font-semibold text-stone-500">
+                            {Number(it.stockSite) > 0 ? `${it.stockSite} non fonctionnel(s)` : '—'}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {isManager ? (
+                              <button onClick={() => entryItem(it)}
+                                className="text-[11px] font-bold px-2 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 inline-flex items-center gap-1">
+                                <Plus size={11} /> Entrée
+                              </button>
+                            ) : (
+                              <button onClick={() => requestItem(it)}
+                                className="text-[11px] font-bold px-2 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 inline-flex items-center gap-1">
+                                <ClipboardList size={11} /> Demander
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3">
@@ -1109,7 +1357,14 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                       </div>
                       <div>
                         <label className={labelCls}>Nom complet du demandeur *</label>
-                        <input className={inputCls} placeholder="Nom et prénom" value={behalfName} onChange={(e) => setBehalfName(e.target.value)} />
+                        {behalfRole === 'htc_supervisor' ? (
+                          // Client HTC : seul le magasinier saisit ce nom à la main —
+                          // les agents STHIC se choisissent dans la liste.
+                          <input className={inputCls} placeholder="Nom et prénom (personne HTC)" value={behalfName} onChange={(e) => setBehalfName(e.target.value)} />
+                        ) : (
+                          <ComboSelect className={inputCls} options={agentOptionsByRole(behalfRole)}
+                            value={behalfName} onChange={setBehalfName} placeholder="— Choisir un agent —" />
+                        )}
                       </div>
                     </div>
                   )}
@@ -1124,10 +1379,8 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                   <div className="grid sm:grid-cols-2 gap-2 mt-3">
                     <div>
                       <label className={labelCls}>Site de destination</label>
-                      <select className={inputCls} value={formSite} onChange={(e) => setFormSite(e.target.value)}>
-                        <option value="">— Choisir un site (optionnel) —</option>
-                        {sitesBzv.map((s) => <option key={s.id} value={s.id}>{siteLabel(s)}</option>)}
-                      </select>
+                      <ComboSelect className={inputCls} options={siteOptions}
+                        value={formSite} onChange={setFormSite} placeholder="— Choisir un site (optionnel) —" />
                     </div>
                     <div>
                       <label className={labelCls}>Motif de la demande</label>
@@ -1361,6 +1614,57 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
               </div>
             </div>
           )}
+
+          {tab === 'export' && (
+            <div>
+              <div className="text-xs text-gray-500 mb-4">
+                {isManager
+                  ? 'Export Excel (.xlsx) de toutes les demandes et de tous les bons du magasin.'
+                  : 'Export Excel (.xlsx) de vos demandes et des bons émis à votre nom.'}
+              </div>
+              <div className="border border-gray-200 rounded-xl p-4 bg-gray-50/60">
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className={labelCls}>Données à exporter</label>
+                    <select className={inputCls} value={expDs} onChange={(e) => setExpDs(e.target.value)}>
+                      <option value="bons">Bons — matériel entré / sorti / retourné / récupéré{isManager ? ' / réintégré / remis' : ''}</option>
+                      <option value="demandes">Demandes effectuées{isManager ? '' : ' (à mon nom)'}</option>
+                    </select>
+                  </div>
+                  {expDs === 'bons' && (
+                    <div>
+                      <label className={labelCls}>Type de bon</label>
+                      <select className={inputCls} value={expType} onChange={(e) => setExpType(e.target.value)}>
+                        <option value="all">Tous les types</option>
+                        <option value="entry">Entrées (BE)</option>
+                        <option value="exit">Sorties (BS)</option>
+                        <option value="return">Retours (BR)</option>
+                        <option value="recovery">Récupérations (RC)</option>
+                        {isManager && <option value="reinstatement">Réintégrations (RI)</option>}
+                        {isManager && <option value="client_return">Remises client (RM)</option>}
+                      </select>
+                    </div>
+                  )}
+                  <div>
+                    <label className={labelCls}>Du</label>
+                    <input type="date" className={inputCls} value={expFrom} onChange={(e) => setExpFrom(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Au</label>
+                    <input type="date" className={inputCls} value={expTo} onChange={(e) => setExpTo(e.target.value)} />
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center justify-between flex-wrap gap-2">
+                  <div className="text-[11px] text-gray-400">
+                    Colonnes : n° bon/demande, type, date, site, demandeur, article, quantités, état, SMR/SWO, bénéficiaire.
+                  </div>
+                  <button className={btnPrimary} disabled={expBusy} onClick={exportXlsx}>
+                    <Download size={15} /> {expBusy ? 'Export…' : 'Exporter (.xlsx)'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1425,7 +1729,8 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
             <div className="grid sm:grid-cols-2 gap-2 mt-3 mb-3">
               <div>
                 <label className={labelCls}>Agent (qui retourne)</label>
-                <input className={inputCls} value={retAgent} onChange={(e) => setRetAgent(e.target.value)} />
+                <ComboSelect className={inputCls} options={agentOptions}
+                  value={retAgent} onChange={setRetAgent} placeholder="— Choisir un agent —" />
               </div>
               <div>
                 <label className={labelCls}>Provenance (Site / Client)</label>
@@ -1463,10 +1768,8 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                 {recInitial ? (
                   <input className={inputCls} placeholder="Inventaire initial" value={recOrigin} onChange={(e) => setRecOrigin(e.target.value)} />
                 ) : (
-                  <select className={inputCls} value={recSite} onChange={(e) => setRecSite(e.target.value)}>
-                    <option value="">— Choisir un site —</option>
-                    {sitesBzv.map((s) => <option key={s.id} value={s.id}>{siteLabel(s)}</option>)}
-                  </select>
+                  <ComboSelect className={inputCls} options={siteOptions}
+                    value={recSite} onChange={setRecSite} placeholder="— Choisir un site —" />
                 )}
               </div>
               <div>
@@ -1477,7 +1780,16 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
             <div className="grid sm:grid-cols-2 gap-2 mt-2">
               <div>
                 <label className={labelCls}>{recInitial ? 'Constaté par (vous par défaut)' : 'Ramené par *'}</label>
-                <input className={inputCls} placeholder={recInitial ? 'Nom du magasinier' : 'Nom de la personne qui ramène'} value={recReturner} onChange={(e) => setRecReturner(e.target.value)} />
+                {(!recInitial && recReturnerRole !== 'htc_supervisor') || recInitial ? (
+                  // Agents STHIC : choix dans la liste des comptes de l'app.
+                  <ComboSelect className={inputCls}
+                    options={recInitial ? agentOptions : agentOptionsByRole(recReturnerRole)}
+                    value={recReturner} onChange={setRecReturner}
+                    placeholder={recInitial ? '— Vous (magasinier) —' : '— Choisir un agent —'} />
+                ) : (
+                  // Superviseur Zonal HTC : personne côté client, saisie libre.
+                  <input className={inputCls} placeholder="Nom de la personne qui ramène (HTC)" value={recReturner} onChange={(e) => setRecReturner(e.target.value)} />
+                )}
               </div>
               {!recInitial && (
                 <div>
@@ -1560,7 +1872,8 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
             <div className="grid sm:grid-cols-2 gap-2 mb-2">
               <div>
                 <label className={labelCls}>{transOpen.mode === 'reinstatement' ? 'Réparé par *' : 'Remis par *'}</label>
-                <input className={inputCls} placeholder="Nom de l'agent" value={transAgent} disabled={busy} onChange={(e) => setTransAgent(e.target.value)} />
+                <ComboSelect className={inputCls} options={agentOptions} disabled={busy}
+                  value={transAgent} onChange={setTransAgent} placeholder="— Choisir un agent —" />
               </div>
               <div>
                 {transOpen.mode === 'client_return' ? (
