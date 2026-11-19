@@ -2,7 +2,7 @@ import { userZone } from '../_utils/http.js';
 
 export const HTC_ZONE = 'BZV/POOL';
 
-const NUM_PREFIX = { exit: 'BS', entry: 'BE', return: 'BR', recovery: 'RC', request: 'DM', reinstatement: 'RI', client_return: 'RM' };
+const NUM_PREFIX = { exit: 'BS', entry: 'BE', return: 'BR', recovery: 'RC', request: 'DM', reinstatement: 'RI', client_return: 'RM', dotation: 'DT' };
 
 export const HTC_CONDITIONS = ['fonctionnel', 'defectueux', 'a_reparer', 'hs'];
 
@@ -65,7 +65,7 @@ export async function htcStockMap(env, location = null) {
     SELECT l.item_id AS item_id,
            SUM(CASE WHEN m.type IN ('entry', 'return', 'reinstatement') THEN l.qty
                     WHEN m.type = 'recovery' AND l.item_condition = 'fonctionnel' THEN l.qty
-                    WHEN m.type = 'exit' THEN -l.qty ELSE 0 END) AS stock,
+                    WHEN m.type IN ('exit', 'dotation') THEN -l.qty ELSE 0 END) AS stock,
            SUM(CASE WHEN m.type = 'recovery' AND l.item_condition != 'fonctionnel' THEN l.qty
                     WHEN m.type IN ('reinstatement', 'client_return') THEN -l.qty ELSE 0 END) AS stock_site,
            SUM(CASE WHEN m.type = 'recovery' AND l.item_condition = 'defectueux' THEN l.qty
@@ -115,10 +115,16 @@ export function mapItem(r, stockMap) {
 }
 
 export function mapRequest(r, lines) {
+  let siteIds = [];
+  try { siteIds = JSON.parse(r.site_ids || '[]') || []; } catch { siteIds = []; }
   return {
     id: r.id,
     requestNumber: r.request_number,
     status: r.status || 'pending',
+    requestKind: r.request_kind || 'site',
+    beneficiaryName: r.beneficiary_name || '',
+    beneficiaryUserId: r.beneficiary_user_id || '',
+    siteIds,
     requesterName: r.requester_name || '',
     requesterRole: r.requester_role || '',
     requestedByUserId: r.requested_by_user_id || '',

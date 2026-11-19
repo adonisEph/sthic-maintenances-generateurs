@@ -22,7 +22,7 @@ export async function onRequestGet({ env, data }) {
               COUNT(DISTINCT m.id) AS vouchers
        FROM htc_movement_lines l
        JOIN htc_movements m ON m.id = l.movement_id
-       WHERE m.type = 'exit' AND m.status IN ('issued', 'partial_return')`
+       WHERE m.type IN ('exit', 'dotation') AND m.status IN ('issued', 'partial_return')`
     ).first();
 
     // Bons émis ce mois-ci par type (date du mouvement, pas created_at).

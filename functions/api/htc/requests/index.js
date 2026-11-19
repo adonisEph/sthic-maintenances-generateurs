@@ -82,19 +82,51 @@ export async function onRequestPost({ request, env, data }) {
       clean.push({ item: it, qty });
     }
 
+    // Couloir : 'site' (matériel de remplacement, destination site — plusieurs
+    // sites possibles) ou 'dotation' (outillage remis à un agent de l'app).
+    const requestKind = String(body?.requestKind || 'site').trim();
+    if (!['site', 'dotation'].includes(requestKind)) return json({ error: 'Type de demande invalide.' }, { status: 400 });
+
+    const siteIdsIn = Array.isArray(body?.siteIds) ? body.siteIds.map((s) => String(s || '').trim()).filter(Boolean).slice(0, 30) : [];
+    const siteNamesIn = Array.isArray(body?.siteNames) ? body.siteNames.map((s) => String(s || '').trim()) : [];
+    let siteId = String(body?.siteId || '').trim();
+    let siteName = String(body?.siteName || '').trim();
+    if (siteIdsIn.length > 1) {
+      siteId = '';
+      siteName = `Sites divers (${siteIdsIn.length})`;
+    } else if (siteIdsIn.length === 1) {
+      siteId = siteIdsIn[0];
+      siteName = siteNamesIn[0] || siteName;
+    }
+
+    let beneficiaryName = '';
+    let beneficiaryUserId = '';
+    if (requestKind === 'dotation') {
+      beneficiaryUserId = String(body?.beneficiaryUserId || '').trim();
+      beneficiaryName = String(body?.beneficiaryName || '').trim();
+      if (!beneficiaryUserId) return json({ error: 'Agent à doter requis.' }, { status: 400 });
+      const u = await env.DB.prepare(
+        "SELECT id, technician_name, email, role FROM users WHERE id = ? AND (disabled_at IS NULL OR disabled_at = '')"
+      ).bind(beneficiaryUserId).first();
+      if (!u) return json({ error: 'Agent à doter introuvable.' }, { status: 400 });
+      beneficiaryName = String(u.technician_name || u.email || beneficiaryName).trim();
+    }
+
     const id = newId();
     const now = isoNow();
     const number = await allocHtcNumber(env, 'request');
 
     await env.DB.prepare(
       `INSERT INTO htc_requests (id, request_number, status, requested_by_user_id, requester_name, requester_role,
-        site_id, site_name, reason, notes, swo_number, zone, created_by, created_at, updated_at)
-       VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        site_id, site_name, site_ids, request_kind, beneficiary_name, beneficiary_user_id,
+        reason, notes, swo_number, zone, created_by, created_at, updated_at)
+       VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       id, number,
       onBehalf ? null : String(data.user.id),
       requesterName, requesterRole,
-      String(body?.siteId || '').trim(), String(body?.siteName || '').trim(),
+      siteId, siteName, JSON.stringify(siteIdsIn),
+      requestKind, beneficiaryName, beneficiaryUserId,
       String(body?.reason || '').trim(), String(body?.notes || '').trim(),
       String(body?.swoNumber || '').trim(),
       HTC_ZONE, String(data.user.id), now, now

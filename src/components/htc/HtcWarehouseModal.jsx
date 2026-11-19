@@ -11,8 +11,8 @@ import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
 const LOCATION_LABEL = { entrepot: 'Entrepôt', magasin: 'Magasin (Buffer)' };
-const TYPE_LABEL = { exit: 'Sortie', entry: 'Entrée', return: 'Retour', recovery: 'Récupération', reinstatement: 'Réintégration', client_return: 'Remise client' };
-const TYPE_BON = { exit: 'BON DE SORTIE', entry: "BON D'ENTRÉE", return: 'BON DE RETOUR', recovery: 'BON DE RÉCUPÉRATION', reinstatement: 'BON DE RÉINTÉGRATION', client_return: 'BON DE REMISE CLIENT' };
+const TYPE_LABEL = { exit: 'Sortie', entry: 'Entrée', return: 'Retour', recovery: 'Récupération', reinstatement: 'Réintégration', client_return: 'Remise client', dotation: 'Dotation' };
+const TYPE_BON = { exit: 'BON DE SORTIE', entry: "BON D'ENTRÉE", return: 'BON DE RETOUR', recovery: 'BON DE RÉCUPÉRATION', reinstatement: 'BON DE RÉINTÉGRATION', client_return: 'BON DE REMISE CLIENT', dotation: 'FICHE DE DOTATION' };
 const CONDITION_LABEL = { fonctionnel: 'Fonctionnel', defectueux: 'Défectueux', a_reparer: 'À réparer', hs: 'HS' };
 const STATUS_LABEL = {
   pending: 'En attente', issued: 'Traitée', rejected: 'Refusée', cancelled: 'Annulée',
@@ -94,13 +94,15 @@ function bonInnerHtml(mv) {
     return: ['Date', 'Désignation', 'Quantité', 'Agent', 'N° BS', 'Provenance'],
     recovery: ['Date', 'Désignation', 'Quantité', 'Condition', 'Site', 'Ramené par'],
     reinstatement: ['Date', 'Désignation', 'Quantité', 'État d’origine', 'Réparé par', 'Destination'],
-    client_return: ['Date', 'Désignation', 'Quantité', 'État', 'Remis par', 'Bénéficiaire']
+    client_return: ['Date', 'Désignation', 'Quantité', 'État', 'Remis par', 'Bénéficiaire'],
+    dotation: ['Date', 'Désignation', 'Quantité', 'Agent doté', 'Demandeur', 'N° SWO']
   };
   const heads = HEADS[mv.type] || ['Date', 'Désignation', 'Quantité', 'Lieu', '', ''];
   const cells = (l) => {
     const base = `<td class="c">${esc(fmtDate(mv.movementDate))}</td><td class="desig">${esc(l.itemName)}</td><td class="c">${l.qty}</td>`;
     if (mv.type === 'entry') return `${base}<td class="c">${esc(senderFull)}</td><td class="c">${esc(mv.smrNumber || '—')}</td><td class="c">${esc(mv.beneficiary || 'Magasin STHIC')}</td>`;
     if (mv.type === 'exit') return `${base}<td class="c">${esc(mv.requesterName || '—')}</td><td class="c">${esc(mv.swoNumber || '—')}</td><td class="c">${esc(mv.siteName || '—')}</td>`;
+    if (mv.type === 'dotation') return `${base}<td class="c">${esc(mv.beneficiary || '—')}</td><td class="c">${esc(mv.requesterName || '—')}</td><td class="c">${esc(mv.swoNumber || '—')}</td>`;
     if (mv.type === 'return') return `${base}<td class="c">${esc(mv.agentName || mv.requesterName || '—')}</td><td class="c">${esc(mv.returnOfNumber || '—')}</td><td class="c">${esc(mv.provenance || mv.siteName || '—')}</td>`;
     if (mv.type === 'recovery') return `${base}<td class="c">${esc(CONDITION_LABEL[l.condition] || 'Fonctionnel')}</td><td class="c">${esc(mv.siteName || '—')}</td><td class="c">${esc(mv.agentName || mv.requesterName || '—')}</td>`;
     if (mv.type === 'reinstatement') return `${base}<td class="c">${esc(CONDITION_LABEL[l.condition] || '—')}</td><td class="c">${esc(mv.agentName || '—')}</td><td class="c">Stock disponible</td>`;
@@ -108,10 +110,10 @@ function bonInnerHtml(mv) {
     return `${base}<td class="c">${esc(LOCATION_LABEL[l.location] || l.location || '—')}</td><td class="c" colspan="2"></td>`;
   };
   const rows = (mv.lines || []).map((l) => `<tr>${cells(l)}</tr>`).join('');
-  const whoLabel = mv.type === 'entry' ? 'Expéditeur' : mv.type === 'return' ? 'Agent' : mv.type === 'recovery' ? 'Ramené par' : mv.type === 'reinstatement' ? 'Réparé par' : mv.type === 'client_return' ? 'Remis par' : 'Demandeur';
+  const whoLabel = mv.type === 'entry' ? 'Expéditeur' : mv.type === 'return' ? 'Agent' : mv.type === 'recovery' ? 'Ramené par' : mv.type === 'reinstatement' ? 'Réparé par' : mv.type === 'client_return' ? 'Remis par' : mv.type === 'dotation' ? 'Doté par' : 'Demandeur';
   const whoVal = mv.type === 'entry' ? senderFull : (mv.agentName || mv.requesterName || '—');
-  const destLabel = mv.type === 'recovery' ? 'Site de récupération' : mv.type === 'return' ? 'Provenance' : mv.type === 'client_return' ? 'Bénéficiaire' : 'Destination';
-  const destVal = mv.type === 'reinstatement' ? 'Stock disponible' : mv.type === 'client_return' ? (mv.beneficiary || 'Client HTC') : (mv.provenance || mv.siteName || '—');
+  const destLabel = mv.type === 'recovery' ? 'Site de récupération' : mv.type === 'return' ? 'Provenance' : mv.type === 'client_return' ? 'Bénéficiaire' : mv.type === 'dotation' ? 'Agent doté' : 'Destination';
+  const destVal = mv.type === 'reinstatement' ? 'Stock disponible' : mv.type === 'client_return' ? (mv.beneficiary || 'Client HTC') : mv.type === 'dotation' ? (mv.beneficiary || '—') : (mv.provenance || mv.siteName || '—');
   const roleVal = REQUESTER_ROLE_LABEL[mv.requesterRole] || mv.requesterRole || '—';
   // BE : pas de carte « Lieu » — la provenance est l'expéditeur, le bénéficiaire le Magasin STHIC.
   // RI / RM : la quarantaine vit à l'Entrepôt — carte « Lieu » figée « Entrepôt (Retour Site) ».
@@ -506,6 +508,10 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   const [formOpen, setFormOpen] = useState(false);
   const [formLines, setFormLines] = useState([{ itemId: '', qty: 1 }]);
   const [formSite, setFormSite] = useState('');
+  const [formSiteIds, setFormSiteIds] = useState([]); // multi-sites (demande globale)
+  const [formKind, setFormKind] = useState('site'); // 'site' | 'dotation'
+  const [dotAgentId, setDotAgentId] = useState('');
+  const [dotAgentName, setDotAgentName] = useState('');
   const [formReason, setFormReason] = useState('');
   const [formNotes, setFormNotes] = useState('');
   const [onBehalf, setOnBehalf] = useState(false);
@@ -631,6 +637,8 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
           for (const l of (r.lines?.length ? r.lines : [null])) {
             rows.push({
               'N° demande': r.requestNumber, Statut: STATUS_LABEL[r.status] || r.status,
+              Couloir: r.requestKind === 'dotation' ? 'Dotation' : 'Site',
+              'Agent doté': r.requestKind === 'dotation' ? (r.beneficiaryName || '') : '',
               Demandeur: r.requesterName || '', Fonction: REQUESTER_ROLE_LABEL[r.requesterRole] || r.requesterRole || '',
               'Site destination': r.siteName || '', Article: l?.itemName || '', 'Qté demandée': l?.qty ?? '',
               'N° SWO': r.swoNumber || '', 'Créée le': fmtDate(r.createdAt),
@@ -724,11 +732,15 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
         body: JSON.stringify({
           lines: lines.map((l) => ({ itemId: l.itemId, qty: Number(l.qty) })),
           siteId: site?.id || '', siteName: site ? siteLabel(site) : '',
+          siteIds: formSiteIds, siteNames: formSiteIds.map((sid) => { const s = sitesBzv.find((x) => String(x.id) === String(sid)); return s ? siteLabel(s) : ''; }),
+          requestKind: formKind,
+          ...(formKind === 'dotation' ? { beneficiaryUserId: dotAgentId, beneficiaryName: dotAgentName } : {}),
           reason: formReason, notes: formNotes, swoNumber: formSwo,
           ...(onBehalf && isManager ? { onBehalf: { role: behalfRole, name: behalfName } } : {})
         })
       });
-      setFormOpen(false); setFormLines([{ itemId: '', qty: 1 }]); setFormSite(''); setFormReason(''); setFormNotes(''); setFormSwo('');
+      setFormOpen(false); setFormLines([{ itemId: '', qty: 1 }]); setFormSite(''); setFormSiteIds([]); setFormKind('site');
+      setDotAgentId(''); setDotAgentName(''); setFormReason(''); setFormNotes(''); setFormSwo('');
       setOnBehalf(false); setBehalfName('');
       await loadRequests();
       alert('Demande envoyée au magasinier.');
@@ -1375,15 +1387,54 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                     </div>
                     <LinesEditor items={items.filter((i) => i.active)} lines={formLines} setLines={setFormLines} disabled={busy} />
                   </div>
+                  <div className="mt-3">
+                    <label className={labelCls}>Objet de la demande</label>
+                    <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
+                      <button type="button" onClick={() => setFormKind('site')}
+                        className={`px-4 py-2 text-sm font-semibold ${formKind === 'site' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                        Remplacement site
+                      </button>
+                      <button type="button" onClick={() => setFormKind('dotation')}
+                        className={`px-4 py-2 text-sm font-semibold border-l border-gray-300 ${formKind === 'dotation' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                        Dotation outillage (technicien)
+                      </button>
+                    </div>
+                  </div>
+                  {formKind === 'dotation' ? (
+                    <div className="mt-3">
+                      <label className={labelCls}>Agent à doter *</label>
+                      <ComboSelect className={inputCls}
+                        options={agents.filter((a) => ['technician', 'field_supervisor'].includes(a.role))
+                          .map((a) => ({ id: a.id, label: a.name, sub: a.roleLabel }))}
+                        value={dotAgentId}
+                        onChange={(v) => { setDotAgentId(v); const a = agents.find((x) => String(x.id) === String(v)); setDotAgentName(a?.name || ''); }}
+                        placeholder="— Choisir le technicien / agent —" />
+                      <div className="text-[10px] text-gray-400 mt-1">Fiche de dotation (DT-) émise à la validation — imprimable et exportable en PDF.</div>
+                    </div>
+                  ) : (
+                    <div className="mt-3">
+                      <label className={labelCls}>Site(s) de destination — plusieurs possibles</label>
+                      <div className="flex flex-wrap gap-1.5 mb-1.5">
+                        {formSiteIds.map((sid) => {
+                          const s = sitesBzv.find((x) => String(x.id) === String(sid));
+                          return (
+                            <span key={sid} className="inline-flex items-center gap-1 text-xs font-semibold bg-indigo-50 text-indigo-800 border border-indigo-200 rounded-full px-2.5 py-1">
+                              {s ? siteLabel(s) : sid}
+                              <button type="button" className="text-indigo-400 hover:text-indigo-800" onClick={() => setFormSiteIds(formSiteIds.filter((x) => x !== sid))}>×</button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <ComboSelect className={inputCls}
+                        options={siteOptions.filter((o) => !formSiteIds.includes(o.id))}
+                        value="" onChange={(v) => { if (v && !formSiteIds.includes(v)) setFormSiteIds([...formSiteIds, v]); }}
+                        placeholder="+ Ajouter un site (recherche nom ou ID) —" />
+                    </div>
+                  )}
                   <div className="grid sm:grid-cols-2 gap-2 mt-3">
                     <div>
-                      <label className={labelCls}>Site de destination</label>
-                      <ComboSelect className={inputCls} options={siteOptions}
-                        value={formSite} onChange={setFormSite} placeholder="— Choisir un site (optionnel) —" />
-                    </div>
-                    <div>
                       <label className={labelCls}>Motif de la demande</label>
-                      <input className={inputCls} placeholder="Ex. remplacement batterie défectueuse" value={formReason} onChange={(e) => setFormReason(e.target.value)} />
+                      <input className={inputCls} placeholder={formKind === 'dotation' ? 'Ex. dotation outillage réseau' : 'Ex. remplacement batterie défectueuse'} value={formReason} onChange={(e) => setFormReason(e.target.value)} />
                     </div>
                     <div>
                       <label className={labelCls}>N° SWO (optionnel)</label>
@@ -1396,7 +1447,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                   </div>
                   <div className="flex gap-2 mt-3 justify-end">
                     <button className={btnGhost} onClick={() => setFormOpen(false)}>Annuler</button>
-                    <button className={btnPrimary} onClick={submitRequest} disabled={busy || (onBehalf && !behalfName.trim())}>Envoyer</button>
+                    <button className={btnPrimary} onClick={submitRequest} disabled={busy || (formKind === 'dotation' && !dotAgentId) || (onBehalf && !behalfName.trim())}>Envoyer</button>
                   </div>
                 </div>
               )}
@@ -1414,8 +1465,15 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                       </div>
                       <div className="text-sm mt-1.5 text-gray-700">
                         <b>{r.requesterName}</b> <span className="text-gray-400">({REQUESTER_ROLE_LABEL[r.requesterRole] || r.requesterRole})</span>
-                        {r.siteName ? <> → <b>{r.siteName}</b></> : null}
+                        {r.requestKind === 'dotation'
+                          ? <> → <span className="inline-flex items-center gap-1 text-xs font-bold bg-violet-100 text-violet-800 border border-violet-200 rounded-full px-2 py-0.5">Dotation → {r.beneficiaryName || '—'}</span></>
+                          : r.siteName ? <> → <b>{r.siteName}</b></> : null}
                       </div>
+                      {(r.siteIds || []).length > 1 && (
+                        <div className="text-[11px] text-indigo-600 mt-1">
+                          Sites : {r.siteIds.map((sid) => { const s = sitesBzv.find((x) => String(x.id) === String(sid)); return s ? siteLabel(s) : sid; }).join(' · ')}
+                        </div>
+                      )}
                       <div className="text-xs text-gray-600 mt-1">
                         {r.lines.map((l) => `${l.qty}× ${l.itemName}`).join(' · ')}
                       </div>
@@ -1428,7 +1486,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                             <>
                               <button onClick={() => { setProcReq({ mode: 'issue', request: r }); setProcDate(''); setProcSigImg(''); setProcSigName(''); setProcSwo(r.swoNumber || ''); }}
                                 className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-emerald-700 inline-flex items-center gap-1">
-                                <Check size={13} /> Valider → bon de sortie
+                                <Check size={13} /> {r.requestKind === 'dotation' ? 'Valider → fiche de dotation' : 'Valider → bon de sortie'}
                               </button>
                               <button onClick={() => { setProcReq({ mode: 'reject', request: r }); setProcReason(''); }}
                                 className="text-xs bg-rose-600 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-rose-700 inline-flex items-center gap-1">
@@ -1454,7 +1512,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
             <div>
               <div className="flex flex-wrap gap-2 mb-3 items-center">
                 <div className="flex border border-gray-300 rounded-lg overflow-x-auto max-w-full">
-                  {[['all', 'Tous'], ['exit', 'Sorties'], ['entry', 'Entrées'], ['return', 'Retours'], ['recovery', 'Récup.'], ['reinstatement', 'Réintég.'], ['client_return', 'Remises']].map(([v, l]) => (
+                  {[['all', 'Tous'], ['exit', 'Sorties'], ['entry', 'Entrées'], ['return', 'Retours'], ['recovery', 'Récup.'], ['reinstatement', 'Réintég.'], ['client_return', 'Remises'], ['dotation', 'Dotations']].map(([v, l]) => (
                     <button key={v} onClick={() => setMvType(v)}
                       className={`px-3 py-1.5 text-xs font-semibold ${mvType === v ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
                       {l}
@@ -1489,6 +1547,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                           : mv.type === 'recovery' ? 'bg-sky-100 text-sky-900 border-sky-200'
                           : mv.type === 'reinstatement' ? 'bg-teal-100 text-teal-900 border-teal-200'
                           : mv.type === 'client_return' ? 'bg-purple-100 text-purple-900 border-purple-200'
+                          : mv.type === 'dotation' ? 'bg-violet-100 text-violet-900 border-violet-200'
                           : 'bg-indigo-100 text-indigo-900 border-indigo-200'}`}>
                           {TYPE_LABEL[mv.type]}
                         </span>
@@ -1505,7 +1564,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                           {mv.type === 'entry' && mv.senderType ? <span>Expéditeur : <b>{mv.senderType === 'htc' ? 'Client HTC' : 'Fournisseur'}</b></span> : null}
                           {mv.smrNumber ? <span>N° SMR : <b className="font-mono">{mv.smrNumber}</b></span> : null}
                           {mv.swoNumber ? <span>N° SWO : <b className="font-mono">{mv.swoNumber}</b></span> : null}
-                          {mv.beneficiary ? <span>Bénéficiaire : <b>{mv.beneficiary}</b></span> : null}
+                          {mv.beneficiary ? <span>{mv.type === 'dotation' ? 'Agent doté' : 'Bénéficiaire'} : <b>{mv.beneficiary}</b></span> : null}
                           {mv.agentName && mv.type !== 'entry' ? <span>Agent : <b>{mv.agentName}</b></span> : null}
                           {mv.provenance ? <span>Provenance : <b>{mv.provenance}</b></span> : null}
                         </div>
@@ -1517,7 +1576,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                         <button onClick={() => bonPdf(mv).catch(() => alert('Erreur lors de la génération du PDF.'))} className="text-xs border border-gray-300 px-2.5 py-1.5 rounded-lg font-semibold hover:bg-gray-50 inline-flex items-center gap-1">
                           <Download size={12} /> PDF
                         </button>
-                        {mv.type === 'exit' && (mv.status === 'issued' || mv.status === 'partial_return') && (
+                        {(mv.type === 'exit' || mv.type === 'dotation') && (mv.status === 'issued' || mv.status === 'partial_return') && (
                           <button onClick={() => { setRetMv(mv); setRetLines({}); setRetDate(''); setRetSigImg(''); setRetSigName(''); setRetAgent(mv.requesterName || ''); setRetProvenance(mv.siteName || ''); }}
                             className="text-xs bg-indigo-600 text-white px-2.5 py-1.5 rounded-lg font-semibold hover:bg-indigo-700 inline-flex items-center gap-1">
                             <RotateCcw size={12} /> Retour
@@ -1637,6 +1696,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                         <option value="all">Tous les types</option>
                         <option value="entry">Entrées (BE)</option>
                         <option value="exit">Sorties (BS)</option>
+                        <option value="dotation">Dotations (DT)</option>
                         <option value="return">Retours (BR)</option>
                         <option value="recovery">Récupérations (RC)</option>
                         {isManager && <option value="reinstatement">Réintégrations (RI)</option>}
@@ -1672,10 +1732,13 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-4 sm:p-5 max-h-[92vh] overflow-y-auto">
             <div className="font-bold text-base mb-2">
-              {procReq.mode === 'issue' ? `Valider → Bon de sortie` : `Refuser la demande`}
+              {procReq.mode === 'issue'
+                ? (procReq.request.requestKind === 'dotation' ? 'Valider → Fiche de dotation' : 'Valider → Bon de sortie')
+                : 'Refuser la demande'}
             </div>
             <div className="text-xs text-gray-500 mb-3">
               {procReq.request.requestNumber} · {procReq.request.requesterName} · {procReq.request.lines.map((l) => `${l.qty}× ${l.itemName}`).join(' · ')}
+              {procReq.request.requestKind === 'dotation' && <div className="mt-1 text-violet-700 font-semibold">Agent doté : {procReq.request.beneficiaryName}</div>}
             </div>
             {procReq.mode === 'issue' ? (
               <>

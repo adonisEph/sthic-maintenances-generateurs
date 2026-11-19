@@ -15,7 +15,7 @@ export async function onRequestPost({ request, env, data, params }) {
     const exitId = String(params?.id || '');
     const exit = await env.DB.prepare('SELECT * FROM htc_movements WHERE id = ?').bind(exitId).first();
     if (!exit) return json({ error: 'Bon de sortie introuvable.' }, { status: 404 });
-    if (exit.type !== 'exit') return json({ error: 'Les retours se rattachent à un bon de sortie.' }, { status: 400 });
+    if (!['exit', 'dotation'].includes(exit.type)) return json({ error: 'Les retours se rattachent à un bon de sortie ou de dotation.' }, { status: 400 });
     if (exit.status === 'cancelled') return json({ error: 'Bon de sortie annulé.' }, { status: 409 });
     if (exit.status === 'returned') return json({ error: 'Bon de sortie déjà totalement retourné.' }, { status: 409 });
 
