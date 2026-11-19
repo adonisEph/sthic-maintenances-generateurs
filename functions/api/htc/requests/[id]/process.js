@@ -52,8 +52,10 @@ export async function onRequestPost({ request, env, data, params }) {
       return json({ ok: false, shortage: true, shortages, error: 'Stock insuffisant sur certaines lignes.' }, { status: 409 });
     }
 
-    const signatureName = String(body?.signatureName || '').trim();
-    const signatureImage = String(body?.signatureImage || '');
+    // Signature : celle saisie à la validation (re-signature en présentiel) ou,
+    // à défaut, celle capturée à la demande — plus besoin d'appeler le demandeur.
+    const signatureName = String(body?.signatureName || '').trim() || String(req.signature_name || '').trim();
+    const signatureImage = String(body?.signatureImage || '') || String(req.signature_image || '');
     if (!signatureName && !signatureImage) {
       return json({ error: 'Signature du demandeur requise (dessinée ou nom tapé).' }, { status: 400 });
     }
@@ -67,19 +69,20 @@ export async function onRequestPost({ request, env, data, params }) {
 
     const swoNumber = String(body?.swoNumber || req.swo_number || '').trim();
     const beneficiary = isDotation ? String(req.beneficiary_name || '').trim() : '';
+    const beneficiaryRole = isDotation ? String(req.beneficiary_role || '').trim() : '';
 
     await env.DB.prepare(
       `INSERT INTO htc_movements (id, number, type, location, movement_date, site_id, site_name, reason,
-        requester_name, requester_role, requested_by_user_id, request_id, swo_number, beneficiary,
+        requester_name, requester_role, requested_by_user_id, request_id, swo_number, beneficiary, beneficiary_role,
         signature_name, signature_image, status, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?, ?)`
     ).bind(
       movId, number, movType, mainLoc, movementDate,
       String(req.site_id || ''), String(req.site_name || ''),
       String(req.reason || ''),
       String(req.requester_name || ''), String(req.requester_role || ''),
       req.requested_by_user_id ? String(req.requested_by_user_id) : null,
-      id, swoNumber, beneficiary,
+      id, swoNumber, beneficiary, beneficiaryRole,
       signatureName, signatureImage && signatureImage.startsWith('data:image') ? signatureImage.slice(0, 60000) : '',
       String(data.user.id), now, now
     ).run();

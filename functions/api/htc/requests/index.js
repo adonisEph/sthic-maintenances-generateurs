@@ -101,15 +101,31 @@ export async function onRequestPost({ request, env, data }) {
 
     let beneficiaryName = '';
     let beneficiaryUserId = '';
+    let beneficiaryRole = '';
     if (requestKind === 'dotation') {
       beneficiaryUserId = String(body?.beneficiaryUserId || '').trim();
       beneficiaryName = String(body?.beneficiaryName || '').trim();
-      if (!beneficiaryUserId) return json({ error: 'Agent à doter requis.' }, { status: 400 });
-      const u = await env.DB.prepare(
-        "SELECT id, technician_name, email, role FROM users WHERE id = ? AND (disabled_at IS NULL OR disabled_at = '')"
-      ).bind(beneficiaryUserId).first();
-      if (!u) return json({ error: 'Agent à doter introuvable.' }, { status: 400 });
-      beneficiaryName = String(u.technician_name || u.email || beneficiaryName).trim();
+      beneficiaryRole = String(body?.beneficiaryRole || '').trim();
+      if (beneficiaryUserId) {
+        const u = await env.DB.prepare(
+          "SELECT id, technician_name, email, role FROM users WHERE id = ? AND (disabled_at IS NULL OR disabled_at = '')"
+        ).bind(beneficiaryUserId).first();
+        if (!u) return json({ error: 'Agent à doter introuvable.' }, { status: 400 });
+        beneficiaryName = String(u.technician_name || u.email || beneficiaryName).trim();
+        beneficiaryRole = String(u.role || beneficiaryRole);
+      } else {
+        // Agent interne hors maintenance (pas de compte app) : nom + fonction saisis.
+        if (!beneficiaryName) return json({ error: 'Nom de l\'agent à doter requis.' }, { status: 400 });
+        if (!beneficiaryRole) return json({ error: 'Fonction de l\'agent à doter requise.' }, { status: 400 });
+      }
+    }
+
+    // Signature du demandeur capturée à la demande — reprise sur le bon à la
+    // validation (plus besoin de faire signer en présentiel au magasin).
+    const signatureName = String(body?.signatureName || '').trim();
+    const signatureImage = String(body?.signatureImage || '');
+    if (!signatureName && !signatureImage && !onBehalf) {
+      return json({ error: 'Signature du demandeur requise.' }, { status: 400 });
     }
 
     const id = newId();
@@ -118,15 +134,16 @@ export async function onRequestPost({ request, env, data }) {
 
     await env.DB.prepare(
       `INSERT INTO htc_requests (id, request_number, status, requested_by_user_id, requester_name, requester_role,
-        site_id, site_name, site_ids, request_kind, beneficiary_name, beneficiary_user_id,
-        reason, notes, swo_number, zone, created_by, created_at, updated_at)
-       VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        site_id, site_name, site_ids, request_kind, beneficiary_name, beneficiary_user_id, beneficiary_role,
+        signature_name, signature_image, reason, notes, swo_number, zone, created_by, created_at, updated_at)
+       VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       id, number,
       onBehalf ? null : String(data.user.id),
       requesterName, requesterRole,
       siteId, siteName, JSON.stringify(siteIdsIn),
-      requestKind, beneficiaryName, beneficiaryUserId,
+      requestKind, beneficiaryName, beneficiaryUserId, beneficiaryRole,
+      signatureName, signatureImage && signatureImage.startsWith('data:image') ? signatureImage.slice(0, 60000) : '',
       String(body?.reason || '').trim(), String(body?.notes || '').trim(),
       String(body?.swoNumber || '').trim(),
       HTC_ZONE, String(data.user.id), now, now

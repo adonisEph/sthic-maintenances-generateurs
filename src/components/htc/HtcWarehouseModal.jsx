@@ -95,14 +95,14 @@ function bonInnerHtml(mv) {
     recovery: ['Date', 'Désignation', 'Quantité', 'Condition', 'Site', 'Ramené par'],
     reinstatement: ['Date', 'Désignation', 'Quantité', 'État d’origine', 'Réparé par', 'Destination'],
     client_return: ['Date', 'Désignation', 'Quantité', 'État', 'Remis par', 'Bénéficiaire'],
-    dotation: ['Date', 'Désignation', 'Quantité', 'Agent doté', 'Demandeur', 'N° SWO']
+    dotation: ['Date', 'Désignation', 'Quantité', 'Agent doté', 'Fonction', 'N° SWO']
   };
   const heads = HEADS[mv.type] || ['Date', 'Désignation', 'Quantité', 'Lieu', '', ''];
   const cells = (l) => {
     const base = `<td class="c">${esc(fmtDate(mv.movementDate))}</td><td class="desig">${esc(l.itemName)}</td><td class="c">${l.qty}</td>`;
     if (mv.type === 'entry') return `${base}<td class="c">${esc(senderFull)}</td><td class="c">${esc(mv.smrNumber || '—')}</td><td class="c">${esc(mv.beneficiary || 'Magasin STHIC')}</td>`;
     if (mv.type === 'exit') return `${base}<td class="c">${esc(mv.requesterName || '—')}</td><td class="c">${esc(mv.swoNumber || '—')}</td><td class="c">${esc(mv.siteName || '—')}</td>`;
-    if (mv.type === 'dotation') return `${base}<td class="c">${esc(mv.beneficiary || '—')}</td><td class="c">${esc(mv.requesterName || '—')}</td><td class="c">${esc(mv.swoNumber || '—')}</td>`;
+    if (mv.type === 'dotation') return `${base}<td class="c">${esc(mv.beneficiary || '—')}</td><td class="c">${esc(REQUESTER_ROLE_LABEL[mv.beneficiaryRole] || mv.beneficiaryRole || '—')}</td><td class="c">${esc(mv.swoNumber || '—')}</td>`;
     if (mv.type === 'return') return `${base}<td class="c">${esc(mv.agentName || mv.requesterName || '—')}</td><td class="c">${esc(mv.returnOfNumber || '—')}</td><td class="c">${esc(mv.provenance || mv.siteName || '—')}</td>`;
     if (mv.type === 'recovery') return `${base}<td class="c">${esc(CONDITION_LABEL[l.condition] || 'Fonctionnel')}</td><td class="c">${esc(mv.siteName || '—')}</td><td class="c">${esc(mv.agentName || mv.requesterName || '—')}</td>`;
     if (mv.type === 'reinstatement') return `${base}<td class="c">${esc(CONDITION_LABEL[l.condition] || '—')}</td><td class="c">${esc(mv.agentName || '—')}</td><td class="c">Stock disponible</td>`;
@@ -113,7 +113,7 @@ function bonInnerHtml(mv) {
   const whoLabel = mv.type === 'entry' ? 'Expéditeur' : mv.type === 'return' ? 'Agent' : mv.type === 'recovery' ? 'Ramené par' : mv.type === 'reinstatement' ? 'Réparé par' : mv.type === 'client_return' ? 'Remis par' : mv.type === 'dotation' ? 'Doté par' : 'Demandeur';
   const whoVal = mv.type === 'entry' ? senderFull : (mv.agentName || mv.requesterName || '—');
   const destLabel = mv.type === 'recovery' ? 'Site de récupération' : mv.type === 'return' ? 'Provenance' : mv.type === 'client_return' ? 'Bénéficiaire' : mv.type === 'dotation' ? 'Agent doté' : 'Destination';
-  const destVal = mv.type === 'reinstatement' ? 'Stock disponible' : mv.type === 'client_return' ? (mv.beneficiary || 'Client HTC') : mv.type === 'dotation' ? (mv.beneficiary || '—') : (mv.provenance || mv.siteName || '—');
+  const destVal = mv.type === 'reinstatement' ? 'Stock disponible' : mv.type === 'client_return' ? (mv.beneficiary || 'Client HTC') : mv.type === 'dotation' ? [mv.beneficiary || '—', REQUESTER_ROLE_LABEL[mv.beneficiaryRole] || mv.beneficiaryRole || ''].filter(Boolean).join(' · ') : (mv.provenance || mv.siteName || '—');
   const roleVal = REQUESTER_ROLE_LABEL[mv.requesterRole] || mv.requesterRole || '—';
   // BE : pas de carte « Lieu » — la provenance est l'expéditeur, le bénéficiaire le Magasin STHIC.
   // RI / RM : la quarantaine vit à l'Entrepôt — carte « Lieu » figée « Entrepôt (Retour Site) ».
@@ -222,19 +222,20 @@ const LinesEditor = ({ items, lines, setLines, disabled }) => {
     <div>
       {lines.map((l, i) => (
         <div key={i} className="flex flex-col sm:flex-row gap-2 mb-2 sm:items-center">
-          <select
-            className="w-full sm:flex-1 sm:min-w-0 border border-gray-300 rounded-lg px-2 py-2 text-sm bg-white disabled:opacity-60"
-            value={l.itemId}
-            disabled={disabled}
-            onChange={(e) => setLine(i, { itemId: e.target.value })}
-          >
-            <option value="">— Choisir un article —</option>
-            {items.map((it) => (
-              <option key={it.id} value={it.id}>
-                {it.name} · {LOCATION_LABEL[it.location] || it.location}{it.stock != null ? ` · stock ${it.stock}` : ''}
-              </option>
-            ))}
-          </select>
+          <div className="w-full sm:flex-1 sm:min-w-0">
+            <ComboSelect
+              className="w-full border border-gray-300 rounded-lg px-2 py-2 text-sm bg-white disabled:opacity-60"
+              value={l.itemId}
+              disabled={disabled}
+              onChange={(v) => setLine(i, { itemId: v })}
+              placeholder="— Choisir un article —"
+              options={items.map((it) => ({
+                id: String(it.id),
+                label: it.name,
+                sub: `${LOCATION_LABEL[it.location] || it.location}${it.stock != null ? ` · stock ${it.stock}` : ''}`
+              }))}
+            />
+          </div>
           <div className="flex gap-2 items-center">
             <span className="sm:hidden text-[11px] font-bold uppercase tracking-wide text-gray-500">Qté</span>
             <input
@@ -299,10 +300,9 @@ const RecoveryLinesEditor = ({ items, lines, setLines, disabled, inputCls }) => 
           ) : (
             <div className="mb-2">
               <label className={sub}>Article</label>
-              <select className={inputCls} value={l.itemId} disabled={disabled} onChange={(e) => setLine(i, { itemId: e.target.value })}>
-                <option value="">— Choisir un article —</option>
-                {items.map((it) => <option key={it.id} value={it.id}>{it.name} · {LOCATION_LABEL[it.location] || it.location}</option>)}
-              </select>
+              <ComboSelect className={inputCls} value={l.itemId} disabled={disabled}
+                onChange={(v) => setLine(i, { itemId: v })} placeholder="— Choisir un article —"
+                options={items.map((it) => ({ id: String(it.id), label: it.name, sub: LOCATION_LABEL[it.location] || it.location }))} />
             </div>
           )}
           <div className="grid grid-cols-[6rem_1fr] gap-2">
@@ -377,14 +377,13 @@ const EntryLinesEditor = ({ items, lines, setLines, disabled, inputCls }) => {
             <div className="grid grid-cols-[1fr_6rem] gap-2">
               <div>
                 <label className={sub}>Article</label>
-                <select className={inputCls} value={l.itemId} disabled={disabled} onChange={(e) => setLine(i, { itemId: e.target.value })}>
-                  <option value="">— Choisir un article —</option>
-                  {items.map((it) => (
-                    <option key={it.id} value={it.id}>
-                      {it.name} · {LOCATION_LABEL[it.location] || it.location}{it.stock != null ? ` · stock ${it.stock}` : ''}
-                    </option>
-                  ))}
-                </select>
+                <ComboSelect className={inputCls} value={l.itemId} disabled={disabled}
+                  onChange={(v) => setLine(i, { itemId: v })} placeholder="— Choisir un article —"
+                  options={items.map((it) => ({
+                    id: String(it.id),
+                    label: it.name,
+                    sub: `${LOCATION_LABEL[it.location] || it.location}${it.stock != null ? ` · stock ${it.stock}` : ''}`
+                  }))} />
               </div>
               <div>
                 <label className={sub}>Quantité</label>
@@ -512,6 +511,11 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   const [formKind, setFormKind] = useState('site'); // 'site' | 'dotation'
   const [dotAgentId, setDotAgentId] = useState('');
   const [dotAgentName, setDotAgentName] = useState('');
+  const [dotOther, setDotOther] = useState(false); // agent interne hors maintenance (pas de compte)
+  const [dotOtherName, setDotOtherName] = useState('');
+  const [dotOtherRole, setDotOtherRole] = useState('');
+  const [formSigImg, setFormSigImg] = useState('');
+  const [formSigName, setFormSigName] = useState('');
   const [formReason, setFormReason] = useState('');
   const [formNotes, setFormNotes] = useState('');
   const [onBehalf, setOnBehalf] = useState(false);
@@ -734,13 +738,17 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
           siteId: site?.id || '', siteName: site ? siteLabel(site) : '',
           siteIds: formSiteIds, siteNames: formSiteIds.map((sid) => { const s = sitesBzv.find((x) => String(x.id) === String(sid)); return s ? siteLabel(s) : ''; }),
           requestKind: formKind,
-          ...(formKind === 'dotation' ? { beneficiaryUserId: dotAgentId, beneficiaryName: dotAgentName } : {}),
+          ...(formKind === 'dotation' ? (dotOther
+            ? { beneficiaryName: dotOtherName.trim(), beneficiaryRole: dotOtherRole.trim() }
+            : { beneficiaryUserId: dotAgentId, beneficiaryName: dotAgentName }) : {}),
+          signatureName: formSigName, signatureImage: formSigImg,
           reason: formReason, notes: formNotes, swoNumber: formSwo,
           ...(onBehalf && isManager ? { onBehalf: { role: behalfRole, name: behalfName } } : {})
         })
       });
       setFormOpen(false); setFormLines([{ itemId: '', qty: 1 }]); setFormSite(''); setFormSiteIds([]); setFormKind('site');
-      setDotAgentId(''); setDotAgentName(''); setFormReason(''); setFormNotes(''); setFormSwo('');
+      setDotAgentId(''); setDotAgentName(''); setDotOther(false); setDotOtherName(''); setDotOtherRole('');
+      setFormSigImg(''); setFormSigName(''); setFormReason(''); setFormNotes(''); setFormSwo('');
       setOnBehalf(false); setBehalfName('');
       await loadRequests();
       alert('Demande envoyée au magasinier.');
@@ -1403,12 +1411,29 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                   {formKind === 'dotation' ? (
                     <div className="mt-3">
                       <label className={labelCls}>Agent à doter *</label>
-                      <ComboSelect className={inputCls}
-                        options={agents.filter((a) => ['technician', 'field_supervisor'].includes(a.role))
-                          .map((a) => ({ id: a.id, label: a.name, sub: a.roleLabel }))}
-                        value={dotAgentId}
-                        onChange={(v) => { setDotAgentId(v); const a = agents.find((x) => String(x.id) === String(v)); setDotAgentName(a?.name || ''); }}
-                        placeholder="— Choisir le technicien / agent —" />
+                      <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden mb-2">
+                        <button type="button" onClick={() => setDotOther(false)}
+                          className={`px-3 py-1.5 text-xs font-semibold ${!dotOther ? 'bg-violet-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                          Agent de l'app
+                        </button>
+                        <button type="button" onClick={() => setDotOther(true)}
+                          className={`px-3 py-1.5 text-xs font-semibold border-l border-gray-300 ${dotOther ? 'bg-violet-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                          Autres agents (hors maintenance)
+                        </button>
+                      </div>
+                      {dotOther ? (
+                        <div className="grid sm:grid-cols-2 gap-2">
+                          <input className={inputCls} placeholder="Nom complet de l'agent *" value={dotOtherName} onChange={(e) => setDotOtherName(e.target.value)} />
+                          <input className={inputCls} placeholder="Fonction de l'agent * (ex. Logistique, HSE…)" value={dotOtherRole} onChange={(e) => setDotOtherRole(e.target.value)} />
+                        </div>
+                      ) : (
+                        <ComboSelect className={inputCls}
+                          options={agents.filter((a) => ['technician', 'field_supervisor'].includes(a.role))
+                            .map((a) => ({ id: a.id, label: a.name, sub: a.roleLabel }))}
+                          value={dotAgentId}
+                          onChange={(v) => { setDotAgentId(v); const a = agents.find((x) => String(x.id) === String(v)); setDotAgentName(a?.name || ''); }}
+                          placeholder="— Choisir le technicien / agent —" />
+                      )}
                       <div className="text-[10px] text-gray-400 mt-1">Fiche de dotation (DT-) émise à la validation — imprimable et exportable en PDF.</div>
                     </div>
                   ) : (
@@ -1445,9 +1470,21 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                     <label className={labelCls}>Notes (optionnel)</label>
                     <input className={inputCls} placeholder="Précisions complémentaires…" value={formNotes} onChange={(e) => setFormNotes(e.target.value)} />
                   </div>
+                  {!(onBehalf && isManager) && (
+                    <div className="mt-3">
+                      <label className={labelCls}>Votre signature * (reprise sur le bon à la validation)</label>
+                      <SignBlock sigImg={formSigImg} setSigImg={setFormSigImg} sigName={formSigName} setSigName={setFormSigName} />
+                    </div>
+                  )}
                   <div className="flex gap-2 mt-3 justify-end">
                     <button className={btnGhost} onClick={() => setFormOpen(false)}>Annuler</button>
-                    <button className={btnPrimary} onClick={submitRequest} disabled={busy || (formKind === 'dotation' && !dotAgentId) || (onBehalf && !behalfName.trim())}>Envoyer</button>
+                    <button className={btnPrimary} onClick={submitRequest}
+                      disabled={busy
+                        || (formKind === 'dotation' && (dotOther ? (!dotOtherName.trim() || !dotOtherRole.trim()) : !dotAgentId))
+                        || (onBehalf && !behalfName.trim())
+                        || (!(onBehalf && isManager) && !formSigImg && !formSigName.trim())}>
+                      Envoyer
+                    </button>
                   </div>
                 </div>
               )}
@@ -1746,8 +1783,28 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                 <input type="date" className={`${inputCls} mb-3`} value={procDate} onChange={(e) => setProcDate(e.target.value)} />
                 <label className={labelCls}>N° SWO (ordre de travail)</label>
                 <input className={`${inputCls} mb-3`} placeholder="Ex. SWO-2026-045" value={procSwo} onChange={(e) => setProcSwo(e.target.value)} />
-                <label className="text-xs font-semibold text-gray-600">Signature du demandeur</label>
-                <SignBlock sigImg={procSigImg} setSigImg={setProcSigImg} sigName={procSigName} setSigName={setProcSigName} />
+                {(procReq.request.signatureImage || procReq.request.signatureName) ? (
+                  <div className="mb-3">
+                    <label className={labelCls}>Signature du demandeur (fournie à la demande)</label>
+                    <div className="border border-emerald-200 bg-emerald-50/50 rounded-lg p-2.5 inline-block">
+                      {procReq.request.signatureImage
+                        ? <img src={procReq.request.signatureImage} alt="signature" className="max-h-16" />
+                        : <span className="font-bold text-emerald-800">{procReq.request.signatureName}</span>}
+                    </div>
+                    <div className="text-[10px] text-gray-400 mt-1">Sera reprise sur le bon — re-signature ci-dessous uniquement si besoin.</div>
+                    <details className="mt-1">
+                      <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-800">Re-signer (remplace la signature de la demande)</summary>
+                      <div className="mt-2">
+                        <SignBlock sigImg={procSigImg} setSigImg={setProcSigImg} sigName={procSigName} setSigName={setProcSigName} />
+                      </div>
+                    </details>
+                  </div>
+                ) : (
+                  <>
+                    <label className="text-xs font-semibold text-gray-600">Signature du demandeur</label>
+                    <SignBlock sigImg={procSigImg} setSigImg={setProcSigImg} sigName={procSigName} setSigName={setProcSigName} />
+                  </>
+                )}
               </>
             ) : (
               <div>
@@ -1759,7 +1816,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
               <button className={btnGhost} onClick={() => setProcReq(null)}>Fermer</button>
               <button
                 className={procReq.mode === 'issue' ? 'bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 font-semibold text-sm disabled:opacity-60' : 'bg-rose-600 text-white px-4 py-2 rounded-lg hover:bg-rose-700 font-semibold text-sm disabled:opacity-60'}
-                disabled={busy || (procReq.mode === 'issue' && !procSigImg && !procSigName.trim())}
+                disabled={busy || (procReq.mode === 'issue' && !procReq.request.signatureImage && !procReq.request.signatureName && !procSigImg && !procSigName.trim())}
                 onClick={() => processRequest(false)}>
                 {procReq.mode === 'issue' ? 'Émettre le bon' : 'Refuser'}
               </button>
@@ -1897,19 +1954,18 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
             </div>
             <div className="mb-2">
               <label className={labelCls}>Article *</label>
-              <select className={inputCls} value={transItem} disabled={busy} onChange={(e) => {
-                setTransItem(e.target.value);
-                const it = items.find((i) => i.id === e.target.value);
-                const cs = (transOpen.mode === 'reinstatement' ? ['defectueux', 'a_reparer'] : ['defectueux', 'a_reparer', 'hs'])
-                  .filter((c) => Number(it?.siteCond?.[c] || 0) > 0);
-                setTransCond(cs[0] || '');
-                setTransQty(1);
-              }}>
-                <option value="">— Choisir un article en quarantaine —</option>
-                {items.filter((i) => i.active && Number(i.stockSite) > 0).map((it) => (
-                  <option key={it.id} value={it.id}>{it.name} · quarantaine {it.stockSite}</option>
-                ))}
-              </select>
+              <ComboSelect className={inputCls} value={transItem} disabled={busy}
+                onChange={(v) => {
+                  setTransItem(v);
+                  const it = items.find((i) => String(i.id) === String(v));
+                  const cs = (transOpen.mode === 'reinstatement' ? ['defectueux', 'a_reparer'] : ['defectueux', 'a_reparer', 'hs'])
+                    .filter((c) => Number(it?.siteCond?.[c] || 0) > 0);
+                  setTransCond(cs[0] || '');
+                  setTransQty(1);
+                }}
+                placeholder="— Choisir un article en quarantaine —"
+                options={items.filter((i) => i.active && Number(i.stockSite) > 0)
+                  .map((it) => ({ id: String(it.id), label: it.name, sub: `quarantaine ${it.stockSite}` }))} />
             </div>
             <div className="grid sm:grid-cols-2 gap-2 mb-2">
               <div>
