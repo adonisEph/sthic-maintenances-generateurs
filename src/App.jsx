@@ -57,7 +57,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.31.4';
+const APP_VERSION = '6.32.0';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -851,6 +851,8 @@ const GeneratorMaintenanceApp = () => {
   // on recharge les jeux de données qui alimentent les compteurs — sinon
   // l'écran d'un autre rôle restait figé sur les données du login.
   const dataVersionRef = useRef('');
+  const pendingVersionRef = useRef('');
+  const reloadTimerRef = useRef(null);
   useEffect(() => {
     if (!authUser?.email) return;
     let disposed = false;
@@ -867,11 +869,26 @@ const GeneratorMaintenanceApp = () => {
         if (!v) return;
         if (v === dataVersionRef.current) return;
         const isFirst = !dataVersionRef.current;
-        dataVersionRef.current = v;
-        if (isFirst) return; // état initial déjà frais (chargé au login/action)
-        await Promise.allSettled([loadData(), loadFicheHistory(), loadInterventions()]);
-        try { await loadNhQuarantineCount?.(); } catch { /* ignore */ }
-        bumpInterventionsUiRev();
+        if (isFirst) { dataVersionRef.current = v; return; } // état initial déjà frais
+        pendingVersionRef.current = v;
+        // Debounce 10s : les écritures métier arrivent souvent en rafale (imports,
+        // batchs) et bump la version à chaque ligne — un seul reload après la
+        // rafale au lieu d'un reload sites+fiches+interventions par bump
+        // (~5k lignes lues × nb clients connectés × nb bumps).
+        if (reloadTimerRef.current) return;
+        reloadTimerRef.current = setTimeout(async () => {
+          reloadTimerRef.current = null;
+          if (disposed) return;
+          if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+          try {
+            await Promise.allSettled([loadData(), loadFicheHistory(), loadInterventions()]);
+            try { await loadNhQuarantineCount?.(); } catch { /* ignore */ }
+            bumpInterventionsUiRev();
+            dataVersionRef.current = pendingVersionRef.current;
+          } catch {
+            // non consommé → re-tenté au prochain tick
+          }
+        }, 10000);
       } catch {
         // erreur transitoire → re-tenté au prochain tick
       } finally {
@@ -888,6 +905,10 @@ const GeneratorMaintenanceApp = () => {
     return () => {
       disposed = true;
       window.clearInterval(id);
+      if (reloadTimerRef.current) {
+        clearTimeout(reloadTimerRef.current);
+        reloadTimerRef.current = null;
+      }
       document.removeEventListener('visibilitychange', onVis);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

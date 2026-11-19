@@ -63,6 +63,10 @@ function actionForRequest(request) {
 function shouldAudit(request) {
   const url = new URL(request.url);
   const p = url.pathname;
+  const m = String(request.method || 'GET').toUpperCase();
+  // Seules les mutations sont journalisées — les lectures (GET) représentent
+  // ~70% du trafic et ne font pas d'événement métier (quota rows written).
+  if (m === 'GET' || m === 'HEAD' || m === 'OPTIONS') return false;
   if (!p.startsWith('/api/')) return false;
   if (p === '/api/auth/login') return false;
   if (p === '/api/auth/token-login') return false;

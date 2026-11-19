@@ -84,10 +84,10 @@ export async function onRequestGet({ request, env, data }) {
       binds.push(String(userZone(data) || 'BZV/POOL'));
     }
 
-    // Technicien : id OU nom — le matching normalisé (accents/casse/contient) est
-    // appliqué en JS après requête (impossible à normaliser en SQL).
-    // Compat pré-migration 0031 : si la colonne technician_user_id est absente,
-    // on retombe sur le scan des noms (le filtre JS fait foi).
+    // Technicien : préfiltre SQL par id (stamp 0031) OU nom exact — le JS
+    // resserre ensuite avec le matching normalisé (accents/casse/contient).
+    // Avant : `technician IS NOT NULL` renvoyait ~toutes les fiches au filtre JS.
+    // Compat pré-migration 0031 : colonne technician_user_id absente → nom seul.
     if (role === 'technician' && slim) {
       where += ' AND s.zone = ?';
       binds.push(String(userZone(data) || 'BZV/POOL'));
@@ -98,11 +98,13 @@ export async function onRequestGet({ request, env, data }) {
       } catch {
         techUserIdCol = false;
       }
+      const myName = await effectiveTechnicianName(env, data);
       if (techUserIdCol) {
-        where += ' AND (fh.technician_user_id = ? OR fh.technician IS NOT NULL)';
-        binds.push(String(data.user.id || ''));
+        where += ' AND (fh.technician_user_id = ? OR fh.technician = ?)';
+        binds.push(String(data.user.id || ''), myName || '');
       } else {
-        where += ' AND fh.technician IS NOT NULL';
+        where += ' AND fh.technician = ?';
+        binds.push(myName || '');
       }
     }
 
@@ -142,7 +144,7 @@ export async function onRequestGet({ request, env, data }) {
          AND i2.epv_type IS fh.epv_type
        WHERE ${where}
        ORDER BY fh.date_generated DESC
-       ${role === 'technician' ? '' : 'LIMIT 500'}`
+       LIMIT 500`
     );
     const res = await stmt.bind(...binds).all();
     let rows = Array.isArray(res?.results) ? res.results : [];

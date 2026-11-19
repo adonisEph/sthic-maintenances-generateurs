@@ -16,7 +16,13 @@ function uuid() {
   }
 }
 
+// Cache d'isolate : ce bootstrap ne sert qu'au tout premier démarrage. Sans
+// cache, le COUNT(users) tournait à CHAQUE requête API (~26 lignes lues × ~30k
+// requêtes/jour ≈ 700k rows read/jour de taxe pure).
+let adminBootstrapDone = false;
+
 export async function ensureAdminUser(env) {
+  if (adminBootstrapDone) return;
   const adminEmail = normalizeEmail(env.ADMIN_EMAIL || 'admin@local');
   const adminPassword = String(env.ADMIN_PASSWORD || 'admin');
 
@@ -32,7 +38,7 @@ export async function ensureAdminUser(env) {
   }
 
   const count = Number(countRow?.c || 0);
-  if (count > 0) return;
+  if (count > 0) { adminBootstrapDone = true; return; }
 
   const { salt, iters, hash } = await hashPassword(adminPassword);
   const id = uuid();
@@ -51,6 +57,7 @@ export async function ensureAdminUser(env) {
       .bind(id, adminEmail, 'admin', '', hash, salt, iters, now, now)
       .run();
   }
+  adminBootstrapDone = true;
 }
 
 export function mapUserPublic(row) {
