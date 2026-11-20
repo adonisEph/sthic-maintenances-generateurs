@@ -319,6 +319,18 @@ const PmModal = (props) => {
       base['Retraits sur la fenêtre'] = `${it?.retiredCount || 0}/${pmMatrixExistingArr.length || monthCols.length}`;
       return base;
     });
+    const totalRow = { Zone: '', Site: 'TOTAL', 'Site Name': `${rows.length} site(s)`, Technicien: '' };
+    for (const mo of monthCols) {
+      if (pmMatrixMissingSet.has(mo)) {
+        totalRow[mo] = 'aucune campagne';
+      } else {
+        const ret = pmMatrixItems.filter((it) => it?.cells?.[mo]?.s === 'retired').length;
+        const act = pmMatrixItems.filter((it) => it?.cells?.[mo]?.s === 'active').length;
+        totalRow[mo] = `${ret} retiré(s) · ${act} PM`;
+      }
+    }
+    totalRow['Retraits sur la fenêtre'] = `${pmMatrixItems.filter((it) => pmMatrixExistingArr.length > 0 && pmMatrixExistingArr.every((mo) => it?.cells?.[mo]?.s === 'retired')).length} complets`;
+    rows.push(totalRow);
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = [
@@ -362,12 +374,19 @@ const PmModal = (props) => {
         }).join('');
         return `<tr><td class="l"><b>${pmEscapeHtml(it?.siteCode || '-')}</b> · ${pmEscapeHtml(it?.siteName || '-')}</td><td class="l">${pmEscapeHtml(it?.zone || '-')}</td><td class="l">${pmEscapeHtml(it?.technician || '-')}</td>${tds}<td class="c"><b>${it?.retiredCount || 0}/${pmMatrixExistingArr.length || pmMatrixMonths.length}</b></td></tr>`;
       }).join('');
-      tableHtml = `<table><thead><tr><th class="l">Site</th><th class="l">Zone</th><th class="l">Technicien</th>${headCells}<th>Série</th></tr></thead><tbody>${rows}</tbody></table>`;
+      const footCells = pmMatrixMonths.map((mo) => {
+        if (pmMatrixMissingSet.has(mo)) return '<td class="c mut">—</td>';
+        const ret = pmMatrixItems.filter((it) => it?.cells?.[mo]?.s === 'retired').length;
+        const act = pmMatrixItems.filter((it) => it?.cells?.[mo]?.s === 'active').length;
+        return `<td class="c"><b>✗ ${ret}</b><div class="t">✓ ${act}</div></td>`;
+      }).join('');
+      const fullCount = pmMatrixItems.filter((it) => pmMatrixExistingArr.length > 0 && pmMatrixExistingArr.every((mo) => it?.cells?.[mo]?.s === 'retired')).length;
+      tableHtml = `<table><thead><tr><th class="l">Site</th><th class="l">Zone</th><th class="l">Technicien</th>${headCells}<th>Série</th></tr></thead><tbody>${rows}</tbody><tfoot><tr class="tot"><td class="l"><b>TOTAL · ${pmMatrixItems.length} site(s)</b></td><td></td><td></td>${footCells}<td class="c"><b>${fullCount} complets</b></td></tr></tfoot></table>`;
     } else {
       const rows = pmRetiredItems.map((it) =>
         `<tr><td class="l">${pmEscapeHtml(it?.zone || '-')}</td><td class="l"><b>${pmEscapeHtml(it?.siteCode || '-')}</b></td><td class="l">${pmEscapeHtml(it?.siteName || '-')}</td><td class="l">${pmEscapeHtml(it?.technician || '-')}</td><td class="l">${pmEscapeHtml(it?.maintenanceType || 'FullPMWO')}</td></tr>`
       ).join('');
-      tableHtml = `<table><thead><tr><th class="l">Zone</th><th class="l">Site</th><th class="l">Site Name</th><th class="l">Technicien</th><th class="l">Type</th></tr></thead><tbody>${rows}</tbody></table>`;
+      tableHtml = `<table><thead><tr><th class="l">Zone</th><th class="l">Site</th><th class="l">Site Name</th><th class="l">Technicien</th><th class="l">Type</th></tr></thead><tbody>${rows}</tbody><tfoot><tr class="tot"><td class="l" colspan="5"><b>TOTAL · ${pmRetiredItems.length} site(s) retiré(s)</b></td></tr></tfoot></table>`;
     }
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Sites retirés ${pmEscapeHtml(pmRetired?.month || '')}</title>
@@ -385,6 +404,7 @@ const PmModal = (props) => {
   .ok { background: #e6f7ee; color: #047857; font-weight: bold; }
   .mut { color: #bbb; }
   .t { font-size: 8px; font-family: monospace; font-weight: normal; }
+  tfoot td { background: #f5f0f8; border-top: 2px solid #999; font-size: 9px; }
   tr { page-break-inside: avoid; }
   @page { size: landscape; margin: 8mm; }
 </style></head><body>
@@ -1023,6 +1043,15 @@ ${tableHtml}
                               ))
                             )}
                           </tbody>
+                          {pmRetiredItems.length > 0 && (
+                            <tfoot>
+                              <tr className="border-t-2 border-fuchsia-300">
+                                <td colSpan={5} className="px-3 py-2 sticky bottom-0 bg-fuchsia-100 font-bold text-fuchsia-950">
+                                  TOTAL · {pmRetiredItems.length} site(s) retiré(s)
+                                </td>
+                              </tr>
+                            </tfoot>
+                          )}
                         </table>
                       ) : (
                         <table className="border-collapse text-xs w-auto min-w-full">
@@ -1089,6 +1118,33 @@ ${tableHtml}
                               })
                             )}
                           </tbody>
+                          {!pmRetiredSuccBusy && pmRetiredMatrix !== null && pmMatrixItems.length > 0 && (
+                            <tfoot>
+                              <tr className="border-t-2 border-fuchsia-300">
+                                <td className="px-2 py-1.5 sticky left-0 bottom-0 bg-fuchsia-100 font-bold text-fuchsia-950 whitespace-nowrap">
+                                  TOTAL · {pmMatrixItems.length} site(s)
+                                </td>
+                                <td className="sticky bottom-0 bg-fuchsia-100"></td>
+                                <td className="sticky bottom-0 bg-fuchsia-100"></td>
+                                {pmMatrixMonths.map((mo) => {
+                                  if (pmMatrixMissingSet.has(mo)) {
+                                    return <td key={mo} className="px-2 py-1.5 sticky bottom-0 bg-fuchsia-100 text-center text-gray-400">—</td>;
+                                  }
+                                  const ret = pmMatrixItems.filter((it) => it?.cells?.[mo]?.s === 'retired').length;
+                                  const act = pmMatrixItems.filter((it) => it?.cells?.[mo]?.s === 'active').length;
+                                  return (
+                                    <td key={mo} className="px-2 py-1.5 sticky bottom-0 bg-fuchsia-100 text-center whitespace-nowrap leading-tight">
+                                      <div className="text-rose-700 font-bold">❌ {ret}</div>
+                                      <div className="text-emerald-700 font-semibold text-[10px]">✅ {act}</div>
+                                    </td>
+                                  );
+                                })}
+                                <td className="px-2 py-1.5 sticky bottom-0 bg-fuchsia-100 text-center font-bold text-fuchsia-950 whitespace-nowrap">
+                                  {pmMatrixItems.filter((it) => pmMatrixExistingArr.length > 0 && pmMatrixExistingArr.every((mo) => it?.cells?.[mo]?.s === 'retired')).length} complets
+                                </td>
+                              </tr>
+                            </tfoot>
+                          )}
                         </table>
                       )}
                     </div>

@@ -57,7 +57,7 @@ import {
   isInNextMonth
 } from './utils/calculations';
 
-const APP_VERSION = '6.39.0';
+const APP_VERSION = '6.39.1';
 const APP_VERSION_STORAGE_KEY = 'gma_app_version_seen';
 const APP_VERSION_SNOOZED_AT_KEY = 'gma_app_update_snoozed_at';
 const APP_VERSION_DISMISSED_KEY = 'gma_app_update_dismissed_for';
@@ -2743,6 +2743,7 @@ useEffect(() => {
       Technicien: String(it?.technician || '').trim(),
       Type: String(it?.maintenanceType || '').trim() || 'FullPMWO'
     }));
+    rows.push({ Zone: '', Site: 'TOTAL', 'Site Name': `${list.length} site(s) retiré(s)`, Technicien: '', Type: '' });
 
     const done = await runExport({
       label: 'Export Excel (sites retirés)…',
