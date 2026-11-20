@@ -933,7 +933,7 @@ const PmModal = (props) => {
                                     <td className={`px-2 py-1.5 whitespace-nowrap sticky left-0 z-10 ${fullSeries ? 'bg-rose-50' : idx % 2 === 1 ? 'bg-white' : 'bg-fuchsia-50/40'}`}>
                                       <span className="font-semibold text-slate-900">{it?.siteCode || '-'}</span>
                                       <span className="text-slate-500"> · {it?.siteName || '-'}</span>
-                                      {it?.siteRetired && <span className="ml-1 text-[9px] font-bold text-rose-700 bg-rose-100 border border-rose-200 rounded px-1 py-px align-middle">retiré du parc</span>}
+                                      {it?.siteRetired && <span className="ml-1 text-[9px] font-bold text-rose-700 bg-rose-100 border border-rose-200 rounded px-1 py-px align-middle">hors campagne</span>}
                                     </td>
                                     <td className="px-2 py-1.5 text-slate-700 whitespace-nowrap">{it?.technician || '-'}</td>
                                     {pmMatrixMonths.map((mo) => {
