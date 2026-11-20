@@ -86,6 +86,7 @@ const PmModal = (props) => {
   const [pmRetiredSuccWindow, setPmRetiredSuccWindow] = React.useState(3);
   const [pmRetiredMatrix, setPmRetiredMatrix] = React.useState(null);
   const [pmRetiredMatrixSearch, setPmRetiredMatrixSearch] = React.useState('');
+  const [pmRetiredMatrixSerie, setPmRetiredMatrixSerie] = React.useState('ALL');
   const [pmRetiredSuccBusy, setPmRetiredSuccBusy] = React.useState(false);
   const [pmPurgeOpen, setPmPurgeOpen] = React.useState(false);
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
@@ -286,11 +287,14 @@ const PmModal = (props) => {
   const pmRetiredSuccCount = pmMatrixZoneItems.filter(
     (it) => pmMatrixExistingArr.length > 0 && pmMatrixExistingArr.every((mo) => it?.cells?.[mo]?.s === 'retired')
   ).length;
-  const pmMatrixItems = pmMatrixZoneItems.filter((it) => {
-    const q = String(pmRetiredMatrixSearch || '').trim().toLowerCase();
-    if (!q) return true;
-    return [it?.siteCode, it?.siteName, it?.technician].some((v) => String(v || '').toLowerCase().includes(q));
-  });
+  const pmMatrixZones = [...new Set((Array.isArray(pmRetiredMatrix?.items) ? pmRetiredMatrix.items : []).map((it) => String(it?.zone || '').trim()).filter(Boolean))].sort();
+  const pmMatrixItems = pmMatrixZoneItems
+    .filter((it) => pmRetiredMatrixSerie === 'ALL' || Number(it?.retiredCount || 0) === Number(pmRetiredMatrixSerie))
+    .filter((it) => {
+      const q = String(pmRetiredMatrixSearch || '').trim().toLowerCase();
+      if (!q) return true;
+      return [it?.siteCode, it?.siteName, it?.technician, it?.zone].some((v) => String(v || '').toLowerCase().includes(q));
+    });
   const pmRetiredViewItems = pmRetiredSuccMode ? pmMatrixItems : pmRetiredItems;
 
   const handleExportRetiredMatrix = async () => {
@@ -733,8 +737,8 @@ const PmModal = (props) => {
               )}
 
               {pmRetired && pmRetiredSitesOpen && (
-                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
-                  <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[90vh]">
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-1 sm:p-2">
+                  <div className="bg-white rounded-lg shadow-xl w-[98vw] max-w-[98vw] overflow-hidden flex flex-col h-[96vh] max-h-[96vh]">
                     <div className="flex justify-between items-center p-4 border-b bg-fuchsia-800 text-white">
                       <div className="font-bold">Sites retirés pour la campagne ({pmRetired.month})</div>
                       <div className="flex items-center gap-2">
@@ -755,8 +759,8 @@ const PmModal = (props) => {
                             }
                           }}
                           className="bg-white/10 hover:bg-white/15 text-white border border-white/20 px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 disabled:opacity-60"
-                          disabled={pmBusy || pmRetiredItems.length === 0}
-                          title="Exporter la liste (filtre zone)"
+                          disabled={pmBusy || (pmRetiredSuccMode ? pmMatrixItems.length === 0 : pmRetiredItems.length === 0)}
+                          title={pmRetiredSuccMode ? 'Exporter la matrice filtrée (zone, série, recherche)' : 'Exporter la liste (filtre zone)'}
                         >
                           <Download size={16} />
                           Exporter xlsx
@@ -819,10 +823,10 @@ const PmModal = (props) => {
                         <>
                           <span className="text-xs font-semibold text-fuchsia-900 ml-2">sur</span>
                           <div className="inline-flex rounded-lg border border-fuchsia-200 overflow-hidden text-xs font-semibold">
-                            {[3, 6].map((w) => (
+                            {[3, 4, 5, 6].map((w) => (
                               <button key={w} type="button"
                                 onClick={() => { setPmRetiredSuccWindow(w); loadPmRetiredMatrix(w); }}
-                                className={`px-3 py-1.5 ${pmRetiredSuccWindow === w ? 'bg-violet-600 text-white' : 'bg-white text-violet-800 hover:bg-violet-50'} ${w === 6 ? 'border-l border-fuchsia-200' : ''}`}>
+                                className={`px-3 py-1.5 ${pmRetiredSuccWindow === w ? 'bg-violet-600 text-white' : 'bg-white text-violet-800 hover:bg-violet-50'} ${w > 3 ? 'border-l border-fuchsia-200' : ''}`}>
                                 {w} mois
                               </button>
                             ))}
@@ -834,6 +838,28 @@ const PmModal = (props) => {
                                 ? ''
                                 : `${pmRetiredSuccCount} site(s) retiré(s) tous les mois · ${pmMatrixZoneItems.length} sites du parc`}
                           </span>
+                          {pmIsSuperAdmin && pmMatrixZones.length > 1 && (
+                            <select
+                              value={pmRetiredSitesZoneFilter}
+                              onChange={(e) => setPmRetiredSitesZoneFilter(e.target.value)}
+                              className="text-xs border border-fuchsia-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-fuchsia-300"
+                              title="Filtrer par zone"
+                            >
+                              <option value="ALL">Zone : toutes</option>
+                              {pmMatrixZones.map((z) => <option key={z} value={z}>{z}</option>)}
+                            </select>
+                          )}
+                          <select
+                            value={pmRetiredMatrixSerie}
+                            onChange={(e) => setPmRetiredMatrixSerie(e.target.value)}
+                            className="text-xs border border-fuchsia-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-fuchsia-300"
+                            title="Filtrer par nombre de retraits sur la fenêtre"
+                          >
+                            <option value="ALL">Série : toutes</option>
+                            {Array.from({ length: pmMatrixExistingArr.length + 1 }, (_, i) => (
+                              <option key={i} value={i}>{i}/{pmMatrixExistingArr.length || pmMatrixMonths.length}{i === pmMatrixExistingArr.length ? ' (complet)' : ''}</option>
+                            ))}
+                          </select>
                           <div className="relative">
                             <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2 top-1/2 -translate-y-1/2" />
                             <input
@@ -906,6 +932,7 @@ const PmModal = (props) => {
                           <thead className="sticky top-0 z-20">
                             <tr className="text-left text-[11px] text-fuchsia-900 border-b border-fuchsia-200">
                               <th className="px-2 py-2 font-semibold whitespace-nowrap sticky left-0 bg-fuchsia-50 z-10 min-w-[240px]">Site</th>
+                              <th className="px-2 py-2 font-semibold whitespace-nowrap bg-fuchsia-50">Zone</th>
                               <th className="px-2 py-2 font-semibold whitespace-nowrap bg-fuchsia-50">Technicien</th>
                               {pmMatrixMonths.map((mo) => (
                                 <th key={mo} className={`px-2 py-2 font-semibold whitespace-nowrap text-center min-w-[110px] ${pmMatrixMissingSet.has(mo) ? 'bg-gray-100 text-gray-400' : 'bg-fuchsia-50'}`}>
@@ -917,11 +944,11 @@ const PmModal = (props) => {
                           </thead>
                           <tbody>
                             {pmRetiredSuccBusy ? (
-                              <tr><td className="px-4 py-6 text-gray-500" colSpan={pmMatrixMonths.length + 3}>Analyse des campagnes…</td></tr>
+                              <tr><td className="px-4 py-6 text-gray-500" colSpan={pmMatrixMonths.length + 4}>Analyse des campagnes…</td></tr>
                             ) : pmRetiredMatrix === null ? (
-                              <tr><td className="px-4 py-6 text-gray-500" colSpan={pmMatrixMonths.length + 3}>Erreur de chargement — réessayez.</td></tr>
+                              <tr><td className="px-4 py-6 text-gray-500" colSpan={pmMatrixMonths.length + 4}>Erreur de chargement — réessayez.</td></tr>
                             ) : pmMatrixItems.length === 0 ? (
-                              <tr><td className="px-4 py-6 text-gray-500" colSpan={pmMatrixMonths.length + 3}>Aucun site.</td></tr>
+                              <tr><td className="px-4 py-6 text-gray-500" colSpan={pmMatrixMonths.length + 4}>Aucun site.</td></tr>
                             ) : (
                               pmMatrixItems.map((it, idx) => {
                                 const fullSeries = pmMatrixExistingArr.length > 0 && pmMatrixExistingArr.every((mo) => it?.cells?.[mo]?.s === 'retired');
@@ -935,6 +962,7 @@ const PmModal = (props) => {
                                       <span className="text-slate-500"> · {it?.siteName || '-'}</span>
                                       {it?.siteRetired && <span className="ml-1 text-[9px] font-bold text-rose-700 bg-rose-100 border border-rose-200 rounded px-1 py-px align-middle">hors campagne</span>}
                                     </td>
+                                    <td className="px-2 py-1.5 text-slate-700 whitespace-nowrap">{it?.zone || '-'}</td>
                                     <td className="px-2 py-1.5 text-slate-700 whitespace-nowrap">{it?.technician || '-'}</td>
                                     {pmMatrixMonths.map((mo) => {
                                       const c = it?.cells?.[mo];
