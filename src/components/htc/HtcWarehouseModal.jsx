@@ -487,6 +487,8 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   const [busy, setBusy] = useState(false);
   const [stockLoc, setStockLoc] = useState('entrepot');
   const [stockView, setStockView] = useState('cards');
+  const [stockQ, setStockQ] = useState('');
+  const [stockFilter, setStockFilter] = useState('all'); // 'all' | 'ruptures'
   const [agents, setAgents] = useState([]);
 
   // Export Excel
@@ -699,6 +701,18 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
     entrepot: items.filter((i) => i.active && i.location === 'entrepot'),
     magasin: items.filter((i) => i.active && i.location === 'magasin')
   }), [items]);
+
+  // Recherche par frappe + filtre ruptures — appliqués aux 3 espaces de stock.
+  const stockList = useMemo(() => {
+    const q = normTxt(stockQ);
+    const match = (it) => !q || normTxt(it.name).includes(q) || normTxt(it.category).includes(q) || normTxt(it.notes).includes(q);
+    const rupt = (it) => (stockFilter === 'ruptures' ? Number(it.stock) <= 0 : true);
+    return {
+      entrepot: itemsByLoc.entrepot.filter((i) => match(i) && rupt(i)),
+      magasin: itemsByLoc.magasin.filter((i) => match(i) && rupt(i)),
+      retour: items.filter((i) => i.active && Number(i.stockSite) > 0).filter(match)
+    };
+  }, [itemsByLoc, items, stockQ, stockFilter]);
 
   // Totaux du tableau de bord HTC (calculés depuis le stock temps réel des articles).
   const dash = useMemo(() => ({
@@ -1107,26 +1121,30 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                   <div className="text-2xl font-extrabold text-amber-800 mt-1">{stats ? stats.pendingRequests : pendingCount}</div>
                   <div className="text-[10px] text-amber-600">à traiter →</div>
                 </button>
-                <div className="border border-indigo-200 bg-indigo-50/60 rounded-xl p-3">
+                <button onClick={() => { setTab('bons'); setMvType('dehors'); }}
+                  className="border border-indigo-200 bg-indigo-50/60 rounded-xl p-3 text-left hover:bg-indigo-100 transition-colors">
                   <div className="text-[10px] font-bold uppercase tracking-wide text-indigo-700">Matériel dehors</div>
                   <div className="text-2xl font-extrabold text-indigo-800 mt-1">{stats?.materialOutUnits ?? '—'}</div>
-                  <div className="text-[10px] text-indigo-500">{stats?.openExitVouchers ?? 0} bon(s) de sortie ouvert(s)</div>
-                </div>
-                <div className="border border-gray-200 bg-white rounded-xl p-3">
+                  <div className="text-[10px] text-indigo-500">{stats?.openExitVouchers ?? 0} bon(s) ouvert(s) →</div>
+                </button>
+                <button onClick={() => setStockLoc('entrepot')}
+                  className="border border-gray-200 bg-white rounded-xl p-3 text-left hover:bg-gray-50 transition-colors">
                   <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Stock Entrepôt</div>
                   <div className="text-2xl font-extrabold text-indigo-800 mt-1">{dash.stockEntrepot}</div>
-                  <div className="text-[10px] text-gray-400">pièce(s) · {itemsByLoc.entrepot.length} article(s)</div>
-                </div>
-                <div className="border border-gray-200 bg-white rounded-xl p-3">
+                  <div className="text-[10px] text-gray-400">pièce(s) · {itemsByLoc.entrepot.length} article(s) →</div>
+                </button>
+                <button onClick={() => setStockLoc('magasin')}
+                  className="border border-gray-200 bg-white rounded-xl p-3 text-left hover:bg-gray-50 transition-colors">
                   <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Stock Magasin</div>
                   <div className="text-2xl font-extrabold text-indigo-800 mt-1">{dash.stockMagasin}</div>
-                  <div className="text-[10px] text-gray-400">buffer · {itemsByLoc.magasin.length} article(s)</div>
-                </div>
-                <div className={`border rounded-xl p-3 ${dash.ruptures ? 'border-rose-300 bg-rose-50' : 'border-emerald-200 bg-emerald-50/50'}`}>
+                  <div className="text-[10px] text-gray-400">buffer · {itemsByLoc.magasin.length} article(s) →</div>
+                </button>
+                <button onClick={() => { setStockLoc('entrepot'); setStockFilter('ruptures'); }}
+                  className={`border rounded-xl p-3 text-left transition-colors ${dash.ruptures ? 'border-rose-300 bg-rose-50 hover:bg-rose-100' : 'border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100'}`}>
                   <div className={`text-[10px] font-bold uppercase tracking-wide ${dash.ruptures ? 'text-rose-700' : 'text-emerald-700'}`}>Ruptures</div>
                   <div className={`text-2xl font-extrabold mt-1 ${dash.ruptures ? 'text-rose-700' : 'text-emerald-700'}`}>{dash.ruptures}</div>
-                  <div className={`text-[10px] ${dash.ruptures ? 'text-rose-500' : 'text-emerald-600'}`}>article(s) à 0</div>
-                </div>
+                  <div className={`text-[10px] ${dash.ruptures ? 'text-rose-500' : 'text-emerald-600'}`}>article(s) à 0 →</div>
+                </button>
               </div>
               )}
               {isManager && stats && (
@@ -1150,6 +1168,24 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                     <span className="text-xs opacity-75">({loc === 'retour' ? items.filter((i) => i.active && Number(i.stockSite) > 0).length : itemsByLoc[loc].length})</span>
                   </button>
                 ))}
+                <div className="relative self-center">
+                  <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  <input
+                    className="border border-gray-300 rounded-lg pl-8 pr-7 py-2 text-sm w-44 sm:w-56"
+                    placeholder="Rechercher un article…"
+                    value={stockQ} onChange={(e) => setStockQ(e.target.value)}
+                  />
+                  {stockQ && (
+                    <button type="button" onClick={() => setStockQ('')}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-sm leading-none px-1">×</button>
+                  )}
+                </div>
+                {stockFilter === 'ruptures' && (
+                  <span className="self-center inline-flex items-center gap-1 text-xs font-bold bg-rose-100 text-rose-800 border border-rose-200 rounded-full px-2.5 py-1.5">
+                    Ruptures seulement
+                    <button type="button" className="text-rose-400 hover:text-rose-800" onClick={() => setStockFilter('all')}>×</button>
+                  </span>
+                )}
                 <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden self-center" title="Mode d'affichage">
                   <button onClick={() => setStockView('cards')} title="Vue cartes"
                     className={`px-2.5 py-2 ${stockView === 'cards' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
@@ -1181,7 +1217,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                     Matériel non fonctionnel ramené des sites — <b>stocké à l'Entrepôt</b>, hors stock disponible.
                     Réparé → <b>Réintégrer</b> ; non réparable → <b>Remise client HTC</b>.
                   </div>
-                  {items.filter((i) => i.active && Number(i.stockSite) > 0).length === 0 ? (
+                  {stockList.retour.length === 0 ? (
                     <div className="text-center text-gray-400 py-12 text-sm">Aucun retour site enregistré.</div>
                   ) : stockView === 'list' ? (
                     <div className="border border-gray-200 rounded-xl overflow-x-auto">
@@ -1195,7 +1231,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                           </tr>
                         </thead>
                         <tbody>
-                          {items.filter((i) => i.active && Number(i.stockSite) > 0).map((it) => {
+                          {stockList.retour.map((it) => {
                             const sc = it.siteCond || {};
                             return (
                               <tr key={it.id} className="border-t border-gray-100">
@@ -1232,7 +1268,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3">
-                      {items.filter((i) => i.active && Number(i.stockSite) > 0).map((it) => {
+                      {stockList.retour.map((it) => {
                         const sc = it.siteCond || {};
                         return (
                           <div key={it.id} className="border border-stone-300 bg-stone-50 rounded-xl p-3.5">
@@ -1264,9 +1300,9 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                     </div>
                   )}
                 </div>
-              ) : itemsByLoc[stockLoc].length === 0 ? (
+              ) : stockList[stockLoc].length === 0 ? (
                 <div className="text-center text-gray-400 py-12 text-sm">
-                  {isManager ? "Aucun article dans ce lieu — ajoutez-en via l'onglet Articles." : 'Aucun article disponible dans ce lieu.'}
+                  {stockQ || stockFilter !== 'all' ? 'Aucun article ne correspond à la recherche.' : (isManager ? "Aucun article dans ce lieu — ajoutez-en via l'onglet Articles." : 'Aucun article disponible dans ce lieu.')}
                 </div>
               ) : stockView === 'list' ? (
                 <div className="border border-gray-200 rounded-xl overflow-x-auto">
@@ -1280,7 +1316,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                       </tr>
                     </thead>
                     <tbody>
-                      {itemsByLoc[stockLoc].map((it) => (
+                      {stockList[stockLoc].map((it) => (
                         <tr key={it.id} className={`border-t border-gray-100 ${it.stock <= 0 ? 'bg-rose-50/40' : ''}`}>
                           <td className="px-3 py-2 font-semibold text-gray-800">
                             <span className="inline-flex items-center gap-1.5">{it.name}{it.stock <= 0 && <AlertTriangle size={13} className="text-rose-500" />}</span>
@@ -1312,7 +1348,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3">
-                  {itemsByLoc[stockLoc].map((it) => (
+                  {stockList[stockLoc].map((it) => (
                     <div key={it.id} className={`border rounded-xl p-3.5 ${it.stock <= 0 ? 'border-rose-300 bg-rose-50/40' : 'border-gray-200 bg-white'}`}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="font-semibold text-sm text-gray-800 leading-snug">{it.name}</div>
@@ -1549,7 +1585,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
             <div>
               <div className="flex flex-wrap gap-2 mb-3 items-center">
                 <div className="flex border border-gray-300 rounded-lg overflow-x-auto max-w-full">
-                  {[['all', 'Tous'], ['exit', 'Sorties'], ['entry', 'Entrées'], ['return', 'Retours'], ['recovery', 'Récup.'], ['reinstatement', 'Réintég.'], ['client_return', 'Remises'], ['dotation', 'Dotations']].map(([v, l]) => (
+                  {[['all', 'Tous'], ['dehors', 'Dehors'], ['exit', 'Sorties'], ['entry', 'Entrées'], ['return', 'Retours'], ['recovery', 'Récup.'], ['reinstatement', 'Réintég.'], ['client_return', 'Remises'], ['dotation', 'Dotations']].map(([v, l]) => (
                     <button key={v} onClick={() => setMvType(v)}
                       className={`px-3 py-1.5 text-xs font-semibold ${mvType === v ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
                       {l}

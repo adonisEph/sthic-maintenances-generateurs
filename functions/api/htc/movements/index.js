@@ -32,7 +32,10 @@ export async function onRequestGet({ env, data, request }) {
       clauses.push('(m.requested_by_user_id = ? OR m.created_by = ? OR LOWER(m.requester_name) = LOWER(?) OR LOWER(m.agent_name) = LOWER(?) OR LOWER(m.beneficiary) = LOWER(?))');
       binds.push(String(data.user.id), String(data.user.id), myName, myName, myName);
     }
-    if (['exit', 'entry', 'return', 'recovery', 'reinstatement', 'client_return', 'dotation'].includes(type)) { clauses.push('m.type = ?'); binds.push(type); }
+    if (type === 'dehors') {
+      // « Matériel dehors » : sorties + dotations ouvertes (non retournées).
+      clauses.push("m.type IN ('exit', 'dotation') AND m.status IN ('issued', 'partial_return')");
+    } else if (['exit', 'entry', 'return', 'recovery', 'reinstatement', 'client_return', 'dotation'].includes(type)) { clauses.push('m.type = ?'); binds.push(type); }
     if (['entrepot', 'magasin'].includes(location)) { clauses.push('m.location = ?'); binds.push(location); }
     if (from) { clauses.push('m.movement_date >= ?'); binds.push(from); }
     if (to) { clauses.push('m.movement_date <= ?'); binds.push(to); }
