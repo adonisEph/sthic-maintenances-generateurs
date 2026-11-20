@@ -1,5 +1,6 @@
 import React from 'react';
-import { TrendingUp, X, Upload, Download, Trash2, RotateCcw, Activity, Menu, ChevronLeft, ListChecks, BadgeCheck, Clock, UserCheck, Filter } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { TrendingUp, X, Upload, Download, Trash2, RotateCcw, Activity, Menu, ChevronLeft, ListChecks, BadgeCheck, Clock, UserCheck, Filter, Search } from 'lucide-react';
 
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
 
@@ -83,7 +84,8 @@ const PmModal = (props) => {
   const [pmRetiredSitesZoneFilter, setPmRetiredSitesZoneFilter] = React.useState('ALL');
   const [pmRetiredSuccMode, setPmRetiredSuccMode] = React.useState(false);
   const [pmRetiredSuccWindow, setPmRetiredSuccWindow] = React.useState(3);
-  const [pmRetiredSuccMap, setPmRetiredSuccMap] = React.useState(null);
+  const [pmRetiredMatrix, setPmRetiredMatrix] = React.useState(null);
+  const [pmRetiredMatrixSearch, setPmRetiredMatrixSearch] = React.useState('');
   const [pmRetiredSuccBusy, setPmRetiredSuccBusy] = React.useState(false);
   const [pmPurgeOpen, setPmPurgeOpen] = React.useState(false);
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
@@ -260,50 +262,69 @@ const PmModal = (props) => {
       ? pmRetiredItemsAll.filter((it) => String(it?.zone || '').trim() === pmEffectiveRetiredZoneFilter)
       : pmRetiredItemsAll;
 
-  // « Sites retirés successivement » : sites présents dans les retraits de TOUS
-  // les mois de la fenêtre (3 ou 6) se terminant au mois de la campagne.
-  const pmMonthsBack = (ym, n) => {
-    const m = String(ym || '').match(/^(\d{4})-(\d{2})$/);
-    if (!m) return [];
-    const out = [];
-    let y = Number(m[1]); let mo = Number(m[2]);
-    for (let i = 0; i < n; i++) {
-      out.unshift(`${y}-${String(mo).padStart(2, '0')}`);
-      mo -= 1; if (mo < 1) { mo = 12; y -= 1; }
-    }
-    return out;
-  };
-
-  const loadPmRetiredSuccessive = async (win) => {
-    const codes = [...new Set(pmRetiredItemsAll.map((it) => pmNormalizeSiteCode(it?.siteCode)).filter(Boolean))];
-    if (!codes.length) { setPmRetiredSuccMap(new Map()); return; }
+  // « Sites retirés successivement » : matrice croisée — tous les sites du parc
+  // en lignes, les N derniers mois en colonnes ; cellule = ❌ retiré / ✅ n° PMWO / — absent.
+  const loadPmRetiredMatrix = async (win) => {
     setPmRetiredSuccBusy(true);
     try {
-      const data = await pmCallJson(`/api/pm/retired-months?siteCodes=${encodeURIComponent(codes.join(','))}&maxMonths=${Math.min(36, win + 4)}`);
-      const map = new Map();
-      for (const it of Array.isArray(data?.items) ? data.items : []) {
-        map.set(pmNormalizeSiteCode(it?.siteCode), it);
-      }
-      setPmRetiredSuccMap(map);
+      const data = await pmCallJson(`/api/pm/retired-matrix?campaign=${encodeURIComponent(pmRetired?.month || '')}&window=${win}`);
+      setPmRetiredMatrix(data && Array.isArray(data.items) ? data : { months: [], monthsExisting: [], monthsMissing: [], items: [] });
     } catch (e) {
-      console.error('retired-months:', e);
-      setPmRetiredSuccMap(null);
+      console.error('retired-matrix:', e);
+      setPmRetiredMatrix(null);
     } finally {
       setPmRetiredSuccBusy(false);
     }
   };
 
-  const pmSuccWindowMonths = pmMonthsBack(pmRetired?.month, pmRetiredSuccWindow);
-  const pmRetiredSuccItems = pmRetiredItems
-    .map((it) => {
-      const hist = pmRetiredSuccMap?.get(pmNormalizeSiteCode(it?.siteCode));
-      return { ...it, retiredMonthsList: Array.isArray(hist?.retiredMonths) ? hist.retiredMonths : [] };
-    })
-    .filter((it) => {
-      const set = new Set(it.retiredMonthsList);
-      return pmSuccWindowMonths.every((m) => set.has(m));
+  const pmMatrixMonths = Array.isArray(pmRetiredMatrix?.months) ? pmRetiredMatrix.months : [];
+  const pmMatrixExistingArr = Array.isArray(pmRetiredMatrix?.monthsExisting) ? pmRetiredMatrix.monthsExisting : [];
+  const pmMatrixMissingArr = Array.isArray(pmRetiredMatrix?.monthsMissing) ? pmRetiredMatrix.monthsMissing : [];
+  const pmMatrixMissingSet = new Set(pmMatrixMissingArr);
+  const pmMatrixZoneItems = (Array.isArray(pmRetiredMatrix?.items) ? pmRetiredMatrix.items : [])
+    .filter((it) => !pmEffectiveRetiredZoneFilter || pmEffectiveRetiredZoneFilter === 'ALL' || String(it?.zone || '').trim() === pmEffectiveRetiredZoneFilter);
+  const pmRetiredSuccCount = pmMatrixZoneItems.filter(
+    (it) => pmMatrixExistingArr.length > 0 && pmMatrixExistingArr.every((mo) => it?.cells?.[mo]?.s === 'retired')
+  ).length;
+  const pmMatrixItems = pmMatrixZoneItems.filter((it) => {
+    const q = String(pmRetiredMatrixSearch || '').trim().toLowerCase();
+    if (!q) return true;
+    return [it?.siteCode, it?.siteName, it?.technician].some((v) => String(v || '').toLowerCase().includes(q));
+  });
+  const pmRetiredViewItems = pmRetiredSuccMode ? pmMatrixItems : pmRetiredItems;
+
+  const handleExportRetiredMatrix = async () => {
+    const monthCols = pmMatrixMonths;
+    const rows = pmMatrixItems.map((it) => {
+      const base = {
+        Zone: it?.zone || '-',
+        Site: it?.siteCode || '-',
+        'Site Name': it?.siteName || '-',
+        Technicien: it?.technician || '-'
+      };
+      for (const mo of monthCols) {
+        const c = it?.cells?.[mo];
+        base[mo] = pmMatrixMissingSet.has(mo)
+          ? 'aucune campagne'
+          : c?.s === 'retired'
+            ? 'RETIRÉ'
+            : c?.s === 'active'
+              ? (c?.ticket ? `PMWO ${c.ticket}` : 'PM réalisée')
+              : '—';
+      }
+      base['Retraits sur la fenêtre'] = `${it?.retiredCount || 0}/${pmMatrixExistingArr.length || monthCols.length}`;
+      return base;
     });
-  const pmRetiredViewItems = pmRetiredSuccMode ? pmRetiredSuccItems : pmRetiredItems;
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 12 }, { wch: 14 }, { wch: 34 }, { wch: 22 },
+      ...monthCols.map(() => ({ wch: 18 })),
+      { wch: 20 }
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, `Successifs ${pmRetiredSuccWindow}m`);
+    XLSX.writeFile(wb, `Sites-retirés-successivement_${pmRetired?.month || 'campagne'}_${pmRetiredSuccWindow}mois.xlsx`);
+  };
 
   return (
     <div className="fixed inset-0 bg-indigo-950/60 flex items-center justify-center z-50 p-0 sm:p-0">
@@ -723,11 +744,15 @@ const PmModal = (props) => {
                             if (typeof handlePmExportRetiredSitesExcel !== 'function') return;
                             const filter = String(pmRetiredSitesZoneFilter || 'ALL');
                             const zone = filter && filter !== 'ALL' ? filter : '';
-                            await handlePmExportRetiredSitesExcel({
-                              month: pmRetired.month,
-                              zone,
-                              items: pmRetiredViewItems
-                            });
+                            if (pmRetiredSuccMode) {
+                              await handleExportRetiredMatrix();
+                            } else {
+                              await handlePmExportRetiredSitesExcel({
+                                month: pmRetired.month,
+                                zone,
+                                items: pmRetiredViewItems
+                              });
+                            }
                           }}
                           className="bg-white/10 hover:bg-white/15 text-white border border-white/20 px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 disabled:opacity-60"
                           disabled={pmBusy || pmRetiredItems.length === 0}
@@ -785,7 +810,7 @@ const PmModal = (props) => {
                           Tous ({pmRetiredItems.length})
                         </button>
                         <button type="button"
-                          onClick={() => { setPmRetiredSuccMode(true); if (pmRetiredSuccMap === null && !pmRetiredSuccBusy) loadPmRetiredSuccessive(pmRetiredSuccWindow); }}
+                          onClick={() => { setPmRetiredSuccMode(true); if (pmRetiredMatrix === null && !pmRetiredSuccBusy) loadPmRetiredMatrix(pmRetiredSuccWindow); }}
                           className={`px-3 py-1.5 border-l border-fuchsia-200 ${pmRetiredSuccMode ? 'bg-fuchsia-700 text-white' : 'bg-white text-fuchsia-900 hover:bg-fuchsia-50'}`}>
                           Retirés successivement
                         </button>
@@ -796,7 +821,7 @@ const PmModal = (props) => {
                           <div className="inline-flex rounded-lg border border-fuchsia-200 overflow-hidden text-xs font-semibold">
                             {[3, 6].map((w) => (
                               <button key={w} type="button"
-                                onClick={() => { setPmRetiredSuccWindow(w); loadPmRetiredSuccessive(w); }}
+                                onClick={() => { setPmRetiredSuccWindow(w); loadPmRetiredMatrix(w); }}
                                 className={`px-3 py-1.5 ${pmRetiredSuccWindow === w ? 'bg-violet-600 text-white' : 'bg-white text-violet-800 hover:bg-violet-50'} ${w === 6 ? 'border-l border-fuchsia-200' : ''}`}>
                                 {w} mois
                               </button>
@@ -805,67 +830,140 @@ const PmModal = (props) => {
                           <span className="text-xs text-gray-500">
                             {pmRetiredSuccBusy
                               ? 'Analyse des campagnes…'
-                              : pmRetiredSuccMap === null
+                              : pmRetiredMatrix === null
                                 ? ''
-                                : `${pmRetiredSuccItems.length} site(s) retiré(s) ${pmRetiredSuccWindow} mois de suite jusqu'à ${pmRetired.month}`}
+                                : `${pmRetiredSuccCount} site(s) retiré(s) tous les mois · ${pmMatrixZoneItems.length} sites du parc`}
                           </span>
+                          <div className="relative">
+                            <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2 top-1/2 -translate-y-1/2" />
+                            <input
+                              type="text"
+                              value={pmRetiredMatrixSearch}
+                              onChange={(e) => setPmRetiredMatrixSearch(e.target.value)}
+                              placeholder="Filtrer (site, nom, technicien)…"
+                              className="pl-7 pr-6 py-1.5 text-xs border border-fuchsia-200 rounded-lg w-56 focus:outline-none focus:ring-2 focus:ring-fuchsia-300"
+                            />
+                            {pmRetiredMatrixSearch && (
+                              <button type="button" onClick={() => setPmRetiredMatrixSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </>
                       )}
                     </div>
 
+                    {pmRetiredSuccMode && !pmRetiredSuccBusy && pmRetiredMatrix !== null && (
+                      <div className="px-4 py-1.5 border-b bg-white flex flex-wrap items-center gap-x-4 gap-y-1">
+                        <span className="text-[11px] text-gray-500 flex items-center gap-1">❌ = PM non réalisée (retiré)</span>
+                        <span className="text-[11px] text-gray-500 flex items-center gap-1">✅ = PM réalisée, n° PMWO affiché</span>
+                        <span className="text-[11px] text-gray-500">— = hors campagne / pas de donnée</span>
+                        {pmMatrixMissingArr.length > 0 && (
+                          <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+                            ⚠ Pas de campagne pour : {pmMatrixMissingArr.join(', ')} — la série complète est impossible sur ces mois.
+                          </span>
+                        )}
+                      </div>
+                    )}
+
                     <div className="p-4 overflow-auto">
-                      <table className="min-w-[980px] w-full text-sm">
-                        <thead className="bg-fuchsia-50 sticky top-0 z-10">
-                          <tr className="text-left text-xs text-fuchsia-900 border-b border-fuchsia-200">
-                            <th className="px-3 py-2 font-semibold whitespace-nowrap">Zone</th>
-                            <th className="px-3 py-2 font-semibold whitespace-nowrap">Site</th>
-                            <th className="px-3 py-2 font-semibold whitespace-nowrap">Site Name</th>
-                            <th className="px-3 py-2 font-semibold whitespace-nowrap">Technicien</th>
-                            <th className="px-3 py-2 font-semibold whitespace-nowrap">Type</th>
-                            {pmRetiredSuccMode && <th className="px-3 py-2 font-semibold whitespace-nowrap">Mois retirés</th>}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {pmRetiredViewItems.length === 0 ? (
-                            <tr>
-                              <td className="px-4 py-4 text-gray-600" colSpan={pmRetiredSuccMode ? 6 : 5}>
-                                {pmRetiredSuccMode
-                                  ? (pmRetiredSuccBusy ? 'Analyse en cours…' : `Aucun site retiré ${pmRetiredSuccWindow} mois de suite.`)
-                                  : 'Aucun site.'}
-                              </td>
+                      {!pmRetiredSuccMode ? (
+                        <table className="min-w-[980px] w-full text-sm">
+                          <thead className="bg-fuchsia-50 sticky top-0 z-10">
+                            <tr className="text-left text-xs text-fuchsia-900 border-b border-fuchsia-200">
+                              <th className="px-3 py-2 font-semibold whitespace-nowrap">Zone</th>
+                              <th className="px-3 py-2 font-semibold whitespace-nowrap">Site</th>
+                              <th className="px-3 py-2 font-semibold whitespace-nowrap">Site Name</th>
+                              <th className="px-3 py-2 font-semibold whitespace-nowrap">Technicien</th>
+                              <th className="px-3 py-2 font-semibold whitespace-nowrap">Type</th>
                             </tr>
-                          ) : (
-                            pmRetiredViewItems.map((it, idx) => (
-                              <tr
-                                key={`${it?.siteCode || 'site'}-${idx}`}
-                                className={`border-b border-fuchsia-100 hover:bg-fuchsia-50/60 ${idx % 2 === 1 ? 'bg-white' : 'bg-fuchsia-50/40'}`}
-                              >
-                                <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.zone || '-'}</td>
-                                <td className="px-3 py-2 text-slate-900 whitespace-nowrap font-semibold">{it?.siteCode || '-'}</td>
-                                <td className="px-3 py-2 text-slate-900 max-w-[360px] whitespace-pre-line leading-tight break-words">{it?.siteName || '-'}</td>
-                                <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.technician || '-'}</td>
-                                <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.maintenanceType || 'FullPMWO'}</td>
-                                {pmRetiredSuccMode && (
-                                  <td className="px-3 py-2">
-                                    <div className="flex flex-wrap gap-1">
-                                      {(it?.retiredMonthsList || []).map((m) => (
-                                        <span key={m}
-                                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
-                                            pmSuccWindowMonths.includes(m)
-                                              ? 'bg-violet-100 text-violet-900 border-violet-200'
-                                              : 'bg-gray-100 text-gray-500 border-gray-200'
-                                          }`}>
-                                          {m}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </td>
-                                )}
+                          </thead>
+                          <tbody>
+                            {pmRetiredItems.length === 0 ? (
+                              <tr>
+                                <td className="px-4 py-4 text-gray-600" colSpan={5}>
+                                  Aucun site.
+                                </td>
                               </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
+                            ) : (
+                              pmRetiredItems.map((it, idx) => (
+                                <tr
+                                  key={`${it?.siteCode || 'site'}-${idx}`}
+                                  className={`border-b border-fuchsia-100 hover:bg-fuchsia-50/60 ${idx % 2 === 1 ? 'bg-white' : 'bg-fuchsia-50/40'}`}
+                                >
+                                  <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.zone || '-'}</td>
+                                  <td className="px-3 py-2 text-slate-900 whitespace-nowrap font-semibold">{it?.siteCode || '-'}</td>
+                                  <td className="px-3 py-2 text-slate-900 max-w-[360px] whitespace-pre-line leading-tight break-words">{it?.siteName || '-'}</td>
+                                  <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.technician || '-'}</td>
+                                  <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.maintenanceType || 'FullPMWO'}</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <table className="border-collapse text-xs w-auto min-w-full">
+                          <thead className="sticky top-0 z-20">
+                            <tr className="text-left text-[11px] text-fuchsia-900 border-b border-fuchsia-200">
+                              <th className="px-2 py-2 font-semibold whitespace-nowrap sticky left-0 bg-fuchsia-50 z-10 min-w-[240px]">Site</th>
+                              <th className="px-2 py-2 font-semibold whitespace-nowrap bg-fuchsia-50">Technicien</th>
+                              {pmMatrixMonths.map((mo) => (
+                                <th key={mo} className={`px-2 py-2 font-semibold whitespace-nowrap text-center min-w-[110px] ${pmMatrixMissingSet.has(mo) ? 'bg-gray-100 text-gray-400' : 'bg-fuchsia-50'}`}>
+                                  {mo}{pmMatrixMissingSet.has(mo) ? ' *' : ''}
+                                </th>
+                              ))}
+                              <th className="px-2 py-2 font-semibold whitespace-nowrap text-center bg-violet-50">Série</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pmRetiredSuccBusy ? (
+                              <tr><td className="px-4 py-6 text-gray-500" colSpan={pmMatrixMonths.length + 3}>Analyse des campagnes…</td></tr>
+                            ) : pmRetiredMatrix === null ? (
+                              <tr><td className="px-4 py-6 text-gray-500" colSpan={pmMatrixMonths.length + 3}>Erreur de chargement — réessayez.</td></tr>
+                            ) : pmMatrixItems.length === 0 ? (
+                              <tr><td className="px-4 py-6 text-gray-500" colSpan={pmMatrixMonths.length + 3}>Aucun site.</td></tr>
+                            ) : (
+                              pmMatrixItems.map((it, idx) => {
+                                const fullSeries = pmMatrixExistingArr.length > 0 && pmMatrixExistingArr.every((mo) => it?.cells?.[mo]?.s === 'retired');
+                                return (
+                                  <tr
+                                    key={`${it?.zone || ''}|${it?.siteCode || idx}`}
+                                    className={`border-b border-fuchsia-100 ${fullSeries ? 'bg-rose-50 hover:bg-rose-100/70' : idx % 2 === 1 ? 'bg-white hover:bg-fuchsia-50/60' : 'bg-fuchsia-50/40 hover:bg-fuchsia-50/60'}`}
+                                  >
+                                    <td className={`px-2 py-1.5 whitespace-nowrap sticky left-0 z-10 ${fullSeries ? 'bg-rose-50' : idx % 2 === 1 ? 'bg-white' : 'bg-fuchsia-50/40'}`}>
+                                      <span className="font-semibold text-slate-900">{it?.siteCode || '-'}</span>
+                                      <span className="text-slate-500"> · {it?.siteName || '-'}</span>
+                                      {it?.siteRetired && <span className="ml-1 text-[9px] font-bold text-rose-700 bg-rose-100 border border-rose-200 rounded px-1 py-px align-middle">retiré du parc</span>}
+                                    </td>
+                                    <td className="px-2 py-1.5 text-slate-700 whitespace-nowrap">{it?.technician || '-'}</td>
+                                    {pmMatrixMonths.map((mo) => {
+                                      const c = it?.cells?.[mo];
+                                      if (pmMatrixMissingSet.has(mo)) {
+                                        return <td key={mo} className="px-2 py-1.5 text-center text-gray-300 bg-gray-50/50">—</td>;
+                                      }
+                                      if (c?.s === 'retired') {
+                                        return <td key={mo} className="px-2 py-1.5 text-center bg-rose-100/70" title="PM non réalisée — site retiré">❌</td>;
+                                      }
+                                      if (c?.s === 'active') {
+                                        return (
+                                          <td key={mo} className="px-2 py-1.5 text-center bg-emerald-50/80" title={c?.ticket ? `PMWO ${c.ticket}` : 'PM réalisée'}>
+                                            <div className="leading-tight">✅</div>
+                                            {c?.ticket && <div className="text-[9px] font-mono text-emerald-800 leading-tight">{c.ticket}</div>}
+                                          </td>
+                                        );
+                                      }
+                                      return <td key={mo} className="px-2 py-1.5 text-center text-gray-300">—</td>;
+                                    })}
+                                    <td className={`px-2 py-1.5 text-center font-bold whitespace-nowrap ${fullSeries ? 'text-rose-700 bg-rose-100/60' : 'text-slate-600'}`}>
+                                      {it?.retiredCount || 0}/{pmMatrixExistingArr.length || pmMatrixMonths.length}
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      )}
                     </div>
                   </div>
                 </div>
