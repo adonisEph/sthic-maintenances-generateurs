@@ -825,7 +825,7 @@ const PmModal = (props) => {
                           <div className="inline-flex rounded-lg border border-fuchsia-200 overflow-hidden text-xs font-semibold">
                             {[3, 4, 5, 6].map((w) => (
                               <button key={w} type="button"
-                                onClick={() => { setPmRetiredSuccWindow(w); loadPmRetiredMatrix(w); }}
+                                onClick={() => { setPmRetiredSuccWindow(w); setPmRetiredMatrixSerie('ALL'); loadPmRetiredMatrix(w); }}
                                 className={`px-3 py-1.5 ${pmRetiredSuccWindow === w ? 'bg-violet-600 text-white' : 'bg-white text-violet-800 hover:bg-violet-50'} ${w > 3 ? 'border-l border-fuchsia-200' : ''}`}>
                                 {w} mois
                               </button>

@@ -44,7 +44,7 @@ export async function onRequestGet({ request, env, data }) {
     const url = new URL(request.url);
 
     const campaignParam = String(url.searchParams.get('campaign') || '').trim();
-    const windowN = Number(url.searchParams.get('window') || 3) === 6 ? 6 : 3;
+    const windowN = Math.min(6, Math.max(3, Math.floor(Number(url.searchParams.get('window') || 3)) || 3));
 
     const scopeZones = (() => {
       if (isSuperAdmin(data) || role === 'viewer' || role === 'manager_bzv_pool') return null;
