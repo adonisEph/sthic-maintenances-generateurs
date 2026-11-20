@@ -348,16 +348,36 @@ const PmModal = (props) => {
   // Impression « intelligente » : reproduit exactement la vue affichée —
   // liste « Tous » ou matrice, avec les filtres zone / série / recherche appliqués.
   const handlePrintRetired = () => {
-    const filters = [];
-    const z = pmEffectiveRetiredZoneFilter;
-    if (z && z !== 'ALL') filters.push(`Zone : ${z}`);
-    if (pmRetiredSuccMode) {
-      filters.push(`Vue : retirés successivement sur ${pmRetiredSuccWindow} mois`);
-      if (pmRetiredMatrixSerie.length > 0) {
-        filters.push(`Série : ${pmRetiredMatrixSerie.map((i) => `${i}/${pmMatrixExistingArr.length || pmMatrixMonths.length}`).join(', ')}`);
+    // Titre = le vrai sujet du rapport, dérivé des filtres appliqués.
+    const n = pmMatrixExistingArr.length;
+    let reportTitle;
+    if (!pmRetiredSuccMode) {
+      reportTitle = `Sites retirés de la campagne ${pmRetired?.month || ''}`;
+    } else {
+      const sel = [...pmRetiredMatrixSerie].sort((a, b) => a - b);
+      const winTxt = `${pmRetiredSuccWindow} mois (jusqu'à ${pmRetired?.month || ''})`;
+      if (sel.length === 0) {
+        reportTitle = `Matrice des retraits PM — parc complet sur ${winTxt}`;
+      } else if (sel.length === 1) {
+        reportTitle = sel[0] === n && n > 0
+          ? `Sites retirés ${n} mois de suite — jusqu'à ${pmRetired?.month || ''}`
+          : `Sites avec ${sel[0]} retrait(s) sur ${n} mois — jusqu'à ${pmRetired?.month || ''}`;
+      } else {
+        const contiguous = sel.every((v, idx) => idx === 0 || v === sel[idx - 1] + 1);
+        reportTitle = contiguous
+          ? `Sites avec ${sel[0]} à ${sel[sel.length - 1]} retraits sur ${pmRetiredSuccWindow} mois — jusqu'à ${pmRetired?.month || ''}`
+          : `Sites avec ${sel.join(', ')} retraits sur ${pmRetiredSuccWindow} mois — jusqu'à ${pmRetired?.month || ''}`;
       }
-      if (String(pmRetiredMatrixSearch || '').trim()) filters.push(`Recherche : « ${pmRetiredMatrixSearch.trim()} »`);
     }
+
+    const metaParts = [];
+    const z = pmEffectiveRetiredZoneFilter;
+    if (z && z !== 'ALL') metaParts.push(`Zone : ${z}`);
+    if (pmRetiredSuccMode && String(pmRetiredMatrixSearch || '').trim()) {
+      metaParts.push(`Recherche : « ${pmRetiredMatrixSearch.trim()} »`);
+    }
+    metaParts.push(`${pmRetiredSuccMode ? pmMatrixItems.length : pmRetiredItems.length} ligne(s)`);
+    metaParts.push(`imprimé le ${new Date().toLocaleDateString('fr-FR')}`);
 
     let tableHtml;
     if (pmRetiredSuccMode) {
@@ -408,8 +428,8 @@ const PmModal = (props) => {
   tr { page-break-inside: avoid; }
   @page { size: landscape; margin: 8mm; }
 </style></head><body>
-<h1>Sites retirés pour la campagne (${pmEscapeHtml(pmRetired?.month || '')})</h1>
-<div class="meta">${pmEscapeHtml(filters.length ? filters.join(' · ') : 'Tous les sites')} · ${pmRetiredSuccMode ? `${pmMatrixItems.length} ligne(s)` : `${pmRetiredItems.length} site(s)`} · imprimé le ${pmEscapeHtml(new Date().toLocaleDateString('fr-FR'))}</div>
+<h1>${pmEscapeHtml(reportTitle)}</h1>
+<div class="meta">${pmEscapeHtml(metaParts.join(' · '))}</div>
 ${pmRetiredSuccMode ? '<div class="legend">✗ = PM non réalisée (retiré) · ✓ = PM réalisée (n° PMWO) · — = hors campagne · * = mois sans campagne</div>' : ''}
 ${tableHtml}
 </body></html>`;
