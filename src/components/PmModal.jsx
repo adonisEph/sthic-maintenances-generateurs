@@ -81,6 +81,10 @@ const PmModal = (props) => {
 
   const [pmRetiredSitesOpen, setPmRetiredSitesOpen] = React.useState(false);
   const [pmRetiredSitesZoneFilter, setPmRetiredSitesZoneFilter] = React.useState('ALL');
+  const [pmRetiredSuccMode, setPmRetiredSuccMode] = React.useState(false);
+  const [pmRetiredSuccWindow, setPmRetiredSuccWindow] = React.useState(3);
+  const [pmRetiredSuccMap, setPmRetiredSuccMap] = React.useState(null);
+  const [pmRetiredSuccBusy, setPmRetiredSuccBusy] = React.useState(false);
   const [pmPurgeOpen, setPmPurgeOpen] = React.useState(false);
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
   const [pmPurgeBusy, setPmPurgeBusy] = React.useState(false);
@@ -255,6 +259,51 @@ const PmModal = (props) => {
     pmEffectiveRetiredZoneFilter && pmEffectiveRetiredZoneFilter !== 'ALL'
       ? pmRetiredItemsAll.filter((it) => String(it?.zone || '').trim() === pmEffectiveRetiredZoneFilter)
       : pmRetiredItemsAll;
+
+  // « Sites retirés successivement » : sites présents dans les retraits de TOUS
+  // les mois de la fenêtre (3 ou 6) se terminant au mois de la campagne.
+  const pmMonthsBack = (ym, n) => {
+    const m = String(ym || '').match(/^(\d{4})-(\d{2})$/);
+    if (!m) return [];
+    const out = [];
+    let y = Number(m[1]); let mo = Number(m[2]);
+    for (let i = 0; i < n; i++) {
+      out.unshift(`${y}-${String(mo).padStart(2, '0')}`);
+      mo -= 1; if (mo < 1) { mo = 12; y -= 1; }
+    }
+    return out;
+  };
+
+  const loadPmRetiredSuccessive = async (win) => {
+    const codes = [...new Set(pmRetiredItemsAll.map((it) => pmNormalizeSiteCode(it?.siteCode)).filter(Boolean))];
+    if (!codes.length) { setPmRetiredSuccMap(new Map()); return; }
+    setPmRetiredSuccBusy(true);
+    try {
+      const data = await pmCallJson(`/api/pm/retired-months?siteCodes=${encodeURIComponent(codes.join(','))}&maxMonths=${Math.min(36, win + 4)}`);
+      const map = new Map();
+      for (const it of Array.isArray(data?.items) ? data.items : []) {
+        map.set(pmNormalizeSiteCode(it?.siteCode), it);
+      }
+      setPmRetiredSuccMap(map);
+    } catch (e) {
+      console.error('retired-months:', e);
+      setPmRetiredSuccMap(null);
+    } finally {
+      setPmRetiredSuccBusy(false);
+    }
+  };
+
+  const pmSuccWindowMonths = pmMonthsBack(pmRetired?.month, pmRetiredSuccWindow);
+  const pmRetiredSuccItems = pmRetiredItems
+    .map((it) => {
+      const hist = pmRetiredSuccMap?.get(pmNormalizeSiteCode(it?.siteCode));
+      return { ...it, retiredMonthsList: Array.isArray(hist?.retiredMonths) ? hist.retiredMonths : [] };
+    })
+    .filter((it) => {
+      const set = new Set(it.retiredMonthsList);
+      return pmSuccWindowMonths.every((m) => set.has(m));
+    });
+  const pmRetiredViewItems = pmRetiredSuccMode ? pmRetiredSuccItems : pmRetiredItems;
 
   return (
     <div className="fixed inset-0 bg-indigo-950/60 flex items-center justify-center z-50 p-0 sm:p-0">
@@ -677,7 +726,7 @@ const PmModal = (props) => {
                             await handlePmExportRetiredSitesExcel({
                               month: pmRetired.month,
                               zone,
-                              items: pmRetiredItems
+                              items: pmRetiredViewItems
                             });
                           }}
                           className="bg-white/10 hover:bg-white/15 text-white border border-white/20 px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 disabled:opacity-60"
@@ -728,6 +777,42 @@ const PmModal = (props) => {
                       </div>
                     )}
 
+                    <div className="px-4 py-2 border-b bg-white flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-semibold text-fuchsia-900">Vue :</span>
+                      <div className="inline-flex rounded-lg border border-fuchsia-200 overflow-hidden text-xs font-semibold">
+                        <button type="button" onClick={() => setPmRetiredSuccMode(false)}
+                          className={`px-3 py-1.5 ${!pmRetiredSuccMode ? 'bg-fuchsia-700 text-white' : 'bg-white text-fuchsia-900 hover:bg-fuchsia-50'}`}>
+                          Tous ({pmRetiredItems.length})
+                        </button>
+                        <button type="button"
+                          onClick={() => { setPmRetiredSuccMode(true); if (pmRetiredSuccMap === null && !pmRetiredSuccBusy) loadPmRetiredSuccessive(pmRetiredSuccWindow); }}
+                          className={`px-3 py-1.5 border-l border-fuchsia-200 ${pmRetiredSuccMode ? 'bg-fuchsia-700 text-white' : 'bg-white text-fuchsia-900 hover:bg-fuchsia-50'}`}>
+                          Retirés successivement
+                        </button>
+                      </div>
+                      {pmRetiredSuccMode && (
+                        <>
+                          <span className="text-xs font-semibold text-fuchsia-900 ml-2">sur</span>
+                          <div className="inline-flex rounded-lg border border-fuchsia-200 overflow-hidden text-xs font-semibold">
+                            {[3, 6].map((w) => (
+                              <button key={w} type="button"
+                                onClick={() => { setPmRetiredSuccWindow(w); loadPmRetiredSuccessive(w); }}
+                                className={`px-3 py-1.5 ${pmRetiredSuccWindow === w ? 'bg-violet-600 text-white' : 'bg-white text-violet-800 hover:bg-violet-50'} ${w === 6 ? 'border-l border-fuchsia-200' : ''}`}>
+                                {w} mois
+                              </button>
+                            ))}
+                          </div>
+                          <span className="text-xs text-gray-500">
+                            {pmRetiredSuccBusy
+                              ? 'Analyse des campagnes…'
+                              : pmRetiredSuccMap === null
+                                ? ''
+                                : `${pmRetiredSuccItems.length} site(s) retiré(s) ${pmRetiredSuccWindow} mois de suite jusqu'à ${pmRetired.month}`}
+                          </span>
+                        </>
+                      )}
+                    </div>
+
                     <div className="p-4 overflow-auto">
                       <table className="min-w-[980px] w-full text-sm">
                         <thead className="bg-fuchsia-50 sticky top-0 z-10">
@@ -737,17 +822,20 @@ const PmModal = (props) => {
                             <th className="px-3 py-2 font-semibold whitespace-nowrap">Site Name</th>
                             <th className="px-3 py-2 font-semibold whitespace-nowrap">Technicien</th>
                             <th className="px-3 py-2 font-semibold whitespace-nowrap">Type</th>
+                            {pmRetiredSuccMode && <th className="px-3 py-2 font-semibold whitespace-nowrap">Mois retirés</th>}
                           </tr>
                         </thead>
                         <tbody>
-                          {pmRetiredItems.length === 0 ? (
+                          {pmRetiredViewItems.length === 0 ? (
                             <tr>
-                              <td className="px-4 py-4 text-gray-600" colSpan={5}>
-                                Aucun site.
+                              <td className="px-4 py-4 text-gray-600" colSpan={pmRetiredSuccMode ? 6 : 5}>
+                                {pmRetiredSuccMode
+                                  ? (pmRetiredSuccBusy ? 'Analyse en cours…' : `Aucun site retiré ${pmRetiredSuccWindow} mois de suite.`)
+                                  : 'Aucun site.'}
                               </td>
                             </tr>
                           ) : (
-                            pmRetiredItems.map((it, idx) => (
+                            pmRetiredViewItems.map((it, idx) => (
                               <tr
                                 key={`${it?.siteCode || 'site'}-${idx}`}
                                 className={`border-b border-fuchsia-100 hover:bg-fuchsia-50/60 ${idx % 2 === 1 ? 'bg-white' : 'bg-fuchsia-50/40'}`}
@@ -757,6 +845,22 @@ const PmModal = (props) => {
                                 <td className="px-3 py-2 text-slate-900 max-w-[360px] whitespace-pre-line leading-tight break-words">{it?.siteName || '-'}</td>
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.technician || '-'}</td>
                                 <td className="px-3 py-2 text-slate-900 whitespace-nowrap">{it?.maintenanceType || 'FullPMWO'}</td>
+                                {pmRetiredSuccMode && (
+                                  <td className="px-3 py-2">
+                                    <div className="flex flex-wrap gap-1">
+                                      {(it?.retiredMonthsList || []).map((m) => (
+                                        <span key={m}
+                                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                                            pmSuccWindowMonths.includes(m)
+                                              ? 'bg-violet-100 text-violet-900 border-violet-200'
+                                              : 'bg-gray-100 text-gray-500 border-gray-200'
+                                          }`}>
+                                          {m}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </td>
+                                )}
                               </tr>
                             ))
                           )}
