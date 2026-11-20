@@ -1,6 +1,6 @@
 import React from 'react';
 import * as XLSX from 'xlsx';
-import { TrendingUp, X, Upload, Download, Trash2, RotateCcw, Activity, Menu, ChevronLeft, ListChecks, BadgeCheck, Clock, UserCheck, Filter, Search } from 'lucide-react';
+import { TrendingUp, X, Upload, Download, Trash2, RotateCcw, Activity, Menu, ChevronLeft, ListChecks, BadgeCheck, Clock, UserCheck, Filter, Search, Printer } from 'lucide-react';
 
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
 
@@ -328,6 +328,81 @@ const PmModal = (props) => {
     ];
     XLSX.utils.book_append_sheet(wb, ws, `Successifs ${pmRetiredSuccWindow}m`);
     XLSX.writeFile(wb, `Sites-retirés-successivement_${pmRetired?.month || 'campagne'}_${pmRetiredSuccWindow}mois.xlsx`);
+  };
+
+  const pmEscapeHtml = (s) =>
+    String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  // Impression « intelligente » : reproduit exactement la vue affichée —
+  // liste « Tous » ou matrice, avec les filtres zone / série / recherche appliqués.
+  const handlePrintRetired = () => {
+    const filters = [];
+    const z = pmEffectiveRetiredZoneFilter;
+    if (z && z !== 'ALL') filters.push(`Zone : ${z}`);
+    if (pmRetiredSuccMode) {
+      filters.push(`Vue : retirés successivement sur ${pmRetiredSuccWindow} mois`);
+      if (pmRetiredMatrixSerie.length > 0) {
+        filters.push(`Série : ${pmRetiredMatrixSerie.map((i) => `${i}/${pmMatrixExistingArr.length || pmMatrixMonths.length}`).join(', ')}`);
+      }
+      if (String(pmRetiredMatrixSearch || '').trim()) filters.push(`Recherche : « ${pmRetiredMatrixSearch.trim()} »`);
+    }
+
+    let tableHtml;
+    if (pmRetiredSuccMode) {
+      const headCells = pmMatrixMonths
+        .map((mo) => `<th>${pmEscapeHtml(mo)}${pmMatrixMissingSet.has(mo) ? ' *' : ''}</th>`)
+        .join('');
+      const rows = pmMatrixItems.map((it) => {
+        const tds = pmMatrixMonths.map((mo) => {
+          if (pmMatrixMissingSet.has(mo)) return '<td class="c mut">—</td>';
+          const c = it?.cells?.[mo];
+          if (c?.s === 'retired') return '<td class="c bad">✗</td>';
+          if (c?.s === 'active') return `<td class="c ok">✓${c?.ticket ? `<div class="t">${pmEscapeHtml(c.ticket)}</div>` : ''}</td>`;
+          return '<td class="c mut">—</td>';
+        }).join('');
+        return `<tr><td class="l"><b>${pmEscapeHtml(it?.siteCode || '-')}</b> · ${pmEscapeHtml(it?.siteName || '-')}</td><td class="l">${pmEscapeHtml(it?.zone || '-')}</td><td class="l">${pmEscapeHtml(it?.technician || '-')}</td>${tds}<td class="c"><b>${it?.retiredCount || 0}/${pmMatrixExistingArr.length || pmMatrixMonths.length}</b></td></tr>`;
+      }).join('');
+      tableHtml = `<table><thead><tr><th class="l">Site</th><th class="l">Zone</th><th class="l">Technicien</th>${headCells}<th>Série</th></tr></thead><tbody>${rows}</tbody></table>`;
+    } else {
+      const rows = pmRetiredItems.map((it) =>
+        `<tr><td class="l">${pmEscapeHtml(it?.zone || '-')}</td><td class="l"><b>${pmEscapeHtml(it?.siteCode || '-')}</b></td><td class="l">${pmEscapeHtml(it?.siteName || '-')}</td><td class="l">${pmEscapeHtml(it?.technician || '-')}</td><td class="l">${pmEscapeHtml(it?.maintenanceType || 'FullPMWO')}</td></tr>`
+      ).join('');
+      tableHtml = `<table><thead><tr><th class="l">Zone</th><th class="l">Site</th><th class="l">Site Name</th><th class="l">Technicien</th><th class="l">Type</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Sites retirés ${pmEscapeHtml(pmRetired?.month || '')}</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 10px; color: #111; margin: 12px; }
+  h1 { font-size: 14px; margin: 0 0 2px; }
+  .meta { color: #555; margin-bottom: 6px; }
+  .legend { font-size: 9px; color: #555; margin-bottom: 6px; }
+  table { border-collapse: collapse; width: 100%; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  th, td { border: 1px solid #ccc; padding: 3px 5px; }
+  th { background: #f5f0f8; font-size: 9px; text-align: center; }
+  th.l, td.l { text-align: left; }
+  td.c { text-align: center; }
+  .bad { background: #fde2e2; color: #b91c1c; font-weight: bold; }
+  .ok { background: #e6f7ee; color: #047857; font-weight: bold; }
+  .mut { color: #bbb; }
+  .t { font-size: 8px; font-family: monospace; font-weight: normal; }
+  tr { page-break-inside: avoid; }
+  @page { size: landscape; margin: 8mm; }
+</style></head><body>
+<h1>Sites retirés pour la campagne (${pmEscapeHtml(pmRetired?.month || '')})</h1>
+<div class="meta">${pmEscapeHtml(filters.length ? filters.join(' · ') : 'Tous les sites')} · ${pmRetiredSuccMode ? `${pmMatrixItems.length} ligne(s)` : `${pmRetiredItems.length} site(s)`} · imprimé le ${pmEscapeHtml(new Date().toLocaleDateString('fr-FR'))}</div>
+${pmRetiredSuccMode ? '<div class="legend">✗ = PM non réalisée (retiré) · ✓ = PM réalisée (n° PMWO) · — = hors campagne · * = mois sans campagne</div>' : ''}
+${tableHtml}
+</body></html>`;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+    document.body.appendChild(iframe);
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(html);
+    iframe.contentDocument.close();
+    setTimeout(() => {
+      try { iframe.contentWindow.print(); } finally { setTimeout(() => iframe.remove(), 800); }
+    }, 250);
   };
 
   return (
@@ -764,6 +839,16 @@ const PmModal = (props) => {
                         >
                           <Download size={16} />
                           Exporter xlsx
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handlePrintRetired}
+                          className="bg-white/10 hover:bg-white/15 text-white border border-white/20 px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 disabled:opacity-60"
+                          disabled={pmBusy || (pmRetiredSuccMode ? pmMatrixItems.length === 0 : pmRetiredItems.length === 0)}
+                          title={pmRetiredSuccMode ? 'Imprimer la matrice filtrée (zone, série, recherche)' : 'Imprimer la liste filtrée'}
+                        >
+                          <Printer size={16} />
+                          Imprimer
                         </button>
                         <button
                           type="button"

@@ -162,6 +162,33 @@ export async function onRequestGet({ request, env, data }) {
       }
     }
 
+    // Sites absents de `sites` (ex. zone UPCN/Nord) : le technicien ne peut venir
+    // que de pm_items.assigned_to — on complète avec le dernier connu, toute
+    // campagne confondue (le plan global n'a jamais assigned_to rempli).
+    const noTechCodes = [...new Set(
+      [...roster.values()].filter((it) => !it.technician || !it.siteName).map((it) => it.siteCode)
+    )];
+    if (noTechCodes.length > 0) {
+      const techRes = await env.DB.prepare(
+        `SELECT site_code, site_name, assigned_to FROM pm_items WHERE site_code IN (${noTechCodes.map(() => '?').join(', ')}) AND (TRIM(COALESCE(assigned_to, '')) != '' OR TRIM(COALESCE(site_name, '')) != '')`
+      ).bind(...noTechCodes).all();
+      const techByCode = new Map();
+      for (const r of techRes?.results || []) {
+        const c = normalizeSiteCode(r?.site_code);
+        if (!c || techByCode.has(c)) continue;
+        techByCode.set(c, {
+          technician: String(r?.assigned_to || '').trim(),
+          siteName: String(r?.site_name || '').trim()
+        });
+      }
+      for (const it of roster.values()) {
+        const t = techByCode.get(it.siteCode);
+        if (!t) continue;
+        if (!it.technician && t.technician) it.technician = t.technician;
+        if (!it.siteName && t.siteName) it.siteName = t.siteName;
+      }
+    }
+
     const items = [...roster.entries()].map(([key, it]) => {
       const cells = {};
       for (const mo of monthsExisting) {
