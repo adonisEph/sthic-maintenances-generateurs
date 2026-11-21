@@ -35,7 +35,7 @@ export async function onRequestGet({ env, data, request }) {
     if (type === 'dehors') {
       // « Matériel dehors » : sorties + dotations ouvertes (non retournées).
       clauses.push("m.type IN ('exit', 'dotation') AND m.status IN ('issued', 'partial_return')");
-    } else if (['exit', 'entry', 'return', 'recovery', 'reinstatement', 'client_return', 'dotation'].includes(type)) { clauses.push('m.type = ?'); binds.push(type); }
+    } else if (['exit', 'entry', 'return', 'recovery', 'reinstatement', 'client_return', 'dotation', 'component', 'component_return'].includes(type)) { clauses.push('m.type = ?'); binds.push(type); }
     if (['entrepot', 'magasin'].includes(location)) { clauses.push('m.location = ?'); binds.push(location); }
     if (from) { clauses.push('m.movement_date >= ?'); binds.push(from); }
     if (to) { clauses.push('m.movement_date <= ?'); binds.push(to); }
@@ -53,14 +53,17 @@ export async function onRequestGet({ env, data, request }) {
     const rows = res?.results || [];
 
     let linesByMov = {};
+    let compByMov = {};
     if (rows.length) {
       const ids = rows.map((r) => r.id);
       const ph = ids.map(() => '?').join(',');
       const lr = await env.DB.prepare(`SELECT * FROM htc_movement_lines WHERE movement_id IN (${ph})`).bind(...ids).all();
       for (const l of lr?.results || []) (linesByMov[l.movement_id] ||= []).push(l);
+      const cr = await env.DB.prepare(`SELECT * FROM htc_component_lines WHERE movement_id IN (${ph})`).bind(...ids).all();
+      for (const l of cr?.results || []) (compByMov[l.movement_id] ||= []).push(l);
     }
 
-    return json({ ok: true, movements: rows.map((r) => mapMovement(r, linesByMov[r.id])) });
+    return json({ ok: true, movements: rows.map((r) => mapMovement(r, linesByMov[r.id], compByMov[r.id])) });
   } catch (e) {
     return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
   }
@@ -75,6 +78,73 @@ export async function onRequestPost({ request, env, data }) {
     if (!htcZoneOk(data)) return json({ error: 'Zone non couverte.' }, { status: 403 });
 
     const body = await readJson(request);
+
+    // ---- BON DE PRÉLÈVEMENT DE COMPOSANTS (PC-AAAA-NNNN) ----
+    // { type:'component', componentLines:[{sourceItemId, sourceRef, component, qty}],
+    //   movementDate?, siteId/siteName?, beneficiary?, agentName?, reason?, signatureName/Image }
+    // Aucun impact stock : le GE reste une unité, les composants ne sont pas catalogués.
+    if (String(body?.type || '') === 'component') {
+      const compLines = Array.isArray(body?.componentLines) ? body.componentLines : [];
+      if (!compLines.length || compLines.length > 30) return json({ error: 'Ajoute 1 à 30 composants.' }, { status: 400 });
+
+      const now = isoNow();
+      const srcIds = [...new Set(compLines.map((l) => String(l?.sourceItemId || '').trim()).filter(Boolean))];
+      const itemsRes = srcIds.length
+        ? await env.DB.prepare(`SELECT id, name, location FROM htc_items WHERE id IN (${srcIds.map(() => '?').join(',')})`).bind(...srcIds).all()
+        : { results: [] };
+      const itemById = new Map((itemsRes?.results || []).map((r) => [r.id, r]));
+
+      const clean = [];
+      for (const l of compLines) {
+        const sourceItemId = String(l?.sourceItemId || '').trim();
+        const it = sourceItemId ? itemById.get(sourceItemId) : null;
+        if (!it) return json({ error: 'Générateur source introuvable sur une ligne.' }, { status: 400 });
+        const component = String(l?.component || '').trim();
+        if (!component || component.length > 120) return json({ error: 'Désignation du composant requise (≤120 car.).' }, { status: 400 });
+        const qty = Math.floor(Number(l?.qty));
+        if (!Number.isFinite(qty) || qty < 1 || qty > 10000) return json({ error: 'Quantité composant invalide.' }, { status: 400 });
+        clean.push({ it, component, qty, ref: String(l?.sourceRef || '').trim() });
+      }
+
+      const signatureName = String(body?.signatureName || '').trim();
+      const signatureImage = String(body?.signatureImage || '');
+      if (!signatureName && !signatureImage) {
+        return json({ error: 'Signature requise (dessinée ou nom tapé).' }, { status: 400 });
+      }
+
+      const movId = newId();
+      const number = await allocHtcNumber(env, 'component');
+      const mainLoc = String(clean[0].it.location || 'entrepot');
+
+      await env.DB.prepare(
+        `INSERT INTO htc_movements (id, number, type, location, movement_date, site_id, site_name, reason,
+          requester_name, requester_role, beneficiary, beneficiary_role, agent_name,
+          signature_name, signature_image, status, created_by, created_at, updated_at)
+         VALUES (?, ?, 'component', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?, ?)`
+      ).bind(
+        movId, number, mainLoc,
+        String(body?.movementDate || '').trim() || ymdToday(),
+        String(body?.siteId || '').trim(), String(body?.siteName || '').trim(),
+        String(body?.reason || '').trim(),
+        String(body?.requesterName || data.user.technicianName || data.user.email || '').trim(),
+        String(body?.requesterRole || 'warehouse'),
+        String(body?.beneficiary || '').trim(), String(body?.beneficiaryRole || '').trim(),
+        String(body?.agentName || '').trim(),
+        signatureName, signatureImage && signatureImage.startsWith('data:image') ? signatureImage.slice(0, 60000) : '',
+        String(data.user.id), now, now
+      ).run();
+
+      for (const c of clean) {
+        await env.DB.prepare(
+          'INSERT INTO htc_component_lines (id, movement_id, component, qty, qty_returned, source_item_id, source_item_name, source_ref, created_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)'
+        ).bind(newId(), movId, c.component, c.qty, c.it.id, c.it.name, c.ref, now).run();
+      }
+
+      const mov = await env.DB.prepare('SELECT * FROM htc_movements WHERE id = ?').bind(movId).first();
+      const cl = await env.DB.prepare('SELECT * FROM htc_component_lines WHERE movement_id = ?').bind(movId).all();
+      return json({ ok: true, movement: mapMovement(mov, [], cl?.results || []) }, { status: 201 });
+    }
+
     const lines = Array.isArray(body?.lines) ? body.lines : [];
     if (!lines.length || lines.length > 50) return json({ error: 'Ajoute 1 à 50 lignes.' }, { status: 400 });
 

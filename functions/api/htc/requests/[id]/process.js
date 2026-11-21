@@ -35,6 +35,79 @@ export async function onRequestPost({ request, env, data, params }) {
 
     if (action !== 'issue') return json({ error: 'Action inconnue.' }, { status: 400 });
 
+    // ---- Demande de COMPOSANTS → BON DE PRÉLÈVEMENT (PC-AAAA-NNNN) ----
+    if (String(req.request_kind || 'site') === 'component') {
+      const compRes = await env.DB.prepare('SELECT * FROM htc_component_lines WHERE request_id = ?').bind(id).all();
+      const compLines = compRes?.results || [];
+      if (!compLines.length) return json({ error: 'Demande sans composant.' }, { status: 409 });
+
+      // Le magasinier précise le générateur source (article + réf.) par ligne.
+      const sources = body?.sources && typeof body.sources === 'object' ? body.sources : {};
+      const lineSrc = new Map();
+      for (const cl of compLines) {
+        const s = sources[cl.id] || {};
+        const itemId = String(s.itemId || '').trim();
+        if (!itemId) return json({ error: `Générateur source à préciser pour « ${cl.component} ».` }, { status: 400 });
+        lineSrc.set(cl.id, { itemId, ref: String(s.ref || '').trim() });
+      }
+      const srcIds = [...new Set([...lineSrc.values()].map((s) => s.itemId))];
+      const itemsRes = await env.DB.prepare(
+        `SELECT id, name FROM htc_items WHERE id IN (${srcIds.map(() => '?').join(',')})`
+      ).bind(...srcIds).all();
+      const itemById = new Map((itemsRes?.results || []).map((r) => [r.id, r]));
+      for (const s of lineSrc.values()) {
+        if (!itemById.has(s.itemId)) return json({ error: 'Générateur source introuvable.' }, { status: 400 });
+      }
+
+      const signatureName = String(body?.signatureName || '').trim() || String(req.signature_name || '').trim();
+      const signatureImage = String(body?.signatureImage || '') || String(req.signature_image || '');
+      if (!signatureName && !signatureImage) {
+        return json({ error: 'Signature du demandeur requise (dessinée ou nom tapé).' }, { status: 400 });
+      }
+
+      const movementDate = String(body?.movementDate || '').trim() || ymdToday();
+      const movId = newId();
+      const number = await allocHtcNumber(env, 'component');
+
+      await env.DB.prepare(
+        `INSERT INTO htc_movements (id, number, type, location, movement_date, site_id, site_name, reason,
+          requester_name, requester_role, requested_by_user_id, request_id, swo_number, beneficiary, beneficiary_role,
+          signature_name, signature_image, status, created_by, created_at, updated_at)
+         VALUES (?, ?, 'component', 'entrepot', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?, ?)`
+      ).bind(
+        movId, number, movementDate,
+        String(req.site_id || ''), String(req.site_name || ''),
+        String(req.reason || ''),
+        String(req.requester_name || ''), String(req.requester_role || ''),
+        req.requested_by_user_id ? String(req.requested_by_user_id) : null,
+        id, String(req.swo_number || ''),
+        String(req.beneficiary_name || '').trim(), String(req.beneficiary_role || '').trim(),
+        signatureName, signatureImage && signatureImage.startsWith('data:image') ? signatureImage.slice(0, 60000) : '',
+        String(data.user.id), now, now
+      ).run();
+
+      for (const cl of compLines) {
+        const s = lineSrc.get(cl.id);
+        const it = itemById.get(s.itemId);
+        await env.DB.prepare(
+          'UPDATE htc_component_lines SET movement_id = ?, source_item_id = ?, source_item_name = ?, source_ref = ? WHERE id = ?'
+        ).bind(movId, s.itemId, String(it?.name || ''), s.ref, cl.id).run();
+      }
+
+      await env.DB.prepare(
+        "UPDATE htc_requests SET status = 'issued', exit_movement_id = ?, processed_by = ?, processed_at = ?, updated_at = ? WHERE id = ?"
+      ).bind(movId, String(data.user.id), now, now, id).run();
+
+      const mov = await env.DB.prepare('SELECT * FROM htc_movements WHERE id = ?').bind(movId).first();
+      const clOut = await env.DB.prepare('SELECT * FROM htc_component_lines WHERE movement_id = ?').bind(movId).all();
+      const reqRow = await env.DB.prepare('SELECT * FROM htc_requests WHERE id = ?').bind(id).first();
+      return json({
+        ok: true,
+        movement: mapMovement(mov, [], clOut?.results || []),
+        request: mapRequest(reqRow, [], clOut?.results || [])
+      }, { status: 201 });
+    }
+
     const linesRes = await env.DB.prepare('SELECT * FROM htc_request_lines WHERE request_id = ?').bind(id).all();
     const lines = linesRes?.results || [];
     if (!lines.length) return json({ error: 'Demande sans article.' }, { status: 409 });

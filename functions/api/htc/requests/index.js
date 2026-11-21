@@ -25,11 +25,14 @@ export async function onRequestGet({ env, data, request }) {
     const rows = res?.results || [];
 
     let linesByReq = {};
+    let compByReq = {};
     if (rows.length) {
       const ids = rows.map((r) => r.id);
       const ph = ids.map(() => '?').join(',');
       const lr = await env.DB.prepare(`SELECT * FROM htc_request_lines WHERE request_id IN (${ph})`).bind(...ids).all();
       for (const l of lr?.results || []) (linesByReq[l.request_id] ||= []).push(l);
+      const cr = await env.DB.prepare(`SELECT * FROM htc_component_lines WHERE request_id IN (${ph})`).bind(...ids).all();
+      for (const l of cr?.results || []) (compByReq[l.request_id] ||= []).push(l);
     }
 
     const pendingRow = manager
@@ -38,7 +41,7 @@ export async function onRequestGet({ env, data, request }) {
 
     return json({
       ok: true,
-      requests: rows.map((r) => mapRequest(r, linesByReq[r.id])),
+      requests: rows.map((r) => mapRequest(r, linesByReq[r.id], compByReq[r.id])),
       pendingCount: Number(pendingRow?.c || 0)
     });
   } catch (e) {
@@ -54,9 +57,28 @@ export async function onRequestPost({ request, env, data }) {
     if (!htcZoneOk(data)) return json({ error: 'Zone non couverte.' }, { status: 403 });
 
     const body = await readJson(request);
+
+    // Couloir : 'site' (matériel de remplacement), 'dotation' (outillage remis
+    // à un agent) ou 'component' (composants prélevés sur un générateur).
+    const requestKind = String(body?.requestKind || 'site').trim();
+    if (!['site', 'dotation', 'component'].includes(requestKind)) return json({ error: 'Type de demande invalide.' }, { status: 400 });
+    const isComponent = requestKind === 'component';
+
     const lines = Array.isArray(body?.lines) ? body.lines : [];
-    if (!lines.length) return json({ error: 'Ajoute au moins un article.' }, { status: 400 });
+    const components = Array.isArray(body?.components) ? body.components : [];
+    if (!isComponent && !lines.length) return json({ error: 'Ajoute au moins un article.' }, { status: 400 });
     if (lines.length > 50) return json({ error: 'Trop de lignes (max 50).' }, { status: 400 });
+    if (isComponent && (!components.length || components.length > 30)) {
+      return json({ error: 'Ajoute 1 à 30 composants.' }, { status: 400 });
+    }
+    const cleanComps = [];
+    for (const c of components) {
+      const name = String(c?.component || '').trim();
+      const qty = Math.floor(Number(c?.qty));
+      if (!name || name.length > 120) return json({ error: 'Désignation du composant requise (≤120 car.).' }, { status: 400 });
+      if (!Number.isFinite(qty) || qty < 1 || qty > 10000) return json({ error: 'Quantité composant invalide.' }, { status: 400 });
+      cleanComps.push({ name, qty });
+    }
 
     const onBehalf = body?.onBehalf && isHtcManager(data) ? body.onBehalf : null;
     const requesterRole = onBehalf ? String(onBehalf.role || 'htc_supervisor') : String(data.user.role);
@@ -67,25 +89,21 @@ export async function onRequestPost({ request, env, data }) {
     if (!requesterName) return json({ error: 'Nom du demandeur requis.' }, { status: 400 });
 
     // Snapshot des articles demandés (existence + désignation + lieu)
-    const ids = lines.map((l) => String(l?.itemId || '').trim()).filter(Boolean);
-    if (ids.length !== lines.length) return json({ error: 'Article manquant sur une ligne.' }, { status: 400 });
-    const ph = ids.map(() => '?').join(',');
-    const itemsRes = await env.DB.prepare(`SELECT * FROM htc_items WHERE id IN (${ph}) AND active = 1`).bind(...ids).all();
-    const items = new Map((itemsRes?.results || []).map((r) => [r.id, r]));
-
     const clean = [];
-    for (const l of lines) {
-      const qty = Math.floor(Number(l?.qty));
-      if (!Number.isFinite(qty) || qty < 1 || qty > 10000) return json({ error: 'Quantité invalide (1..10000).' }, { status: 400 });
-      const it = items.get(String(l.itemId));
-      if (!it) return json({ error: `Article introuvable ou inactif.` }, { status: 400 });
-      clean.push({ item: it, qty });
+    if (lines.length) {
+      const ids = lines.map((l) => String(l?.itemId || '').trim()).filter(Boolean);
+      if (ids.length !== lines.length) return json({ error: 'Article manquant sur une ligne.' }, { status: 400 });
+      const ph = ids.map(() => '?').join(',');
+      const itemsRes = await env.DB.prepare(`SELECT * FROM htc_items WHERE id IN (${ph}) AND active = 1`).bind(...ids).all();
+      const items = new Map((itemsRes?.results || []).map((r) => [r.id, r]));
+      for (const l of lines) {
+        const qty = Math.floor(Number(l?.qty));
+        if (!Number.isFinite(qty) || qty < 1 || qty > 10000) return json({ error: 'Quantité invalide (1..10000).' }, { status: 400 });
+        const it = items.get(String(l.itemId));
+        if (!it) return json({ error: `Article introuvable ou inactif.` }, { status: 400 });
+        clean.push({ item: it, qty });
+      }
     }
-
-    // Couloir : 'site' (matériel de remplacement, destination site — plusieurs
-    // sites possibles) ou 'dotation' (outillage remis à un agent de l'app).
-    const requestKind = String(body?.requestKind || 'site').trim();
-    if (!['site', 'dotation'].includes(requestKind)) return json({ error: 'Type de demande invalide.' }, { status: 400 });
 
     const siteIdsIn = Array.isArray(body?.siteIds) ? body.siteIds.map((s) => String(s || '').trim()).filter(Boolean).slice(0, 30) : [];
     const siteNamesIn = Array.isArray(body?.siteNames) ? body.siteNames.map((s) => String(s || '').trim()) : [];
@@ -102,7 +120,7 @@ export async function onRequestPost({ request, env, data }) {
     let beneficiaryName = '';
     let beneficiaryUserId = '';
     let beneficiaryRole = '';
-    if (requestKind === 'dotation') {
+    if (requestKind === 'dotation' || requestKind === 'component') {
       beneficiaryUserId = String(body?.beneficiaryUserId || '').trim();
       beneficiaryName = String(body?.beneficiaryName || '').trim();
       beneficiaryRole = String(body?.beneficiaryRole || '').trim();
@@ -110,10 +128,10 @@ export async function onRequestPost({ request, env, data }) {
         const u = await env.DB.prepare(
           "SELECT id, technician_name, email, role FROM users WHERE id = ? AND (disabled_at IS NULL OR disabled_at = '')"
         ).bind(beneficiaryUserId).first();
-        if (!u) return json({ error: 'Agent à doter introuvable.' }, { status: 400 });
+        if (!u) return json({ error: 'Agent destinataire introuvable.' }, { status: 400 });
         beneficiaryName = String(u.technician_name || u.email || beneficiaryName).trim();
         beneficiaryRole = String(u.role || beneficiaryRole);
-      } else {
+      } else if (requestKind === 'dotation') {
         // Agent interne hors maintenance (pas de compte app) : nom + fonction saisis.
         if (!beneficiaryName) return json({ error: 'Nom de l\'agent à doter requis.' }, { status: 400 });
         if (!beneficiaryRole) return json({ error: 'Fonction de l\'agent à doter requise.' }, { status: 400 });
@@ -154,10 +172,16 @@ export async function onRequestPost({ request, env, data }) {
         'INSERT INTO htc_request_lines (id, request_id, item_id, item_name, location, qty) VALUES (?, ?, ?, ?, ?, ?)'
       ).bind(newId(), id, l.item.id, l.item.name, l.item.location, l.qty).run();
     }
+    for (const c of cleanComps) {
+      await env.DB.prepare(
+        'INSERT INTO htc_component_lines (id, request_id, component, qty, created_at) VALUES (?, ?, ?, ?, ?)'
+      ).bind(newId(), id, c.name, c.qty, now).run();
+    }
 
     const row = await env.DB.prepare('SELECT * FROM htc_requests WHERE id = ?').bind(id).first();
     const lr = await env.DB.prepare('SELECT * FROM htc_request_lines WHERE request_id = ?').bind(id).all();
-    return json({ ok: true, request: mapRequest(row, lr?.results || []) }, { status: 201 });
+    const cl = await env.DB.prepare('SELECT * FROM htc_component_lines WHERE request_id = ?').bind(id).all();
+    return json({ ok: true, request: mapRequest(row, lr?.results || [], cl?.results || []) }, { status: 201 });
   } catch (e) {
     return json({ error: e?.message || 'Erreur serveur.' }, { status: 500 });
   }

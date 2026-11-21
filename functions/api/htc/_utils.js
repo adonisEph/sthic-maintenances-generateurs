@@ -2,7 +2,7 @@ import { userZone } from '../_utils/http.js';
 
 export const HTC_ZONE = 'BZV/POOL';
 
-const NUM_PREFIX = { exit: 'BS', entry: 'BE', return: 'BR', recovery: 'RC', request: 'DM', reinstatement: 'RI', client_return: 'RM', dotation: 'DT' };
+const NUM_PREFIX = { exit: 'BS', entry: 'BE', return: 'BR', recovery: 'RC', request: 'DM', reinstatement: 'RI', client_return: 'RM', dotation: 'DT', component: 'PC' };
 
 export const HTC_CONDITIONS = ['fonctionnel', 'defectueux', 'a_reparer', 'hs'];
 
@@ -114,7 +114,7 @@ export function mapItem(r, stockMap) {
   };
 }
 
-export function mapRequest(r, lines) {
+export function mapRequest(r, lines, compLines) {
   let siteIds = [];
   try { siteIds = JSON.parse(r.site_ids || '[]') || []; } catch { siteIds = []; }
   return {
@@ -148,11 +148,19 @@ export function mapRequest(r, lines) {
       itemName: l.item_name || '',
       location: l.location || '',
       qty: Number(l.qty || 0)
+    })),
+    componentLines: (compLines || []).map((l) => ({
+      id: l.id,
+      component: l.component || '',
+      qty: Number(l.qty || 0),
+      sourceItemId: l.source_item_id || '',
+      sourceItemName: l.source_item_name || '',
+      sourceRef: l.source_ref || ''
     }))
   };
 }
 
-export function mapMovement(r, lines) {
+export function mapMovement(r, lines, compLines) {
   return {
     id: r.id,
     number: r.number,
@@ -187,6 +195,15 @@ export function mapMovement(r, lines) {
       qty: Number(l.qty || 0),
       qtyReturned: Number(l.qty_returned || 0),
       condition: l.item_condition || 'fonctionnel'
+    })),
+    componentLines: (compLines || []).map((l) => ({
+      id: l.id,
+      component: l.component || '',
+      qty: Number(l.qty || 0),
+      qtyReturned: Number(l.qty_returned || 0),
+      sourceItemId: l.source_item_id || '',
+      sourceItemName: l.source_item_name || '',
+      sourceRef: l.source_ref || ''
     }))
   };
 }

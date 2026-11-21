@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   X, Package, ClipboardList, FileText, Boxes, Plus, Trash2, Check, Ban,
   Printer, RotateCcw, RefreshCw, AlertTriangle, Search, Warehouse, Store, Upload, Download,
-  LayoutGrid, List, ChevronDown, FileSpreadsheet
+  LayoutGrid, List, ChevronDown, FileSpreadsheet, Wrench
 } from 'lucide-react';
 import SignaturePad from './SignaturePad';
 import { toastAlert as alert } from '../../utils/feedback';
@@ -11,8 +11,8 @@ import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
 const LOCATION_LABEL = { entrepot: 'Entrepôt', magasin: 'Magasin (Buffer)' };
-const TYPE_LABEL = { exit: 'Sortie', entry: 'Entrée', return: 'Retour', recovery: 'Récupération', reinstatement: 'Réintégration', client_return: 'Remise client', dotation: 'Dotation' };
-const TYPE_BON = { exit: 'BON DE SORTIE', entry: "BON D'ENTRÉE", return: 'BON DE RETOUR', recovery: 'BON DE RÉCUPÉRATION', reinstatement: 'BON DE RÉINTÉGRATION', client_return: 'BON DE REMISE CLIENT', dotation: 'FICHE DE DOTATION' };
+const TYPE_LABEL = { exit: 'Sortie', entry: 'Entrée', return: 'Retour', recovery: 'Récupération', reinstatement: 'Réintégration', client_return: 'Remise client', dotation: 'Dotation', component: 'Prélèvement', component_return: 'Retour prélèv.' };
+const TYPE_BON = { exit: 'BON DE SORTIE', entry: "BON D'ENTRÉE", return: 'BON DE RETOUR', recovery: 'BON DE RÉCUPÉRATION', reinstatement: 'BON DE RÉINTÉGRATION', client_return: 'BON DE REMISE CLIENT', dotation: 'FICHE DE DOTATION', component: 'BON DE PRÉLÈVEMENT DE COMPOSANTS', component_return: 'BON DE RETOUR DE COMPOSANTS' };
 const CONDITION_LABEL = { fonctionnel: 'Fonctionnel', defectueux: 'Défectueux', a_reparer: 'À réparer', hs: 'HS' };
 const STATUS_LABEL = {
   pending: 'En attente', issued: 'Traitée', rejected: 'Refusée', cancelled: 'Annulée',
@@ -95,10 +95,19 @@ function bonInnerHtml(mv) {
     recovery: ['Date', 'Désignation', 'Quantité', 'Condition', 'Site', 'Ramené par'],
     reinstatement: ['Date', 'Désignation', 'Quantité', 'État d’origine', 'Réparé par', 'Destination'],
     client_return: ['Date', 'Désignation', 'Quantité', 'État', 'Remis par', 'Bénéficiaire'],
-    dotation: ['Date', 'Désignation', 'Quantité', 'Agent doté', 'Fonction', 'N° SWO']
+    dotation: ['Date', 'Désignation', 'Quantité', 'Agent doté', 'Fonction', 'N° SWO'],
+    component: ['Date', 'Composant', 'Quantité', 'GE source', 'Réf. GE', 'Bénéficiaire'],
+    component_return: ['Date', 'Composant', 'Quantité', 'GE source', 'N° PC', 'Provenance']
   };
   const heads = HEADS[mv.type] || ['Date', 'Désignation', 'Quantité', 'Lieu', '', ''];
   const cells = (l) => {
+    // Lignes composants : pas d'article catalogue — désignation = composant,
+    // traçabilité = GE source + référence de l'unité.
+    if (mv.type === 'component' || mv.type === 'component_return') {
+      const base = `<td class="c">${esc(fmtDate(mv.movementDate))}</td><td class="desig">${esc(l.component)}</td><td class="c">${l.qty}</td>`;
+      if (mv.type === 'component') return `${base}<td class="c">${esc(l.sourceItemName || '—')}</td><td class="c">${esc(l.sourceRef || '—')}</td><td class="c">${esc(mv.beneficiary || mv.requesterName || '—')}</td>`;
+      return `${base}<td class="c">${esc(l.sourceItemName || '—')}</td><td class="c">${esc(mv.returnOfNumber || '—')}</td><td class="c">${esc(mv.provenance || mv.siteName || '—')}</td>`;
+    }
     const base = `<td class="c">${esc(fmtDate(mv.movementDate))}</td><td class="desig">${esc(l.itemName)}</td><td class="c">${l.qty}</td>`;
     if (mv.type === 'entry') return `${base}<td class="c">${esc(senderFull)}</td><td class="c">${esc(mv.smrNumber || '—')}</td><td class="c">${esc(mv.beneficiary || 'Magasin STHIC')}</td>`;
     if (mv.type === 'exit') return `${base}<td class="c">${esc(mv.requesterName || '—')}</td><td class="c">${esc(mv.swoNumber || '—')}</td><td class="c">${esc(mv.siteName || '—')}</td>`;
@@ -109,11 +118,12 @@ function bonInnerHtml(mv) {
     if (mv.type === 'client_return') return `${base}<td class="c">${esc(CONDITION_LABEL[l.condition] || '—')}</td><td class="c">${esc(mv.agentName || '—')}</td><td class="c">${esc(mv.beneficiary || 'Client HTC')}</td>`;
     return `${base}<td class="c">${esc(LOCATION_LABEL[l.location] || l.location || '—')}</td><td class="c" colspan="2"></td>`;
   };
-  const rows = (mv.lines || []).map((l) => `<tr>${cells(l)}</tr>`).join('');
-  const whoLabel = mv.type === 'entry' ? 'Expéditeur' : mv.type === 'return' ? 'Agent' : mv.type === 'recovery' ? 'Ramené par' : mv.type === 'reinstatement' ? 'Réparé par' : mv.type === 'client_return' ? 'Remis par' : mv.type === 'dotation' ? 'Doté par' : 'Demandeur';
+  const isComp = mv.type === 'component' || mv.type === 'component_return';
+  const rows = (isComp ? (mv.componentLines || []) : (mv.lines || [])).map((l) => `<tr>${cells(l)}</tr>`).join('');
+  const whoLabel = mv.type === 'entry' ? 'Expéditeur' : mv.type === 'return' ? 'Agent' : mv.type === 'recovery' ? 'Ramené par' : mv.type === 'reinstatement' ? 'Réparé par' : mv.type === 'client_return' ? 'Remis par' : mv.type === 'dotation' ? 'Doté par' : mv.type === 'component' ? 'Prélevé par' : mv.type === 'component_return' ? 'Retourné par' : 'Demandeur';
   const whoVal = mv.type === 'entry' ? senderFull : (mv.agentName || mv.requesterName || '—');
-  const destLabel = mv.type === 'recovery' ? 'Site de récupération' : mv.type === 'return' ? 'Provenance' : mv.type === 'client_return' ? 'Bénéficiaire' : mv.type === 'dotation' ? 'Agent doté' : 'Destination';
-  const destVal = mv.type === 'reinstatement' ? 'Stock disponible' : mv.type === 'client_return' ? (mv.beneficiary || 'Client HTC') : mv.type === 'dotation' ? [mv.beneficiary || '—', REQUESTER_ROLE_LABEL[mv.beneficiaryRole] || mv.beneficiaryRole || ''].filter(Boolean).join(' · ') : (mv.provenance || mv.siteName || '—');
+  const destLabel = mv.type === 'recovery' ? 'Site de récupération' : mv.type === 'return' ? 'Provenance' : mv.type === 'client_return' ? 'Bénéficiaire' : mv.type === 'dotation' ? 'Agent doté' : mv.type === 'component' ? 'Receveur / Destination' : mv.type === 'component_return' ? 'Retour de' : 'Destination';
+  const destVal = mv.type === 'reinstatement' ? 'Stock disponible' : mv.type === 'client_return' ? (mv.beneficiary || 'Client HTC') : mv.type === 'dotation' ? [mv.beneficiary || '—', REQUESTER_ROLE_LABEL[mv.beneficiaryRole] || mv.beneficiaryRole || ''].filter(Boolean).join(' · ') : mv.type === 'component' ? [mv.beneficiary || mv.requesterName || '—', mv.siteName || ''].filter(Boolean).join(' → ') : mv.type === 'component_return' ? (mv.returnOfNumber || '—') : (mv.provenance || mv.siteName || '—');
   const roleVal = REQUESTER_ROLE_LABEL[mv.requesterRole] || mv.requesterRole || '—';
   // BE : pas de carte « Lieu » — la provenance est l'expéditeur, le bénéficiaire le Magasin STHIC.
   // RI / RM : la quarantaine vit à l'Entrepôt — carte « Lieu » figée « Entrepôt (Retour Site) ».
@@ -212,6 +222,25 @@ async function bonPdf(mv) {
     iframe.remove();
   }
 }
+
+// ---------- Lignes composants GE (texte libre — pas du catalogue) ----------
+const ComponentLinesEditor = ({ lines, setLines, disabled, inputCls }) => {
+  const addLine = () => setLines([...lines, { component: '', qty: 1 }]);
+  const setLine = (i, patch) => setLines(lines.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  const removeLine = (i) => setLines(lines.filter((_, idx) => idx !== i));
+  return (
+    <div className="space-y-1.5">
+      {lines.map((l, i) => (
+        <div key={i} className="grid grid-cols-[1fr_4.5rem_2rem] sm:grid-cols-[1fr_5.5rem_2rem] gap-2 items-center">
+          <input className={inputCls} placeholder="Composant (ex. Alternateur, Carte AVR, Radiateur…)" value={l.component} onChange={(e) => setLine(i, { component: e.target.value })} disabled={disabled} />
+          <input type="number" min="1" className={`${inputCls} text-center`} value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} disabled={disabled} />
+          <button type="button" className="text-gray-400 hover:text-rose-500 font-bold text-lg disabled:opacity-40" onClick={() => removeLine(i)} disabled={disabled || lines.length <= 1}>×</button>
+        </div>
+      ))}
+      <button type="button" onClick={addLine} disabled={disabled} className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 disabled:opacity-40">+ Ajouter un composant</button>
+    </div>
+  );
+};
 
 // ---------- Lignes multi-articles (demande / entrée) ----------
 const LinesEditor = ({ items, lines, setLines, disabled }) => {
@@ -510,7 +539,8 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   const [formLines, setFormLines] = useState([{ itemId: '', qty: 1 }]);
   const [formSite, setFormSite] = useState('');
   const [formSiteIds, setFormSiteIds] = useState([]); // multi-sites (demande globale)
-  const [formKind, setFormKind] = useState('site'); // 'site' | 'dotation'
+  const [formKind, setFormKind] = useState('site'); // 'site' | 'dotation' | 'component'
+  const [formComps, setFormComps] = useState([{ component: '', qty: 1 }]); // composants GE (texte libre)
   const [dotAgentId, setDotAgentId] = useState('');
   const [dotAgentName, setDotAgentName] = useState('');
   const [dotOther, setDotOther] = useState(false); // agent interne hors maintenance (pas de compte)
@@ -524,6 +554,17 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
   const [behalfRole, setBehalfRole] = useState('htc_supervisor');
   const [behalfName, setBehalfName] = useState('');
 
+  // Prélèvement de composants direct (magasinier) — PC
+  const [pcOpen, setPcOpen] = useState(false);
+  const pcBlankLine = { sourceItemId: '', sourceRef: '', component: '', qty: 1 };
+  const [pcLines, setPcLines] = useState([pcBlankLine]);
+  const [pcSite, setPcSite] = useState('');
+  const [pcBeneficiary, setPcBeneficiary] = useState('');
+  const [pcDate, setPcDate] = useState('');
+  const [pcReason, setPcReason] = useState('');
+  const [pcSigImg, setPcSigImg] = useState('');
+  const [pcSigName, setPcSigName] = useState('');
+
   // Entrée directe
   const [entryOpen, setEntryOpen] = useState(false);
   const entryBlankLine = { mode: 'existing', itemId: '', qty: 1, newName: '', newLocation: 'entrepot' };
@@ -534,6 +575,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
 
   // Traitement demande
   const [procReq, setProcReq] = useState(null); // {mode:'issue'|'reject', request}
+  const [procSources, setProcSources] = useState({}); // {compLineId: {itemId, ref}} — GE source par ligne composant
   const [procDate, setProcDate] = useState('');
   const [procReason, setProcReason] = useState('');
   const [procSigImg, setProcSigImg] = useState('');
@@ -640,13 +682,14 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
         const reqs = (d.requests || []).filter((r) => dateOk(r.createdAt));
         const rows = [];
         for (const r of reqs) {
-          for (const l of (r.lines?.length ? r.lines : [null])) {
+          const isCompReq = r.requestKind === 'component';
+          for (const l of (isCompReq ? (r.componentLines?.length ? r.componentLines : [null]) : (r.lines?.length ? r.lines : [null]))) {
             rows.push({
               'N° demande': r.requestNumber, Statut: STATUS_LABEL[r.status] || r.status,
-              Couloir: r.requestKind === 'dotation' ? 'Dotation' : 'Site',
+              Couloir: r.requestKind === 'dotation' ? 'Dotation' : isCompReq ? 'Composant GE' : 'Site',
               'Agent doté': r.requestKind === 'dotation' ? (r.beneficiaryName || '') : '',
               Demandeur: r.requesterName || '', Fonction: REQUESTER_ROLE_LABEL[r.requesterRole] || r.requesterRole || '',
-              'Site destination': r.siteName || '', Article: l?.itemName || '', 'Qté demandée': l?.qty ?? '',
+              'Site destination': r.siteName || '', Article: isCompReq ? (l?.component || '') : (l?.itemName || ''), 'Qté demandée': l?.qty ?? '',
               'N° SWO': r.swoNumber || '', 'Créée le': fmtDate(r.createdAt),
               Motif: r.reason || ''
             });
@@ -663,14 +706,16 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
         const d = await apiFetchJson(`/api/htc/movements?${p.toString()}`);
         const rows = [];
         for (const m of (d.movements || [])) {
-          for (const l of (m.lines?.length ? m.lines : [null])) {
+          const isCompMv = m.type === 'component' || m.type === 'component_return';
+          for (const l of (isCompMv ? (m.componentLines?.length ? m.componentLines : [null]) : (m.lines?.length ? m.lines : [null]))) {
             rows.push({
               'N° bon': m.number, Type: TYPE_LABEL[m.type] || m.type, Date: fmtDate(m.movementDate),
               'Lieu de stockage': LOCATION_LABEL[m.location] || m.location || '',
               Site: m.siteName || '', 'Demandeur / Agent': m.requesterName || m.agentName || '',
               'Fonction': REQUESTER_ROLE_LABEL[m.requesterRole] || m.requesterRole || '',
-              Article: l?.itemName || '', 'Qté': l?.qty ?? '', 'Qté retournée': l?.qtyReturned ?? '',
+              Article: isCompMv ? (l?.component || '') : (l?.itemName || ''), 'Qté': l?.qty ?? '', 'Qté retournée': l?.qtyReturned ?? '',
               'État': l?.condition ? (CONDITION_LABEL[l.condition] || l.condition) : '',
+              'GE source': isCompMv ? (l?.sourceItemName || '') : '', 'Réf. GE': isCompMv ? (l?.sourceRef || '') : '',
               'N° SMR': m.smrNumber || '', 'N° SWO': m.swoNumber || '',
               'Bénéficiaire / Destination': m.beneficiary || m.provenance || '',
               Statut: m.status || '', 'Créé par': m.createdBy || ''
@@ -740,15 +785,19 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
     .map((a) => ({ id: a.name, label: a.name, sub: a.roleLabel })), [agents]);
 
   const submitRequest = async () => {
+    const isComp = formKind === 'component';
     const lines = formLines.filter((l) => l.itemId && Number(l.qty) >= 1);
-    if (!lines.length) return alert('Ajoute au moins un article.');
+    const components = formComps.filter((l) => l.component.trim() && Number(l.qty) >= 1);
+    if (isComp && !components.length) return alert('Ajoute au moins un composant.');
+    if (!isComp && !lines.length) return alert('Ajoute au moins un article.');
     const site = sitesBzv.find((s) => String(s.id) === String(formSite));
     setBusy(true);
     try {
       await apiFetchJson('/api/htc/requests', {
         method: 'POST',
         body: JSON.stringify({
-          lines: lines.map((l) => ({ itemId: l.itemId, qty: Number(l.qty) })),
+          lines: isComp ? [] : lines.map((l) => ({ itemId: l.itemId, qty: Number(l.qty) })),
+          ...(isComp ? { components: components.map((l) => ({ component: l.component.trim(), qty: Number(l.qty) })) } : {}),
           siteId: site?.id || '', siteName: site ? siteLabel(site) : '',
           siteIds: formSiteIds, siteNames: formSiteIds.map((sid) => { const s = sitesBzv.find((x) => String(x.id) === String(sid)); return s ? siteLabel(s) : ''; }),
           requestKind: formKind,
@@ -760,7 +809,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
           ...(onBehalf && isManager ? { onBehalf: { role: behalfRole, name: behalfName } } : {})
         })
       });
-      setFormOpen(false); setFormLines([{ itemId: '', qty: 1 }]); setFormSite(''); setFormSiteIds([]); setFormKind('site');
+      setFormOpen(false); setFormLines([{ itemId: '', qty: 1 }]); setFormComps([{ component: '', qty: 1 }]); setFormSite(''); setFormSiteIds([]); setFormKind('site');
       setDotAgentId(''); setDotAgentName(''); setDotOther(false); setDotOtherName(''); setDotOtherRole('');
       setFormSigImg(''); setFormSigName(''); setFormReason(''); setFormNotes(''); setFormSwo('');
       setOnBehalf(false); setBehalfName('');
@@ -807,11 +856,18 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       } else {
         const res = await apiFetchJson(`/api/htc/requests/${procReq.request.id}/process`, {
           method: 'POST',
-          body: JSON.stringify({ action: 'issue', movementDate: procDate || undefined, signatureName: procSigName, signatureImage: procSigImg, swoNumber: procSwo, force })
+          body: JSON.stringify({
+            action: 'issue', movementDate: procDate || undefined, signatureName: procSigName, signatureImage: procSigImg, swoNumber: procSwo, force,
+            ...(procReq.request.requestKind === 'component' ? {
+              sources: Object.fromEntries((procReq.request.componentLines || []).map((cl) => [
+                cl.id, { itemId: procSources[cl.id]?.itemId || '', ref: procSources[cl.id]?.ref || '' }
+              ]))
+            } : {})
+          })
         });
         if (res?.movement) printBon(res.movement);
       }
-      setProcReq(null); setProcReason(''); setProcSigImg(''); setProcSigName(''); setProcDate('');
+      setProcReq(null); setProcReason(''); setProcSigImg(''); setProcSigName(''); setProcDate(''); setProcSources({});
       await Promise.all([loadRequests(), loadMovements(), loadItems(), loadStats()]);
     } catch (e) {
       if (e?.data?.shortage && !force) {
@@ -843,6 +899,33 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       setEntryOpen(false); setEntryLines([{ ...entryBlankLine }]); setEntryDate(''); setEntryReason(''); setEntrySupplier(''); setEntrySmr(''); setEntryBeneficiary('Magasin STHIC'); setEntrySenderType('htc'); setEntrySenderRole('htc_logistician');
       await Promise.all([loadMovements(), loadItems(), loadStats()]);
       if (res?.movement && window.confirm(`Bon ${res.movement.number} créé. Imprimer ?`)) printBon(res.movement);
+    } catch (e) { alert(e.message || 'Erreur.'); }
+    finally { setBusy(false); }
+  };
+
+  // Bon de prélèvement de composants direct (magasinier) — pas de stock touché :
+  // le GE reste une unité entière, on trace juste quelles pièces ont été prélevées.
+  const submitPc = async () => {
+    const lines = pcLines.filter((l) => l.sourceItemId && l.component.trim() && Number(l.qty) >= 1);
+    if (!lines.length) return alert('Renseigne au moins un composant avec son GE source.');
+    if (!pcSigImg && !pcSigName.trim()) return alert('Signature requise.');
+    const site = sitesBzv.find((s) => String(s.id) === String(pcSite));
+    setBusy(true);
+    try {
+      const res = await apiFetchJson('/api/htc/movements', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'component',
+          componentLines: lines.map((l) => ({ sourceItemId: l.sourceItemId, sourceRef: l.sourceRef.trim(), component: l.component.trim(), qty: Number(l.qty) })),
+          movementDate: pcDate || undefined, reason: pcReason,
+          siteId: site?.id || '', siteName: site ? siteLabel(site) : '',
+          beneficiary: pcBeneficiary.trim(),
+          signatureName: pcSigName, signatureImage: pcSigImg
+        })
+      });
+      setPcOpen(false); setPcLines([{ ...pcBlankLine }]); setPcSite(''); setPcBeneficiary(''); setPcDate(''); setPcReason(''); setPcSigImg(''); setPcSigName('');
+      await Promise.all([loadMovements(), loadStats()]);
+      if (res?.movement && window.confirm(`Bon de prélèvement ${res.movement.number} créé. Imprimer ?`)) printBon(res.movement);
     } catch (e) { alert(e.message || 'Erreur.'); }
     finally { setBusy(false); }
   };
@@ -1204,6 +1287,9 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                     <button onClick={() => setRecOpen(true)} className="flex-1 sm:flex-none justify-center bg-sky-700 text-white px-4 py-2 rounded-lg hover:bg-sky-800 font-semibold text-sm disabled:opacity-60 inline-flex items-center gap-2">
                       <RotateCcw size={15} /> Bon de récupération
                     </button>
+                    <button onClick={() => setPcOpen(true)} className="flex-1 sm:flex-none justify-center bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 font-semibold text-sm disabled:opacity-60 inline-flex items-center gap-2">
+                      <Wrench size={15} /> Prélèvement composant
+                    </button>
                     <button onClick={() => setEntryOpen(true)} className={`${btnPrimary} flex-1 sm:flex-none justify-center`}>
                       <Plus size={15} /> Bon d'entrée
                     </button>
@@ -1423,14 +1509,6 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                       </div>
                     </div>
                   )}
-                  <div className="mt-1">
-                    <div className="hidden sm:grid grid-cols-[1fr_5.5rem_2rem] gap-2 mb-1 px-0.5">
-                      <span className={labelCls}>Article</span>
-                      <span className={`${labelCls} text-center`}>Quantité</span>
-                      <span></span>
-                    </div>
-                    <LinesEditor items={items.filter((i) => i.active)} lines={formLines} setLines={setFormLines} disabled={busy} />
-                  </div>
                   <div className="mt-3">
                     <label className={labelCls}>Objet de la demande</label>
                     <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
@@ -1442,7 +1520,33 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                         className={`px-4 py-2 text-sm font-semibold border-l border-gray-300 ${formKind === 'dotation' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
                         Dotation outillage (technicien)
                       </button>
+                      <button type="button" onClick={() => setFormKind('component')}
+                        className={`px-4 py-2 text-sm font-semibold border-l border-gray-300 ${formKind === 'component' ? 'bg-amber-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                        Composant GE (prélèvement)
+                      </button>
                     </div>
+                  </div>
+                  <div className="mt-3">
+                    {formKind === 'component' ? (
+                      <>
+                        <div className="hidden sm:grid grid-cols-[1fr_5.5rem_2rem] gap-2 mb-1 px-0.5">
+                          <span className={labelCls}>Composant à prélever sur un GE retour</span>
+                          <span className={`${labelCls} text-center`}>Quantité</span>
+                          <span></span>
+                        </div>
+                        <ComponentLinesEditor lines={formComps} setLines={setFormComps} disabled={busy} inputCls={inputCls} />
+                        <div className="text-[10px] text-gray-400 mt-1">Le générateur source sera désigné par le magasinier lors de la validation (article + référence de l'unité).</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="hidden sm:grid grid-cols-[1fr_5.5rem_2rem] gap-2 mb-1 px-0.5">
+                          <span className={labelCls}>Article</span>
+                          <span className={`${labelCls} text-center`}>Quantité</span>
+                          <span></span>
+                        </div>
+                        <LinesEditor items={items.filter((i) => i.active)} lines={formLines} setLines={setFormLines} disabled={busy} />
+                      </>
+                    )}
                   </div>
                   {formKind === 'dotation' ? (
                     <div className="mt-3">
@@ -1495,7 +1599,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                   <div className="grid sm:grid-cols-2 gap-2 mt-3">
                     <div>
                       <label className={labelCls}>Motif de la demande</label>
-                      <input className={inputCls} placeholder={formKind === 'dotation' ? 'Ex. dotation outillage réseau' : 'Ex. remplacement batterie défectueuse'} value={formReason} onChange={(e) => setFormReason(e.target.value)} />
+                      <input className={inputCls} placeholder={formKind === 'dotation' ? 'Ex. dotation outillage réseau' : formKind === 'component' ? 'Ex. alternateur pour le GE de Mpila' : 'Ex. remplacement batterie défectueuse'} value={formReason} onChange={(e) => setFormReason(e.target.value)} />
                     </div>
                     <div>
                       <label className={labelCls}>N° SWO (optionnel)</label>
@@ -1517,6 +1621,8 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                     <button className={btnPrimary} onClick={submitRequest}
                       disabled={busy
                         || (formKind === 'dotation' && (dotOther ? (!dotOtherName.trim() || !dotOtherRole.trim()) : !dotAgentId))
+                        || (formKind === 'component' && !formComps.some((l) => l.component.trim() && Number(l.qty) >= 1))
+                        || (formKind !== 'component' && !formLines.some((l) => l.itemId && Number(l.qty) >= 1))
                         || (onBehalf && !behalfName.trim())
                         || (!(onBehalf && isManager) && !formSigImg && !formSigName.trim())}>
                       Envoyer
@@ -1540,7 +1646,9 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                         <b>{r.requesterName}</b> <span className="text-gray-400">({REQUESTER_ROLE_LABEL[r.requesterRole] || r.requesterRole})</span>
                         {r.requestKind === 'dotation'
                           ? <> → <span className="inline-flex items-center gap-1 text-xs font-bold bg-violet-100 text-violet-800 border border-violet-200 rounded-full px-2 py-0.5">Dotation → {r.beneficiaryName || '—'}</span></>
-                          : r.siteName ? <> → <b>{r.siteName}</b></> : null}
+                          : r.requestKind === 'component'
+                            ? <> → <span className="inline-flex items-center gap-1 text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200 rounded-full px-2 py-0.5">Prélèvement composant</span>{r.siteName ? <> → <b>{r.siteName}</b></> : null}</>
+                            : r.siteName ? <> → <b>{r.siteName}</b></> : null}
                       </div>
                       {(r.siteIds || []).length > 1 && (
                         <div className="text-[11px] text-indigo-600 mt-1">
@@ -1548,7 +1656,9 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                         </div>
                       )}
                       <div className="text-xs text-gray-600 mt-1">
-                        {r.lines.map((l) => `${l.qty}× ${l.itemName}`).join(' · ')}
+                        {r.requestKind === 'component'
+                          ? (r.componentLines || []).map((l) => `${l.qty}× ${l.component}`).join(' · ') || <span className="text-gray-400">—</span>
+                          : r.lines.map((l) => `${l.qty}× ${l.itemName}`).join(' · ')}
                       </div>
                       {r.reason ? <div className="text-xs text-gray-500 mt-1">Motif : {r.reason}</div> : null}
                       {r.swoNumber ? <div className="text-xs text-gray-500 mt-0.5">N° SWO : <b className="font-mono">{r.swoNumber}</b></div> : null}
@@ -1557,9 +1667,9 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                         <div className="flex flex-wrap gap-2 mt-2.5">
                           {isManager ? (
                             <>
-                              <button onClick={() => { setProcReq({ mode: 'issue', request: r }); setProcDate(''); setProcSigImg(''); setProcSigName(''); setProcSwo(r.swoNumber || ''); }}
+                              <button onClick={() => { setProcReq({ mode: 'issue', request: r }); setProcSources({}); setProcDate(''); setProcSigImg(''); setProcSigName(''); setProcSwo(r.swoNumber || ''); }}
                                 className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-emerald-700 inline-flex items-center gap-1">
-                                <Check size={13} /> {r.requestKind === 'dotation' ? 'Valider → fiche de dotation' : 'Valider → bon de sortie'}
+                                <Check size={13} /> {r.requestKind === 'dotation' ? 'Valider → fiche de dotation' : r.requestKind === 'component' ? 'Valider → bon de prélèvement' : 'Valider → bon de sortie'}
                               </button>
                               <button onClick={() => { setProcReq({ mode: 'reject', request: r }); setProcReason(''); }}
                                 className="text-xs bg-rose-600 text-white px-3 py-1.5 rounded-lg font-semibold hover:bg-rose-700 inline-flex items-center gap-1">
@@ -1585,7 +1695,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
             <div>
               <div className="flex flex-wrap gap-2 mb-3 items-center">
                 <div className="flex border border-gray-300 rounded-lg overflow-x-auto max-w-full">
-                  {[['all', 'Tous'], ['dehors', 'Dehors'], ['exit', 'Sorties'], ['entry', 'Entrées'], ['return', 'Retours'], ['recovery', 'Récup.'], ['reinstatement', 'Réintég.'], ['client_return', 'Remises'], ['dotation', 'Dotations']].map(([v, l]) => (
+                  {[['all', 'Tous'], ['dehors', 'Dehors'], ['exit', 'Sorties'], ['entry', 'Entrées'], ['return', 'Retours'], ['recovery', 'Récup.'], ['reinstatement', 'Réintég.'], ['client_return', 'Remises'], ['dotation', 'Dotations'], ['component', 'Prélèv.'], ['component_return', 'Retours prélèv.']].map(([v, l]) => (
                     <button key={v} onClick={() => setMvType(v)}
                       className={`px-3 py-1.5 text-xs font-semibold ${mvType === v ? 'bg-indigo-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
                       {l}
@@ -1621,6 +1731,8 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                           : mv.type === 'reinstatement' ? 'bg-teal-100 text-teal-900 border-teal-200'
                           : mv.type === 'client_return' ? 'bg-purple-100 text-purple-900 border-purple-200'
                           : mv.type === 'dotation' ? 'bg-violet-100 text-violet-900 border-violet-200'
+                          : mv.type === 'component' ? 'bg-amber-100 text-amber-900 border-amber-200'
+                          : mv.type === 'component_return' ? 'bg-amber-100 text-amber-900 border-amber-200'
                           : 'bg-indigo-100 text-indigo-900 border-indigo-200'}`}>
                           {TYPE_LABEL[mv.type]}
                         </span>
@@ -1629,7 +1741,9 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                       </div>
                       <div className="text-xs text-gray-600 mt-1.5">
                         {mv.requesterName ? <><b>{mv.requesterName}</b>{mv.siteName ? ` → ${mv.siteName}` : ''} · </> : null}
-                        {mv.lines.map((l) => `${l.qty}× ${l.itemName}${l.qtyReturned ? ` (ret. ${l.qtyReturned})` : ''}${['recovery', 'reinstatement', 'client_return'].includes(mv.type) ? ` [${CONDITION_LABEL[l.condition] || 'Fonctionnel'}]` : ''}`).join(' · ')}
+                        {(mv.type === 'component' || mv.type === 'component_return')
+                          ? (mv.componentLines || []).map((l) => `${l.qty}× ${l.component}${l.qtyReturned ? ` (ret. ${l.qtyReturned})` : ''} [${l.sourceItemName || '?'}${l.sourceRef ? ` · ${l.sourceRef}` : ''}]`).join(' · ')
+                          : mv.lines.map((l) => `${l.qty}× ${l.itemName}${l.qtyReturned ? ` (ret. ${l.qtyReturned})` : ''}${['recovery', 'reinstatement', 'client_return'].includes(mv.type) ? ` [${CONDITION_LABEL[l.condition] || 'Fonctionnel'}]` : ''}`).join(' · ')}
                       </div>
                       {mv.returnOfNumber ? <div className="text-[11px] text-gray-400 mt-0.5">Retour de {mv.returnOfNumber}</div> : null}
                       {(mv.smrNumber || mv.swoNumber || mv.agentName || mv.provenance || mv.beneficiary) && (
@@ -1649,7 +1763,7 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                         <button onClick={() => bonPdf(mv).catch(() => alert('Erreur lors de la génération du PDF.'))} className="text-xs border border-gray-300 px-2.5 py-1.5 rounded-lg font-semibold hover:bg-gray-50 inline-flex items-center gap-1">
                           <Download size={12} /> PDF
                         </button>
-                        {(mv.type === 'exit' || mv.type === 'dotation') && (mv.status === 'issued' || mv.status === 'partial_return') && (
+                        {(mv.type === 'exit' || mv.type === 'dotation' || mv.type === 'component') && (mv.status === 'issued' || mv.status === 'partial_return') && (
                           <button onClick={() => { setRetMv(mv); setRetLines({}); setRetDate(''); setRetSigImg(''); setRetSigName(''); setRetAgent(mv.requesterName || ''); setRetProvenance(mv.siteName || ''); }}
                             className="text-xs bg-indigo-600 text-white px-2.5 py-1.5 rounded-lg font-semibold hover:bg-indigo-700 inline-flex items-center gap-1">
                             <RotateCcw size={12} /> Retour
@@ -1774,6 +1888,8 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
                         <option value="recovery">Récupérations (RC)</option>
                         {isManager && <option value="reinstatement">Réintégrations (RI)</option>}
                         {isManager && <option value="client_return">Remises client (RM)</option>}
+                        <option value="component">Prélèvements composants (PC)</option>
+                        <option value="component_return">Retours composants (PC)</option>
                       </select>
                     </div>
                   )}
@@ -1806,15 +1922,36 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-4 sm:p-5 max-h-[92vh] overflow-y-auto">
             <div className="font-bold text-base mb-2">
               {procReq.mode === 'issue'
-                ? (procReq.request.requestKind === 'dotation' ? 'Valider → Fiche de dotation' : 'Valider → Bon de sortie')
+                ? (procReq.request.requestKind === 'dotation' ? 'Valider → Fiche de dotation' : procReq.request.requestKind === 'component' ? 'Valider → Bon de prélèvement de composants' : 'Valider → Bon de sortie')
                 : 'Refuser la demande'}
             </div>
             <div className="text-xs text-gray-500 mb-3">
-              {procReq.request.requestNumber} · {procReq.request.requesterName} · {procReq.request.lines.map((l) => `${l.qty}× ${l.itemName}`).join(' · ')}
+              {procReq.request.requestNumber} · {procReq.request.requesterName} · {procReq.request.requestKind === 'component'
+                ? (procReq.request.componentLines || []).map((l) => `${l.qty}× ${l.component}`).join(' · ')
+                : procReq.request.lines.map((l) => `${l.qty}× ${l.itemName}`).join(' · ')}
               {procReq.request.requestKind === 'dotation' && <div className="mt-1 text-violet-700 font-semibold">Agent doté : {procReq.request.beneficiaryName}</div>}
             </div>
             {procReq.mode === 'issue' ? (
               <>
+                {procReq.request.requestKind === 'component' && (
+                  <div className="mb-3 border border-amber-200 bg-amber-50/50 rounded-xl p-3">
+                    <label className={`${labelCls} text-amber-900`}>GE source par composant * — article de l'unité retour + sa référence</label>
+                    <div className="space-y-2 mt-1">
+                      {(procReq.request.componentLines || []).map((cl) => (
+                        <div key={cl.id} className="grid sm:grid-cols-[1.1fr_1.4fr_1fr] gap-2 items-center">
+                          <div className="text-xs font-bold text-gray-700">{cl.qty}× {cl.component}</div>
+                          <ComboSelect className={inputCls}
+                            options={items.filter((i) => i.active).map((it) => ({ id: it.id, label: it.name, sub: LOCATION_LABEL[it.location] || it.location }))}
+                            value={procSources[cl.id]?.itemId || ''}
+                            onChange={(v) => setProcSources({ ...procSources, [cl.id]: { ...(procSources[cl.id] || {}), itemId: v } })}
+                            placeholder="— GE source (article) —" />
+                          <input className={inputCls} placeholder="Réf. unité (n° série…)" value={procSources[cl.id]?.ref || ''}
+                            onChange={(e) => setProcSources({ ...procSources, [cl.id]: { ...(procSources[cl.id] || {}), ref: e.target.value } })} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <label className="text-xs font-semibold text-gray-600">Date de sortie</label>
                 <input type="date" className={`${inputCls} mb-3`} value={procDate} onChange={(e) => setProcDate(e.target.value)} />
                 <label className={labelCls}>N° SWO (ordre de travail)</label>
@@ -1852,7 +1989,9 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
               <button className={btnGhost} onClick={() => setProcReq(null)}>Fermer</button>
               <button
                 className={procReq.mode === 'issue' ? 'bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 font-semibold text-sm disabled:opacity-60' : 'bg-rose-600 text-white px-4 py-2 rounded-lg hover:bg-rose-700 font-semibold text-sm disabled:opacity-60'}
-                disabled={busy || (procReq.mode === 'issue' && !procReq.request.signatureImage && !procReq.request.signatureName && !procSigImg && !procSigName.trim())}
+                disabled={busy
+                  || (procReq.mode === 'issue' && !procReq.request.signatureImage && !procReq.request.signatureName && !procSigImg && !procSigName.trim())
+                  || (procReq.mode === 'issue' && procReq.request.requestKind === 'component' && (procReq.request.componentLines || []).some((cl) => !procSources[cl.id]?.itemId))}
                 onClick={() => processRequest(false)}>
                 {procReq.mode === 'issue' ? 'Émettre le bon' : 'Refuser'}
               </button>
@@ -1865,16 +2004,16 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
       {retMv && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-4 sm:p-5 max-h-[92vh] overflow-y-auto">
-            <div className="font-bold text-base mb-1">Retour matériel — {retMv.number}</div>
+            <div className="font-bold text-base mb-1">{retMv.type === 'component' ? 'Retour de composants — ' : 'Retour matériel — '}{retMv.number}</div>
             <div className="text-xs text-gray-500 mb-3">Quantités retournées par ligne :</div>
-            {retMv.lines.map((l) => {
+            {(retMv.type === 'component' ? (retMv.componentLines || []) : retMv.lines).map((l) => {
               const remaining = l.qty - (l.qtyReturned || 0);
               if (remaining <= 0) return null;
               return (
                 <div key={l.id} className="flex items-center gap-2 mb-2 text-sm">
                   <input type="checkbox" checked={Number(retLines[l.id] || 0) > 0}
                     onChange={(e) => setRetLines({ ...retLines, [l.id]: e.target.checked ? remaining : 0 })} />
-                  <span className="flex-1">{l.itemName} <span className="text-gray-400">(reste {remaining})</span></span>
+                  <span className="flex-1">{retMv.type === 'component' ? l.component : l.itemName}{retMv.type === 'component' && l.sourceItemName ? <span className="text-gray-400"> — {l.sourceItemName}{l.sourceRef ? ` · ${l.sourceRef}` : ''}</span> : null} <span className="text-gray-400">(reste {remaining})</span></span>
                   <input type="number" min="0" max={remaining} className="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm text-center"
                     value={retLines[l.id] ?? 0}
                     onChange={(e) => setRetLines({ ...retLines, [l.id]: Math.min(remaining, Math.max(0, Number(e.target.value) || 0)) })} />
@@ -1900,6 +2039,74 @@ const HtcWarehouseModal = ({ open, onClose, apiFetchJson, isManager, sites = [],
               <button className={btnGhost} onClick={() => setRetMv(null)}>Fermer</button>
               <button className={btnPrimary} disabled={busy || (!retSigImg && !retSigName.trim()) || !Object.values(retLines).some((q) => Number(q) >= 1)} onClick={submitReturn}>
                 Émettre le bon de retour
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ====== Dialog bon de prélèvement de composants (PC) — direct magasinier ====== */}
+      {pcOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl p-4 sm:p-5 max-h-[92vh] overflow-y-auto">
+            <div className="font-bold text-base mb-1">Bon de prélèvement de composants (PC)</div>
+            <div className="text-xs text-gray-500 mb-3">
+              Pièces encore bonnes prélevées sur un <b>générateur retour site</b> (en panne ou HS) pour équiper un GE en fonction.
+              Le GE source reste une unité entière — <b>aucun impact sur le stock</b>, traçabilité complète de la pièce prélevée.
+            </div>
+            <div className="hidden sm:grid grid-cols-[1.4fr_1.2fr_1.1fr_4.5rem_2rem] gap-2 mb-1 px-0.5">
+              <span className={labelCls}>GE source (article)</span>
+              <span className={labelCls}>Réf. unité (n° série…)</span>
+              <span className={labelCls}>Composant prélevé</span>
+              <span className={`${labelCls} text-center`}>Qté</span>
+              <span></span>
+            </div>
+            <div className="space-y-1.5">
+              {pcLines.map((l, i) => (
+                <div key={i} className="grid grid-cols-1 sm:grid-cols-[1.4fr_1.2fr_1.1fr_4.5rem_2rem] gap-2 items-center">
+                  <ComboSelect className={inputCls}
+                    options={items.filter((it) => it.active).map((it) => ({ id: it.id, label: it.name, sub: LOCATION_LABEL[it.location] || it.location }))}
+                    value={l.sourceItemId} onChange={(v) => setPcLines(pcLines.map((x, j) => (j === i ? { ...x, sourceItemId: v } : x)))}
+                    placeholder="— GE source —" />
+                  <input className={inputCls} placeholder="Ex. GE-MPILA-02" value={l.sourceRef}
+                    onChange={(e) => setPcLines(pcLines.map((x, j) => (j === i ? { ...x, sourceRef: e.target.value } : x)))} disabled={busy} />
+                  <input className={inputCls} placeholder="Ex. Alternateur, Carte AVR…" value={l.component}
+                    onChange={(e) => setPcLines(pcLines.map((x, j) => (j === i ? { ...x, component: e.target.value } : x)))} disabled={busy} />
+                  <input type="number" min="1" className={`${inputCls} text-center`} value={l.qty}
+                    onChange={(e) => setPcLines(pcLines.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))} disabled={busy} />
+                  <button type="button" className="text-gray-400 hover:text-rose-500 font-bold text-lg disabled:opacity-40"
+                    onClick={() => setPcLines(pcLines.filter((_, j) => j !== i))} disabled={busy || pcLines.length <= 1}>×</button>
+                </div>
+              ))}
+              <button type="button" onClick={() => setPcLines([...pcLines, { ...pcBlankLine }])} disabled={busy}
+                className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 disabled:opacity-40">+ Ajouter un composant</button>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-2 mt-3">
+              <div>
+                <label className={labelCls}>Site de destination (optionnel)</label>
+                <ComboSelect className={inputCls} options={siteOptions} value={pcSite} onChange={setPcSite} placeholder="— Site où va la pièce —" />
+              </div>
+              <div>
+                <label className={labelCls}>Receveur / bénéficiaire (optionnel)</label>
+                <input className={inputCls} placeholder="Nom du technicien ou agent receveur" value={pcBeneficiary} onChange={(e) => setPcBeneficiary(e.target.value)} />
+              </div>
+              <div>
+                <label className={labelCls}>Date</label>
+                <input type="date" className={inputCls} value={pcDate} onChange={(e) => setPcDate(e.target.value)} />
+              </div>
+              <div>
+                <label className={labelCls}>Motif</label>
+                <input className={inputCls} placeholder="Ex. remplacement alternateur GE Mpila" value={pcReason} onChange={(e) => setPcReason(e.target.value)} />
+              </div>
+            </div>
+            <div className="mt-3">
+              <label className={labelCls}>Signature du magasinier *</label>
+              <SignBlock sigImg={pcSigImg} setSigImg={setPcSigImg} sigName={pcSigName} setSigName={setPcSigName} />
+            </div>
+            <div className="flex gap-2 mt-4 justify-end">
+              <button className={btnGhost} onClick={() => setPcOpen(false)}>Fermer</button>
+              <button className={btnPrimary} disabled={busy || !pcLines.some((l) => l.sourceItemId && l.component.trim() && Number(l.qty) >= 1) || (!pcSigImg && !pcSigName.trim())} onClick={submitPc}>
+                Émettre le bon PC
               </button>
             </div>
           </div>
