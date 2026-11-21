@@ -1,7 +1,7 @@
 import React from 'react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
+import autoTable from 'jspdf-autotable';
 import { TrendingUp, X, Upload, Download, Trash2, RotateCcw, Activity, Menu, ChevronLeft, ListChecks, BadgeCheck, Clock, UserCheck, Filter, Search, Printer, FileScan } from 'lucide-react';
 
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
@@ -349,10 +349,8 @@ const PmModal = (props) => {
 
   // Impression « intelligente » : reproduit exactement la vue affichée —
   // liste « Tous » ou matrice, avec les filtres zone / série / recherche appliqués.
-  // Document du rapport « sites retirés » — mutualisé impression + PDF « scan ».
-  // Le HTML est reconstruit à la volée depuis les listes FILTRÉES affichées à l'écran.
-  const buildRetiredReportHtml = () => {
-    // Titre = le vrai sujet du rapport, dérivé des filtres appliqués.
+  // Titre + méta du rapport « sites retirés » — le vrai sujet, dérivé des filtres.
+  const retiredReportInfo = () => {
     const n = pmMatrixExistingArr.length;
     let reportTitle;
     if (!pmRetiredSuccMode) {
@@ -373,7 +371,6 @@ const PmModal = (props) => {
           : `Sites avec ${sel.join(', ')} retraits sur ${pmRetiredSuccWindow} mois — jusqu'à ${pmRetired?.month || ''}`;
       }
     }
-
     const metaParts = [];
     const z = pmEffectiveRetiredZoneFilter;
     if (z && z !== 'ALL') metaParts.push(`Zone : ${z}`);
@@ -382,6 +379,13 @@ const PmModal = (props) => {
     }
     metaParts.push(`${pmRetiredSuccMode ? pmMatrixItems.length : pmRetiredItems.length} ligne(s)`);
     metaParts.push(`généré le ${new Date().toLocaleDateString('fr-FR')}`);
+    return { reportTitle, meta: metaParts.join(' · ') };
+  };
+
+  // Document du rapport « sites retirés » — mutualisé impression + PDF « scan ».
+  // Le HTML est reconstruit à la volée depuis les listes FILTRÉES affichées à l'écran.
+  const buildRetiredReportHtml = () => {
+    const { reportTitle, meta } = retiredReportInfo();
 
     let tableHtml;
     if (pmRetiredSuccMode) {
@@ -436,7 +440,7 @@ const PmModal = (props) => {
   @page { size: landscape; margin: 8mm; }
 </style></head><body>
 <h1>${pmEscapeHtml(reportTitle)}</h1>
-<div class="meta">${pmEscapeHtml(metaParts.join(' · '))}</div>
+<div class="meta">${pmEscapeHtml(meta)}</div>
 ${pmRetiredSuccMode ? '<div class="legend">✗ = PM non réalisée (retiré) · ✓ = PM réalisée (n° PMWO) · — = hors campagne · * = mois sans campagne</div>' : ''}
 ${tableHtml}
 </body></html>`;
@@ -457,55 +461,114 @@ ${tableHtml}
     }, 250);
   };
 
-  // PDF « scan » : même document que l'impression, paginé en A4 paysage.
-  // Aperçu dans un nouvel onglet (visionneuse) — partage/téléchargement depuis là.
+  // PDF « scan » : même rapport que l'impression (mêmes données filtrées) mais
+  // dessiné en TABLEAU PDF NATIF via autoTable — en-têtes exactement alignés et
+  // répétés sur chaque page, texte sélectionnable. Aperçu en nouvel onglet.
   const handleScanPdfRetired = async () => {
-    const html = buildRetiredReportHtml();
-    const iframe = document.createElement('iframe');
-    // Largeur fixe calée sur l'A4 paysage utile (281mm ≈ 1063px à 96dpi) :
-    // le rendu est strictement identique au rapport imprimé.
-    iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:1060px;height:1600px;border:0;visibility:hidden';
-    document.body.appendChild(iframe);
-    try {
-      iframe.contentDocument.open();
-      iframe.contentDocument.write(html);
-      iframe.contentDocument.close();
-      const idoc = iframe.contentDocument;
-      await new Promise((res) => setTimeout(res, 120));
-      const body = idoc.body;
-      const canvas = await html2canvas(body, {
-        scale: 2, backgroundColor: '#ffffff', logging: false,
-        windowWidth: 1060, width: body.scrollWidth, height: body.scrollHeight
+    const { reportTitle, meta } = retiredReportInfo();
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const margin = 8;
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(13);
+    pdf.text(reportTitle, margin, margin + 4);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.setTextColor(90, 90, 90);
+    pdf.text(meta, margin, margin + 9);
+    pdf.setTextColor(20, 20, 20);
+
+    const headFill = [245, 240, 248];
+    const cellStyle = { fontSize: 7, cellPadding: 1.2, valign: 'middle', lineWidth: 0.1, lineColor: [200, 200, 200] };
+
+    if (pmRetiredSuccMode) {
+      pdf.setFontSize(7);
+      pdf.setTextColor(90, 90, 90);
+      pdf.text('X = PM non réalisée (retiré) · n° PMWO = PM réalisée · - = hors campagne · * = mois sans campagne', margin, margin + 13);
+      pdf.setTextColor(20, 20, 20);
+      const n = pmMatrixExistingArr.length;
+      const head = ['Site', 'Zone', 'Technicien',
+        ...pmMatrixMonths.map((mo) => `${mo}${pmMatrixMissingSet.has(mo) ? ' *' : ''}`), 'Série'];
+      const body = pmMatrixItems.map((it) => [
+        `${it?.siteCode || '-'} · ${it?.siteName || '-'}`,
+        it?.zone || '-', it?.technician || '-',
+        ...pmMatrixMonths.map((mo) => {
+          if (pmMatrixMissingSet.has(mo)) return '-';
+          const c = it?.cells?.[mo];
+          if (c?.s === 'retired') return 'X';
+          if (c?.s === 'active') return c?.ticket ? `PMWO ${c.ticket}` : 'OK';
+          return '-';
+        }),
+        `${it?.retiredCount || 0}/${n || pmMatrixMonths.length}`
+      ]);
+      const fullCount = pmMatrixItems.filter((it) => n > 0 && pmMatrixExistingArr.every((mo) => it?.cells?.[mo]?.s === 'retired')).length;
+      const foot = [[
+        { content: `TOTAL · ${pmMatrixItems.length} site(s)`, colSpan: 3, styles: { halign: 'left', fontStyle: 'bold' } },
+        ...pmMatrixMonths.map((mo) => {
+          if (pmMatrixMissingSet.has(mo)) return { content: '-', styles: { textColor: [180, 180, 180] } };
+          const ret = pmMatrixItems.filter((it) => it?.cells?.[mo]?.s === 'retired').length;
+          const act = pmMatrixItems.filter((it) => it?.cells?.[mo]?.s === 'active').length;
+          return { content: `X:${ret}\nPM:${act}`, styles: { fontStyle: 'bold' } };
+        }),
+        { content: `${fullCount} compl.`, styles: { fontStyle: 'bold' } }
+      ]];
+      autoTable(pdf, {
+        startY: margin + 16,
+        head: [head], body, foot,
+        styles: { ...cellStyle, halign: 'center' },
+        headStyles: { fillColor: headFill, textColor: [30, 30, 30], fontStyle: 'bold', halign: 'center' },
+        footStyles: { fillColor: headFill, textColor: [30, 30, 30] },
+        columnStyles: {
+          0: { halign: 'left', cellWidth: 62 },
+          1: { halign: 'left', cellWidth: 24 },
+          2: { halign: 'left', cellWidth: 26 },
+          [3 + pmMatrixMonths.length]: { fontStyle: 'bold' }
+        },
+        didParseCell: (d) => {
+          if (d.section !== 'body') return;
+          const ci = d.column.index;
+          if (ci < 3 || ci >= 3 + pmMatrixMonths.length) return;
+          const it = pmMatrixItems[d.row.index];
+          const mo = pmMatrixMonths[ci - 3];
+          const c = it?.cells?.[mo];
+          if (pmMatrixMissingSet.has(mo) || !c || c.s === 'none') {
+            d.cell.styles.textColor = [185, 185, 185];
+          } else if (c.s === 'retired') {
+            d.cell.styles.fillColor = [253, 226, 226];
+            d.cell.styles.textColor = [185, 28, 28];
+            d.cell.styles.fontStyle = 'bold';
+          } else if (c.s === 'active') {
+            d.cell.styles.fillColor = [230, 247, 238];
+            d.cell.styles.textColor = [4, 120, 87];
+            d.cell.styles.fontStyle = 'bold';
+          }
+        }
       });
-      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-      const margin = 8;
-      const wMm = 297 - 2 * margin; // 281
-      const hMm = 210 - 2 * margin; // 194
-      const pxPerMm = canvas.width / wMm;
-      const pagePxH = Math.floor(hMm * pxPerMm);
-      let y = 0;
-      while (y < canvas.height) {
-        const h = Math.min(pagePxH, canvas.height - y);
-        const slice = document.createElement('canvas');
-        slice.width = canvas.width;
-        slice.height = h;
-        slice.getContext('2d').drawImage(canvas, 0, y, canvas.width, h, 0, 0, canvas.width, h);
-        if (y > 0) pdf.addPage();
-        pdf.addImage(slice.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin, wMm, (h / canvas.width) * wMm);
-        y += h;
-      }
-      const slug = pmRetiredSuccMode
-        ? `matrice-retraits-${pmRetired?.month || 'pm'}-${pmRetiredSuccWindow}m`
-        : `sites-retires-${pmRetired?.month || 'pm'}`;
-      const blob = pdf.output('blob');
-      const url = URL.createObjectURL(blob);
-      const win = window.open(url, '_blank');
-      if (win) { setTimeout(() => URL.revokeObjectURL(url), 120000); return; }
-      URL.revokeObjectURL(url);
-      pdf.save(`${slug}.pdf`);
-    } finally {
-      iframe.remove();
+    } else {
+      const head = ['Zone', 'Site', 'Site Name', 'Technicien', 'Type'];
+      const body = pmRetiredItems.map((it) => [
+        it?.zone || '-', it?.siteCode || '-', it?.siteName || '-',
+        it?.technician || '-', it?.maintenanceType || 'FullPMWO'
+      ]);
+      const foot = [[{ content: `TOTAL · ${pmRetiredItems.length} site(s) retiré(s)`, colSpan: 5, styles: { halign: 'left', fontStyle: 'bold' } }]];
+      autoTable(pdf, {
+        startY: margin + 14,
+        head: [head], body, foot,
+        styles: { ...cellStyle, halign: 'left' },
+        headStyles: { fillColor: headFill, textColor: [30, 30, 30], fontStyle: 'bold', halign: 'left' },
+        footStyles: { fillColor: headFill, textColor: [30, 30, 30] },
+        columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 40 }, 3: { cellWidth: 50 }, 4: { cellWidth: 45 } }
+      });
     }
+
+    const slug = pmRetiredSuccMode
+      ? `matrice-retraits-${pmRetired?.month || 'pm'}-${pmRetiredSuccWindow}m`
+      : `sites-retires-${pmRetired?.month || 'pm'}`;
+    const blob = pdf.output('blob');
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank');
+    if (win) { setTimeout(() => URL.revokeObjectURL(url), 120000); return; }
+    URL.revokeObjectURL(url);
+    pdf.save(`${slug}.pdf`);
   };
 
   return (
