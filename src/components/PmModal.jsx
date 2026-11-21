@@ -1,6 +1,8 @@
 import React from 'react';
 import * as XLSX from 'xlsx';
-import { TrendingUp, X, Upload, Download, Trash2, RotateCcw, Activity, Menu, ChevronLeft, ListChecks, BadgeCheck, Clock, UserCheck, Filter, Search, Printer } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
+import { TrendingUp, X, Upload, Download, Trash2, RotateCcw, Activity, Menu, ChevronLeft, ListChecks, BadgeCheck, Clock, UserCheck, Filter, Search, Printer, FileScan } from 'lucide-react';
 
 const STHIC_LOGO_SRC = '/Logo_sthic.png';
 
@@ -347,7 +349,9 @@ const PmModal = (props) => {
 
   // Impression « intelligente » : reproduit exactement la vue affichée —
   // liste « Tous » ou matrice, avec les filtres zone / série / recherche appliqués.
-  const handlePrintRetired = () => {
+  // Document du rapport « sites retirés » — mutualisé impression + PDF « scan ».
+  // Le HTML est reconstruit à la volée depuis les listes FILTRÉES affichées à l'écran.
+  const buildRetiredReportHtml = () => {
     // Titre = le vrai sujet du rapport, dérivé des filtres appliqués.
     const n = pmMatrixExistingArr.length;
     let reportTitle;
@@ -377,7 +381,7 @@ const PmModal = (props) => {
       metaParts.push(`Recherche : « ${pmRetiredMatrixSearch.trim()} »`);
     }
     metaParts.push(`${pmRetiredSuccMode ? pmMatrixItems.length : pmRetiredItems.length} ligne(s)`);
-    metaParts.push(`imprimé le ${new Date().toLocaleDateString('fr-FR')}`);
+    metaParts.push(`généré le ${new Date().toLocaleDateString('fr-FR')}`);
 
     let tableHtml;
     if (pmRetiredSuccMode) {
@@ -434,6 +438,11 @@ ${pmRetiredSuccMode ? '<div class="legend">✗ = PM non réalisée (retiré) · 
 ${tableHtml}
 </body></html>`;
 
+    return html;
+  };
+
+  const handlePrintRetired = () => {
+    const html = buildRetiredReportHtml();
     const iframe = document.createElement('iframe');
     iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
     document.body.appendChild(iframe);
@@ -443,6 +452,57 @@ ${tableHtml}
     setTimeout(() => {
       try { iframe.contentWindow.print(); } finally { setTimeout(() => iframe.remove(), 800); }
     }, 250);
+  };
+
+  // PDF « scan » : même document que l'impression, paginé en A4 paysage.
+  // Aperçu dans un nouvel onglet (visionneuse) — partage/téléchargement depuis là.
+  const handleScanPdfRetired = async () => {
+    const html = buildRetiredReportHtml();
+    const iframe = document.createElement('iframe');
+    // Largeur fixe calée sur l'A4 paysage utile (281mm ≈ 1063px à 96dpi) :
+    // le rendu est strictement identique au rapport imprimé.
+    iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:1060px;height:1600px;border:0;visibility:hidden';
+    document.body.appendChild(iframe);
+    try {
+      iframe.contentDocument.open();
+      iframe.contentDocument.write(html);
+      iframe.contentDocument.close();
+      const idoc = iframe.contentDocument;
+      await new Promise((res) => setTimeout(res, 120));
+      const body = idoc.body;
+      const canvas = await html2canvas(body, {
+        scale: 2, backgroundColor: '#ffffff', logging: false,
+        windowWidth: 1060, width: body.scrollWidth, height: body.scrollHeight
+      });
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const margin = 8;
+      const wMm = 297 - 2 * margin; // 281
+      const hMm = 210 - 2 * margin; // 194
+      const pxPerMm = canvas.width / wMm;
+      const pagePxH = Math.floor(hMm * pxPerMm);
+      let y = 0;
+      while (y < canvas.height) {
+        const h = Math.min(pagePxH, canvas.height - y);
+        const slice = document.createElement('canvas');
+        slice.width = canvas.width;
+        slice.height = h;
+        slice.getContext('2d').drawImage(canvas, 0, y, canvas.width, h, 0, 0, canvas.width, h);
+        if (y > 0) pdf.addPage();
+        pdf.addImage(slice.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin, wMm, (h / canvas.width) * wMm);
+        y += h;
+      }
+      const slug = pmRetiredSuccMode
+        ? `matrice-retraits-${pmRetired?.month || 'pm'}-${pmRetiredSuccWindow}m`
+        : `sites-retires-${pmRetired?.month || 'pm'}`;
+      const blob = pdf.output('blob');
+      const url = URL.createObjectURL(blob);
+      const win = window.open(url, '_blank');
+      if (win) { setTimeout(() => URL.revokeObjectURL(url), 120000); return; }
+      URL.revokeObjectURL(url);
+      pdf.save(`${slug}.pdf`);
+    } finally {
+      iframe.remove();
+    }
   };
 
   return (
@@ -889,6 +949,16 @@ ${tableHtml}
                         >
                           <Printer size={16} />
                           Imprimer
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setPmRetiredSuccBusy(true); handleScanPdfRetired().catch(() => alert('Erreur lors de la génération du PDF.')).finally(() => setPmRetiredSuccBusy(false)); }}
+                          className="bg-white/10 hover:bg-white/15 text-white border border-white/20 px-3 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 disabled:opacity-60"
+                          disabled={pmBusy || pmRetiredSuccBusy || (pmRetiredSuccMode ? pmMatrixItems.length === 0 : pmRetiredItems.length === 0)}
+                          title={pmRetiredSuccMode ? 'PDF « scan » de la matrice filtrée (zone, série, recherche)' : 'PDF « scan » de la liste filtrée'}
+                        >
+                          <FileScan size={16} />
+                          SCAN PDF
                         </button>
                         <button
                           type="button"
