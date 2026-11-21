@@ -419,8 +419,11 @@ const PmModal = (props) => {
   h1 { font-size: 14px; margin: 0 0 2px; }
   .meta { color: #555; margin-bottom: 6px; }
   .legend { font-size: 9px; color: #555; margin-bottom: 6px; }
-  table { border-collapse: collapse; width: 100%; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  th, td { border: 1px solid #ccc; padding: 3px 5px; }
+  /* border-collapse: separate + border-spacing:0 — rendu identique au collapse
+     réel (bordures simples) MAIS correctement positionné par html2canvas
+     (le mode collapse décale le texte des cellules dans le PDF « scan »). */
+  table { border-collapse: separate; border-spacing: 0; width: 100%; border-right: 1px solid #ccc; border-bottom: 1px solid #ccc; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  th, td { border-left: 1px solid #ccc; border-top: 1px solid #ccc; padding: 3px 5px; vertical-align: middle; }
   th { background: #f5f0f8; font-size: 9px; text-align: center; }
   th.l, td.l { text-align: left; }
   td.c { text-align: center; }
