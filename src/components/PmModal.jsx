@@ -95,6 +95,8 @@ const PmModal = (props) => {
   const [pmUpgradePreview, setPmUpgradePreview] = React.useState(null); // {items}
   const [pmNhEntry, setPmNhEntry] = React.useState(null); // {siteId, siteCode, nh, date}
   const [pmNhEntryBusy, setPmNhEntryBusy] = React.useState(false);
+  const [pmNh1Edit, setPmNh1Edit] = React.useState(null); // {siteId, siteCode, nh1}
+  const [pmNh1EditBusy, setPmNh1EditBusy] = React.useState(false);
   const [pmUpcnOpen, setPmUpcnOpen] = React.useState(false);
   const [pmUpcnBusy, setPmUpcnBusy] = React.useState(false);
   const [pmUpcnRows, setPmUpcnRows] = React.useState([]);
@@ -374,6 +376,35 @@ const PmModal = (props) => {
       setPmNhEntry((p) => ({ ...(p || {}), error: e?.message || 'Erreur.' }));
     } finally {
       setPmNhEntryBusy(false);
+    }
+  };
+
+  // UPCN uniquement — correction de la baseline NH1 DV (zone fraîchement
+  // intégrée) : diff_nhs / régime implicite recalculés côté serveur.
+  const openPmNh1Edit = (it) => {
+    if (!it?.siteId || String(it?.zone) !== 'UPCN') return;
+    setPmNh1Edit({ siteId: it.siteId, siteCode: it.siteCode || '', siteName: it.siteName || '', nh1: it?.nh1Dv ?? '', error: '' });
+  };
+  const submitPmNh1Edit = async () => {
+    const nh1 = Number(pmNh1Edit?.nh1);
+    if (!pmNh1Edit?.siteId || !Number.isFinite(nh1) || nh1 < 0) { setPmNh1Edit((p) => ({ ...(p || {}), error: 'NH1 DV invalide.' })); return; }
+    setPmNh1EditBusy(true);
+    try {
+      const d = await pmCallJson('/api/pm/nh1-dv', { method: 'POST', body: JSON.stringify({ siteId: pmNh1Edit.siteId, nh1Dv: nh1 }) });
+      const s = d?.site;
+      if (s) {
+        setPmRetiredMatrix((prev) => prev ? ({
+          ...prev,
+          items: (prev.items || []).map((it) => it?.siteId === pmNh1Edit.siteId
+            ? { ...it, nh1Dv: s.nh1Dv, diffNhs: s.diffNhs }
+            : it)
+        }) : prev);
+      }
+      setPmNh1Edit(null);
+    } catch (e) {
+      setPmNh1Edit((p) => ({ ...(p || {}), error: e?.message || 'Erreur.' }));
+    } finally {
+      setPmNh1EditBusy(false);
     }
   };
 
@@ -1408,7 +1439,19 @@ ${tableHtml}
                                     <td className="px-2 py-1.5 text-slate-700 whitespace-nowrap">{it?.zone || '-'}</td>
                                     <td className="px-2 py-1.5 text-slate-700 whitespace-nowrap">{it?.technician || '-'}</td>
                                     <td className="px-2 py-1.5 text-slate-600 whitespace-nowrap bg-amber-50/30">{it?.dateDv || '—'}</td>
-                                    <td className="px-2 py-1.5 text-right text-slate-700 font-mono bg-amber-50/30">{it?.nh1Dv ?? '—'}</td>
+                                    <td className="px-2 py-1.5 text-right text-slate-700 font-mono bg-amber-50/30 whitespace-nowrap">
+                                      <span className="inline-flex items-center gap-1">
+                                        {it?.nh1Dv ?? '—'}
+                                        {(isAdmin || isManager) && it?.siteId && it?.zone === 'UPCN' && it?.nh2A != null && (
+                                          <button
+                                            type="button"
+                                            onClick={() => openPmNh1Edit(it)}
+                                            className="w-4 h-4 inline-flex items-center justify-center rounded bg-sky-600 text-white text-[10px] font-bold hover:bg-sky-700 leading-none"
+                                            title="Corriger NH1 DV (baseline vidange, UPCN) — Diff NHs recalculé"
+                                          >✎</button>
+                                        )}
+                                      </span>
+                                    </td>
                                     <td className="px-2 py-1.5 text-slate-600 whitespace-nowrap bg-amber-50/30">{it?.dateA || '—'}</td>
                                     <td className="px-2 py-1.5 text-right text-slate-700 font-mono bg-amber-50/30 whitespace-nowrap">
                                       <span className="inline-flex items-center gap-1">
@@ -1594,6 +1637,40 @@ ${tableHtml}
                         disabled={pmNhEntryBusy}
                         onClick={submitPmNhEntry}>
                         {pmNhEntryBusy ? 'Enregistrement…' : 'Enregistrer'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ====== Dialog correction NH1 DV (UPCN uniquement) ====== */}
+              {pmNh1Edit && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-4 sm:p-5">
+                    <div className="font-bold text-base mb-1">NH1 DV — {pmNh1Edit.siteCode}</div>
+                    <div className="text-xs text-gray-500 mb-3">
+                      {pmNh1Edit.siteName} · Correction du <b>compteur à la dernière vidange</b>
+                      (baseline saisie manuellement pour la zone UPCN).
+                      <b> Diff NHs</b> et le régime implicite sont recalculés automatiquement.
+                      NH2 A et les dates ne sont pas modifiés.
+                    </div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">NH1 DV corrigé (heures)</label>
+                    <input
+                      type="number" min="0" step="1" autoFocus
+                      value={pmNh1Edit.nh1}
+                      onChange={(e) => setPmNh1Edit((p) => ({ ...(p || {}), nh1: e.target.value, error: '' }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono mb-2 focus:outline-none focus:ring-2 focus:ring-sky-300"
+                      placeholder="ex. 3200"
+                    />
+                    {pmNh1Edit.error && <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 mb-2">{pmNh1Edit.error}</div>}
+                    <div className="flex gap-2 mt-3 justify-end">
+                      <button className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold hover:bg-gray-50"
+                        onClick={() => setPmNh1Edit(null)}>Annuler</button>
+                      <button
+                        className="px-4 py-2 rounded-lg bg-sky-600 text-white text-sm font-bold hover:bg-sky-700 disabled:opacity-60"
+                        disabled={pmNh1EditBusy}
+                        onClick={submitPmNh1Edit}>
+                        {pmNh1EditBusy ? 'Enregistrement…' : 'Enregistrer'}
                       </button>
                     </div>
                   </div>
