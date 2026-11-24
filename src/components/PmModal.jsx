@@ -306,7 +306,12 @@ const PmModal = (props) => {
         Zone: it?.zone || '-',
         Site: it?.siteCode || '-',
         'Site Name': it?.siteName || '-',
-        Technicien: it?.technician || '-'
+        Technicien: it?.technician || '-',
+        'Date DV': it?.dateDv || '—',
+        'NH1 DV': it?.nh1Dv ?? '—',
+        'Date A': it?.dateA || '—',
+        'NH2 A': it?.nh2A ?? '—',
+        'Diff NHs': it?.diffNhs ?? '—'
       };
       for (const mo of monthCols) {
         const c = it?.cells?.[mo];
@@ -321,7 +326,7 @@ const PmModal = (props) => {
       base['Retraits sur la fenêtre'] = `${it?.retiredCount || 0}/${pmMatrixExistingArr.length || monthCols.length}`;
       return base;
     });
-    const totalRow = { Zone: '', Site: 'TOTAL', 'Site Name': `${rows.length} site(s)`, Technicien: '' };
+    const totalRow = { Zone: '', Site: 'TOTAL', 'Site Name': `${rows.length} site(s)`, Technicien: '', 'Date DV': '', 'NH1 DV': '', 'Date A': '', 'NH2 A': '', 'Diff NHs': `${pmMatrixItems.filter((it) => it?.diffNhs != null && it.diffNhs >= (Number(it?.seuil) || 250)).length} ≥ seuil` };
     for (const mo of monthCols) {
       if (pmMatrixMissingSet.has(mo)) {
         totalRow[mo] = 'aucune campagne';
@@ -337,6 +342,7 @@ const PmModal = (props) => {
     const ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = [
       { wch: 12 }, { wch: 14 }, { wch: 34 }, { wch: 22 },
+      { wch: 11 }, { wch: 9 }, { wch: 11 }, { wch: 9 }, { wch: 10 },
       ...monthCols.map(() => ({ wch: 18 })),
       { wch: 20 }
     ];
@@ -400,7 +406,9 @@ const PmModal = (props) => {
           if (c?.s === 'active') return `<td class="c ok">✓${c?.ticket ? `<div class="t">${pmEscapeHtml(c.ticket)}</div>` : ''}</td>`;
           return '<td class="c mut">—</td>';
         }).join('');
-        return `<tr><td class="l"><b>${pmEscapeHtml(it?.siteCode || '-')}</b> · ${pmEscapeHtml(it?.siteName || '-')}</td><td class="l">${pmEscapeHtml(it?.zone || '-')}</td><td class="l">${pmEscapeHtml(it?.technician || '-')}</td>${tds}<td class="c"><b>${it?.retiredCount || 0}/${pmMatrixExistingArr.length || pmMatrixMonths.length}</b></td></tr>`;
+        const over = it?.diffNhs != null && it.diffNhs >= (Number(it?.seuil) || 250);
+        const nh = `<td class="c">${pmEscapeHtml(it?.dateDv || '—')}</td><td class="c">${it?.nh1Dv ?? '—'}</td><td class="c">${pmEscapeHtml(it?.dateA || '—')}</td><td class="c">${it?.nh2A ?? '—'}</td><td class="c${over ? ' warn' : ''}">${it?.diffNhs ?? '—'}</td>`;
+        return `<tr><td class="l"><b>${pmEscapeHtml(it?.siteCode || '-')}</b> · ${pmEscapeHtml(it?.siteName || '-')}</td><td class="l">${pmEscapeHtml(it?.zone || '-')}</td><td class="l">${pmEscapeHtml(it?.technician || '-')}</td>${nh}${tds}<td class="c"><b>${it?.retiredCount || 0}/${pmMatrixExistingArr.length || pmMatrixMonths.length}</b></td></tr>`;
       }).join('');
       const footCells = pmMatrixMonths.map((mo) => {
         if (pmMatrixMissingSet.has(mo)) return '<td class="c mut">—</td>';
@@ -409,7 +417,8 @@ const PmModal = (props) => {
         return `<td class="c"><b>✗ ${ret}</b><div class="t">✓ ${act}</div></td>`;
       }).join('');
       const fullCount = pmMatrixItems.filter((it) => pmMatrixExistingArr.length > 0 && pmMatrixExistingArr.every((mo) => it?.cells?.[mo]?.s === 'retired')).length;
-      tableHtml = `<table><thead><tr><th class="l">Site</th><th class="l">Zone</th><th class="l">Technicien</th>${headCells}<th>Série</th></tr></thead><tbody>${rows}</tbody><tfoot><tr class="tot"><td class="l"><b>TOTAL · ${pmMatrixItems.length} site(s)</b></td><td></td><td></td>${footCells}<td class="c"><b>${fullCount} complets</b></td></tr></tfoot></table>`;
+      const overSeuilCount = pmMatrixItems.filter((it) => it?.diffNhs != null && it.diffNhs >= (Number(it?.seuil) || 250)).length;
+      tableHtml = `<table><thead><tr><th class="l">Site</th><th class="l">Zone</th><th class="l">Technicien</th><th class="c">Date DV</th><th class="c">NH1 DV</th><th class="c">Date A</th><th class="c">NH2 A</th><th class="c">Diff NHs</th>${headCells}<th>Série</th></tr></thead><tbody>${rows}</tbody><tfoot><tr class="tot"><td class="l"><b>TOTAL · ${pmMatrixItems.length} site(s)</b></td><td></td><td></td><td colspan="4"></td><td class="c"><b>${overSeuilCount} ≥ seuil</b></td>${footCells}<td class="c"><b>${fullCount} complets</b></td></tr></tfoot></table>`;
     } else {
       const rows = pmRetiredItems.map((it) =>
         `<tr><td class="l">${pmEscapeHtml(it?.zone || '-')}</td><td class="l"><b>${pmEscapeHtml(it?.siteCode || '-')}</b></td><td class="l">${pmEscapeHtml(it?.siteName || '-')}</td><td class="l">${pmEscapeHtml(it?.technician || '-')}</td><td class="l">${pmEscapeHtml(it?.maintenanceType || 'FullPMWO')}</td></tr>`
@@ -434,6 +443,7 @@ const PmModal = (props) => {
   .bad { background: #fde2e2; color: #b91c1c; font-weight: bold; }
   .ok { background: #e6f7ee; color: #047857; font-weight: bold; }
   .mut { color: #bbb; }
+  .warn { color: #b91c1c; font-weight: bold; }
   .t { font-size: 8px; font-family: monospace; font-weight: normal; }
   tfoot td { background: #f5f0f8; border-top: 2px solid #999; font-size: 9px; }
   tr { page-break-inside: avoid; }
@@ -441,7 +451,7 @@ const PmModal = (props) => {
 </style></head><body>
 <h1>${pmEscapeHtml(reportTitle)}</h1>
 <div class="meta">${pmEscapeHtml(meta)}</div>
-${pmRetiredSuccMode ? '<div class="legend">✗ = PM non réalisée (retiré) · ✓ = PM réalisée (n° PMWO) · — = hors campagne · * = mois sans campagne</div>' : ''}
+${pmRetiredSuccMode ? '<div class="legend">✗ = PM non réalisée (retiré) · ✓ = PM réalisée (n° PMWO) · — = hors campagne · * = mois sans campagne · Diff NHs <span class="warn">rouge</span> = ≥ seuil du site</div>' : ''}
 ${tableHtml}
 </body></html>`;
 
@@ -483,14 +493,15 @@ ${tableHtml}
     if (pmRetiredSuccMode) {
       pdf.setFontSize(7);
       pdf.setTextColor(90, 90, 90);
-      pdf.text('X = PM non réalisée (retiré) · n° PMWO = PM réalisée · - = hors campagne · * = mois sans campagne', margin, margin + 13);
+      pdf.text('X = PM non réalisée (retiré) · n° PMWO = PM réalisée · - = hors campagne · * = mois sans campagne · Diff NHs rouge = ≥ seuil du site', margin, margin + 13);
       pdf.setTextColor(20, 20, 20);
       const n = pmMatrixExistingArr.length;
-      const head = ['Site', 'Zone', 'Technicien',
+      const head = ['Site', 'Zone', 'Technicien', 'Date DV', 'NH1 DV', 'Date A', 'NH2 A', 'Diff NHs',
         ...pmMatrixMonths.map((mo) => `${mo}${pmMatrixMissingSet.has(mo) ? ' *' : ''}`), 'Série'];
       const body = pmMatrixItems.map((it) => [
         `${it?.siteCode || '-'} · ${it?.siteName || '-'}`,
         it?.zone || '-', it?.technician || '-',
+        it?.dateDv || '-', it?.nh1Dv ?? '-', it?.dateA || '-', it?.nh2A ?? '-', it?.diffNhs ?? '-',
         ...pmMatrixMonths.map((mo) => {
           if (pmMatrixMissingSet.has(mo)) return '-';
           const c = it?.cells?.[mo];
@@ -501,8 +512,11 @@ ${tableHtml}
         `${it?.retiredCount || 0}/${n || pmMatrixMonths.length}`
       ]);
       const fullCount = pmMatrixItems.filter((it) => n > 0 && pmMatrixExistingArr.every((mo) => it?.cells?.[mo]?.s === 'retired')).length;
+      const overSeuilCount = pmMatrixItems.filter((it) => it?.diffNhs != null && it.diffNhs >= (Number(it?.seuil) || 250)).length;
       const foot = [[
         { content: `TOTAL · ${pmMatrixItems.length} site(s)`, colSpan: 3, styles: { halign: 'left', fontStyle: 'bold' } },
+        { content: '', colSpan: 4 },
+        { content: `${overSeuilCount} ≥ seuil`, styles: { fontStyle: 'bold', textColor: [185, 28, 28] } },
         ...pmMatrixMonths.map((mo) => {
           if (pmMatrixMissingSet.has(mo)) return { content: '-', styles: { textColor: [180, 180, 180] } };
           const ret = pmMatrixItems.filter((it) => it?.cells?.[mo]?.s === 'retired').length;
@@ -518,17 +532,24 @@ ${tableHtml}
         headStyles: { fillColor: headFill, textColor: [30, 30, 30], fontStyle: 'bold', halign: 'center' },
         footStyles: { fillColor: headFill, textColor: [30, 30, 30] },
         columnStyles: {
-          0: { halign: 'left', cellWidth: 62 },
-          1: { halign: 'left', cellWidth: 24 },
-          2: { halign: 'left', cellWidth: 26 },
-          [3 + pmMatrixMonths.length]: { fontStyle: 'bold' }
+          0: { halign: 'left', cellWidth: 56 },
+          1: { halign: 'left', cellWidth: 18 },
+          2: { halign: 'left', cellWidth: 20 },
+          4: { halign: 'right' }, 6: { halign: 'right' }, 7: { halign: 'right' },
+          [8 + pmMatrixMonths.length]: { fontStyle: 'bold' }
         },
         didParseCell: (d) => {
           if (d.section !== 'body') return;
           const ci = d.column.index;
-          if (ci < 3 || ci >= 3 + pmMatrixMonths.length) return;
           const it = pmMatrixItems[d.row.index];
-          const mo = pmMatrixMonths[ci - 3];
+          // Diff NHs ≥ seuil du site → rouge gras.
+          if (ci === 7 && it?.diffNhs != null && it.diffNhs >= (Number(it?.seuil) || 250)) {
+            d.cell.styles.textColor = [185, 28, 28];
+            d.cell.styles.fontStyle = 'bold';
+            return;
+          }
+          if (ci < 8 || ci >= 8 + pmMatrixMonths.length) return;
+          const mo = pmMatrixMonths[ci - 8];
           const c = it?.cells?.[mo];
           if (pmMatrixMissingSet.has(mo) || !c || c.s === 'none') {
             d.cell.styles.textColor = [185, 185, 185];
@@ -1216,6 +1237,11 @@ ${tableHtml}
                               <th className="px-2 py-2 font-semibold whitespace-nowrap sticky left-0 bg-fuchsia-50 z-10 min-w-[150px]">Site</th>
                               <th className="px-2 py-2 font-semibold whitespace-nowrap bg-fuchsia-50">Zone</th>
                               <th className="px-2 py-2 font-semibold whitespace-nowrap bg-fuchsia-50">Technicien</th>
+                              <th className="px-2 py-2 font-semibold whitespace-nowrap bg-amber-50" title="Date de la dernière vidange">Date DV</th>
+                              <th className="px-2 py-2 font-semibold whitespace-nowrap text-right bg-amber-50" title="Compteur horaire à la dernière vidange">NH1 DV</th>
+                              <th className="px-2 py-2 font-semibold whitespace-nowrap bg-amber-50" title="Date du dernier relevé">Date A</th>
+                              <th className="px-2 py-2 font-semibold whitespace-nowrap text-right bg-amber-50" title="Compteur horaire actuel">NH2 A</th>
+                              <th className="px-2 py-2 font-semibold whitespace-nowrap text-right bg-amber-50" title="NH2 A − NH1 DV — rouge si ≥ seuil du site">Diff NHs</th>
                               {pmMatrixMonths.map((mo) => (
                                 <th key={mo} className={`px-2 py-2 font-semibold whitespace-nowrap text-center min-w-[110px] ${pmMatrixMissingSet.has(mo) ? 'bg-gray-100 text-gray-400' : 'bg-fuchsia-50'}`}>
                                   {mo}{pmMatrixMissingSet.has(mo) ? ' *' : ''}
@@ -1226,11 +1252,11 @@ ${tableHtml}
                           </thead>
                           <tbody>
                             {pmRetiredSuccBusy ? (
-                              <tr><td className="px-4 py-6 text-gray-500" colSpan={pmMatrixMonths.length + 4}>Analyse des campagnes…</td></tr>
+                              <tr><td className="px-4 py-6 text-gray-500" colSpan={pmMatrixMonths.length + 9}>Analyse des campagnes…</td></tr>
                             ) : pmRetiredMatrix === null ? (
-                              <tr><td className="px-4 py-6 text-gray-500" colSpan={pmMatrixMonths.length + 4}>Erreur de chargement — réessayez.</td></tr>
+                              <tr><td className="px-4 py-6 text-gray-500" colSpan={pmMatrixMonths.length + 9}>Erreur de chargement — réessayez.</td></tr>
                             ) : pmMatrixItems.length === 0 ? (
-                              <tr><td className="px-4 py-6 text-gray-500" colSpan={pmMatrixMonths.length + 4}>Aucun site.</td></tr>
+                              <tr><td className="px-4 py-6 text-gray-500" colSpan={pmMatrixMonths.length + 9}>Aucun site.</td></tr>
                             ) : (
                               pmMatrixItems.map((it, idx) => {
                                 const fullSeries = pmMatrixExistingArr.length > 0 && pmMatrixExistingArr.every((mo) => it?.cells?.[mo]?.s === 'retired');
@@ -1248,6 +1274,12 @@ ${tableHtml}
                                     </td>
                                     <td className="px-2 py-1.5 text-slate-700 whitespace-nowrap">{it?.zone || '-'}</td>
                                     <td className="px-2 py-1.5 text-slate-700 whitespace-nowrap">{it?.technician || '-'}</td>
+                                    <td className="px-2 py-1.5 text-slate-600 whitespace-nowrap bg-amber-50/30">{it?.dateDv || '—'}</td>
+                                    <td className="px-2 py-1.5 text-right text-slate-700 font-mono bg-amber-50/30">{it?.nh1Dv ?? '—'}</td>
+                                    <td className="px-2 py-1.5 text-slate-600 whitespace-nowrap bg-amber-50/30">{it?.dateA || '—'}</td>
+                                    <td className="px-2 py-1.5 text-right text-slate-700 font-mono bg-amber-50/30">{it?.nh2A ?? '—'}</td>
+                                    <td className={`px-2 py-1.5 text-right font-mono whitespace-nowrap bg-amber-50/30 ${it?.diffNhs != null && it.diffNhs >= (Number(it?.seuil) || 250) ? 'font-bold text-rose-700' : 'text-slate-700'}`}
+                                      title={it?.diffNhs != null ? `Seuil : ${Number(it?.seuil) || 250}` : ''}>{it?.diffNhs ?? '—'}</td>
                                     {pmMatrixMonths.map((mo) => {
                                       const c = it?.cells?.[mo];
                                       if (pmMatrixMissingSet.has(mo)) {
@@ -1282,6 +1314,10 @@ ${tableHtml}
                                 </td>
                                 <td className="sticky bottom-0 bg-fuchsia-100"></td>
                                 <td className="sticky bottom-0 bg-fuchsia-100"></td>
+                                <td className="sticky bottom-0 bg-fuchsia-100" colSpan={4}></td>
+                                <td className="px-2 py-1.5 sticky bottom-0 bg-fuchsia-100 text-right font-bold text-rose-700 whitespace-nowrap">
+                                  {pmMatrixItems.filter((it) => it?.diffNhs != null && it.diffNhs >= (Number(it?.seuil) || 250)).length} ≥ seuil
+                                </td>
                                 {pmMatrixMonths.map((mo) => {
                                   if (pmMatrixMissingSet.has(mo)) {
                                     return <td key={mo} className="px-2 py-1.5 sticky bottom-0 bg-fuchsia-100 text-center text-gray-400">—</td>;

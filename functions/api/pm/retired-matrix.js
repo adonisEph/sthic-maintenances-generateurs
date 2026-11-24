@@ -86,7 +86,7 @@ export async function onRequestGet({ request, env, data }) {
     const monthsMissing = windowMonths.filter((m) => !monthIdByMonth.has(m));
 
     const roster = new Map();
-    const upsertRoster = (zone, code, name, tech, siteRetired) => {
+    const upsertRoster = (zone, code, name, tech, siteRetired, nh) => {
       const z = normalizeZone(zone);
       const c = normalizeSiteCode(code);
       if (!z || !c) return null;
@@ -97,7 +97,13 @@ export async function onRequestGet({ request, env, data }) {
           siteCode: c,
           siteName: String(name || '').trim(),
           technician: String(tech || '').trim(),
-          siteRetired: Number(siteRetired || 0) === 1
+          siteRetired: Number(siteRetired || 0) === 1,
+          // Compteurs NH — état courant du site dans `sites` (vidange + relevé).
+          nh1Dv: nh ? (nh.nh1Dv ?? null) : null,
+          dateDv: nh ? String(nh.dateDv || '') : '',
+          nh2A: nh ? (nh.nh2A ?? null) : null,
+          dateA: nh ? String(nh.dateA || '') : '',
+          seuil: nh ? (nh.seuil ?? null) : null
         });
       }
       return key;
@@ -110,10 +116,12 @@ export async function onRequestGet({ request, env, data }) {
       sitesBind.push(...scopeZones);
     }
     const sitesRes = await env.DB.prepare(
-      `SELECT id_site, name_site, technician, zone, retired FROM sites${sitesWhere.length ? ' WHERE ' + sitesWhere.join(' AND ') : ''}`
+      `SELECT id_site, name_site, technician, zone, retired, nh1_dv, date_dv, nh2_a, date_a, seuil FROM sites${sitesWhere.length ? ' WHERE ' + sitesWhere.join(' AND ') : ''}`
     ).bind(...sitesBind).all();
     for (const s of sitesRes?.results || []) {
-      upsertRoster(s?.zone, s?.id_site, s?.name_site, s?.technician, s?.retired);
+      upsertRoster(s?.zone, s?.id_site, s?.name_site, s?.technician, s?.retired, {
+        nh1Dv: s?.nh1_dv, dateDv: s?.date_dv, nh2A: s?.nh2_a, dateA: s?.date_a, seuil: s?.seuil
+      });
     }
 
     const monthIds = [...monthIdByMonth.values()];
@@ -197,7 +205,10 @@ export async function onRequestGet({ request, env, data }) {
         else cells[mo] = { s: 'absent' };
       }
       const retiredCount = monthsExisting.filter((mo) => cells[mo]?.s === 'retired').length;
-      return { ...it, cells, retiredCount };
+      const nh1 = Number(it.nh1Dv);
+      const nh2 = Number(it.nh2A);
+      const diffNhs = (Number.isFinite(nh1) && Number.isFinite(nh2)) ? nh2 - nh1 : null;
+      return { ...it, cells, retiredCount, diffNhs };
     });
     items.sort((a, b) => {
       const z = String(a.zone).localeCompare(String(b.zone));
