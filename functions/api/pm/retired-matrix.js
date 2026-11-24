@@ -86,7 +86,7 @@ export async function onRequestGet({ request, env, data }) {
     const monthsMissing = windowMonths.filter((m) => !monthIdByMonth.has(m));
 
     const roster = new Map();
-    const upsertRoster = (zone, code, name, tech, siteRetired, nh) => {
+    const upsertRoster = (zone, code, name, tech, siteRetired, nh, siteId) => {
       const z = normalizeZone(zone);
       const c = normalizeSiteCode(code);
       if (!z || !c) return null;
@@ -95,6 +95,7 @@ export async function onRequestGet({ request, env, data }) {
         roster.set(key, {
           zone: z,
           siteCode: c,
+          siteId: String(siteId || ''),
           siteName: String(name || '').trim(),
           technician: String(tech || '').trim(),
           siteRetired: Number(siteRetired || 0) === 1,
@@ -116,12 +117,12 @@ export async function onRequestGet({ request, env, data }) {
       sitesBind.push(...scopeZones);
     }
     const sitesRes = await env.DB.prepare(
-      `SELECT id_site, name_site, technician, zone, retired, nh1_dv, date_dv, nh2_a, date_a, seuil FROM sites${sitesWhere.length ? ' WHERE ' + sitesWhere.join(' AND ') : ''}`
+      `SELECT id, id_site, name_site, technician, zone, retired, nh1_dv, date_dv, nh2_a, date_a, seuil FROM sites${sitesWhere.length ? ' WHERE ' + sitesWhere.join(' AND ') : ''}`
     ).bind(...sitesBind).all();
     for (const s of sitesRes?.results || []) {
       upsertRoster(s?.zone, s?.id_site, s?.name_site, s?.technician, s?.retired, {
         nh1Dv: s?.nh1_dv, dateDv: s?.date_dv, nh2A: s?.nh2_a, dateA: s?.date_a, seuil: s?.seuil
-      });
+      }, s?.id);
     }
 
     const monthIds = [...monthIdByMonth.values()];

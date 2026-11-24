@@ -90,6 +90,9 @@ const PmModal = (props) => {
   const [pmRetiredMatrixSearch, setPmRetiredMatrixSearch] = React.useState('');
   const [pmRetiredMatrixSerie, setPmRetiredMatrixSerie] = React.useState([]);
   const [pmRetiredSuccBusy, setPmRetiredSuccBusy] = React.useState(false);
+  const [pmUpgradeOpen, setPmUpgradeOpen] = React.useState(false);
+  const [pmUpgradeBusy, setPmUpgradeBusy] = React.useState(false);
+  const [pmUpgradePreview, setPmUpgradePreview] = React.useState(null); // {items}
   const [pmPurgeOpen, setPmPurgeOpen] = React.useState(false);
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
   const [pmPurgeBusy, setPmPurgeBusy] = React.useState(false);
@@ -298,6 +301,40 @@ const PmModal = (props) => {
       return [it?.siteCode, it?.siteName, it?.technician, it?.zone].some((v) => String(v || '').toLowerCase().includes(q));
     });
   const pmRetiredViewItems = pmRetiredSuccMode ? pmMatrixItems : pmRetiredItems;
+
+  // « Mettre à niveau » : projection Correct Auto (nh2_a = nh1_dv + régime × jours
+  // depuis la DV, date_a = aujourd'hui) sur les sites FILTRÉS présents dans `sites`.
+  const pmUpgradeableIds = pmMatrixItems.filter((it) => it?.siteId && it?.dateDv && it?.nh1Dv != null).map((it) => it.siteId);
+  const openPmUpgrade = async () => {
+    setPmUpgradeOpen(true);
+    setPmUpgradeBusy(true);
+    setPmUpgradePreview(null);
+    // On fige la liste exacte prévisualisée : les filtres peuvent changer
+    // pendant que le dialog est ouvert — l'apply porte sur CES ids.
+    const ids = [...pmUpgradeableIds];
+    try {
+      const d = await pmCallJson('/api/pm/nh-upgrade', { method: 'POST', body: JSON.stringify({ siteIds: ids, apply: false }) });
+      setPmUpgradePreview({ ...(d || { items: [] }), _ids: ids });
+    } catch (e) {
+      setPmUpgradePreview({ error: e?.message || 'Erreur.', _ids: ids });
+    } finally {
+      setPmUpgradeBusy(false);
+    }
+  };
+  const applyPmUpgrade = async () => {
+    setPmUpgradeBusy(true);
+    try {
+      const d = await pmCallJson('/api/pm/nh-upgrade', { method: 'POST', body: JSON.stringify({ siteIds: pmUpgradePreview?._ids || pmUpgradeableIds, apply: true }) });
+      setPmUpgradeOpen(false);
+      setPmUpgradePreview(null);
+      await loadPmRetiredMatrix(pmRetiredSuccWindow);
+      alert(`Mise à niveau appliquée à ${d?.count ?? 0} site(s)${d?.skippedCount ? ` · ${d.skippedCount} ignoré(s)` : ''}.`);
+    } catch (e) {
+      alert(e?.message || 'Erreur.');
+    } finally {
+      setPmUpgradeBusy(false);
+    }
+  };
 
   const handleExportRetiredMatrix = async () => {
     const monthCols = pmMatrixMonths;
@@ -1169,6 +1206,17 @@ ${tableHtml}
                               </button>
                             )}
                           </div>
+                          {(isAdmin || isManager) && pmUpgradeableIds.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={openPmUpgrade}
+                              disabled={pmUpgradeBusy || pmRetiredSuccBusy}
+                              className="ml-auto text-xs font-bold bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-700 disabled:opacity-60 inline-flex items-center gap-1.5"
+                              title="Projeter NH2 A/Date A à aujourd'hui (nh1_dv + régime × jours) sur les sites filtrés — NH1 DV jamais touché"
+                            >
+                              <TrendingUp size={13} /> Mettre à niveau ({pmUpgradeableIds.length})
+                            </button>
+                          )}
                         </>
                       )}
                     </div>
@@ -1344,7 +1392,75 @@ ${tableHtml}
                 </div>
               )}
 
-
+              {/* ====== Dialog « Mettre à niveau » — projection Correct Auto (NH2 A/Date A) ====== */}
+              {pmUpgradeOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl p-4 sm:p-5 max-h-[92vh] overflow-y-auto">
+                    <div className="font-bold text-base mb-1">Mettre à niveau — projection des compteurs NH</div>
+                    <div className="text-xs text-gray-500 mb-3">
+                      Les sites retirés ne reçoivent plus les MAJ Auto/RMS : leur NH2 A/Date A gèlent.
+                      Même méthode que « Correct Auto » de la quarantaine : <b>NH2 A = NH1 DV + régime × jours depuis la DV</b>,
+                      Date A = aujourd'hui, Diff NHs recalculé. <b>NH1 DV / Date DV ne sont jamais touchés.</b>
+                    </div>
+                    {pmUpgradeBusy && !pmUpgradePreview && <div className="text-sm text-gray-500 py-8 text-center">Calcul des projections…</div>}
+                    {pmUpgradePreview?.error && <div className="text-sm text-rose-600 py-4">{pmUpgradePreview.error}</div>}
+                    {pmUpgradePreview && !pmUpgradePreview.error && (
+                      <>
+                        <div className="text-xs font-semibold text-gray-700 mb-1.5">
+                          {pmUpgradePreview.count} site(s) à projeter{pmUpgradePreview.skippedCount ? ` · ${pmUpgradePreview.skippedCount} ignoré(s)` : ''}
+                        </div>
+                        <div className="border border-gray-200 rounded-lg overflow-x-auto max-h-[50vh] overflow-y-auto">
+                          <table className="w-full text-xs">
+                            <thead className="bg-amber-50 sticky top-0">
+                              <tr className="text-left text-amber-900">
+                                <th className="px-2 py-1.5 font-semibold">Site</th>
+                                <th className="px-2 py-1.5 font-semibold text-right">NH2 A actuel</th>
+                                <th className="px-2 py-1.5 font-semibold">Date A</th>
+                                <th className="px-2 py-1.5"></th>
+                                <th className="px-2 py-1.5 font-semibold text-right">NH2 A projeté</th>
+                                <th className="px-2 py-1.5 font-semibold">Date A</th>
+                                <th className="px-2 py-1.5 font-semibold text-right">Diff NHs</th>
+                                <th className="px-2 py-1.5 font-semibold">Régime</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(pmUpgradePreview.items || []).map((r) => r.skipped ? (
+                                <tr key={r.siteId || r.siteCode} className="border-t border-gray-100 text-gray-400">
+                                  <td className="px-2 py-1.5 whitespace-nowrap"><b>{r.siteCode || '—'}</b> · {r.siteName || '—'}</td>
+                                  <td className="px-2 py-1.5" colSpan={7}>Ignoré — {r.reason}</td>
+                                </tr>
+                              ) : (
+                                <tr key={r.siteId} className="border-t border-gray-100">
+                                  <td className="px-2 py-1.5 whitespace-nowrap"><b>{r.siteCode}</b> · <span className="text-gray-500">{r.siteName}</span></td>
+                                  <td className="px-2 py-1.5 text-right font-mono">{r.before?.nh2A ?? '—'}</td>
+                                  <td className="px-2 py-1.5 whitespace-nowrap text-gray-500">{r.before?.dateA || '—'}</td>
+                                  <td className="px-2 py-1.5 text-center text-amber-600">→</td>
+                                  <td className="px-2 py-1.5 text-right font-mono font-bold text-amber-800">{r.after?.nh2A}</td>
+                                  <td className="px-2 py-1.5 whitespace-nowrap">{r.after?.dateA}</td>
+                                  <td className={`px-2 py-1.5 text-right font-mono font-bold ${r.after?.diffNhs != null && r.after.diffNhs >= (Number(r.seuil) || 250) ? 'text-rose-700' : 'text-slate-700'}`}>{r.after?.diffNhs}</td>
+                                  <td className="px-2 py-1.5 whitespace-nowrap">{r.after?.regime} H/J <span className="text-[10px] text-gray-400">({r.after?.regimeSource} · {r.after?.days} j)</span></td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    )}
+                    <div className="flex gap-2 mt-4 justify-end">
+                      <button className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold hover:bg-gray-50"
+                        onClick={() => { setPmUpgradeOpen(false); setPmUpgradePreview(null); }}>
+                        Fermer
+                      </button>
+                      <button
+                        className="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-bold hover:bg-amber-700 disabled:opacity-60"
+                        disabled={pmUpgradeBusy || !pmUpgradePreview || pmUpgradePreview.error || !(pmUpgradePreview.count > 0)}
+                        onClick={applyPmUpgrade}>
+                        {pmUpgradeBusy ? 'Application…' : `Appliquer à ${pmUpgradePreview?.count ?? 0} site(s)`}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {(() => {
             const items = Array.isArray(pmItems) ? pmItems : [];

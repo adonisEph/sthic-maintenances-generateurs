@@ -19,7 +19,8 @@ export const NH_SOURCE = {
   VIDANGE: 'vidange',
   EDIT: 'edit',
   QUARANTINE: 'quarantine',
-  SCAN: 'scan'
+  SCAN: 'scan',
+  PROJECTION: 'projection'
 };
 
 const normYmd = (v) => {
