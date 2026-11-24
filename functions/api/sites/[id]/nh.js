@@ -87,8 +87,26 @@ export async function onRequestPost({ request, env, data, params }) {
       }
     }
 
+    // Si le dernier relevé stocké est une PROJECTION (« Mettre à niveau »),
+    // les contrôles incrémentaux (parasite_step, decrease, date_regression)
+    // ne doivent pas se mesurer à cette estimation : la saisie réelle la
+    // remplace. On évalue donc contre le dernier relevé RÉEL connu.
+    let evalSite = site;
+    try {
+      const lastReading = await env.DB.prepare(
+        `SELECT source FROM nh_readings WHERE site_id = ? ORDER BY created_at DESC LIMIT 1`
+      ).bind(String(site.id)).first();
+      if (lastReading?.source === 'projection') {
+        const lastReal = await env.DB.prepare(
+          `SELECT nh_value, reading_date FROM nh_readings WHERE site_id = ? AND source != 'projection'
+           ORDER BY reading_date DESC, created_at DESC LIMIT 1`
+        ).bind(String(site.id)).first();
+        evalSite = { ...site, nh2_a: lastReal?.nh_value ?? null, date_a: lastReal?.reading_date ?? null };
+      }
+    } catch { /* best-effort : évaluation sur l'état courant */ }
+
     // Évaluation unifiée : mêmes règles que Auto et RMS.
-    const verdict = evaluateNhCandidate(site, { nh2A: rawNh, dateA: readingDate });
+    const verdict = evaluateNhCandidate(evalSite, { nh2A: rawNh, dateA: readingDate });
 
     if (verdict.verdict === 'reject') {
       const msg = QUARANTINE_MESSAGES[verdict.reason] || 'Compteur (NH) ou date invalide.';
