@@ -93,6 +93,12 @@ const PmModal = (props) => {
   const [pmUpgradeOpen, setPmUpgradeOpen] = React.useState(false);
   const [pmUpgradeBusy, setPmUpgradeBusy] = React.useState(false);
   const [pmUpgradePreview, setPmUpgradePreview] = React.useState(null); // {items}
+  const [pmNhEntry, setPmNhEntry] = React.useState(null); // {siteId, siteCode, nh, date}
+  const [pmNhEntryBusy, setPmNhEntryBusy] = React.useState(false);
+  const [pmUpcnOpen, setPmUpcnOpen] = React.useState(false);
+  const [pmUpcnBusy, setPmUpcnBusy] = React.useState(false);
+  const [pmUpcnRows, setPmUpcnRows] = React.useState([]);
+  const [pmUpcnResult, setPmUpcnResult] = React.useState(null);
   const [pmPurgeOpen, setPmPurgeOpen] = React.useState(false);
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
   const [pmPurgeBusy, setPmPurgeBusy] = React.useState(false);
@@ -333,6 +339,74 @@ const PmModal = (props) => {
       alert(e?.message || 'Erreur.');
     } finally {
       setPmUpgradeBusy(false);
+    }
+  };
+
+  // Cas 1 — relevé RÉEL par ligne (régime dévié) : saisie nh2_a/date_a réelle
+  // via POST /api/sites/{id}/nh (même évaluation cohérence que Auto/RMS ;
+  // une valeur aberrante part en quarantaine, pas appliquée à l'aveugle).
+  const openPmNhEntry = (it) => {
+    if (!it?.siteId) return;
+    setPmNhEntry({ siteId: it.siteId, siteCode: it.siteCode || '', siteName: it.siteName || '', nh: '', date: todayStr, error: '' });
+  };
+  const submitPmNhEntry = async () => {
+    const nh = Number(pmNhEntry?.nh);
+    if (!pmNhEntry?.siteId || !Number.isFinite(nh) || nh < 0) { setPmNhEntry((p) => ({ ...(p || {}), error: 'Compteur NH2 A invalide.' })); return; }
+    setPmNhEntryBusy(true);
+    try {
+      const d = await pmCallJson(`/api/sites/${encodeURIComponent(pmNhEntry.siteId)}/nh`, {
+        method: 'POST',
+        body: JSON.stringify({ nhValue: nh, readingDate: pmNhEntry.date || undefined })
+      });
+      // Mise à jour en place de la ligne (valeurs serveur = source de vérité).
+      const s = d?.site;
+      if (s) {
+        setPmRetiredMatrix((prev) => prev ? ({
+          ...prev,
+          items: (prev.items || []).map((it) => it?.siteId === pmNhEntry.siteId
+            ? { ...it, nh1Dv: s.nh1DV, dateDv: s.dateDV, nh2A: s.nh2A, dateA: s.dateA, diffNhs: s.diffNHs }
+            : it)
+        }) : prev);
+      }
+      setPmNhEntry(null);
+    } catch (e) {
+      // 409 = quarantaine : message explicite de l'API (valeur non appliquée).
+      setPmNhEntry((p) => ({ ...(p || {}), error: e?.message || 'Erreur.' }));
+    } finally {
+      setPmNhEntryBusy(false);
+    }
+  };
+
+  // Cas 2 — « Mettre à jour UPCN » : upsert des 4 valeurs NH pour les sites
+  // filtrés SANS fiche `sites` (UPCN…) ou à baseline incomplète — rapports
+  // uniformes. Le backend INSERT la fiche ou UPDATE les champs NH.
+  const pmNhMissingItems = pmMatrixItems.filter((it) => !it?.siteId || !it?.dateDv || it?.nh1Dv == null);
+  const openPmUpcn = () => {
+    setPmUpcnRows(pmNhMissingItems.map((it) => ({
+      siteCode: it?.siteCode || '', siteName: it?.siteName || '', zone: it?.zone || 'UPCN',
+      technician: it?.technician || '',
+      nh1Dv: it?.nh1Dv ?? '', dateDv: it?.dateDv || '', nh2A: it?.nh2A ?? '', dateA: it?.dateA || ''
+    })));
+    setPmUpcnResult(null);
+    setPmUpcnOpen(true);
+  };
+  const setPmUpcnCell = (i, k, v) => setPmUpcnRows((prev) => prev.map((r, j) => j === i ? { ...r, [k]: v } : r));
+  const submitPmUpcn = async () => {
+    const items = pmUpcnRows.map((r) => ({
+      siteCode: r.siteCode, siteName: r.siteName, zone: r.zone, technician: r.technician,
+      nh1Dv: r.nh1Dv === '' ? null : Number(r.nh1Dv), dateDv: r.dateDv || '',
+      nh2A: r.nh2A === '' ? null : Number(r.nh2A), dateA: r.dateA || ''
+    }));
+    setPmUpcnBusy(true);
+    setPmUpcnResult(null);
+    try {
+      const d = await pmCallJson('/api/pm/nh-sites-upsert', { method: 'POST', body: JSON.stringify({ items }) });
+      setPmUpcnResult(d);
+      if ((d?.written || 0) > 0) await loadPmRetiredMatrix(pmRetiredSuccWindow);
+    } catch (e) {
+      setPmUpcnResult({ error: e?.message || 'Erreur.' });
+    } finally {
+      setPmUpcnBusy(false);
     }
   };
 
@@ -1217,6 +1291,17 @@ ${tableHtml}
                               <TrendingUp size={13} /> Mettre à niveau ({pmUpgradeableIds.length})
                             </button>
                           )}
+                          {(isAdmin || isManager) && pmNhMissingItems.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={openPmUpcn}
+                              disabled={pmUpcnBusy || pmRetiredSuccBusy}
+                              className="text-xs font-bold bg-sky-600 text-white px-3 py-1.5 rounded-lg hover:bg-sky-700 disabled:opacity-60 inline-flex items-center gap-1.5"
+                              title="Insérer NH1 DV / Date DV / NH2 A / Date A pour les sites sans données NH (UPCN…) — rapports uniformes"
+                            >
+                              Mettre à jour UPCN ({pmNhMissingItems.length})
+                            </button>
+                          )}
                         </>
                       )}
                     </div>
@@ -1325,7 +1410,19 @@ ${tableHtml}
                                     <td className="px-2 py-1.5 text-slate-600 whitespace-nowrap bg-amber-50/30">{it?.dateDv || '—'}</td>
                                     <td className="px-2 py-1.5 text-right text-slate-700 font-mono bg-amber-50/30">{it?.nh1Dv ?? '—'}</td>
                                     <td className="px-2 py-1.5 text-slate-600 whitespace-nowrap bg-amber-50/30">{it?.dateA || '—'}</td>
-                                    <td className="px-2 py-1.5 text-right text-slate-700 font-mono bg-amber-50/30">{it?.nh2A ?? '—'}</td>
+                                    <td className="px-2 py-1.5 text-right text-slate-700 font-mono bg-amber-50/30 whitespace-nowrap">
+                                      <span className="inline-flex items-center gap-1">
+                                        {it?.nh2A ?? '—'}
+                                        {(isAdmin || isManager) && it?.siteId && it?.dateDv && it?.nh1Dv != null && (
+                                          <button
+                                            type="button"
+                                            onClick={() => openPmNhEntry(it)}
+                                            className="w-4 h-4 inline-flex items-center justify-center rounded bg-amber-600 text-white text-[10px] font-bold hover:bg-amber-700 leading-none"
+                                            title="Saisir le relevé réel NH2 A (régime dévié) — Diff NHs recalculé"
+                                          >+</button>
+                                        )}
+                                      </span>
+                                    </td>
                                     <td className={`px-2 py-1.5 text-right font-mono whitespace-nowrap bg-amber-50/30 ${it?.diffNhs != null && it.diffNhs >= (Number(it?.seuil) || 250) ? 'font-bold text-rose-700' : 'text-slate-700'}`}
                                       title={it?.diffNhs != null ? `Seuil : ${Number(it?.seuil) || 250}` : ''}>{it?.diffNhs ?? '—'}</td>
                                     {pmMatrixMonths.map((mo) => {
@@ -1456,6 +1553,115 @@ ${tableHtml}
                         disabled={pmUpgradeBusy || !pmUpgradePreview || pmUpgradePreview.error || !(pmUpgradePreview.count > 0)}
                         onClick={applyPmUpgrade}>
                         {pmUpgradeBusy ? 'Application…' : `Appliquer à ${pmUpgradePreview?.count ?? 0} site(s)`}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ====== Dialog relevé réel NH2 A (cas 1 — régime dévié) ====== */}
+              {pmNhEntry && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-4 sm:p-5">
+                    <div className="font-bold text-base mb-1">Relevé réel — {pmNhEntry.siteCode}</div>
+                    <div className="text-xs text-gray-500 mb-3">
+                      {pmNhEntry.siteName} · Saisir le <b>vrai compteur NH2 A</b> lu sur site (le régime
+                      a dévié, la projection ne vaut plus). Diff NHs est recalculé automatiquement.
+                      Une valeur incohérente part en <b>quarantaine</b> (mêmes règles qu'Auto/RMS) — elle n'est pas appliquée.
+                    </div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">NH2 A réel (heures)</label>
+                    <input
+                      type="number" min="0" step="1" autoFocus
+                      value={pmNhEntry.nh}
+                      onChange={(e) => setPmNhEntry((p) => ({ ...(p || {}), nh: e.target.value, error: '' }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono mb-2 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                      placeholder="ex. 15234"
+                    />
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Date du relevé</label>
+                    <input
+                      type="date"
+                      value={pmNhEntry.date}
+                      max={todayStr}
+                      onChange={(e) => setPmNhEntry((p) => ({ ...(p || {}), date: e.target.value, error: '' }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                    />
+                    {pmNhEntry.error && <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 mb-2">{pmNhEntry.error}</div>}
+                    <div className="flex gap-2 mt-3 justify-end">
+                      <button className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold hover:bg-gray-50"
+                        onClick={() => setPmNhEntry(null)}>Annuler</button>
+                      <button
+                        className="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-bold hover:bg-amber-700 disabled:opacity-60"
+                        disabled={pmNhEntryBusy}
+                        onClick={submitPmNhEntry}>
+                        {pmNhEntryBusy ? 'Enregistrement…' : 'Enregistrer'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ====== Dialog « Mettre à jour UPCN » (cas 2 — upsert données NH) ====== */}
+              {pmUpcnOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
+                  <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl p-4 sm:p-5 max-h-[92vh] overflow-y-auto">
+                    <div className="font-bold text-base mb-1">Mettre à jour UPCN — insertion des données NH</div>
+                    <div className="text-xs text-gray-500 mb-3">
+                      Sites <b>sans fiche</b> dans l'app (UPCN…) ou à <b>baseline incomplète</b> — les lignes
+                      filtrées de la matrice. Renseignez NH1 DV / Date DV (vidange) et NH2 A / Date A (relevé).
+                      Chaque ligne validée crée ou complète la fiche du site — la matrice, l'impression,
+                      le SCAN PDF et l'export xlsx deviennent uniformes.
+                    </div>
+                    <div className="border border-gray-200 rounded-lg overflow-x-auto max-h-[55vh] overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-sky-50 sticky top-0">
+                          <tr className="text-left text-sky-900">
+                            <th className="px-2 py-1.5 font-semibold">Site</th>
+                            <th className="px-2 py-1.5 font-semibold">Zone</th>
+                            <th className="px-2 py-1.5 font-semibold">Technicien</th>
+                            <th className="px-2 py-1.5 font-semibold">NH1 DV</th>
+                            <th className="px-2 py-1.5 font-semibold">Date DV</th>
+                            <th className="px-2 py-1.5 font-semibold">NH2 A</th>
+                            <th className="px-2 py-1.5 font-semibold">Date A</th>
+                            {pmUpcnResult?.items && <th className="px-2 py-1.5 font-semibold">Résultat</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pmUpcnRows.map((r, i) => {
+                            const res = pmUpcnResult?.items?.find?.((x) => x?.siteCode === r.siteCode && x?.zone === r.zone);
+                            return (
+                              <tr key={`${r.zone}|${r.siteCode}`} className="border-t border-gray-100">
+                                <td className="px-2 py-1 whitespace-nowrap"><b>{r.siteCode}</b><div className="text-[10px] text-gray-400 max-w-[160px] truncate">{r.siteName}</div></td>
+                                <td className="px-2 py-1 whitespace-nowrap text-gray-500">{r.zone}</td>
+                                <td className="px-2 py-1"><input type="text" value={r.technician} onChange={(e) => setPmUpcnCell(i, 'technician', e.target.value)} className="border border-gray-200 rounded px-1.5 py-1 w-32 text-xs" /></td>
+                                <td className="px-2 py-1"><input type="number" min="0" value={r.nh1Dv} onChange={(e) => setPmUpcnCell(i, 'nh1Dv', e.target.value)} className="border border-gray-200 rounded px-1.5 py-1 w-20 text-xs font-mono" /></td>
+                                <td className="px-2 py-1"><input type="date" value={r.dateDv} onChange={(e) => setPmUpcnCell(i, 'dateDv', e.target.value)} className="border border-gray-200 rounded px-1.5 py-1 text-xs" /></td>
+                                <td className="px-2 py-1"><input type="number" min="0" value={r.nh2A} onChange={(e) => setPmUpcnCell(i, 'nh2A', e.target.value)} className="border border-gray-200 rounded px-1.5 py-1 w-20 text-xs font-mono" /></td>
+                                <td className="px-2 py-1"><input type="date" value={r.dateA} onChange={(e) => setPmUpcnCell(i, 'dateA', e.target.value)} className="border border-gray-200 rounded px-1.5 py-1 text-xs" /></td>
+                                {pmUpcnResult?.items && (
+                                  <td className={`px-2 py-1 whitespace-nowrap text-[11px] font-semibold ${res?.ok ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                    {res ? (res.ok ? (res.action === 'inserted' ? '✓ créé' : '✓ complété') : `✗ ${res.reason}`) : '—'}
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    {pmUpcnResult?.error && <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 mt-2">{pmUpcnResult.error}</div>}
+                    {pmUpcnResult && !pmUpcnResult.error && (
+                      <div className="text-xs font-semibold text-emerald-700 mt-2">
+                        {pmUpcnResult.written} fiche(s) écrite(s) — la matrice a été rechargée.
+                      </div>
+                    )}
+                    <div className="flex gap-2 mt-4 justify-end">
+                      <button className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold hover:bg-gray-50"
+                        onClick={() => setPmUpcnOpen(false)}>Fermer</button>
+                      <button
+                        className="px-4 py-2 rounded-lg bg-sky-600 text-white text-sm font-bold hover:bg-sky-700 disabled:opacity-60"
+                        disabled={pmUpcnBusy || !pmUpcnRows.length}
+                        onClick={submitPmUpcn}>
+                        {pmUpcnBusy ? 'Écriture…' : `Enregistrer ${pmUpcnRows.length} site(s)`}
                       </button>
                     </div>
                   </div>
