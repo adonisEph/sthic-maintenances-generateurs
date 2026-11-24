@@ -356,7 +356,7 @@ const PmModal = (props) => {
     try {
       const d = await pmCallJson(`/api/sites/${encodeURIComponent(pmNhEntry.siteId)}/nh`, {
         method: 'POST',
-        body: JSON.stringify({ nhValue: nh, readingDate: pmNhEntry.date || undefined })
+        body: JSON.stringify({ nhValue: nh, readingDate: pmNhEntry.date || undefined, allowRetired: true })
       });
       // Mise à jour en place de la ligne (valeurs serveur = source de vérité).
       const s = d?.site;

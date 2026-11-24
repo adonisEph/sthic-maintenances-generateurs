@@ -97,9 +97,15 @@ export async function onRequestPost({ request, env, data, params }) {
 
     // Site retiré : relevé systématiquement quarantiné (remise en cohérence
     // manuelle) — jamais appliqué automatiquement, même s'il est cohérent.
+    // Exception allowRetired : saisie délibérée depuis la matrice « Retirés
+    // successivement » (compteur réel d'un site retiré de campagne) — seule
+    // la règle retired_site est levée, toutes les autres règles de cohérence
+    // (parasite_high, decrease, date_regression…) continuent de protéger.
     const isRetired = site?.retired === true || site?.retired === 1
       || String(site?.retired || '').trim().toLowerCase() === 'true';
-    const effectiveVerdict = isRetired && verdict.verdict === 'apply'
+    const allowRetired = body?.allowRetired === true
+      && (role === 'admin' || role === 'manager' || role === 'manager_bzv_pool');
+    const effectiveVerdict = isRetired && !allowRetired && verdict.verdict === 'apply'
       ? { ...verdict, verdict: 'quarantine', reason: 'retired_site', detail: { ...(verdict.detail || {}), retired: true } }
       : verdict;
 
